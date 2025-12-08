@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Sucursales · Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Sucursales</h1>
+    <div>
+        <a href="/web/admin/users" class="btn btn-sm btn-outline-secondary me-2">
+            Ver usuarios
+        </a>
+        <a href="/web/admin/sucursales/nueva" class="btn btn-sm btn-primary">
+            Nueva sucursal
+        </a>
+    </div>
+</div>
+
+<table class="table table-sm align-middle">
+    <thead>
+    <tr>
+        <th>ID</th>
+        <th>Nombre</th>
+        <th>Dirección</th>
+        <th>Estado</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for s in sucursales %}
+        <tr>
+            <td>{{ s.id }}</td>
+            <td>{{ s.nombre }}</td>
+            <td>{{ s.direccion or "-" }}</td>
+            <td>
+                <span class="badge bg-{{ 'success' if s.estado.value == 'activa' else 'secondary' }}">
+                    {{ s.estado.value }}
+                </span>
+            </td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

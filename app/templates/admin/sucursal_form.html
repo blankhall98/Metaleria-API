@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Nueva sucursal · Admin{% endblock %}
+
+{% block content %}
+<h1 class="h4 mb-3">Nueva sucursal</h1>
+
+{% if error %}
+    <div class="alert alert-danger py-2 small">
+        {{ error }}
+    </div>
+{% endif %}
+
+<form method="post" action="/web/admin/sucursales/nueva" class="card p-3 shadow-sm">
+    <div class="mb-3">
+        <label class="form-label" for="nombre">Nombre</label>
+        <input class="form-control" type="text" id="nombre" name="nombre" required>
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="direccion">Dirección (opcional)</label>
+        <input class="form-control" type="text" id="direccion" name="direccion">
+    </div>
+    <button type="submit" class="btn btn-primary">Guardar</button>
+    <a href="/web/admin/sucursales" class="btn btn-link">Cancelar</a>
+</form>
+{% endblock %}

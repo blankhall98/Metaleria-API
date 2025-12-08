@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Usuarios · Admin{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Usuarios</h1>
+    <div>
+        <a href="/web/admin/sucursales" class="btn btn-sm btn-outline-secondary me-2">
+            Ver sucursales
+        </a>
+        <a href="/web/admin/users/nuevo" class="btn btn-sm btn-primary">
+            Nuevo usuario
+        </a>
+    </div>
+</div>
+
+<table class="table table-sm align-middle">
+    <thead>
+    <tr>
+        <th>ID</th>
+        <th>Username</th>
+        <th>Nombre</th>
+        <th>Rol</th>
+        <th>Sucursal</th>
+        <th>Estado</th>
+        <th>Super admin original</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for u in usuarios %}
+        <tr>
+            <td>{{ u.id }}</td>
+            <td>{{ u.username }}</td>
+            <td>{{ u.nombre_completo }}</td>
+            <td>{{ u.rol.value }}</td>
+            <td>
+                {% if u.sucursal_id %}
+                    {{ sucursales_map[u.sucursal_id].nombre }}
+                {% else %}
+                    -
+                {% endif %}
+            </td>
+            <td>
+                <span class="badge bg-{{ 'success' if u.estado.value == 'activo' else 'secondary' }}">
+                    {{ u.estado.value }}
+                </span>
+            </td>
+            <td>
+                {% if u.super_admin_original %}
+                    <span class="badge bg-warning text-dark">Sí</span>
+                {% else %}
+                    No
+                {% endif %}
+            </td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

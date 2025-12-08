@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Nuevo usuario · Admin{% endblock %}
+
+{% block content %}
+<h1 class="h4 mb-3">Nuevo usuario</h1>
+
+{% if error %}
+    <div class="alert alert-danger py-2 small">
+        {{ error }}
+    </div>
+{% endif %}
+
+<form method="post" action="/web/admin/users/nuevo" class="card p-3 shadow-sm">
+    <div class="mb-3">
+        <label class="form-label" for="username">Username</label>
+        <input class="form-control" type="text" id="username" name="username" required>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label" for="nombre_completo">Nombre completo</label>
+        <input class="form-control" type="text" id="nombre_completo" name="nombre_completo" required>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label" for="password">Contraseña</label>
+        <input class="form-control" type="password" id="password" name="password" required>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label" for="rol">Rol</label>
+        <select class="form-select" id="rol" name="rol" required>
+            <option value="super_admin">Super admin</option>
+            <option value="admin">Admin</option>
+            <option value="trabajador">Trabajador</option>
+        </select>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label" for="sucursal_id">Sucursal (obligatoria para trabajador)</label>
+        <select class="form-select" id="sucursal_id" name="sucursal_id">
+            <option value="">-- Sin sucursal --</option>
+            {% for s in sucursales %}
+                <option value="{{ s.id }}">{{ s.nombre }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Guardar</button>
+    <a href="/web/admin/users" class="btn btn-link">Cancelar</a>
+</form>
+{% endblock %}
