@@ -13,6 +13,7 @@ from app.models import (
     UserStatus,
     Sucursal,
     SucursalStatus,
+    Material
 )
 
 templates = Jinja2Templates(directory="app/templates")
@@ -245,3 +246,178 @@ async def user_new_post(
     db.commit()
 
     return RedirectResponse(url="/web/admin/users", status_code=303)
+
+# ---------- MATERIALES ----------
+
+
+@router.get("/materiales")
+async def materiales_list(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    materiales = db.query(Material).order_by(Material.nombre).all()
+    return templates.TemplateResponse(
+        "admin/materiales_list.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "materiales": materiales,
+        },
+    )
+
+
+@router.get("/materiales/nuevo")
+async def material_new_get(
+    request: Request,
+    current_user: dict = Depends(require_superadmin),
+):
+    return templates.TemplateResponse(
+        "admin/material_form.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "material": None,
+            "error": None,
+        },
+    )
+
+
+@router.post("/materiales/nuevo")
+async def material_new_post(
+    request: Request,
+    nombre: str = Form(...),
+    descripcion: str = Form(""),
+    unidad_medida: str = Form("kg"),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    nombre = nombre.strip()
+    descripcion = descripcion.strip()
+    unidad_medida = unidad_medida.strip() or "kg"
+
+    if not nombre:
+        return templates.TemplateResponse(
+            "admin/material_form.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "material": None,
+                "error": "El nombre del material es obligatorio.",
+            },
+            status_code=400,
+        )
+
+    existing = db.query(Material).filter(Material.nombre == nombre).first()
+    if existing:
+        return templates.TemplateResponse(
+            "admin/material_form.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "material": None,
+                "error": "Ya existe un material con ese nombre.",
+            },
+            status_code=400,
+        )
+
+    material = Material(
+        nombre=nombre,
+        descripcion=descripcion or None,
+        unidad_medida=unidad_medida,
+        activo=True,
+    )
+    db.add(material)
+    db.commit()
+
+    return RedirectResponse(url="/web/admin/materiales", status_code=303)
+
+
+@router.get("/materiales/{material_id}/editar")
+async def material_edit_get(
+    material_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    material = db.query(Material).get(material_id)
+    if not material:
+        raise HTTPException(status_code=404, detail="Material no encontrado.")
+
+    return templates.TemplateResponse(
+        "admin/material_form.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "material": material,
+            "error": None,
+        },
+    )
+
+
+@router.post("/materiales/{material_id}/editar")
+async def material_edit_post(
+    material_id: int,
+    request: Request,
+    nombre: str = Form(...),
+    descripcion: str = Form(""),
+    unidad_medida: str = Form("kg"),
+    activo: str | None = Form(None),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    material = db.query(Material).get(material_id)
+    if not material:
+        raise HTTPException(status_code=404, detail="Material no encontrado.")
+
+    nombre = nombre.strip()
+    descripcion = descripcion.strip()
+    unidad_medida = unidad_medida.strip() or "kg"
+
+    if not nombre:
+        return templates.TemplateResponse(
+            "admin/material_form.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "material": material,
+                "error": "El nombre del material es obligatorio.",
+            },
+            status_code=400,
+        )
+
+    # validar unicidad de nombre
+    existing = (
+        db.query(Material)
+        .filter(Material.nombre == nombre, Material.id != material.id)
+        .first()
+    )
+    if existing:
+        return templates.TemplateResponse(
+            "admin/material_form.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "material": material,
+                "error": "Ya existe otro material con ese nombre.",
+            },
+            status_code=400,
+        )
+
+    material.nombre = nombre
+    material.descripcion = descripcion or None
+    material.unidad_medida = unidad_medida
+    material.activo = bool(activo)  # checkbox: "on" o None
+
+    db.add(material)
+    db.commit()
+
+    return RedirectResponse(url="/web/admin/materiales", status_code=303)
+

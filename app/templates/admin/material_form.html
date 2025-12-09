@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}
+    {% if material %}Editar material{% else %}Nuevo material{% endif %} · Admin
+{% endblock %}
+
+{% block content %}
+<h1 class="h4 mb-3">
+    {% if material %}Editar material{% else %}Nuevo material{% endif %}
+</h1>
+
+{% if error %}
+    <div class="alert alert-danger py-2 small">
+        {{ error }}
+    </div>
+{% endif %}
+
+<form
+    method="post"
+    action="{% if material %}/web/admin/materiales/{{ material.id }}/editar{% else %}/web/admin/materiales/nuevo{% endif %}"
+    class="card p-3 shadow-sm"
+>
+    <div class="mb-3">
+        <label class="form-label" for="nombre">Nombre</label>
+        <input
+            class="form-control"
+            type="text"
+            id="nombre"
+            name="nombre"
+            required
+            value="{{ material.nombre if material else '' }}"
+        >
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label" for="descripcion">Descripción (opcional)</label>
+        <input
+            class="form-control"
+            type="text"
+            id="descripcion"
+            name="descripcion"
+            value="{{ material.descripcion if material and material.descripcion else '' }}"
+        >
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label" for="unidad_medida">Unidad de medida</label>
+        <input
+            class="form-control"
+            type="text"
+            id="unidad_medida"
+            name="unidad_medida"
+            value="{{ material.unidad_medida if material else 'kg' }}"
+        >
+    </div>
+
+    {% if material %}
+        <div class="form-check mb-3">
+            <input
+                class="form-check-input"
+                type="checkbox"
+                id="activo"
+                name="activo"
+                {% if material.activo %}checked{% endif %}
+            >
+            <label class="form-check-label" for="activo">
+                Material activo
+            </label>
+        </div>
+    {% endif %}
+
+    <button type="submit" class="btn btn-primary">
+        Guardar
+    </button>
+    <a href="/web/admin/materiales" class="btn btn-link">Cancelar</a>
+</form>
+{% endblock %}
