@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+
+{% block title %}Nueva nota{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="text-uppercase text-muted small mb-1">Operación</p>
+        <h1 class="h4 text-white mb-0">Nueva nota</h1>
+    </div>
+    <a href="/web/worker/notes" class="btn btn-outline-secondary btn-sm">Volver</a>
+</div>
+
+{% if error %}
+    <div class="alert alert-danger py-2 small">
+        {{ error }}
+    </div>
+{% endif %}
+
+<div class="card hover-lift">
+    <div class="card-body">
+        <form method="post" class="d-grid gap-4" oninput="updateSteps()">
+            <section class="step-card" id="step1">
+                <div class="d-flex align-items-center gap-2 mb-3">
+                    <span class="chip-strong">Paso 1</span>
+                    <strong>Define operación y partner</strong>
+                </div>
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-4">
+                        <label class="form-label" for="tipo_operacion">Tipo de operación</label>
+                        <select class="form-select" id="tipo_operacion" name="tipo_operacion" required onchange="togglePartner(); updateSteps();">
+                            <option value="compra">Compra</option>
+                            <option value="venta">Venta</option>
+                        </select>
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label">Partner</label>
+                        <div class="d-flex flex-column flex-md-row gap-2">
+                            <select class="form-select" id="proveedor_id" name="proveedor_id">
+                                <option value="">Proveedor (compra)</option>
+                                {% for p in proveedores %}
+                                    <option value="{{ p.id }}">{{ p.nombre_completo }}</option>
+                                {% endfor %}
+                            </select>
+                            <select class="form-select" id="cliente_id" name="cliente_id">
+                                <option value="">Cliente (venta)</option>
+                                {% for c in clientes %}
+                                    <option value="{{ c.id }}">{{ c.nombre_completo }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <small class="text-muted">Solo selecciona uno según la operación.</small>
+                    </div>
+                </div>
+            </section>
+
+            <section class="step-card disabled" id="step2">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="chip-strong">Paso 2</span>
+                    <strong>Materiales y subpesajes</strong>
+                </div>
+
+                <div id="materiales-wrapper" class="d-grid gap-3 mb-3">
+                    <div class="material-row material-card">
+                        <button type="button" class="btn btn-sm remove-btn" onclick="removeMaterial(this)">Eliminar material</button>
+                        <div class="row g-2">
+                            <div class="col-12">
+                                <label class="form-label">Material</label>
+                                <select class="form-select" name="material_id" required>
+                                    <option value="">Selecciona material</option>
+                                    {% for m in materiales %}
+                                        <option value="{{ m.id }}">{{ m.nombre }} ({{ m.unidad_medida }})</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Tipo de precio</label>
+                                <select class="form-select" name="tipo_cliente">
+                                    <option value="">Regular</option>
+                                    <option value="mayorista">Mayorista</option>
+                                    <option value="menudeo">Menudeo</option>
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Subpesajes</label>
+                                <div class="d-grid gap-2 subpesajes-wrapper">
+                                    <div class="input-group">
+                                        <span class="input-group-text">kg neto</span>
+                                        <input class="form-control subpesaje-input" type="number" step="0.01" min="0.01" placeholder="Ej. 150.25" oninput="updatePesajes(this)">
+                                        <span class="input-group-text">desc kg</span>
+                                        <input class="form-control subpesaje-desc" type="number" step="0.01" min="0" placeholder="0.00" oninput="updatePesajes(this)">
+                                        <span class="input-group-text">evidencia</span>
+                                        <input class="form-control subpesaje-evid" type="text" placeholder="URL foto" oninput="updatePesajes(this)">
+                                        <button type="button" class="btn btn-outline-danger" onclick="removePesaje(this)">Eliminar</button>
+                                    </div>
+                                </div>
+                                <div class="d-flex justify-content-end mt-2">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="addPesaje(this)">Agregar pesaje</button>
+                                </div>
+                                <input type="hidden" name="subpesajes" value="">
+                                <div class="form-text">Agrega pesajes con sus descuentos y evidencia; sumaremos automáticamente.</div>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">Kg bruto (auto)</label>
+                                <input class="form-control" type="number" step="0.01" min="0" name="kg_bruto" readonly>
+                                <div class="form-text">Suma de pesajes + descuentos.</div>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">Kg descuento (auto)</label>
+                                <input class="form-control" type="number" step="0.01" min="0" name="kg_descuento" value="0" readonly>
+                            </div>
+                            <div class="col-12">
+                                <div class="border rounded p-2 bg-white">
+                                    <div class="d-flex justify-content-between">
+                                        <span class="text-muted small">Kg bruto</span>
+                                        <strong class="kg-bruto">0.00</strong>
+                                    </div>
+                                    <div class="d-flex justify-content-between">
+                                        <span class="text-muted small">Kg descuento</span>
+                                        <strong class="kg-desc">0.00</strong>
+                                    </div>
+                                    <div class="d-flex justify-content-between">
+                                        <span class="text-muted small">Kg neto</span>
+                                        <strong class="kg-neto">0.00</strong>
+                                    </div>
+                                    <div class="d-flex justify-content-between">
+                                        <span class="text-muted small">Total $ (se calculará)</span>
+                                        <strong class="total-material text-muted">-</strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-center">
+                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="addMaterial()">Agregar material</button>
+                </div>
+                <div class="border rounded p-3 bg-white mt-3">
+                    <h3 class="h6 mb-2">Resumen de la nota (auto)</h3>
+                    <div class="d-flex justify-content-between">
+                        <span class="text-muted small">Kg bruto</span>
+                        <strong id="nota-kg-bruto">0.00</strong>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span class="text-muted small">Kg descuento</span>
+                        <strong id="nota-kg-desc">0.00</strong>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span class="text-muted small">Kg neto</span>
+                        <strong id="nota-kg-neto">0.00</strong>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span class="text-muted small">Total $</span>
+                        <strong class="text-muted">Se calculará al aprobar</strong>
+                    </div>
+                </div>
+            </section>
+
+            <section class="step-card disabled" id="step3">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="chip-strong">Paso 3</span>
+                    <strong>Comentarios</strong>
+                </div>
+                <textarea class="form-control" id="comentarios_trabajador" name="comentarios_trabajador" rows="2" placeholder="Notas para el revisor (opcional)" disabled></textarea>
+            </section>
+
+            <div class="d-grid gap-2">
+                <button type="submit" class="btn btn-primary btn-lg" id="submitBtn" disabled>Guardar borrador</button>
+                <small class="text-muted">Este registro quedará en estado borrador y será visible para revisión.</small>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    function togglePartner() {
+        const tipo = document.getElementById('tipo_operacion').value;
+        const proveedorSel = document.getElementById('proveedor_id');
+        const clienteSel = document.getElementById('cliente_id');
+        if (tipo === 'compra') {
+            proveedorSel.removeAttribute('disabled');
+            clienteSel.setAttribute('disabled', 'disabled');
+            clienteSel.value = '';
+        } else {
+            clienteSel.removeAttribute('disabled');
+            proveedorSel.setAttribute('disabled', 'disabled');
+            proveedorSel.value = '';
+        }
+    }
+    function addMaterial() {
+        const wrapper = document.getElementById('materiales-wrapper');
+        const tpl = wrapper.querySelector('.material-row');
+        const clone = tpl.cloneNode(true);
+        // limpiar selects/inputs
+        clone.querySelectorAll('select').forEach(sel => sel.selectedIndex = 0);
+        clone.querySelectorAll('input').forEach(inp => {
+            if (inp.type === 'hidden') inp.value = '';
+            else if (inp.name === 'kg_descuento') inp.value = '0';
+            else inp.value = '';
+        });
+        // reset subpesajes a solo una fila vacía
+        const subWrapper = clone.querySelector('.subpesajes-wrapper');
+        subWrapper.innerHTML = `
+            <div class="input-group">
+                <span class="input-group-text">kg neto</span>
+                <input class="form-control subpesaje-input" type="number" step="0.01" min="0.01" placeholder="Ej. 150.25" oninput="updatePesajes(this)">
+                <span class="input-group-text">desc kg</span>
+                <input class="form-control subpesaje-desc" type="number" step="0.01" min="0" placeholder="0.00" oninput="updatePesajes(this)">
+                <span class="input-group-text">evidencia</span>
+                <input class="form-control subpesaje-evid" type="text" placeholder="URL foto" oninput="updatePesajes(this)">
+                <button type="button" class="btn btn-outline-danger" onclick="removePesaje(this)">Eliminar</button>
+            </div>
+        `;
+        // reset resúmenes por material
+        clone.querySelector('.kg-bruto').textContent = '0.00';
+        clone.querySelector('.kg-desc').textContent = '0.00';
+        clone.querySelector('.kg-neto').textContent = '0.00';
+        clone.querySelector('.total-material').textContent = '-';
+        wrapper.appendChild(clone);
+        updateSteps();
+    }
+    function removeMaterial(btn) {
+        const rows = document.querySelectorAll('#materiales-wrapper .material-row');
+        if (rows.length <= 1) return; // mantener al menos uno
+        btn.closest('.material-row').remove();
+        updateSteps();
+    }
+    function updatePesajes(inputEl) {
+        const materialRow = inputEl.closest('.material-row');
+        const inputs = materialRow.querySelectorAll('.subpesaje-input');
+        const descInputs = materialRow.querySelectorAll('.subpesaje-desc');
+        const evidInputs = materialRow.querySelectorAll('.subpesaje-evid');
+        const hidden = materialRow.querySelector('input[type=\"hidden\"][name=\"subpesajes\"]');
+        let items = [];
+        for (let idx = 0; idx < inputs.length; idx++) {
+            const v = parseFloat(inputs[idx].value || '0');
+            const d = parseFloat(descInputs[idx].value || '0');
+            const ev = evidInputs[idx].value || '';
+            if (v > 0 || d > 0 || ev) {
+                items.push({peso_kg: v || 0, descuento_kg: d || 0, foto_url: ev || null});
+            }
+        }
+        hidden.value = JSON.stringify(items);
+        const neto = items.reduce((acc, it) => acc + (it.peso_kg || 0), 0);
+        const desc = items.reduce((acc, it) => acc + (it.descuento_kg || 0), 0);
+        const kgBrutoInput = materialRow.querySelector('input[name=\"kg_bruto\"]');
+        const kgDescInput = materialRow.querySelector('input[name=\"kg_descuento\"]');
+        kgBrutoInput.value = (neto + desc) > 0 ? (neto + desc).toFixed(2) : '';
+        kgDescInput.value = desc > 0 ? desc.toFixed(2) : '0';
+        materialRow.querySelector('.kg-bruto').textContent = kgBrutoInput.value || '0.00';
+        materialRow.querySelector('.kg-desc').textContent = kgDescInput.value || '0.00';
+        materialRow.querySelector('.kg-neto').textContent = neto > 0 ? neto.toFixed(2) : '0.00';
+        materialRow.querySelector('.total-material').textContent = '-';
+        updateSteps();
+    }
+    function addPesaje(btn) {
+        const materialRow = btn.closest('.material-row');
+        const wrapper = materialRow.querySelector('.subpesajes-wrapper');
+        const group = document.createElement('div');
+        group.className = 'input-group';
+        group.innerHTML = `
+            <span class="input-group-text">kg neto</span>
+            <input class="form-control subpesaje-input" type="number" step="0.01" min="0.01" placeholder="Ej. 150.25" oninput="updatePesajes(this)">
+            <span class="input-group-text">desc kg</span>
+            <input class="form-control subpesaje-desc" type="number" step="0.01" min="0" placeholder="0.00" oninput="updatePesajes(this)">
+            <span class="input-group-text">evidencia</span>
+            <input class="form-control subpesaje-evid" type="text" placeholder="URL foto" oninput="updatePesajes(this)">
+            <button type="button" class="btn btn-outline-danger" onclick="removePesaje(this)">Eliminar</button>
+        `;
+        wrapper.appendChild(group);
+    }
+    function removePesaje(btn) {
+        const group = btn.closest('.input-group');
+        const materialRow = btn.closest('.material-row');
+        const wrapper = materialRow.querySelector('.subpesajes-wrapper');
+        if (wrapper.querySelectorAll('.input-group').length <= 1) {
+            const inputs = wrapper.querySelectorAll('input');
+            inputs.forEach(i => i.value = '');
+            updatePesajes(wrapper.querySelector('.subpesaje-input'));
+            return;
+        }
+        group.remove();
+        const input = wrapper.querySelector('.subpesaje-input');
+        if (input) updatePesajes(input);
+    }
+    function isStep1Valid() {
+        const tipo = document.getElementById('tipo_operacion').value;
+        const prov = document.getElementById('proveedor_id').value;
+        const cli = document.getElementById('cliente_id').value;
+        if (tipo === 'compra') {
+            return prov !== '';
+        }
+        return cli !== '';
+    }
+    function isStep2Valid() {
+        const rows = document.querySelectorAll('#materiales-wrapper .material-row');
+        if (rows.length === 0) return false;
+        for (const row of rows) {
+            const mat = row.querySelector('select[name=\"material_id\"]').value;
+            const kgBruto = parseFloat(row.querySelector('input[name=\"kg_bruto\"]').value || '0');
+            const kgDesc = parseFloat(row.querySelector('input[name=\"kg_descuento\"]').value || '0');
+            if (!mat || kgBruto <= 0 || kgDesc < 0 || kgDesc > kgBruto) {
+                return false;
+            }
+        }
+        return true;
+    }
+    function enableStep(stepEl, enabled) {
+        if (enabled) {
+            stepEl.classList.remove('disabled');
+            stepEl.querySelectorAll('input, select, textarea, button').forEach(el => el.removeAttribute('disabled'));
+        } else {
+            stepEl.classList.add('disabled');
+            stepEl.querySelectorAll('input, select, textarea, button').forEach(el => el.setAttribute('disabled', 'disabled'));
+        }
+    }
+    function updateSteps() {
+        const step1Valid = isStep1Valid();
+        const step2El = document.getElementById('step2');
+        const step3El = document.getElementById('step3');
+        enableStep(step2El, step1Valid);
+
+        const step2Valid = step1Valid && isStep2Valid();
+        enableStep(step3El, step2Valid);
+
+        // Resumen general
+        const rows = document.querySelectorAll('#materiales-wrapper .material-row');
+        let totBruto = 0, totDesc = 0, totNeto = 0;
+        rows.forEach(row => {
+            totBruto += parseFloat(row.querySelector('input[name="kg_bruto"]').value || '0');
+            totDesc += parseFloat(row.querySelector('input[name="kg_descuento"]').value || '0');
+            totNeto += parseFloat(row.querySelector('.kg-neto').textContent || '0');
+        });
+        document.getElementById('nota-kg-bruto').textContent = totBruto.toFixed(2);
+        document.getElementById('nota-kg-desc').textContent = totDesc.toFixed(2);
+        document.getElementById('nota-kg-neto').textContent = totNeto.toFixed(2);
+
+        const submitBtn = document.getElementById('submitBtn');
+        submitBtn.disabled = !step2Valid;
+    }
+    // inicializar partner visible y steps
+    togglePartner();
+    updateSteps();
+</script>
+{% endblock %}

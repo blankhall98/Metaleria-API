@@ -3,45 +3,53 @@
 {% block title %}Materiales · Admin{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="h4 mb-0">Materiales</h1>
+<div class="page-header">
     <div>
-        <a href="/web/admin/materiales/nuevo" class="btn btn-sm btn-primary">
-            Nuevo material
-        </a>
+        <p class="text-uppercase text-muted small mb-1">Catálogo</p>
+        <h1 class="h4 text-white mb-0">Materiales</h1>
     </div>
+    <a href="/web/admin/materiales/nuevo" class="btn btn-primary btn-sm">Nuevo material</a>
 </div>
 
-<table class="table table-sm align-middle">
-    <thead>
-    <tr>
-        <th>ID</th>
-        <th>Nombre</th>
-        <th>Descripción</th>
-        <th>Unidad</th>
-        <th>Activo</th>
-        <th></th>
-    </tr>
-    </thead>
-    <tbody>
-    {% for m in materiales %}
-        <tr>
-            <td>{{ m.id }}</td>
-            <td>{{ m.nombre }}</td>
-            <td>{{ m.descripcion or "-" }}</td>
-            <td>{{ m.unidad_medida }}</td>
-            <td>
-                <span class="badge bg-{{ 'success' if m.activo else 'secondary' }}">
-                    {{ 'Sí' if m.activo else 'No' }}
-                </span>
-            </td>
-            <td class="text-end">
-                <a href="/web/admin/materiales/{{ m.id }}/editar" class="btn btn-sm btn-outline-secondary">
-                    Editar
-                </a>
-            </td>
-        </tr>
-    {% endfor %}
-    </tbody>
-</table>
+<div class="card hover-lift">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle mb-0">
+                <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Nombre</th>
+                    <th>Descripción</th>
+                    <th>Unidad</th>
+                    <th>Activo</th>
+                    <th></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for m in materiales %}
+                    <tr>
+                        <td>{{ m.id }}</td>
+                        <td>{{ m.nombre }}</td>
+                        <td>{{ m.descripcion or "-" }}</td>
+                        <td>{{ m.unidad_medida }}</td>
+                        <td>
+                            <span class="badge {{ 'bg-success' if m.activo else 'bg-secondary' }}">
+                                {{ 'Sí' if m.activo else 'No' }}
+                            </span>
+                        </td>
+                        <td class="text-end">
+                            <a href="/web/admin/materiales/{{ m.id }}/precios" class="btn btn-sm btn-outline-primary me-1">
+                                Precios
+                            </a>
+                            <a href="/web/admin/materiales/{{ m.id }}/editar" class="btn btn-sm btn-outline-secondary">
+                                Editar
+                            </a>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 {% endblock %}

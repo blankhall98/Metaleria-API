@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Nuevo precio · {{ material.nombre }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="text-uppercase text-muted small mb-1">Precios</p>
+        <h1 class="h4 text-white mb-0">Nueva versión · {{ material.nombre }}</h1>
+        <p class="text-muted small mb-0">
+            Al guardar, esta versión quedará activa y las anteriores para la misma combinación quedarán como históricas.
+        </p>
+    </div>
+    <a href="/web/admin/materiales/{{ material.id }}/precios" class="btn btn-outline-secondary btn-sm">Volver</a>
+</div>
+
+{% if error %}
+    <div class="alert alert-danger py-2 small">
+        {{ error }}
+    </div>
+{% endif %}
+
+<div class="card hover-lift">
+    <div class="card-body">
+        <form
+            method="post"
+            action="/web/admin/materiales/{{ material.id }}/precios/nuevo"
+            class="d-grid gap-3"
+        >
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label" for="tipo_operacion">Tipo de operación</label>
+                    <select class="form-select" id="tipo_operacion" name="tipo_operacion" required>
+                        {% for op in tipos_operacion %}
+                            <option value="{{ op.value }}">{{ op.value|capitalize }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label" for="tipo_cliente">Tipo de cliente</label>
+                    <select class="form-select" id="tipo_cliente" name="tipo_cliente" required>
+                        {% for tc in tipos_cliente %}
+                            <option value="{{ tc.value }}">{{ tc.value|capitalize }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div>
+                <label class="form-label" for="precio_por_unidad">Precio por unidad ({{ material.unidad_medida }})</label>
+                <input
+                    class="form-control"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    id="precio_por_unidad"
+                    name="precio_por_unidad"
+                    required
+                >
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">Guardar</button>
+                <a href="/web/admin/materiales/{{ material.id }}/precios" class="btn btn-outline-secondary">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

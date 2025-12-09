@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Precios · {{ material.nombre }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="text-uppercase text-muted small mb-1">Precios</p>
+        <h1 class="h4 text-white mb-1">Precios · {{ material.nombre }}</h1>
+        <p class="text-muted small mb-0">
+            Unidad: {{ material.unidad_medida }} ·
+            {% if material.activo %}Material activo{% else %}Material inactivo{% endif %}
+        </p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="/web/admin/materiales" class="btn btn-outline-secondary btn-sm">
+            Volver a materiales
+        </a>
+        <a href="/web/admin/materiales/{{ material.id }}/precios/nuevo" class="btn btn-primary btn-sm">
+            Nueva versión
+        </a>
+    </div>
+</div>
+
+<div class="card hover-lift">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle mb-0">
+                <thead>
+                <tr>
+                    <th>Tipo operación</th>
+                    <th>Tipo cliente</th>
+                    <th>Precio por unidad</th>
+                    <th>Versión</th>
+                    <th>Vigente desde</th>
+                    <th>Vigente hasta</th>
+                    <th>Estado</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for p in precios %}
+                    <tr>
+                        <td>{{ p.tipo_operacion.value }}</td>
+                        <td>{{ p.tipo_cliente.value }}</td>
+                        <td>${{ '%.2f'|format(p.precio_por_unidad) }}</td>
+                        <td><span class="pill">{{ p.version }}</span></td>
+                        <td>{{ p.vigente_desde }}</td>
+                        <td>{{ p.vigente_hasta or '-' }}</td>
+                        <td>
+                            {% if p.activo %}
+                                <span class="badge bg-success">Activo</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Histórico</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

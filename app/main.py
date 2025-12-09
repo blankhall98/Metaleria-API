@@ -5,8 +5,12 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session
 
+from app.db.session import SessionLocal
+from app.models import Nota, NotaEstado
+
 from app.api.router import api_router
 from app.web.admin import router as admin_web_router
+from app.web.worker import router as worker_web_router
 
 from app.core.config import get_settings
 from app.db.deps import get_db
@@ -48,6 +52,8 @@ def create_app() -> FastAPI:
 
     # Web Admin
     app.include_router(admin_web_router)
+    # Web Worker
+    app.include_router(worker_web_router)
 
     # Root JSON
     @app.get("/")
@@ -138,4 +144,26 @@ def create_app() -> FastAPI:
 app = create_app()
 
 
+@app.middleware("http")
+async def admin_notes_badge(request, call_next):
+    """
+    Middleware para exponer el número de notas en revisión en request.state
+    para admins/super_admins (se usa en navbar).
+    """
+    request.state.notas_revision_count = 0
+    user = None
+    try:
+        user = request.session.get("user")
+    except Exception:
+        user = None
+
+    if user and user.get("rol") in ("admin", "super_admin"):
+        db = SessionLocal()
+        try:
+            request.state.notas_revision_count = db.query(Nota).filter(Nota.estado == NotaEstado.en_revision).count()
+        finally:
+            db.close()
+
+    response = await call_next(request)
+    return response
 

@@ -3,59 +3,67 @@
 {% block title %}Usuarios · Admin{% endblock %}
 
 {% block content %}
-
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="h4 mb-0">Usuarios</h1>
+<div class="page-header">
     <div>
-        <a href="/web/admin/sucursales" class="btn btn-sm btn-outline-secondary me-2">
+        <p class="text-uppercase text-muted small mb-1">Administración</p>
+        <h1 class="h4 text-white mb-0">Usuarios</h1>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="/web/admin/sucursales" class="btn btn-outline-secondary btn-sm">
             Ver sucursales
         </a>
-        <a href="/web/admin/users/nuevo" class="btn btn-sm btn-primary">
+        <a href="/web/admin/users/nuevo" class="btn btn-primary btn-sm">
             Nuevo usuario
         </a>
     </div>
-</div>
+ </div>
 
-<table class="table table-sm align-middle">
-    <thead>
-    <tr>
-        <th>ID</th>
-        <th>Username</th>
-        <th>Nombre</th>
-        <th>Rol</th>
-        <th>Sucursal</th>
-        <th>Estado</th>
-        <th>Super admin original</th>
-    </tr>
-    </thead>
-    <tbody>
-    {% for u in usuarios %}
-        <tr>
-            <td>{{ u.id }}</td>
-            <td>{{ u.username }}</td>
-            <td>{{ u.nombre_completo }}</td>
-            <td>{{ u.rol.value }}</td>
-            <td>
-                {% if u.sucursal_id %}
-                    {{ sucursales_map[u.sucursal_id].nombre }}
-                {% else %}
-                    -
-                {% endif %}
-            </td>
-            <td>
-                <span class="badge bg-{{ 'success' if u.estado.value == 'activo' else 'secondary' }}">
-                    {{ u.estado.value }}
-                </span>
-            </td>
-            <td>
-                {% if u.super_admin_original %}
-                    <span class="badge bg-warning text-dark">Sí</span>
-                {% else %}
-                    No
-                {% endif %}
-            </td>
-        </tr>
-    {% endfor %}
-    </tbody>
-</table>
+<div class="card hover-lift">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle mb-0">
+                <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Usuario</th>
+                    <th>Nombre</th>
+                    <th>Rol</th>
+                    <th>Sucursal</th>
+                    <th>Estado</th>
+                    <th>Super admin original</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for u in usuarios %}
+                    <tr>
+                        <td>{{ u.id }}</td>
+                        <td>{{ u.username }}</td>
+                        <td>{{ u.nombre_completo }}</td>
+                        <td><span class="pill">{{ u.rol.value }}</span></td>
+                        <td>
+                            {% if u.sucursal_id %}
+                                {{ sucursales_map[u.sucursal_id].nombre }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge {{ 'bg-success' if u.estado.value == 'activo' else 'bg-secondary' }}">
+                                {{ u.estado.value|capitalize }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if u.super_admin_original %}
+                                <span class="badge bg-warning text-dark">Sí</span>
+                            {% else %}
+                                <span class="badge bg-secondary">No</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 {% endblock %}

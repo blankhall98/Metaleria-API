@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}
+    {% if proveedor %}Editar proveedor{% else %}Nuevo proveedor{% endif %} · Admin
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="text-uppercase text-muted small mb-1">Relaciones</p>
+        <h1 class="h4 text-white mb-0">
+            {% if proveedor %}Editar proveedor{% else %}Nuevo proveedor{% endif %}
+        </h1>
+    </div>
+    <a href="/web/admin/proveedores" class="btn btn-outline-secondary btn-sm">Volver</a>
+</div>
+
+{% if error %}
+    <div class="alert alert-danger py-2 small">
+        {{ error }}
+    </div>
+{% endif %}
+
+<div class="card hover-lift">
+    <div class="card-body">
+        <form
+            method="post"
+            action="{% if proveedor %}/web/admin/proveedores/{{ proveedor.id }}/editar{% else %}/web/admin/proveedores/nuevo{% endif %}"
+            class="d-grid gap-3"
+        >
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label" for="nombre_completo">Nombre completo</label>
+                    <input
+                        class="form-control"
+                        type="text"
+                        id="nombre_completo"
+                        name="nombre_completo"
+                        required
+                        value="{{ proveedor.nombre_completo if proveedor else '' }}"
+                    >
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label" for="telefono">Teléfono</label>
+                    <input
+                        class="form-control"
+                        type="text"
+                        id="telefono"
+                        name="telefono"
+                        value="{{ proveedor.telefono if proveedor and proveedor.telefono else '' }}"
+                    >
+                </div>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label" for="correo_electronico">Correo electrónico</label>
+                    <input
+                        class="form-control"
+                        type="email"
+                        id="correo_electronico"
+                        name="correo_electronico"
+                        value="{{ proveedor.correo_electronico if proveedor and proveedor.correo_electronico else '' }}"
+                    >
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label" for="placas">Placas (opcional)</label>
+                    <input
+                        class="form-control"
+                        type="text"
+                        id="placas"
+                        name="placas"
+                        value="{{ proveedor.placas if proveedor and proveedor.placas else '' }}"
+                    >
+                    <div class="form-text">
+                        Se usan para identificar el vehículo asociado. Deben ser únicas.
+                    </div>
+                </div>
+            </div>
+
+            {% if proveedor %}
+                <div class="form-check mb-2">
+                    <input
+                        class="form-check-input"
+                        type="checkbox"
+                        id="activo"
+                        name="activo"
+                        {% if proveedor.activo %}checked{% endif %}
+                    >
+                    <label class="form-check-label" for="activo">
+                        Proveedor activo
+                    </label>
+                </div>
+            {% endif %}
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    Guardar
+                </button>
+                <a href="/web/admin/proveedores" class="btn btn-outline-secondary">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

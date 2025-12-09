@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}
+    {% if cliente %}Editar cliente{% else %}Nuevo cliente{% endif %} · Admin
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="text-uppercase text-muted small mb-1">Relaciones</p>
+        <h1 class="h4 text-white mb-0">
+            {% if cliente %}Editar cliente{% else %}Nuevo cliente{% endif %}
+        </h1>
+    </div>
+    <a href="/web/admin/clientes" class="btn btn-outline-secondary btn-sm">Volver</a>
+</div>
+
+{% if error %}
+    <div class="alert alert-danger py-2 small">
+        {{ error }}
+    </div>
+{% endif %}
+
+<div class="card hover-lift">
+    <div class="card-body">
+        <form
+            method="post"
+            action="{% if cliente %}/web/admin/clientes/{{ cliente.id }}/editar{% else %}/web/admin/clientes/nuevo{% endif %}"
+            class="d-grid gap-3"
+        >
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label" for="nombre_completo">Nombre completo</label>
+                    <input
+                        class="form-control"
+                        type="text"
+                        id="nombre_completo"
+                        name="nombre_completo"
+                        required
+                        value="{{ cliente.nombre_completo if cliente else '' }}"
+                    >
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label" for="telefono">Teléfono</label>
+                    <input
+                        class="form-control"
+                        type="text"
+                        id="telefono"
+                        name="telefono"
+                        value="{{ cliente.telefono if cliente and cliente.telefono else '' }}"
+                    >
+                </div>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label" for="correo_electronico">Correo electrónico</label>
+                    <input
+                        class="form-control"
+                        type="email"
+                        id="correo_electronico"
+                        name="correo_electronico"
+                        value="{{ cliente.correo_electronico if cliente and cliente.correo_electronico else '' }}"
+                    >
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label" for="placas">Placas (opcional)</label>
+                    <input
+                        class="form-control"
+                        type="text"
+                        id="placas"
+                        name="placas"
+                        value="{{ cliente.placas if cliente and cliente.placas else '' }}"
+                    >
+                    <div class="form-text">
+                        Se usan para identificar el vehículo asociado. Deben ser únicas.
+                    </div>
+                </div>
+            </div>
+
+            {% if cliente %}
+                <div class="form-check mb-2">
+                    <input
+                        class="form-check-input"
+                        type="checkbox"
+                        id="activo"
+                        name="activo"
+                        {% if cliente.activo %}checked{% endif %}
+                    >
+                    <label class="form-check-label" for="activo">
+                        Cliente activo
+                    </label>
+                </div>
+            {% endif %}
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    Guardar
+                </button>
+                <a href="/web/admin/clientes" class="btn btn-outline-secondary">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

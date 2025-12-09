@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Proveedores · Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="text-uppercase text-muted small mb-1">Relaciones</p>
+        <h1 class="h4 text-white mb-0">Proveedores</h1>
+    </div>
+    <a href="/web/admin/proveedores/nuevo" class="btn btn-primary btn-sm">
+        Nuevo proveedor
+    </a>
+</div>
+
+<form method="get" class="row g-2 mb-3">
+    <div class="col-sm-8 col-md-6">
+        <input
+            type="text"
+            class="form-control"
+            name="q"
+            placeholder="Buscar por nombre, teléfono, correo o placas..."
+            value="{{ q }}"
+        >
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-outline-secondary btn-sm" type="submit">Buscar</button>
+    </div>
+</form>
+
+<div class="card hover-lift">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle mb-0">
+                <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Nombre</th>
+                    <th>Teléfono</th>
+                    <th>Correo</th>
+                    <th>Placas</th>
+                    <th>Activo</th>
+                    <th></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for p in proveedores %}
+                    <tr>
+                        <td>{{ p.id }}</td>
+                        <td>{{ p.nombre_completo }}</td>
+                        <td>{{ p.telefono or "-" }}</td>
+                        <td>{{ p.correo_electronico or "-" }}</td>
+                        <td>{{ p.placas or "-" }}</td>
+                        <td>
+                            <span class="badge {{ 'bg-success' if p.activo else 'bg-secondary' }}">
+                                {{ 'Sí' if p.activo else 'No' }}
+                            </span>
+                        </td>
+                        <td class="text-end">
+                            <a href="/web/admin/proveedores/{{ p.id }}/editar" class="btn btn-sm btn-outline-secondary">
+                                Editar
+                            </a>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

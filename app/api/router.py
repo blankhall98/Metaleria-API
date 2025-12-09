@@ -3,6 +3,9 @@ from fastapi import APIRouter
 
 from app.core.config import get_settings
 from app.api import materials as materials_api
+from app.api import pricing as pricing_api
+from app.api import partners as partners_api
+from app.api import notes as notes_api
 
 api_router = APIRouter()
 settings = get_settings()
@@ -16,5 +19,7 @@ async def health_check():
         "service": settings.PROJECT_NAME,
     }
 
-# 👇 incluir materiales
 api_router.include_router(materials_api.router)
+api_router.include_router(pricing_api.router)
+api_router.include_router(partners_api.router)
+api_router.include_router(notes_api.router)

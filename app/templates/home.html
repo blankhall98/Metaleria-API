@@ -3,21 +3,174 @@
 {% block title %}Inicio · Metalería{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-md-8">
-        <div class="card shadow-sm">
-            <div class="card-body">
-                <h1 class="h4 mb-3">Metalería MVP</h1>
-                <p class="mb-3">
-                    Bienvenido al sistema de control de notas, inventario y contabilidad
-                    para la metalería.
-                </p>
-                <p class="text-muted mb-4">
-                    Pronto aquí estarán el login y los accesos para trabajador, admin y super admin.
-                </p>
-                <a href="/docs" class="btn btn-primary btn-sm">Ver API Docs</a>
+{% if user and user.rol == 'trabajador' %}
+    <section class="hero card mb-4">
+        <div class="card-body hero-content">
+            <div class="d-flex flex-column flex-lg-row align-items-start align-items-lg-center justify-content-between gap-3">
+                <div>
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span class="hero-badge">Panel trabajador</span>
+                    </div>
+                    <h1 class="display-6 fw-bold mb-2 text-white">Crear nueva nota</h1>
+                    <p class="mb-3 text-muted">
+                        Captura guiada de compra o venta con materiales y subpesajes. Optimizado para móvil.
+                    </p>
+                    <div class="hero-badges">
+                        <span class="hero-badge"><strong>1</strong> Selecciona operación y partner</span>
+                        <span class="hero-badge"><strong>2</strong> Agrega materiales y subpesajes</span>
+                        <span class="hero-badge"><strong>3</strong> Guarda borrador / enviar a revisión</span>
+                    </div>
+                </div>
+                <div class="d-flex flex-column gap-2 align-self-start align-self-lg-center text-center w-100" style="max-width: 260px;">
+                    <a href="/web/worker/notes/nueva" class="btn btn-primary btn-lg w-100">Nueva nota</a>
+                    <a href="/web/worker/notes" class="btn btn-outline-secondary btn-sm w-100">Ver mis notas</a>
+                </div>
             </div>
         </div>
-    </div>
-</div>
+    </section>
+{% else %}
+    <section class="hero card mb-4">
+        <div class="card-body hero-content">
+            <div class="d-flex flex-column flex-lg-row align-items-start align-items-lg-center justify-content-between gap-3">
+                <div>
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span class="hero-badge">Panel operativo</span>
+                    </div>
+                    <h1 class="display-6 fw-bold mb-2 text-white">Metalería · Control y Administración</h1>
+                    <p class="mb-3 text-muted">
+                        Inventario, compras, ventas y catálogos en un mismo lugar. Diseñado para equipos de campo y oficina.
+                    </p>
+                    <div class="hero-badges">
+                        <span class="hero-badge"><strong>Roles</strong> super admin / admin / trabajador</span>
+                        <span class="hero-badge"><strong>Precios</strong> versionados con auditoría</span>
+                        <span class="hero-badge"><strong>Catálogos</strong> materiales, proveedores, clientes</span>
+                    </div>
+                </div>
+                {% if not user %}
+                    <div class="d-flex gap-2 flex-wrap justify-content-lg-end">
+                        <a href="/web/login" class="btn btn-primary">Entrar al panel</a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+{% endif %}
+
+{% if user %}
+    {% if user.rol != 'trabajador' %}
+        <div class="card soft mb-4">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+                    <div>
+                        <p class="text-uppercase text-muted small mb-1">Accesos rápidos</p>
+                        <h2 class="h5 text-white mb-0">Panel de {{ user.rol|capitalize }}</h2>
+                    </div>
+                </div>
+                <div class="action-grid">
+                    {% if user.rol == 'super_admin' %}
+                        <a href="/web/admin/users" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div class="action-icon">👤</div>
+                                <span class="action-arrow">→</span>
+                            </div>
+                            <div>
+                                <h3 class="h6 mb-1 text-white">Usuarios</h3>
+                                <p class="text-muted mb-0">Gestiona credenciales, roles y accesos.</p>
+                            </div>
+                        </a>
+                        <a href="/web/admin/sucursales" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div class="action-icon">🏢</div>
+                                <span class="action-arrow">→</span>
+                            </div>
+                            <div>
+                                <h3 class="h6 mb-1 text-white">Sucursales</h3>
+                                <p class="text-muted mb-0">Catálogo de sedes y estado operativo.</p>
+                            </div>
+                        </a>
+                    {% endif %}
+
+                    {% if user.rol in ['super_admin', 'admin'] %}
+                        <a href="/web/admin/notas" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div class="action-icon">📝</div>
+                                <span class="action-arrow">→</span>
+                            </div>
+                            <div>
+                                <h3 class="h6 mb-1 text-white">Notas</h3>
+                                <p class="text-muted mb-0">Revisa y aprueba notas en revisión.</p>
+                            </div>
+                        </a>
+                        <a href="/web/admin/materiales" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div class="action-icon">🧱</div>
+                                <span class="action-arrow">→</span>
+                            </div>
+                            <div>
+                                <h3 class="h6 mb-1 text-white">Materiales</h3>
+                                <p class="text-muted mb-0">Catálogo de materiales y versiones de precios.</p>
+                            </div>
+                        </a>
+                        <a href="/web/admin/proveedores" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div class="action-icon">🚚</div>
+                                <span class="action-arrow">→</span>
+                            </div>
+                            <div>
+                                <h3 class="h6 mb-1 text-white">Proveedores</h3>
+                                <p class="text-muted mb-0">Contactos, teléfonos, placas y estado.</p>
+                            </div>
+                        </a>
+                        <a href="/web/admin/clientes" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div class="action-icon">🧾</div>
+                                <span class="action-arrow">→</span>
+                            </div>
+                            <div>
+                                <h3 class="h6 mb-1 text-white">Clientes</h3>
+                                <p class="text-muted mb-0">Clientes, placas y datos de contacto.</p>
+                            </div>
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-lg-4">
+                <div class="card h-100 hover-lift">
+                    <div class="card-body">
+                        <p class="text-uppercase text-muted small mb-1">Seguridad</p>
+                        <h2 class="h5 mb-2 text-white">Roles claros</h2>
+                        <p class="text-muted mb-0">
+                            Super admin, admin y trabajadores con accesos diferenciados y visión adaptada a cada perfil.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="card h-100 hover-lift">
+                    <div class="card-body">
+                        <p class="text-uppercase text-muted small mb-1">Catálogos</p>
+                        <h2 class="h5 mb-2 text-white">Materiales y precios</h2>
+                        <p class="text-muted mb-0">
+                            Versionado de precios por material, tipo de operación y tipo de cliente, con bitácora de cambios.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="card h-100 hover-lift">
+                    <div class="card-body">
+                        <p class="text-uppercase text-muted small mb-1">Operación</p>
+                        <h2 class="h5 mb-2 text-white">Proveedores y clientes</h2>
+                        <p class="text-muted mb-0">
+                            Catálogo ágil con búsqueda por nombre, teléfono, correo o placas. Listo para notas y pesajes.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+{% endif %}
 {% endblock %}
