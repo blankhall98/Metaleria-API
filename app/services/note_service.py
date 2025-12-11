@@ -14,6 +14,9 @@ from app.models import (
     TipoOperacion,
     TablaPrecio,
     TipoCliente,
+    Inventario,
+    InventarioMovimiento,
+    MovimientoContable,
 )
 
 
@@ -27,11 +30,12 @@ def _sum_decimal(values: Iterable[Decimal | float | int]) -> Decimal:
 def _recalc_material(nm: NotaMaterial) -> None:
     """Recalcula kg_bruto/neto/desc a partir de subpesajes si existen."""
     if nm.subpesajes:
-        neto_sum = _sum_decimal(sp.peso_kg for sp in nm.subpesajes)
+        bruto_sum = _sum_decimal(sp.peso_kg for sp in nm.subpesajes)
         desc_sum = _sum_decimal(getattr(sp, "descuento_kg", 0) for sp in nm.subpesajes)
+        neto_sum = bruto_sum - desc_sum
         nm.kg_neto = neto_sum
         nm.kg_descuento = desc_sum
-        nm.kg_bruto = neto_sum + desc_sum
+        nm.kg_bruto = bruto_sum
     else:
         kg_desc = Decimal(str(nm.kg_descuento or 0))
         nm.kg_neto = Decimal(str(nm.kg_bruto or 0)) - kg_desc
@@ -168,6 +172,203 @@ def create_draft_note(
 
     _recalc_totals(nota)
     apply_prices(db, nota)
+    db.commit()
+    db.refresh(nota)
+    return nota
+
+
+def _get_or_create_inventario(db: Session, sucursal_id: int, material_id: int) -> Inventario:
+    inv = (
+        db.query(Inventario)
+        .filter(Inventario.sucursal_id == sucursal_id, Inventario.material_id == material_id)
+        .first()
+    )
+    if inv:
+        return inv
+    inv = Inventario(
+        sucursal_id=sucursal_id,
+        material_id=material_id,
+        stock_inicial=Decimal("0"),
+        stock_actual=Decimal("0"),
+    )
+    db.add(inv)
+    db.flush()
+    return inv
+
+
+def _validar_stock_para_venta(
+    db: Session,
+    nota: Nota,
+) -> None:
+    if nota.tipo_operacion != TipoOperacion.venta:
+        return
+    for nm in nota.materiales:
+        inv = _get_or_create_inventario(db, nota.sucursal_id, nm.material_id)
+        disponible = Decimal(str(inv.stock_actual or 0))
+        requerido = Decimal(str(nm.kg_neto or 0))
+        if requerido > disponible:
+            nombre_mat = nm.material.nombre if nm.material else f"Material {nm.material_id}"
+            raise ValueError(f"Stock insuficiente de {nombre_mat}: disponible {disponible}, requerido {requerido}.")
+
+
+def _registrar_movimiento_inventario(
+    db: Session,
+    *,
+    nota: Nota,
+    nm: NotaMaterial,
+    usuario_id: int | None,
+) -> None:
+    delta = Decimal(str(nm.kg_neto or 0))
+    tipo_mov = "compra" if nota.tipo_operacion == TipoOperacion.compra else "venta"
+    if tipo_mov == "venta":
+        delta = -delta
+    inv = _get_or_create_inventario(db, nota.sucursal_id, nm.material_id)
+    nuevo_saldo = Decimal(str(inv.stock_actual or 0)) + delta
+    # evitar negativos drásticos
+    if nuevo_saldo < Decimal("0"):
+        nuevo_saldo = Decimal("0")
+    inv.stock_actual = nuevo_saldo
+    inv.updated_at = datetime.utcnow()
+    mov = InventarioMovimiento(
+        inventario_id=inv.id,
+        nota_id=nota.id,
+        nota_material_id=nm.id,
+        tipo=tipo_mov,
+        cantidad_kg=abs(delta),
+        saldo_resultante=nuevo_saldo,
+        comentario=f"Auto ({tipo_mov}) nota #{nota.id}",
+        usuario_id=usuario_id,
+    )
+    db.add(inv)
+    db.add(mov)
+
+
+def _registrar_movimiento_contable(
+    db: Session,
+    *,
+    nota: Nota,
+    usuario_id: int | None,
+    comentario: str | None = None,
+    metodo_pago: str | None = None,
+    cuenta_financiera: str | None = None,
+) -> None:
+    mov = MovimientoContable(
+        nota_id=nota.id,
+        sucursal_id=nota.sucursal_id,
+        usuario_id=usuario_id,
+        tipo=nota.tipo_operacion.value,
+        monto=Decimal(str(nota.total_monto or 0)),
+        metodo_pago=metodo_pago or nota.metodo_pago,
+        cuenta_financiera=cuenta_financiera
+        or (str(nota.cuenta_financiera_id) if nota.cuenta_financiera_id else None),
+        comentario=comentario or None,
+    )
+    db.add(mov)
+
+
+def ajustar_stock(
+    db: Session,
+    *,
+    sucursal_id: int,
+    material_id: int,
+    cantidad_kg: Decimal,
+    comentario: str | None,
+    usuario_id: int | None,
+) -> Inventario:
+    """
+    Ajuste manual de inventario (positivo suma, negativo resta). Registra movimiento y log contable en 0.
+    """
+    inv = _get_or_create_inventario(db, sucursal_id, material_id)
+    saldo_actual = Decimal(str(inv.stock_actual or 0))
+    delta = Decimal(str(cantidad_kg or 0))
+    nuevo_saldo = saldo_actual + delta
+    if nuevo_saldo < Decimal("0"):
+        nuevo_saldo = Decimal("0")
+    inv.stock_actual = nuevo_saldo
+    inv.updated_at = datetime.utcnow()
+
+    mov = InventarioMovimiento(
+        inventario_id=inv.id,
+        nota_id=None,
+        nota_material_id=None,
+        tipo="ajuste",
+        cantidad_kg=abs(delta),
+        saldo_resultante=nuevo_saldo,
+        comentario=comentario or "Ajuste manual",
+        usuario_id=usuario_id,
+    )
+    db.add(inv)
+    db.add(mov)
+
+    movc = MovimientoContable(
+        nota_id=None,
+        sucursal_id=sucursal_id,
+        usuario_id=usuario_id,
+        tipo="ajuste",
+        monto=Decimal("0"),
+        comentario=comentario or "Ajuste inventario",
+    )
+    db.add(movc)
+    db.commit()
+    db.refresh(inv)
+    return inv
+
+
+def approve_note(
+    db: Session,
+    nota: Nota,
+    *,
+    tipo_cliente_map: dict[int, TipoCliente] | None = None,
+    admin_id: int | None = None,
+    comentarios_admin: str | None = None,
+    fecha_caducidad_pago: date | None = None,
+    metodo_pago: str | None = None,
+    cuenta_financiera: str | None = None,
+) -> Nota:
+    """
+    Aprueba una nota aplicando precios, recalculando totales y registrando inventario/contable.
+    """
+    if nota.estado not in (NotaEstado.en_revision, NotaEstado.borrador):
+        raise ValueError("Solo se puede aprobar desde borrador o en revisión.")
+    if tipo_cliente_map:
+        for nm in nota.materiales:
+            if nm.id in tipo_cliente_map:
+                nm.tipo_cliente = tipo_cliente_map[nm.id]
+    apply_prices(db, nota)
+    _validar_stock_para_venta(db, nota)
+    metodo_pago_clean = (metodo_pago or "").strip().lower() or None
+    cuenta_id: int | None = None
+    if metodo_pago_clean in ("transferencia", "cheque"):
+        if cuenta_financiera:
+            try:
+                cuenta_id = int(cuenta_financiera)
+            except (TypeError, ValueError):
+                raise ValueError("La cuenta debe ser un número para transferencia o cheque.")
+        else:
+            raise ValueError("Debes indicar la cuenta para transferencia o cheque.")
+    elif metodo_pago_clean == "efectivo":
+        cuenta_id = None
+    nota.metodo_pago = metodo_pago_clean
+    nota.cuenta_financiera_id = cuenta_id
+    update_state(
+        db,
+        nota,
+        new_state=NotaEstado.aprobada,
+        admin_id=admin_id,
+        comentarios_admin=comentarios_admin,
+        fecha_caducidad_pago=fecha_caducidad_pago,
+    )
+    # registrar inventario y contabilidad
+    for nm in nota.materiales:
+        _registrar_movimiento_inventario(db, nota=nota, nm=nm, usuario_id=admin_id)
+    _registrar_movimiento_contable(
+        db,
+        nota=nota,
+        usuario_id=admin_id,
+        comentario=comentarios_admin,
+        metodo_pago=nota.metodo_pago,
+        cuenta_financiera=str(nota.cuenta_financiera_id) if nota.cuenta_financiera_id else None,
+    )
     db.commit()
     db.refresh(nota)
     return nota

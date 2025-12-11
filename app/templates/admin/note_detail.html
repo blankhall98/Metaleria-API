@@ -13,8 +13,11 @@
 
 <div class="card hover-lift mb-3">
     <div class="card-body">
+        {% if error %}
+            <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
+        {% endif %}
         <div class="row g-3">
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <p class="text-muted small mb-1">Estado</p>
                 {% if nota.estado.value == 'BORRADOR' %}
                     <span class="badge bg-secondary">Borrador</span>
@@ -26,7 +29,7 @@
                     <span class="badge bg-danger">Cancelada</span>
                 {% endif %}
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <p class="text-muted small mb-1">Operación</p>
                 <strong>{{ nota.tipo_operacion.value|capitalize }}</strong>
             </div>
@@ -35,8 +38,13 @@
                 <strong>{{ sucursal.nombre if sucursal else '-' }}</strong>
             </div>
             <div class="col-md-3">
-                <p class="text-muted small mb-1">Fecha</p>
-                <strong>{{ nota.created_at }}</strong>
+                <p class="text-muted small mb-1">Trabajador</p>
+                <strong>{{ trabajador.nombre_completo if trabajador else '-' }}</strong>
+                <div class="text-muted small">{{ trabajador.username if trabajador else '' }}</div>
+            </div>
+            <div class="col-md-2">
+                <p class="text-muted small mb-1">Fecha y hora</p>
+                <strong>{{ nota.created_at.strftime("%Y-%m-%d %H:%M") if nota.created_at else '-' }}</strong>
             </div>
         </div>
         <div class="row g-3 mt-2">
@@ -53,7 +61,7 @@
                 <strong>{{ "%.2f"|format(nota.total_kg_neto or 0) }} kg</strong>
             </div>
             <div class="col-md-4">
-                <p <class="text-muted small mb-1">Total</p>
+                <p class="text-muted small mb-1">Total</p>
                 <strong>${{ "%.2f"|format(nota.total_monto or 0) }}</strong>
             </div>
         </div>
@@ -119,30 +127,88 @@
             <div class="row g-3 mt-3">
                 <div class="col-md-4">
                     <label class="form-label">Fecha de caducidad de pago</label>
-                    <input class="form-control" type="date" name="fecha_caducidad_pago">
+                    {% set fecha_val = form_fecha if form_fecha is not none else (nota.fecha_caducidad_pago.strftime("%Y-%m-%d") if nota.fecha_caducidad_pago else "") %}
+                    <input class="form-control" type="date" name="fecha_caducidad_pago" value="{{ fecha_val }}">
                 </div>
-                <div class="col-md-8">
+                <div class="col-md-4">
+                    <label class="form-label">Método de pago</label>
+                    {% set selected_metodo = form_metodo if form_metodo is not none else nota.metodo_pago %}
+                    <select class="form-select" name="metodo_pago" id="metodo_pago_select" required>
+                        <option value="" {% if not selected_metodo %}selected{% endif %}>Selecciona método</option>
+                        <option value="transferencia" {% if selected_metodo == 'transferencia' %}selected{% endif %}>Transferencia</option>
+                        <option value="efectivo" {% if selected_metodo == 'efectivo' %}selected{% endif %}>Efectivo</option>
+                        <option value="cheque" {% if selected_metodo == 'cheque' %}selected{% endif %}>Cheque</option>
+                    </select>
+                    <div class="form-text text-muted">La cuenta solo es necesaria para transferencia o cheque.</div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Cuenta financiera</label>
+                    {% set cuenta_val = form_cuenta if form_cuenta is not none else (nota.cuenta_financiera_id or "") %}
+                    <input class="form-control" name="cuenta_financiera" id="cuenta_financiera_input" placeholder="ID o referencia de cuenta" value="{{ cuenta_val }}">
+                </div>
+                <div class="col-12">
                     <label class="form-label">Comentarios admin</label>
-                    <textarea class="form-control" name="comentarios_admin" rows="2" placeholder="Notas, método de pago, cuenta financiera, etc."></textarea>
+                    {% set comentarios_val = form_comentarios if form_comentarios is not none else (nota.comentarios_admin or "") %}
+                    <textarea class="form-control" name="comentarios_admin" rows="2" placeholder="Notas, método de pago, cuenta financiera, motivo de rechazo, etc.">{{ comentarios_val }}</textarea>
                 </div>
             </div>
 
             <div class="d-flex gap-2 mt-3 flex-wrap">
                 <button type="submit" class="btn btn-primary">Aprobar</button>
-            </form>
-                <form method="post" action="/web/admin/notas/{{ nota.id }}/cancelar" class="m-0">
-                    <input type="hidden" name="comentarios_admin" value="">
-                    <button type="submit" class="btn btn-outline-danger">Cancelar</button>
-                </form>
-                {% if user.rol == 'super_admin' %}
-                    <form method="post" action="/web/admin/notas/{{ nota.id }}/eliminar" class="m-0 ms-auto">
-                        <button type="submit" class="btn btn-outline-secondary">Eliminar (solo SA)</button>
-                    </form>
-                {% endif %}
             </div>
         </form>
+        <div class="d-flex gap-2 mt-3 flex-wrap">
+            <form method="post" action="/web/admin/notas/{{ nota.id }}/cancelar" class="m-0" onsubmit="syncCancelComment(this)">
+                <input type="hidden" name="comentarios_admin" value="">
+                <button type="submit" class="btn btn-outline-danger">Rechazar</button>
+            </form>
+            {% if nota.estado.value in ['EN_REVISION'] %}
+                <form method="post" action="/web/admin/notas/{{ nota.id }}/devolver" class="m-0">
+                    <button type="submit" class="btn btn-outline-secondary">Devolver a borrador</button>
+                </form>
+            {% endif %}
+            {% if user.rol == 'super_admin' %}
+                <form method="post" action="/web/admin/notas/{{ nota.id }}/eliminar" class="m-0 ms-auto">
+                    <button type="submit" class="btn btn-outline-secondary">Eliminar (solo SA)</button>
+                </form>
+            {% endif %}
+        </div>
     </div>
 </div>
+
+{% if inv_movs and inv_movs|length > 0 %}
+<div class="card hover-lift mb-3">
+    <div class="card-body">
+        <h2 class="h6 text-white mb-3">Movimientos de inventario generados</h2>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                <tr>
+                    <th>Sucursal</th>
+                    <th>Material</th>
+                    <th>Tipo</th>
+                    <th>Cantidad</th>
+                    <th>Saldo</th>
+                    <th>Fecha</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for mov in inv_movs %}
+                    <tr>
+                        <td>{{ mov.inventario.sucursal.nombre if mov.inventario and mov.inventario.sucursal else '-' }}</td>
+                        <td>{{ mov.inventario.material.nombre if mov.inventario and mov.inventario.material else '-' }}</td>
+                        <td class="text-uppercase">{{ mov.tipo }}</td>
+                        <td>{{ "%.2f"|format(mov.cantidad_kg or 0) }} kg</td>
+                        <td>{{ "%.2f"|format(mov.saldo_resultante or 0) }} kg</td>
+                        <td>{{ mov.created_at.strftime("%Y-%m-%d %H:%M") if mov.created_at else '-' }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <div class="card hover-lift">
     <div class="card-body">
@@ -159,4 +225,30 @@
         </div>
     </div>
 </div>
+<script>
+    function syncCancelComment(formEl) {
+        const comments = document.querySelector('textarea[name="comentarios_admin"]');
+        const hidden = formEl.querySelector('input[name="comentarios_admin"]');
+        if (hidden && comments) {
+            hidden.value = comments.value || '';
+        }
+    }
+    const metodoSelect = document.getElementById('metodo_pago_select');
+    const cuentaInput = document.getElementById('cuenta_financiera_input');
+    function toggleCuenta() {
+        if (!metodoSelect || !cuentaInput) return;
+        const metodo = (metodoSelect.value || '').toLowerCase();
+        const needsAccount = metodo === 'transferencia' || metodo === 'cheque';
+        cuentaInput.disabled = !needsAccount;
+        cuentaInput.required = needsAccount;
+        cuentaInput.placeholder = needsAccount ? 'ID o referencia de cuenta' : 'No aplica para efectivo';
+        if (!needsAccount) {
+            cuentaInput.value = '';
+        }
+    }
+    if (metodoSelect) {
+        metodoSelect.addEventListener('change', toggleCuenta);
+        toggleCuenta();
+    }
+</script>
 {% endblock %}

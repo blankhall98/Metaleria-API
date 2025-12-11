@@ -18,7 +18,7 @@
         {% elif success == '0' %}
             <div class="alert alert-danger py-2 small">No se pudo enviar la nota. Verifica que sea un borrador.</div>
         {% endif %}
-        <div class="table-responsive">
+        <div class="d-none d-md-block table-responsive">
             <table class="table table-hover table-sm align-middle mb-0">
                 <thead>
                 <tr>
@@ -49,7 +49,7 @@
                         </td>
                         <td>{{ "%.2f"|format(n.total_kg_neto or 0) }} kg</td>
                         <td>${{ "%.2f"|format(n.total_monto or 0) }}</td>
-                        <td>{{ n.created_at }}</td>
+                        <td>{{ n.created_at.strftime("%Y-%m-%d %H:%M") if n.created_at else '-' }}</td>
                         <td class="text-end">
                             {% if n.estado.value == 'BORRADOR' %}
                                 <form method="post" action="/web/worker/notes/{{ n.id }}/enviar">
@@ -63,6 +63,50 @@
                 {% endfor %}
                 </tbody>
             </table>
+        </div>
+        <div class="d-md-none d-grid gap-2">
+            {% for n in notas %}
+                <div class="card soft p-3">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <div class="text-muted small">Nota #{{ n.id }}</div>
+                            <div class="fw-bold">{{ n.tipo_operacion.value|capitalize }}</div>
+                        </div>
+                        <div>
+                            {% if n.estado.value == 'BORRADOR' %}
+                                <span class="badge bg-secondary">Borrador</span>
+                            {% elif n.estado.value == 'EN_REVISION' %}
+                                <span class="badge bg-warning text-dark">En revisión</span>
+                            {% elif n.estado.value == 'APROBADA' %}
+                                <span class="badge bg-success">Aprobada</span>
+                            {% else %}
+                                <span class="badge bg-danger">Cancelada</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-between small">
+                        <span class="text-muted">Kg</span>
+                        <strong>{{ "%.2f"|format(n.total_kg_neto or 0) }} kg</strong>
+                    </div>
+                    <div class="d-flex justify-content-between small">
+                        <span class="text-muted">Total</span>
+                        <strong>${{ "%.2f"|format(n.total_monto or 0) }}</strong>
+                    </div>
+                    <div class="d-flex justify-content-between small">
+                        <span class="text-muted">Fecha</span>
+                        <strong>{{ n.created_at.strftime("%Y-%m-%d %H:%M") if n.created_at else '-' }}</strong>
+                    </div>
+                    <div class="d-grid mt-2">
+                        {% if n.estado.value == 'BORRADOR' %}
+                            <form method="post" action="/web/worker/notes/{{ n.id }}/enviar">
+                                <button class="btn btn-primary btn-sm w-100">Enviar a revisión</button>
+                            </form>
+                        {% else %}
+                            <span class="text-muted small text-center">-</span>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endfor %}
         </div>
         {% if notas|length == 0 %}
             <p class="text-muted small mb-0 mt-3">Aún no tienes notas.</p>

@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}Movimientos de inventario{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="text-uppercase text-muted small mb-1">Inventario</p>
+        <h1 class="h4 text-white mb-0">Movimientos</h1>
+    </div>
+</div>
+
+<div class="card hover-lift mb-3">
+    <div class="card-body">
+        <form class="row g-2 align-items-end" method="get">
+            {% if user.rol == 'super_admin' %}
+                <div class="col-lg-3 col-md-4">
+                    <label class="form-label">Sucursal</label>
+                    <select class="form-select" name="sucursal_id">
+                        <option value="">Todas</option>
+                        {% for s in sucursales %}
+                            <option value="{{ s.id }}" {% if sucursal_id and sucursal_id == s.id %}selected{% endif %}>{{ s.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            {% else %}
+                <div class="col-lg-3 col-md-4">
+                    <label class="form-label">Sucursal</label>
+                    {% set suc = sucursales|selectattr('id','equalto',sucursal_id)|list|first %}
+                    <div class="form-control-plaintext fw-semibold">{{ suc.nombre if suc else sucursal_id }}</div>
+                </div>
+            {% endif %}
+            <div class="col-lg-3 col-md-4">
+                <label class="form-label">Material</label>
+                <select class="form-select" name="material_id">
+                    <option value="">Todos</option>
+                    {% for m in materiales %}
+                        <option value="{{ m.id }}" {% if material_id and material_id == m.id %}selected{% endif %}>{{ m.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-lg-2 col-md-4">
+                <label class="form-label">Tipo</label>
+                <select class="form-select" name="tipo">
+                    <option value="">Todos</option>
+                    <option value="compra" {% if tipo == 'compra' %}selected{% endif %}>Compra</option>
+                    <option value="venta" {% if tipo == 'venta' %}selected{% endif %}>Venta</option>
+                    <option value="ajuste" {% if tipo == 'ajuste' %}selected{% endif %}>Ajuste</option>
+                </select>
+            </div>
+            <div class="col-md-2 d-grid">
+                <button class="btn btn-outline-primary">Filtrar</button>
+            </div>
+            <div class="col-md-3 d-grid">
+                <div class="d-flex gap-2">
+                    <select class="form-select" id="invExportFormat">
+                        <option value="csv">CSV</option>
+                        <option value="xlsx">Excel</option>
+                        <option value="pdf">PDF</option>
+                    </select>
+                    <button type="button" class="btn btn-export w-100" onclick="exportInventario()">Exportar</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card hover-lift">
+    <div class="card-body">
+        <div class="d-flex justify-content-end text-muted small mb-2">
+            Total (firmado): <strong class="ms-1">{{ "%.2f"|format(total_firmado or 0) }} kg</strong>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle mb-0">
+                <thead>
+                <tr>
+                    <th>Sucursal</th>
+                    <th>Material</th>
+                    <th>Tipo</th>
+                    <th>Cantidad</th>
+                    <th>Saldo</th>
+                    <th>Nota</th>
+                    <th>Fecha</th>
+                    <th>Comentario</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for mov in movimientos %}
+                    <tr>
+                        <td>{{ mov.inventario.sucursal.nombre if mov.inventario and mov.inventario.sucursal else '-' }}</td>
+                        <td>{{ mov.inventario.material.nombre if mov.inventario and mov.inventario.material else '-' }}</td>
+                        <td class="text-uppercase">{{ mov.tipo }}</td>
+                        <td>{{ "%.2f"|format(mov.cantidad_kg or 0) }} kg</td>
+                        <td>{{ "%.2f"|format(mov.saldo_resultante or 0) }} kg</td>
+                        <td>
+                            {% if mov.nota_id %}
+                                <a href="/web/admin/notas/{{ mov.nota_id }}">#{{ mov.nota_id }}</a>
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>{{ mov.created_at.strftime("%Y-%m-%d %H:%M") if mov.created_at else '-' }}</td>
+                        <td class="small text-muted">{{ mov.comentario or '-' }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if movimientos|length == 0 %}
+            <p class="text-muted small mt-3 mb-0">No hay movimientos con estos filtros.</p>
+        {% endif %}
+    </div>
+</div>
+<script>
+    function exportInventario() {
+        const fmt = document.getElementById('invExportFormat').value || 'csv';
+        const params = new URLSearchParams(window.location.search);
+        params.set('format', fmt);
+        window.location.href = `/web/admin/inventario/movimientos/export?${params.toString()}`;
+    }
+</script>
+{% endblock %}

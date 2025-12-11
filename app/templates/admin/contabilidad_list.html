@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}Log contable{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="text-uppercase text-muted small mb-1">Contabilidad</p>
+        <h1 class="h4 text-white mb-0">Movimientos contables</h1>
+    </div>
+</div>
+
+<div class="card hover-lift">
+    <div class="card-body">
+        <form class="row g-2 align-items-end mb-3" method="get">
+            {% if user.rol == 'super_admin' %}
+                <div class="col-lg-3 col-md-4">
+                    <label class="form-label">Sucursal</label>
+                    <select class="form-select" name="sucursal_id">
+                        <option value="">Todas</option>
+                        {% for s in sucursales %}
+                            <option value="{{ s.id }}" {% if sucursal_id and sucursal_id == s.id %}selected{% endif %}>{{ s.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            {% else %}
+                <div class="col-lg-3 col-md-4">
+                    <label class="form-label">Sucursal</label>
+                    {% set suc = sucursales|selectattr('id','equalto',sucursal_id)|list|first %}
+                    <div class="form-control-plaintext fw-semibold">{{ suc.nombre if suc else sucursal_id }}</div>
+                </div>
+            {% endif %}
+            <div class="col-lg-3 col-md-4">
+                <label class="form-label">Desde</label>
+                <input type="date" class="form-control" name="from" value="{{ date_from }}">
+            </div>
+            <div class="col-lg-3 col-md-4">
+                <label class="form-label">Hasta</label>
+                <input type="date" class="form-control" name="to" value="{{ date_to }}">
+            </div>
+            <div class="col-md-2 d-grid">
+                <button class="btn btn-outline-primary">Filtrar</button>
+            </div>
+            <div class="col-md-3 d-grid">
+                <div class="d-flex gap-2">
+                    <select class="form-select" id="exportFormat">
+                        <option value="csv">CSV</option>
+                        <option value="xlsx">Excel</option>
+                        <option value="pdf">PDF</option>
+                    </select>
+                    <button type="button" class="btn btn-export w-100" onclick="exportContabilidad()">Exportar</button>
+                </div>
+            </div>
+        </form>
+        <div class="d-flex justify-content-end text-muted small mb-2">
+            Total filtrado: <strong class="ms-1">${{ "%.2f"|format(total_filtrado or 0) }}</strong>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle mb-0">
+                <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Tipo</th>
+                    <th>Monto</th>
+                    <th>Nota</th>
+                    <th>Sucursal</th>
+                    <th>Usuario</th>
+                    <th>Fecha</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for m in movimientos %}
+                    <tr>
+                        <td>{{ m.id }}</td>
+                        <td>{{ m.tipo|upper }}</td>
+                        <td>${{ "%.2f"|format(m.monto or 0) }}</td>
+                        <td>
+                            {% if m.nota_id %}
+                                <a href="/web/admin/notas/{{ m.nota_id }}">#{{ m.nota_id }}</a>
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>{{ m.sucursal.nombre if m.sucursal else m.sucursal_id or "-" }}</td>
+                        <td>{{ m.usuario_id or "-" }}</td>
+                        <td>{{ m.created_at.strftime("%Y-%m-%d %H:%M") if m.created_at else "-" }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if movimientos|length == 0 %}
+            <p class="text-muted small mt-3 mb-0">Aún no hay movimientos.</p>
+        {% endif %}
+    </div>
+</div>
+<script>
+    function exportContabilidad() {
+        const fmt = document.getElementById('exportFormat').value || 'csv';
+        const params = new URLSearchParams(window.location.search);
+        params.set('format', fmt);
+        window.location.href = `/web/admin/contabilidad/export?${params.toString()}`;
+    }
+</script>
+{% endblock %}

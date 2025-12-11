@@ -1,6 +1,6 @@
 # app/web/admin.py
 from fastapi import APIRouter, Depends, HTTPException, Request, Form
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
@@ -24,6 +24,10 @@ from app.models import (
     Cliente,
     Nota,
     NotaEstado,
+    Inventario,
+    MovimientoContable,
+    Material,
+    InventarioMovimiento,
 )
 
 from app.services.pricing_service import create_price_version
@@ -142,11 +146,19 @@ async def users_list(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_superadmin),
 ):
+    sucursal_id = request.query_params.get("sucursal_id")
+    try:
+        sucursal_id_int = int(sucursal_id) if sucursal_id else None
+    except ValueError:
+        sucursal_id_int = None
+
     usuarios = (
         db.query(User)
         .order_by(User.id.desc())
-        .all()
     )
+    if sucursal_id_int:
+        usuarios = usuarios.filter(User.sucursal_id == sucursal_id_int)
+    usuarios = usuarios.all()
     sucursales = {s.id: s for s in db.query(Sucursal).all()}
 
     return templates.TemplateResponse(
@@ -157,6 +169,7 @@ async def users_list(
             "user": current_user,
             "usuarios": usuarios,
             "sucursales_map": sucursales,
+            "sucursal_id": sucursal_id_int,
         },
     )
 
@@ -1010,6 +1023,48 @@ async def notas_list(
     )
 
 
+def _render_nota_detail(
+    request: Request,
+    db: Session,
+    current_user: dict,
+    nota: Nota,
+    error: str | None = None,
+    form_state: dict | None = None,
+):
+    sucursal = db.get(Sucursal, nota.sucursal_id) if nota.sucursal_id else None
+    proveedor = db.get(Proveedor, nota.proveedor_id) if nota.proveedor_id else None
+    cliente = db.get(Cliente, nota.cliente_id) if nota.cliente_id else None
+    trabajador = db.get(User, nota.trabajador_id) if nota.trabajador_id else None
+    inv_movs = db.query(InventarioMovimiento).filter(InventarioMovimiento.nota_id == nota.id).all()
+    base_form_state = {
+        "form_metodo": None,
+        "form_cuenta": None,
+        "form_fecha": None,
+        "form_comentarios": None,
+    }
+    context = {
+        "request": request,
+        "env": settings.ENV,
+        "user": current_user,
+        "nota": nota,
+        "sucursal": sucursal,
+        "proveedor": proveedor,
+        "cliente": cliente,
+        "trabajador": trabajador,
+        "tipos_cliente": list(TipoCliente),
+        "inv_movs": inv_movs,
+        "error": error,
+    }
+    context.update(base_form_state)
+    if form_state:
+        context.update(form_state)
+    return templates.TemplateResponse(
+        "admin/note_detail.html",
+        context,
+        status_code=400 if error else 200,
+    )
+
+
 @router.get("/notas/{nota_id}")
 async def notas_detail(
     nota_id: int,
@@ -1021,49 +1076,13 @@ async def notas_detail(
     if not nota:
         raise HTTPException(status_code=404, detail="Nota no encontrada.")
 
-    sucursal = db.get(Sucursal, nota.sucursal_id) if nota.sucursal_id else None
-    proveedor = db.get(Proveedor, nota.proveedor_id) if nota.proveedor_id else None
-    cliente = db.get(Cliente, nota.cliente_id) if nota.cliente_id else None
-
-    return templates.TemplateResponse(
-        "admin/note_detail.html",
-        {
-            "request": request,
-            "env": settings.ENV,
-            "user": current_user,
-            "nota": nota,
-            "sucursal": sucursal,
-            "proveedor": proveedor,
-            "cliente": cliente,
-            "tipos_cliente": list(TipoCliente),
-        },
-    )
-
-
-def _parse_tipo_cliente_map(form_data) -> dict[int, TipoCliente]:
-    mapping: dict[int, TipoCliente] = {}
-    for key, value in form_data.items():
-        if not key.startswith("tipo_cliente_"):
-            continue
-        try:
-            nm_id = int(key.replace("tipo_cliente_", ""))
-        except ValueError:
-            continue
-        if not value:
-            continue
-        try:
-            mapping[nm_id] = TipoCliente(value)
-        except ValueError:
-            continue
-    return mapping
+    return _render_nota_detail(request, db, current_user, nota)
 
 
 @router.post("/notas/{nota_id}/aprobar")
 async def notas_aprobar(
     nota_id: int,
     request: Request,
-    fecha_caducidad_pago: str = Form(""),
-    comentarios_admin: str = Form(""),
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
@@ -1071,43 +1090,101 @@ async def notas_aprobar(
     if not nota:
         raise HTTPException(status_code=404, detail="Nota no encontrada.")
     if nota.estado not in (NotaEstado.en_revision, NotaEstado.borrador):
-        return RedirectResponse(url=f"/web/admin/notas/{nota.id}", status_code=303)
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="Solo puedes aprobar notas en revisión o borrador.",
+        )
 
-    form_data = await request.form()
-    tipo_cli_map = _parse_tipo_cliente_map(form_data)
-    note_service.set_tipo_cliente_and_prices(db, nota, tipo_cli_map)
+    form = await request.form()
+    comentarios_admin = (form.get("comentarios_admin") or "").strip()
+    fecha_caducidad_pago_raw = (form.get("fecha_caducidad_pago") or "").strip()
+    metodo_pago = (form.get("metodo_pago") or "").strip().lower()
+    cuenta_financiera = (form.get("cuenta_financiera") or "").strip()
+    form_state = {
+        "form_metodo": metodo_pago,
+        "form_cuenta": cuenta_financiera,
+        "form_fecha": fecha_caducidad_pago_raw,
+        "form_comentarios": comentarios_admin,
+    }
 
-    fecha_cad = None
-    if fecha_caducidad_pago:
+    fecha_caducidad_pago = None
+    if fecha_caducidad_pago_raw:
         try:
-            fecha_cad = datetime.strptime(fecha_caducidad_pago, "%Y-%m-%d").date()
+            fecha_caducidad_pago = datetime.strptime(fecha_caducidad_pago_raw, "%Y-%m-%d").date()
         except ValueError:
-            fecha_cad = None
+            return _render_nota_detail(
+                request,
+                db,
+                current_user,
+                nota,
+                error="La fecha de caducidad de pago es inválida.",
+                form_state=form_state,
+            )
 
-    note_service.update_state(
-        db,
-        nota,
-        new_state=NotaEstado.aprobada,
-        admin_id=current_user.get("id"),
-        comentarios_admin=comentarios_admin,
-        fecha_caducidad_pago=fecha_cad,
-    )
-    return RedirectResponse(url="/web/admin/notas", status_code=303)
+    tipo_cliente_map: dict[int, TipoCliente] = {}
+    for key, value in form.items():
+        if key.startswith("tipo_cliente_"):
+            nm_key = key.rsplit("_", 1)[-1]
+            try:
+                nm_id = int(nm_key)
+            except ValueError:
+                continue
+            if value:
+                try:
+                    tipo_cliente_map[nm_id] = TipoCliente(value)
+                except ValueError:
+                    return _render_nota_detail(
+                        request,
+                        db,
+                        current_user,
+                        nota,
+                        error="Tipo de cliente inválido para un material.",
+                        form_state=form_state,
+                    )
+
+    try:
+        note_service.approve_note(
+            db,
+            nota,
+            tipo_cliente_map=tipo_cliente_map or None,
+            admin_id=current_user.get("id"),
+            comentarios_admin=comentarios_admin,
+            fecha_caducidad_pago=fecha_caducidad_pago,
+            metodo_pago=metodo_pago,
+            cuenta_financiera=cuenta_financiera or None,
+        )
+    except ValueError as e:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error=str(e),
+            form_state=form_state,
+        )
+
+    return RedirectResponse(url="/web/admin/notas?approved=1", status_code=303)
 
 
 @router.post("/notas/{nota_id}/cancelar")
 async def notas_cancelar(
     nota_id: int,
-    comentarios_admin: str = Form(""),
+    request: Request,
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
     nota = db.get(Nota, nota_id)
     if not nota:
         raise HTTPException(status_code=404, detail="Nota no encontrada.")
-    if nota.estado == NotaEstado.cancelada:
-        return RedirectResponse(url=f"/web/admin/notas/{nota.id}", status_code=303)
-
+    if nota.estado == NotaEstado.aprobada:
+        return _render_nota_detail(
+            request, db, current_user, nota, error="No puedes rechazar una nota aprobada."
+        )
+    form = await request.form()
+    comentarios_admin = (form.get("comentarios_admin") or "").strip()
     note_service.update_state(
         db,
         nota,
@@ -1115,20 +1192,624 @@ async def notas_cancelar(
         admin_id=current_user.get("id"),
         comentarios_admin=comentarios_admin,
     )
-    return RedirectResponse(url="/web/admin/notas", status_code=303)
+    return RedirectResponse(url="/web/admin/notas?cancelled=1", status_code=303)
+
+
+@router.post("/notas/{nota_id}/devolver")
+async def notas_devolver(
+    nota_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    nota = db.get(Nota, nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    if nota.estado == NotaEstado.aprobada:
+        return _render_nota_detail(
+            request, db, current_user, nota, error="No puedes devolver una nota aprobada."
+        )
+    note_service.update_state(
+        db,
+        nota,
+        new_state=NotaEstado.borrador,
+        admin_id=current_user.get("id"),
+    )
+    return RedirectResponse(url="/web/admin/notas?returned=1", status_code=303)
 
 
 @router.post("/notas/{nota_id}/eliminar")
 async def notas_eliminar(
     nota_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_superadmin),
 ):
     nota = db.get(Nota, nota_id)
     if not nota:
         raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    if nota.estado == NotaEstado.aprobada:
+        return _render_nota_detail(
+            request, db, current_user, nota, error="No puedes eliminar una nota aprobada."
+        )
     db.delete(nota)
     db.commit()
-    return RedirectResponse(url="/web/admin/notas", status_code=303)
+    return RedirectResponse(url="/web/admin/notas?deleted=1", status_code=303)
+
+
+@router.get("/inventario/ajuste")
+async def inventario_ajuste_get(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    if current_user.get("rol") == UserRole.admin.value:
+        sucursales = [s for s in sucursales if s.id == current_user.get("sucursal_id")]
+    suc_ids = [s.id for s in sucursales]
+    inv_rows = db.query(Inventario).filter(Inventario.sucursal_id.in_(suc_ids)).all() if suc_ids else []
+    inv_map: dict[int, dict[int, float]] = {}
+    for inv in inv_rows:
+        inv_map.setdefault(inv.sucursal_id, {})[inv.material_id] = float(inv.stock_actual or 0)
+    return templates.TemplateResponse(
+        "admin/inventario_ajuste.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "materiales": materiales,
+            "sucursales": sucursales,
+            "inv_map": inv_map,
+            "error": None,
+        },
+    )
+
+
+@router.post("/inventario/ajuste")
+async def inventario_ajuste_post(
+    request: Request,
+    sucursal_id: str = Form(...),
+    material_id: str = Form(...),
+    cantidad_kg: str = Form(""),
+    nuevo_stock: str = Form(""),
+    comentario: str = Form(""),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    if current_user.get("rol") == UserRole.admin.value:
+        sucursal_id = str(current_user.get("sucursal_id"))
+        sucursales = [s for s in sucursales if s.id == current_user.get("sucursal_id")]
+
+    suc_ids = [s.id for s in sucursales]
+    inv_rows = db.query(Inventario).filter(Inventario.sucursal_id.in_(suc_ids)).all() if suc_ids else []
+    inv_map: dict[int, dict[int, float]] = {}
+    for inv in inv_rows:
+        inv_map.setdefault(inv.sucursal_id, {})[inv.material_id] = float(inv.stock_actual or 0)
+
+    def render_error(msg: str):
+        return templates.TemplateResponse(
+            "admin/inventario_ajuste.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "materiales": materiales,
+                "sucursales": sucursales,
+                "inv_map": inv_map,
+                "error": msg,
+            },
+            status_code=400,
+        )
+
+    try:
+        suc_id = int(sucursal_id)
+        mat_id = int(material_id)
+    except ValueError:
+        return render_error("Sucursal o material inválido.")
+
+    suc = db.get(Sucursal, suc_id)
+    if not suc:
+        return render_error("Sucursal no encontrada.")
+    mat = db.get(Material, mat_id)
+    if not mat:
+        return render_error("Material no encontrado.")
+
+    # decidir delta: si se envía nuevo stock, usarlo como objetivo; si no, usar delta directo
+    nuevo_stock_raw = (nuevo_stock or "").strip()
+    inv_actual = db.query(Inventario).filter(
+        Inventario.sucursal_id == suc_id, Inventario.material_id == mat_id
+    ).first()
+    stock_actual = Decimal(str(inv_actual.stock_actual or 0)) if inv_actual else Decimal("0")
+    delta: Decimal
+    if nuevo_stock_raw:
+        try:
+            nuevo_stock = Decimal(str(nuevo_stock_raw))
+        except (InvalidOperation, TypeError):
+            return render_error("El nuevo stock es inválido.")
+        if nuevo_stock < 0:
+            nuevo_stock = Decimal("0")
+        delta = nuevo_stock - stock_actual
+    else:
+        try:
+            delta = Decimal(str(cantidad_kg))
+        except (InvalidOperation, TypeError):
+            return render_error("Cantidad inválida.")
+
+    comentario = (comentario or "").strip() or "Ajuste manual"
+
+    note_service.ajustar_stock(
+        db,
+        sucursal_id=suc.id,
+        material_id=mat.id,
+        cantidad_kg=delta,
+        comentario=comentario,
+        usuario_id=current_user.get("id"),
+    )
+    return RedirectResponse(url="/web/admin/inventario?ajuste=1", status_code=303)
+
+
+@router.get("/inventario")
+async def inventario_list(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    allowed_suc_id = None
+    if current_user.get("rol") == UserRole.admin.value:
+        allowed_suc_id = current_user.get("sucursal_id")
+
+    sel = request.query_params.get("sucursal_id")
+    sucursal_id = None
+    if sel:
+        try:
+            sucursal_id = int(sel)
+        except ValueError:
+            sucursal_id = None
+    if allowed_suc_id:
+        sucursal_id = allowed_suc_id
+
+    query = db.query(Inventario)
+    if sucursal_id:
+        query = query.filter(Inventario.sucursal_id == sucursal_id)
+    inventarios = query.order_by(Inventario.sucursal_id, Inventario.material_id).all()
+    return templates.TemplateResponse(
+        "admin/inventario_list.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "inventarios": inventarios,
+            "sucursales": sucursales,
+            "sucursal_id": sucursal_id,
+        },
+    )
+
+
+@router.get("/contabilidad")
+async def contabilidad_list(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    params = request.query_params
+    sucursal_id = None
+    if params.get("sucursal_id"):
+        try:
+            sucursal_id = int(params.get("sucursal_id"))
+        except ValueError:
+            sucursal_id = None
+    if current_user.get("rol") == UserRole.admin.value:
+        sucursal_id = current_user.get("sucursal_id")
+
+    date_from = params.get("from")
+    date_to = params.get("to")
+    export_query = request.url.query
+    fmt = params.get("format") or "csv"
+    query = db.query(MovimientoContable)
+    if sucursal_id:
+        query = query.filter(MovimientoContable.sucursal_id == sucursal_id)
+    if date_from:
+        try:
+            dt_from = datetime.strptime(date_from, "%Y-%m-%d")
+            query = query.filter(MovimientoContable.created_at >= dt_from)
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            dt_to = datetime.strptime(date_to, "%Y-%m-%d")
+            query = query.filter(MovimientoContable.created_at <= dt_to)
+        except ValueError:
+            pass
+    movimientos = query.order_by(MovimientoContable.created_at.desc()).limit(200).all()
+    total_filtrado = sum([float(m.monto or 0) for m in movimientos])
+    return templates.TemplateResponse(
+        "admin/contabilidad_list.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "movimientos": movimientos,
+            "sucursales": sucursales,
+            "sucursal_id": sucursal_id,
+            "date_from": date_from or "",
+            "date_to": date_to or "",
+            "total_filtrado": total_filtrado,
+            "export_query": export_query,
+        },
+    )
+
+@router.get("/contabilidad/export")
+async def contabilidad_export(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    params = request.query_params
+    sucursal_id = None
+    if params.get("sucursal_id"):
+        try:
+            sucursal_id = int(params.get("sucursal_id"))
+        except ValueError:
+            sucursal_id = None
+    if current_user.get("rol") == UserRole.admin.value:
+        sucursal_id = current_user.get("sucursal_id")
+
+    date_from = params.get("from")
+    date_to = params.get("to")
+    fmt = params.get("format") or "csv"
+    query = db.query(MovimientoContable)
+    if sucursal_id:
+        query = query.filter(MovimientoContable.sucursal_id == sucursal_id)
+    if date_from:
+        try:
+            dt_from = datetime.strptime(date_from, "%Y-%m-%d")
+            query = query.filter(MovimientoContable.created_at >= dt_from)
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            dt_to = datetime.strptime(date_to, "%Y-%m-%d")
+            query = query.filter(MovimientoContable.created_at <= dt_to)
+        except ValueError:
+            pass
+    movimientos = query.order_by(MovimientoContable.created_at.desc()).limit(1000).all()
+
+    if fmt == "csv":
+        import csv
+        import io
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow([
+            "id", "tipo", "monto", "nota_id", "sucursal",
+            "usuario_id", "metodo_pago", "cuenta_financiera", "comentario", "created_at",
+        ])
+        for m in movimientos:
+            writer.writerow([
+                m.id,
+                m.tipo,
+                float(m.monto or 0),
+                m.nota_id or "",
+                m.sucursal.nombre if m.sucursal else m.sucursal_id or "",
+                m.usuario_id or "",
+                m.metodo_pago or "",
+                m.cuenta_financiera or "",
+                (m.comentario or "").replace("\n", " "),
+                m.created_at.strftime("%Y-%m-%d %H:%M") if m.created_at else "",
+            ])
+        output.seek(0)
+        headers = {"Content-Disposition": "attachment; filename=movimientos_contables.csv"}
+        return StreamingResponse(iter([output.getvalue()]), media_type="text/csv", headers=headers)
+
+    headers_xml = ["id", "tipo", "monto", "nota_id", "sucursal", "usuario_id", "metodo_pago", "cuenta_financiera", "comentario", "created_at"]
+
+    if fmt in ("xlsx", "xls", "excel"):
+        import io
+        rows = []
+        rows.append("<Row>" + "".join([f"<Cell><Data ss:Type='String'>{h}</Data></Cell>" for h in headers_xml]) + "</Row>")
+        for m in movimientos:
+            vals = [
+                m.id,
+                m.tipo,
+                float(m.monto or 0),
+                m.nota_id or "",
+                m.sucursal.nombre if m.sucursal else m.sucursal_id or "",
+                m.usuario_id or "",
+                m.metodo_pago or "",
+                m.cuenta_financiera or "",
+                (m.comentario or "").replace("\\n", " "),
+                m.created_at.strftime("%Y-%m-%d %H:%M") if m.created_at else "",
+            ]
+            rows.append("<Row>" + "".join([f"<Cell><Data ss:Type='String'>{v}</Data></Cell>" for v in vals]) + "</Row>")
+        workbook = f"""<?xml version="1.0"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Worksheet ss:Name="Movimientos">
+  <Table>
+   {''.join(rows)}
+  </Table>
+ </Worksheet>
+</Workbook>"""
+        content = workbook.encode("utf-8")
+        headers = {"Content-Disposition": "attachment; filename=movimientos_contables.xls"}
+        return StreamingResponse(io.BytesIO(content), media_type="application/vnd.ms-excel", headers=headers)
+
+    # PDF fallback (simple text-based)
+    import io
+
+    def _escape_pdf(txt: str) -> str:
+        return txt.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+    header_line = " | ".join(headers_xml)
+    suc_label = f"Sucursal: {sucursal_id or 'Todas'}"
+    range_label = f"Rango: {date_from or '---'} a {date_to or '---'}"
+    text_lines = ["Movimientos contables", suc_label, range_label, "", header_line]
+    for m in movimientos:
+        vals = [
+            str(m.id),
+            m.tipo,
+            f"{float(m.monto or 0):.2f}",
+            str(m.nota_id or ""),
+            m.sucursal.nombre if m.sucursal else str(m.sucursal_id or ""),
+            str(m.usuario_id or ""),
+            m.metodo_pago or "",
+            m.cuenta_financiera or "",
+            (m.comentario or "").replace("\n", " "),
+            m.created_at.strftime("%Y-%m-%d %H:%M") if m.created_at else "",
+        ]
+        text_lines.append(" | ".join(vals))
+
+    stream_lines = [f"({_escape_pdf(line)}) Tj T*" for line in text_lines]
+    stream_content = "BT /F1 10 Tf 12 TL 50 780 Td\n" + "\n".join(stream_lines) + "\nET"
+    stream_bytes = stream_content.encode("latin-1", errors="ignore")
+    len_stream = len(stream_bytes)
+
+    objects = []
+    def obj(num: int, body: str) -> None:
+        objects.append((num, body.encode("latin-1")))
+
+    obj(1, "<< /Type /Catalog /Pages 2 0 R >>")
+    obj(2, "<< /Type /Pages /Count 1 /Kids [3 0 R] >>")
+    obj(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>")
+    obj(4, f"<< /Length {len_stream} >>\nstream\n".encode() + stream_bytes + b"\nendstream")
+    obj(5, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+
+    buffer = io.BytesIO()
+    buffer.write(b"%PDF-1.4\n")
+    offsets = [0]
+    for num, body in objects:
+        offsets.append(buffer.tell())
+        buffer.write(f"{num} 0 obj\n".encode())
+        buffer.write(body)
+        buffer.write(b"\nendobj\n")
+    xref_pos = buffer.tell()
+    buffer.write(f"xref\n0 {len(offsets)}\n".encode())
+    buffer.write(b"0000000000 65535 f \n")
+    for off in offsets[1:]:
+        buffer.write(f"{off:010} 00000 n \n".encode())
+    buffer.write(b"trailer\n")
+    buffer.write(f"<< /Size {len(offsets)} /Root 1 0 R >>\nstartxref\n{xref_pos}\n%%EOF".encode())
+
+    headers = {"Content-Disposition": "attachment; filename=movimientos_contables.pdf"}
+    buffer.seek(0)
+    return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
+
+
+@router.get("/inventario/movimientos")
+async def inventario_movimientos(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    materiales = db.query(Material).order_by(Material.nombre).all()
+    params = request.query_params
+    sucursal_id = None
+    if params.get("sucursal_id"):
+        try:
+            sucursal_id = int(params.get("sucursal_id"))
+        except ValueError:
+            sucursal_id = None
+    if current_user.get("rol") == UserRole.admin.value:
+        sucursal_id = current_user.get("sucursal_id")
+
+    material_id = None
+    if params.get("material_id"):
+        try:
+            material_id = int(params.get("material_id"))
+        except ValueError:
+            material_id = None
+    tipo = params.get("tipo") or None
+
+    query = db.query(InventarioMovimiento)
+    if sucursal_id:
+        query = query.join(Inventario, Inventario.id == InventarioMovimiento.inventario_id).filter(
+            Inventario.sucursal_id == sucursal_id
+        )
+    if material_id:
+        query = query.join(Inventario, Inventario.id == InventarioMovimiento.inventario_id).filter(
+            Inventario.material_id == material_id
+        )
+    if tipo:
+        query = query.filter(InventarioMovimiento.tipo == tipo)
+    movimientos = query.order_by(InventarioMovimiento.created_at.desc()).limit(200).all()
+    total_firmado = 0
+    for mov in movimientos:
+        delta = float(mov.cantidad_kg or 0)
+        if mov.tipo == "venta":
+            delta = -delta
+        total_firmado += delta
+
+    return templates.TemplateResponse(
+        "admin/inventario_movimientos.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "movimientos": movimientos,
+            "sucursales": sucursales,
+            "materiales": materiales,
+            "sucursal_id": sucursal_id,
+            "material_id": material_id,
+            "tipo": tipo or "",
+            "total_firmado": total_firmado,
+        },
+    )
+
+
+@router.get("/inventario/movimientos/export")
+async def inventario_movimientos_export(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    materiales = db.query(Material).order_by(Material.nombre).all()
+    params = request.query_params
+    sucursal_id = None
+    if params.get("sucursal_id"):
+        try:
+            sucursal_id = int(params.get("sucursal_id"))
+        except ValueError:
+            sucursal_id = None
+    if current_user.get("rol") == UserRole.admin.value:
+        sucursal_id = current_user.get("sucursal_id")
+
+    material_id = None
+    if params.get("material_id"):
+        try:
+            material_id = int(params.get("material_id"))
+        except ValueError:
+            material_id = None
+    tipo = params.get("tipo") or None
+    fmt = params.get("format") or "csv"
+
+    query = db.query(InventarioMovimiento)
+    if sucursal_id:
+        query = query.join(Inventario, Inventario.id == InventarioMovimiento.inventario_id).filter(
+            Inventario.sucursal_id == sucursal_id
+        )
+    if material_id:
+        query = query.join(Inventario, Inventario.id == InventarioMovimiento.inventario_id).filter(
+            Inventario.material_id == material_id
+        )
+    if tipo:
+        query = query.filter(InventarioMovimiento.tipo == tipo)
+    movimientos = query.order_by(InventarioMovimiento.created_at.desc()).limit(1000).all()
+
+    headers_xml = ["sucursal", "material", "tipo", "cantidad_kg", "saldo_resultante", "nota_id", "comentario", "fecha"]
+
+    if fmt == "csv":
+        import csv
+        import io
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(headers_xml)
+        for mov in movimientos:
+            writer.writerow([
+                mov.inventario.sucursal.nombre if mov.inventario and mov.inventario.sucursal else mov.inventario_id,
+                mov.inventario.material.nombre if mov.inventario and mov.inventario.material else "",
+                mov.tipo,
+                float(mov.cantidad_kg or 0),
+                float(mov.saldo_resultante or 0),
+                mov.nota_id or "",
+                (mov.comentario or "").replace("\n", " "),
+                mov.created_at.strftime("%Y-%m-%d %H:%M") if mov.created_at else "",
+            ])
+        output.seek(0)
+        headers = {"Content-Disposition": "attachment; filename=movimientos_inventario.csv"}
+        return StreamingResponse(iter([output.getvalue()]), media_type="text/csv", headers=headers)
+
+    import io
+    rows = []
+    rows.append("<Row>" + "".join([f"<Cell><Data ss:Type='String'>{h}</Data></Cell>" for h in headers_xml]) + "</Row>")
+    for mov in movimientos:
+        vals = [
+            mov.inventario.sucursal.nombre if mov.inventario and mov.inventario.sucursal else mov.inventario_id,
+            mov.inventario.material.nombre if mov.inventario and mov.inventario.material else "",
+            mov.tipo,
+            float(mov.cantidad_kg or 0),
+            float(mov.saldo_resultante or 0),
+            mov.nota_id or "",
+            (mov.comentario or "").replace("\\n", " "),
+            mov.created_at.strftime("%Y-%m-%d %H:%M") if mov.created_at else "",
+        ]
+        rows.append("<Row>" + "".join([f"<Cell><Data ss:Type='String'>{v}</Data></Cell>" for v in vals]) + "</Row>")
+
+    if fmt in ("xlsx", "xls", "excel"):
+        workbook = f"""<?xml version="1.0"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Worksheet ss:Name="Movimientos">
+  <Table>
+   {''.join(rows)}
+ </Table>
+ </Worksheet>
+</Workbook>"""
+        content = workbook.encode("utf-8")
+        headers = {"Content-Disposition": "attachment; filename=movimientos_inventario.xls"}
+        return StreamingResponse(io.BytesIO(content), media_type="application/vnd.ms-excel", headers=headers)
+
+    # PDF simple
+    def _escape_pdf(txt: str) -> str:
+        return txt.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+    header_line = " | ".join(headers_xml)
+    text_lines = ["Movimientos de inventario", header_line]
+    for mov in movimientos:
+        vals = [
+            mov.inventario.sucursal.nombre if mov.inventario and mov.inventario.sucursal else str(mov.inventario_id),
+            mov.inventario.material.nombre if mov.inventario and mov.inventario.material else "",
+            mov.tipo,
+            f"{float(mov.cantidad_kg or 0):.2f}",
+            f"{float(mov.saldo_resultante or 0):.2f}",
+            str(mov.nota_id or ""),
+            (mov.comentario or "").replace("\\n", " "),
+            mov.created_at.strftime("%Y-%m-%d %H:%M") if mov.created_at else "",
+        ]
+        text_lines.append(" | ".join(vals))
+
+    stream_lines = [f"({_escape_pdf(line)}) Tj T*" for line in text_lines]
+    stream_content = "BT /F1 10 Tf 12 TL 50 780 Td\n" + "\n".join(stream_lines) + "\nET"
+    stream_bytes = stream_content.encode("latin-1", errors="ignore")
+    len_stream = len(stream_bytes)
+
+    objects = []
+    def obj(num: int, body: str) -> None:
+        objects.append((num, body.encode("latin-1") if isinstance(body, str) else body))
+
+    obj(1, "<< /Type /Catalog /Pages 2 0 R >>")
+    obj(2, "<< /Type /Pages /Count 1 /Kids [3 0 R] >>")
+    obj(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>")
+    obj(4, f"<< /Length {len_stream} >>\nstream\n".encode() + stream_bytes + b"\nendstream")
+    obj(5, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+
+    buffer = io.BytesIO()
+    buffer.write(b"%PDF-1.4\n")
+    offsets = [0]
+    for num, body in objects:
+        offsets.append(buffer.tell())
+        buffer.write(f"{num} 0 obj\n".encode())
+        buffer.write(body)
+        buffer.write(b"\nendobj\n")
+    xref_pos = buffer.tell()
+    buffer.write(f"xref\n0 {len(offsets)}\n".encode())
+    buffer.write(b"0000000000 65535 f \n")
+    for off in offsets[1:]:
+        buffer.write(f"{off:010} 00000 n \n".encode())
+    buffer.write(b"trailer\n")
+    buffer.write(f"<< /Size {len(offsets)} /Root 1 0 R >>\nstartxref\n{xref_pos}\n%%EOF".encode())
+
+    headers = {"Content-Disposition": "attachment; filename=movimientos_inventario.pdf"}
+    buffer.seek(0)
+    return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
 
 

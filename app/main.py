@@ -64,12 +64,20 @@ def create_app() -> FastAPI:
     @app.get("/web")
     async def web_home(request: Request):
         user = _get_session_user(request)
+        notas_revision_count = 0
+        if user and user.get("rol") in ("admin", "super_admin"):
+            db = SessionLocal()
+            try:
+                notas_revision_count = db.query(Nota).filter(Nota.estado == NotaEstado.en_revision).count()
+            finally:
+                db.close()
         return templates.TemplateResponse(
             "home.html",
             {
                 "request": request,
                 "env": settings.ENV,
                 "user": user,
+                "notas_revision_count": notas_revision_count,
             },
         )
 

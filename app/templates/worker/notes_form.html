@@ -84,13 +84,20 @@
                             <div class="col-12">
                                 <label class="form-label">Subpesajes</label>
                                 <div class="d-grid gap-2 subpesajes-wrapper">
-                                    <div class="input-group">
-                                        <span class="input-group-text">kg neto</span>
+                                    <div class="input-group flex-wrap align-items-center subpesaje-group">
+                                        <span class="input-group-text">Peso bruto</span>
                                         <input class="form-control subpesaje-input" type="number" step="0.01" min="0.01" placeholder="Ej. 150.25" oninput="updatePesajes(this)">
-                                        <span class="input-group-text">desc kg</span>
+                                        <span class="input-group-text">Desc. kg</span>
                                         <input class="form-control subpesaje-desc" type="number" step="0.01" min="0" placeholder="0.00" oninput="updatePesajes(this)">
-                                        <span class="input-group-text">evidencia</span>
-                                        <input class="form-control subpesaje-evid" type="text" placeholder="URL foto" oninput="updatePesajes(this)">
+                                        <span class="input-group-text bg-light">Neto</span>
+                                        <span class="input-group-text subpesaje-neto">0.00</span>
+                                        <input class="subpesaje-evid d-none" type="file" accept="image/*" onchange="updatePesajes(this)">
+                                        <button type="button" class="evidence-btn" onclick="triggerEvidence(this)" title="Tomar/seleccionar foto">
+                                            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                                                <path d="M9 4.5 7.8 6H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-2.8L15 4.5H9Zm3 10.75a3.25 3.25 0 1 1 0-6.5 3.25 3.25 0 0 1 0 6.5Z" fill="currentColor"/>
+                                            </svg>
+                                        </button>
+                                        <span class="input-group-text bg-light evid-label">Sin foto</span>
                                         <button type="button" class="btn btn-outline-danger" onclick="removePesaje(this)">Eliminar</button>
                                     </div>
                                 </div>
@@ -98,15 +105,15 @@
                                     <button type="button" class="btn btn-outline-primary btn-sm" onclick="addPesaje(this)">Agregar pesaje</button>
                                 </div>
                                 <input type="hidden" name="subpesajes" value="">
-                                <div class="form-text">Agrega pesajes con sus descuentos y evidencia; sumaremos automáticamente.</div>
+                                <div class="form-text">Ingresa peso bruto y descuento; el neto se calcula solo. Sube la foto desde tu dispositivo (simulado).</div>
                             </div>
                             <div class="col-6">
-                                <label class="form-label">Kg bruto (auto)</label>
+                                <label class="form-label">Kg bruto total (auto)</label>
                                 <input class="form-control" type="number" step="0.01" min="0" name="kg_bruto" readonly>
-                                <div class="form-text">Suma de pesajes + descuentos.</div>
+                                <div class="form-text">Suma de todos los pesajes brutos.</div>
                             </div>
                             <div class="col-6">
-                                <label class="form-label">Kg descuento (auto)</label>
+                                <label class="form-label">Kg descuento total (auto)</label>
                                 <input class="form-control" type="number" step="0.01" min="0" name="kg_descuento" value="0" readonly>
                             </div>
                             <div class="col-12">
@@ -151,7 +158,7 @@
                     </div>
                     <div class="d-flex justify-content-between">
                         <span class="text-muted small">Total $</span>
-                        <strong class="text-muted">Se calculará al aprobar</strong>
+                        <strong id="nota-total" class="text-muted">-</strong>
                     </div>
                 </div>
             </section>
@@ -173,6 +180,14 @@
 </div>
 
 <script>
+    const PRICE_MAP = {{ price_map | tojson | safe }};
+    function triggerEvidence(btn) {
+        const group = btn.closest('.input-group');
+        const input = group ? group.querySelector('.subpesaje-evid') : null;
+        if (input) {
+            input.click();
+        }
+    }
     function togglePartner() {
         const tipo = document.getElementById('tipo_operacion').value;
         const proveedorSel = document.getElementById('proveedor_id');
@@ -198,16 +213,25 @@
             else if (inp.name === 'kg_descuento') inp.value = '0';
             else inp.value = '';
         });
+        const evidLabel = clone.querySelector('.evid-label');
+        if (evidLabel) evidLabel.textContent = 'Sin foto';
         // reset subpesajes a solo una fila vacía
         const subWrapper = clone.querySelector('.subpesajes-wrapper');
         subWrapper.innerHTML = `
-            <div class="input-group">
-                <span class="input-group-text">kg neto</span>
+            <div class="input-group flex-wrap align-items-center subpesaje-group">
+                <span class="input-group-text">Peso bruto</span>
                 <input class="form-control subpesaje-input" type="number" step="0.01" min="0.01" placeholder="Ej. 150.25" oninput="updatePesajes(this)">
-                <span class="input-group-text">desc kg</span>
+                <span class="input-group-text">Desc. kg</span>
                 <input class="form-control subpesaje-desc" type="number" step="0.01" min="0" placeholder="0.00" oninput="updatePesajes(this)">
-                <span class="input-group-text">evidencia</span>
-                <input class="form-control subpesaje-evid" type="text" placeholder="URL foto" oninput="updatePesajes(this)">
+                <span class="input-group-text bg-light">Neto</span>
+                <span class="input-group-text subpesaje-neto">0.00</span>
+                <input class="subpesaje-evid d-none" type="file" accept="image/*" onchange="updatePesajes(this)">
+                <button type="button" class="evidence-btn" onclick="triggerEvidence(this)" title="Tomar/seleccionar foto">
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                        <path d="M9 4.5 7.8 6H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-2.8L15 4.5H9Zm3 10.75a3.25 3.25 0 1 1 0-6.5 3.25 3.25 0 0 1 0 6.5Z" fill="currentColor"/>
+                    </svg>
+                </button>
+                <span class="input-group-text bg-light evid-label">Sin foto</span>
                 <button type="button" class="btn btn-outline-danger" onclick="removePesaje(this)">Eliminar</button>
             </div>
         `;
@@ -233,38 +257,67 @@
         const hidden = materialRow.querySelector('input[type=\"hidden\"][name=\"subpesajes\"]');
         let items = [];
         for (let idx = 0; idx < inputs.length; idx++) {
-            const v = parseFloat(inputs[idx].value || '0');
-            const d = parseFloat(descInputs[idx].value || '0');
-            const ev = evidInputs[idx].value || '';
-            if (v > 0 || d > 0 || ev) {
-                items.push({peso_kg: v || 0, descuento_kg: d || 0, foto_url: ev || null});
+            const bruto = parseFloat(inputs[idx].value || '0');
+            const desc = parseFloat(descInputs[idx].value || '0');
+            const evFile = evidInputs[idx].files ? evidInputs[idx].files[0] : null;
+            const evText = evidInputs[idx].value || '';
+            const evidencia = evFile ? evFile.name : evText;
+            const netoPesaje = Math.max(bruto - desc, 0);
+            const groupEl = evidInputs[idx].closest('.input-group');
+            const netoLabel = groupEl?.querySelector('.subpesaje-neto');
+            const evidLabel = groupEl?.querySelector('.evid-label');
+            if (netoLabel) netoLabel.textContent = netoPesaje.toFixed(2);
+            if (evidLabel) evidLabel.textContent = evidencia ? evidencia : 'Sin foto';
+            if (bruto > 0 || desc > 0 || evidencia) {
+                items.push({peso_kg: bruto || 0, descuento_kg: desc || 0, foto_url: evidencia || null});
             }
         }
         hidden.value = JSON.stringify(items);
-        const neto = items.reduce((acc, it) => acc + (it.peso_kg || 0), 0);
-        const desc = items.reduce((acc, it) => acc + (it.descuento_kg || 0), 0);
+        const totalBruto = items.reduce((acc, it) => acc + (it.peso_kg || 0), 0);
+        const totalDesc = items.reduce((acc, it) => acc + (it.descuento_kg || 0), 0);
+        const totalNeto = Math.max(totalBruto - totalDesc, 0);
         const kgBrutoInput = materialRow.querySelector('input[name=\"kg_bruto\"]');
         const kgDescInput = materialRow.querySelector('input[name=\"kg_descuento\"]');
-        kgBrutoInput.value = (neto + desc) > 0 ? (neto + desc).toFixed(2) : '';
-        kgDescInput.value = desc > 0 ? desc.toFixed(2) : '0';
+        kgBrutoInput.value = totalBruto > 0 ? totalBruto.toFixed(2) : '';
+        kgDescInput.value = totalDesc > 0 ? totalDesc.toFixed(2) : '0';
         materialRow.querySelector('.kg-bruto').textContent = kgBrutoInput.value || '0.00';
         materialRow.querySelector('.kg-desc').textContent = kgDescInput.value || '0.00';
-        materialRow.querySelector('.kg-neto').textContent = neto > 0 ? neto.toFixed(2) : '0.00';
-        materialRow.querySelector('.total-material').textContent = '-';
+        materialRow.querySelector('.kg-neto').textContent = totalNeto > 0 ? totalNeto.toFixed(2) : '0.00';
+        // precio por material
+        const tipoOp = document.getElementById('tipo_operacion').value;
+        const tipoCli = materialRow.querySelector('select[name=\"tipo_cliente\"]').value || 'regular';
+        const matId = parseInt(materialRow.querySelector('select[name=\"material_id\"]').value || '0');
+        let subtotalText = '-';
+        if (PRICE_MAP[matId] && PRICE_MAP[matId][tipoOp]) {
+            const priceMap = PRICE_MAP[matId][tipoOp];
+            const price = priceMap[tipoCli] ?? priceMap['regular'];
+            if (price !== undefined && price !== null) {
+                const subtotal = totalNeto * parseFloat(price);
+                subtotalText = `$${subtotal.toFixed(2)}`;
+            }
+        }
+        materialRow.querySelector('.total-material').textContent = subtotalText;
         updateSteps();
     }
     function addPesaje(btn) {
         const materialRow = btn.closest('.material-row');
         const wrapper = materialRow.querySelector('.subpesajes-wrapper');
         const group = document.createElement('div');
-        group.className = 'input-group';
+        group.className = 'input-group flex-wrap align-items-center subpesaje-group';
         group.innerHTML = `
-            <span class="input-group-text">kg neto</span>
+            <span class="input-group-text">Peso bruto</span>
             <input class="form-control subpesaje-input" type="number" step="0.01" min="0.01" placeholder="Ej. 150.25" oninput="updatePesajes(this)">
-            <span class="input-group-text">desc kg</span>
+            <span class="input-group-text">Desc. kg</span>
             <input class="form-control subpesaje-desc" type="number" step="0.01" min="0" placeholder="0.00" oninput="updatePesajes(this)">
-            <span class="input-group-text">evidencia</span>
-            <input class="form-control subpesaje-evid" type="text" placeholder="URL foto" oninput="updatePesajes(this)">
+            <span class="input-group-text bg-light">Neto</span>
+            <span class="input-group-text subpesaje-neto">0.00</span>
+            <input class="subpesaje-evid d-none" type="file" accept="image/*" onchange="updatePesajes(this)">
+            <button type="button" class="evidence-btn" onclick="triggerEvidence(this)" title="Tomar/seleccionar foto">
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                    <path d="M9 4.5 7.8 6H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-2.8L15 4.5H9Zm3 10.75a3.25 3.25 0 1 1 0-6.5 3.25 3.25 0 0 1 0 6.5Z" fill="currentColor"/>
+                </svg>
+            </button>
+            <span class="input-group-text bg-light evid-label">Sin foto</span>
             <button type="button" class="btn btn-outline-danger" onclick="removePesaje(this)">Eliminar</button>
         `;
         wrapper.appendChild(group);
@@ -325,15 +378,32 @@
 
         // Resumen general
         const rows = document.querySelectorAll('#materiales-wrapper .material-row');
-        let totBruto = 0, totDesc = 0, totNeto = 0;
+        let totBruto = 0, totDesc = 0, totNeto = 0, totMonto = 0;
+        let tienePrecio = false;
+        const tipoOp = document.getElementById('tipo_operacion').value;
         rows.forEach(row => {
-            totBruto += parseFloat(row.querySelector('input[name="kg_bruto"]').value || '0');
-            totDesc += parseFloat(row.querySelector('input[name="kg_descuento"]').value || '0');
-            totNeto += parseFloat(row.querySelector('.kg-neto').textContent || '0');
+            const kgBr = parseFloat(row.querySelector('input[name="kg_bruto"]').value || '0');
+            const kgDe = parseFloat(row.querySelector('input[name="kg_descuento"]').value || '0');
+            const kgNe = parseFloat(row.querySelector('.kg-neto').textContent || '0');
+            totBruto += kgBr;
+            totDesc += kgDe;
+            totNeto += kgNe;
+
+            const matId = parseInt(row.querySelector('select[name="material_id"]').value || '0');
+            const tipoCli = row.querySelector('select[name="tipo_cliente"]').value || 'regular';
+            if (PRICE_MAP[matId] && PRICE_MAP[matId][tipoOp]) {
+                const priceMap = PRICE_MAP[matId][tipoOp];
+                const price = priceMap[tipoCli] ?? priceMap['regular'];
+                if (price !== undefined && price !== null) {
+                    totMonto += kgNe * parseFloat(price);
+                    tienePrecio = true;
+                }
+            }
         });
         document.getElementById('nota-kg-bruto').textContent = totBruto.toFixed(2);
         document.getElementById('nota-kg-desc').textContent = totDesc.toFixed(2);
         document.getElementById('nota-kg-neto').textContent = totNeto.toFixed(2);
+        document.getElementById('nota-total').textContent = tienePrecio ? `$${totMonto.toFixed(2)}` : '-';
 
         const submitBtn = document.getElementById('submitBtn');
         submitBtn.disabled = !step2Valid;

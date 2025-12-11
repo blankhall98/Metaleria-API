@@ -17,6 +17,8 @@ from app.models import (
     Nota,
     NotaEstado,
     TipoOperacion,
+    TablaPrecio,
+    TipoCliente,
 )
 from app.services import note_service
 
@@ -31,6 +33,22 @@ def require_worker(request: Request) -> dict:
     if not user or user.get("rol") != "trabajador":
         raise HTTPException(status_code=403, detail="Solo trabajadores pueden acceder a esta sección.")
     return user
+
+
+def _get_price_map(db: Session) -> dict:
+    """
+    Retorna mapping {material_id: {tipo_operacion: {tipo_cliente: precio}}}
+    solo con precios activos.
+    """
+    mapping: dict = {}
+    precios = (
+        db.query(TablaPrecio)
+        .filter(TablaPrecio.activo.is_(True))
+        .all()
+    )
+    for p in precios:
+        mapping.setdefault(p.material_id, {}).setdefault(p.tipo_operacion.value, {})[p.tipo_cliente.value] = float(p.precio_por_unidad)
+    return mapping
 
 
 @router.get("/notes")
@@ -66,6 +84,8 @@ async def notes_new_get(
     materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
     proveedores = db.query(Proveedor).filter(Proveedor.activo.is_(True)).order_by(Proveedor.nombre_completo).all()
     clientes = db.query(Cliente).filter(Cliente.activo.is_(True)).order_by(Cliente.nombre_completo).all()
+    price_map = _get_price_map(db)
+    price_map = _get_price_map(db)
     return templates.TemplateResponse(
         "worker/notes_form.html",
         {
@@ -76,6 +96,7 @@ async def notes_new_get(
             "proveedores": proveedores,
             "clientes": clientes,
             "error": None,
+            "price_map": price_map,
         },
     )
 
@@ -103,19 +124,21 @@ def _parse_materials_from_form(
             except json.JSONDecodeError:
                 raise ValueError("Formato de subpesajes inválido.")
             for item in sub_json:
-                peso = Decimal(str(item.get("peso_kg") or item.get("peso_neto") or 0))
+                peso_bruto = Decimal(str(item.get("peso_kg") or item.get("peso_bruto") or 0))
                 desc = Decimal(str(item.get("descuento_kg", 0)))
-                if peso <= 0:
+                if peso_bruto <= 0:
                     continue
                 sub_list.append(
                     {
-                        "peso_kg": peso,
+                        "peso_kg": peso_bruto,
                         "descuento_kg": desc,
                         "foto_url": item.get("foto_url"),
                     }
                 )
-            kg_bruto = sum(s["peso_kg"] + s["descuento_kg"] for s in sub_list)
+            kg_bruto = sum(s["peso_kg"] for s in sub_list)
             kg_desc = sum(s["descuento_kg"] for s in sub_list)
+            if kg_desc > kg_bruto:
+                raise ValueError("El descuento no puede ser mayor que el peso bruto.")
         else:
             if kg_desc > kg_bruto:
                 raise ValueError("El descuento no puede ser mayor que el peso bruto.")
@@ -159,13 +182,14 @@ async def notes_new_post(
                 "request": request,
                 "env": settings.ENV,
                 "user": current_user,
-                "materiales": materiales,
-                "proveedores": proveedores,
-                "clientes": clientes,
-                "error": "Tipo de operación inválido.",
-            },
-            status_code=400,
-        )
+            "materiales": materiales,
+            "proveedores": proveedores,
+            "clientes": clientes,
+            "error": "Tipo de operación inválido.",
+            "price_map": price_map,
+        },
+        status_code=400,
+    )
 
     try:
         materiales_payload = _parse_materials_from_form(material_id, kg_bruto, kg_descuento, subpesajes, tipo_cliente)
@@ -176,13 +200,14 @@ async def notes_new_post(
                 "request": request,
                 "env": settings.ENV,
                 "user": current_user,
-                "materiales": materiales,
-                "proveedores": proveedores,
-                "clientes": clientes,
-                "error": str(e),
-            },
-            status_code=400,
-        )
+            "materiales": materiales,
+            "proveedores": proveedores,
+            "clientes": clientes,
+            "error": str(e),
+            "price_map": price_map,
+        },
+        status_code=400,
+    )
 
     if not materiales_payload:
         return templates.TemplateResponse(
@@ -191,13 +216,14 @@ async def notes_new_post(
                 "request": request,
                 "env": settings.ENV,
                 "user": current_user,
-                "materiales": materiales,
-                "proveedores": proveedores,
-                "clientes": clientes,
-                "error": "Debes agregar al menos un material con peso.",
-            },
-            status_code=400,
-        )
+            "materiales": materiales,
+            "proveedores": proveedores,
+            "clientes": clientes,
+            "error": "Debes agregar al menos un material con peso.",
+            "price_map": price_map,
+        },
+        status_code=400,
+    )
 
     if tipo_op == TipoOperacion.compra and not proveedor_id:
         return templates.TemplateResponse(

@@ -91,7 +91,13 @@
                     {% endif %}
 
                     {% if user.rol in ['super_admin', 'admin'] %}
-                        <a href="/web/admin/notas" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
+                        <a href="/web/admin/notas" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1 position-relative">
+                            {% set badge_count = (notas_revision_count if notas_revision_count is defined else request.state.notas_revision_count) or 0 %}
+                            {% if badge_count > 0 %}
+                                <span class="position-absolute top-0 end-0 translate-middle badge rounded-pill bg-danger">
+                                    {{ badge_count }}
+                                </span>
+                            {% endif %}
                             <div class="d-flex align-items-center justify-content-between">
                                 <div class="action-icon">📝</div>
                                 <span class="action-arrow">→</span>
@@ -129,6 +135,26 @@
                             <div>
                                 <h3 class="h6 mb-1 text-white">Clientes</h3>
                                 <p class="text-muted mb-0">Clientes, placas y datos de contacto.</p>
+                            </div>
+                        </a>
+                        <a href="/web/admin/inventario" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div class="action-icon">📦</div>
+                                <span class="action-arrow">→</span>
+                            </div>
+                            <div>
+                                <h3 class="h6 mb-1 text-white">Inventario</h3>
+                                <p class="text-muted mb-0">Stock por sucursal y movimientos automáticos.</p>
+                            </div>
+                        </a>
+                        <a href="/web/admin/contabilidad" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div class="action-icon">💼</div>
+                                <span class="action-arrow">→</span>
+                            </div>
+                            <div>
+                                <h3 class="h6 mb-1 text-white">Log contable</h3>
+                                <p class="text-muted mb-0">Movimientos por compra/venta y ajustes.</p>
                             </div>
                         </a>
                     {% endif %}

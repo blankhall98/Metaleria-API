@@ -61,7 +61,7 @@
                         <td>{{ sucursales[n.sucursal_id].nombre if n.sucursal_id else '-' }}</td>
                         <td>{{ "%.2f"|format(n.total_kg_neto or 0) }} kg</td>
                         <td>${{ "%.2f"|format(n.total_monto or 0) }}</td>
-                        <td>{{ n.created_at }}</td>
+                        <td>{{ n.created_at.strftime("%Y-%m-%d %H:%M") if n.created_at else '-' }}</td>
                         <td class="text-end">
                             <a href="/web/admin/notas/{{ n.id }}" class="btn btn-sm btn-primary">Revisar</a>
                         </td>
@@ -120,7 +120,7 @@
                         <td>{{ sucursales[n.sucursal_id].nombre if n.sucursal_id else '-' }}</td>
                         <td>{{ "%.2f"|format(n.total_kg_neto or 0) }} kg</td>
                         <td>${{ "%.2f"|format(n.total_monto or 0) }}</td>
-                        <td>{{ n.created_at }}</td>
+                        <td>{{ n.created_at.strftime("%Y-%m-%d %H:%M") if n.created_at else '-' }}</td>
                         <td class="text-end">
                             <a href="/web/admin/notas/{{ n.id }}" class="btn btn-sm btn-outline-primary">Ver</a>
                         </td>

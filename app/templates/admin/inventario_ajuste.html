@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Actualizar Stock{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="text-uppercase text-muted small mb-1">Inventario</p>
+        <h1 class="h4 text-white mb-0">Actualizar Stock</h1>
+    </div>
+</div>
+
+<div class="card hover-lift">
+    <div class="card-body">
+        {% if error %}
+            <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
+        {% endif %}
+        <form method="post" class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Sucursal</label>
+                {% if user.rol == 'super_admin' %}
+                    <select class="form-select" name="sucursal_id" required>
+                        {% for s in sucursales %}
+                            <option value="{{ s.id }}">{{ s.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                {% else %}
+                    {% set suc = sucursales|first %}
+                    <input type="hidden" name="sucursal_id" value="{{ suc.id }}">
+                    <div class="form-control-plaintext fw-semibold">{{ suc.nombre }}</div>
+                {% endif %}
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Material</label>
+                <select class="form-select" name="material_id" required>
+                    {% for m in materiales %}
+                        <option value="{{ m.id }}">{{ m.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Stock actual</label>
+                <div class="form-control-plaintext fw-semibold" id="stock_actual_display">--</div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Nuevo stock (kg)</label>
+                <input class="form-control" type="number" step="0.01" name="nuevo_stock" placeholder="Ingresa el stock objetivo">
+                <div class="form-text">Calcularemos el ajuste automáticamente a partir del stock actual.</div>
+            </div>
+            <div class="col-12">
+                <label class="form-label">Comentario</label>
+                <textarea class="form-control" name="comentario" rows="2" placeholder="Motivo del ajuste (obligatorio para trazabilidad)"></textarea>
+            </div>
+            <div class="col-12 d-grid d-md-flex gap-2">
+                <button class="btn btn-primary">Actualizar stock</button>
+                <a class="btn btn-outline-secondary" href="/web/admin/inventario">Volver</a>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+    const invMap = {{ inv_map|default({})|tojson }};
+    const sucursalSelect = document.querySelector('select[name="sucursal_id"]');
+    const materialSelect = document.querySelector('select[name="material_id"]');
+    const stockDisplay = document.getElementById('stock_actual_display');
+    function updateStock() {
+        const sId = sucursalSelect ? parseInt(sucursalSelect.value || '0', 10) : 0;
+        const mId = materialSelect ? parseInt(materialSelect.value || '0', 10) : 0;
+        const stock = (invMap[String(sId)] && invMap[String(sId)][String(mId)]) || (invMap[sId] && invMap[sId][mId]) || 0;
+        if (stockDisplay) {
+            stockDisplay.textContent = `${parseFloat(stock).toFixed(2)} kg`;
+        }
+    }
+    if (sucursalSelect) sucursalSelect.addEventListener('change', updateStock);
+    if (materialSelect) materialSelect.addEventListener('change', updateStock);
+    updateStock();
+</script>
+{% endblock %}
