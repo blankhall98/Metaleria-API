@@ -186,6 +186,31 @@ label {
     background: linear-gradient(135deg, #fbbf24, #d97706);
 }
 
+.placa-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.65rem;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #e2e8f0, #f8fafc);
+    color: #0f172a;
+    border: 1px solid #cbd5e1;
+    font-weight: 600;
+    letter-spacing: 0.25px;
+}
+.placa-chip .chip-remove {
+    border: none;
+    background: #0f172a;
+    color: #fff;
+    border-radius: 8px;
+    padding: 0 0.35rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+.placa-chip .chip-remove:hover {
+    background: #020617;
+}
+
 .muted {
     color: var(--text-muted);
 }

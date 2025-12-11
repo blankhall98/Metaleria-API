@@ -21,21 +21,44 @@
                 <thead>
                 <tr>
                     <th>ID</th>
+                    <th>Logo</th>
                     <th>Nombre</th>
                     <th>Dirección</th>
+                    <th>Admins</th>
                     <th>Estado</th>
+                    <th></th>
                 </tr>
                 </thead>
                 <tbody>
                 {% for s in sucursales %}
                     <tr>
                         <td>{{ s.id }}</td>
+                        <td style="width:60px;">
+                            {% if s.logo_url %}
+                                <img src="{{ s.logo_url }}" alt="{{ s.nombre }}" class="rounded border" style="height:32px; width:auto;">
+                            {% else %}
+                                <span class="text-muted small">-</span>
+                            {% endif %}
+                        </td>
                         <td>{{ s.nombre }}</td>
                         <td>{{ s.direccion or "-" }}</td>
+                        <td>
+                            {% set admins = s.usuarios|selectattr('rol.value','equalto','admin')|list %}
+                            {% if admins|length == 0 %}
+                                <span class="text-muted small">Sin admins</span>
+                            {% else %}
+                                {% for a in admins %}
+                                    <span class="badge bg-secondary me-1">{{ a.nombre_completo }}</span>
+                                {% endfor %}
+                            {% endif %}
+                        </td>
                         <td>
                             <span class="badge {{ 'bg-success' if s.estado.value == 'activa' else 'bg-secondary' }}">
                                 {{ s.estado.value|capitalize }}
                             </span>
+                        </td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-outline-primary" href="/web/admin/sucursales/{{ s.id }}/editar">Administrar</a>
                         </td>
                     </tr>
                 {% endfor %}

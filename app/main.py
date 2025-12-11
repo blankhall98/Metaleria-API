@@ -58,7 +58,7 @@ def create_app() -> FastAPI:
     # Root JSON
     @app.get("/")
     async def root():
-        return {"message": f"{settings.PROJECT_NAME} API running", "env": settings.ENV}
+        return RedirectResponse(url="/web", status_code=307)
 
     # Home web
     @app.get("/web")

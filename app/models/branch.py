@@ -23,5 +23,6 @@ class Sucursal(Base):
         nullable=False,
         default=SucursalStatus.activa,
     )
+    logo_url = Column(String(255), nullable=True)
 
     usuarios = relationship("User", back_populates="sucursal")

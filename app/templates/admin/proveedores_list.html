@@ -50,7 +50,16 @@
                         <td>{{ p.nombre_completo }}</td>
                         <td>{{ p.telefono or "-" }}</td>
                         <td>{{ p.correo_electronico or "-" }}</td>
-                        <td>{{ p.placas or "-" }}</td>
+                        <td>
+                            {% set lista = p.placas_rel if p.placas_rel else [] %}
+                            {% if lista|length == 0 %}
+                                <span class="text-muted small">{{ p.placas or '-' }}</span>
+                            {% else %}
+                                {% for pl in lista %}
+                                    <span class="badge bg-secondary me-1">{{ pl.placa }}</span>
+                                {% endfor %}
+                            {% endif %}
+                        </td>
                         <td>
                             <span class="badge {{ 'bg-success' if p.activo else 'bg-secondary' }}">
                                 {{ 'Sí' if p.activo else 'No' }}

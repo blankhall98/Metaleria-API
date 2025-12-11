@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}Nueva sucursal · Admin{% endblock %}
+{% block title %}{{ 'Editar sucursal' if sucursal else 'Nueva sucursal' }} · Admin{% endblock %}
 
 {% block content %}
 <div class="page-header">
     <div>
         <p class="text-uppercase text-muted small mb-1">Administración</p>
-        <h1 class="h4 text-white mb-0">Nueva sucursal</h1>
+        <h1 class="h4 text-white mb-0">{{ 'Editar sucursal' if sucursal else 'Nueva sucursal' }}</h1>
     </div>
     <a href="/web/admin/sucursales" class="btn btn-outline-secondary btn-sm">Volver</a>
 </div>
@@ -19,15 +19,32 @@
 
 <div class="card hover-lift">
     <div class="card-body">
-        <form method="post" action="/web/admin/sucursales/nueva" class="d-grid gap-3">
+        <form method="post" enctype="multipart/form-data" action="{{ '/web/admin/sucursales/' ~ sucursal.id ~ '/editar' if sucursal else '/web/admin/sucursales/nueva' }}" class="d-grid gap-3">
             <div class="row g-3">
                 <div class="col-md-6">
                     <label class="form-label" for="nombre">Nombre</label>
-                    <input class="form-control" type="text" id="nombre" name="nombre" required>
+                    <input class="form-control" type="text" id="nombre" name="nombre" required value="{{ sucursal.nombre if sucursal else '' }}">
                 </div>
                 <div class="col-md-6">
                     <label class="form-label" for="direccion">Dirección (opcional)</label>
-                    <input class="form-control" type="text" id="direccion" name="direccion">
+                    <input class="form-control" type="text" id="direccion" name="direccion" value="{{ sucursal.direccion if sucursal else '' }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Logo (subir o URL)</label>
+                    <input class="form-control mb-2" type="file" accept="image/*" name="logo_file">
+                    <input class="form-control" type="url" name="logo_url" placeholder="https://..." value="{{ sucursal.logo_url if sucursal else '' }}">
+                    <div class="form-text">Sube una imagen desde tu dispositivo o pega un URL. Si subes archivo, se guardará automáticamente.</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Admins asignados</label>
+                    <select class="form-select" name="admin_ids" multiple size="5">
+                        {% for a in admins %}
+                            <option value="{{ a.id }}" {% if a.id in selected_admin_ids %}selected{% endif %}>
+                                {{ a.nombre_completo }} ({{ a.username }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">Selecciona uno o varios admins existentes para esta sucursal.</div>
                 </div>
             </div>
 
@@ -38,4 +55,45 @@
         </form>
     </div>
 </div>
+
+{% if sucursal %}
+<div class="card hover-lift mt-3">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h2 class="h6 text-white mb-0">Trabajadores asignados</h2>
+            {% if sucursal.logo_url %}
+                <img src="{{ sucursal.logo_url }}" alt="{{ sucursal.nombre }}" class="rounded border" style="height:40px; width:auto;">
+            {% endif %}
+        </div>
+        {% if trabajadores|length == 0 %}
+            <p class="text-muted small mb-0">No hay trabajadores asignados a esta sucursal.</p>
+        {% else %}
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Nombre</th>
+                        <th>Usuario</th>
+                        <th>Estado</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for t in trabajadores %}
+                        <tr>
+                            <td>{{ t.id }}</td>
+                            <td>{{ t.nombre_completo }}</td>
+                            <td>{{ t.username }}</td>
+                            <td>
+                                <span class="badge {{ 'bg-success' if t.estado.value == 'activo' else 'bg-secondary' }}">{{ t.estado.value|capitalize }}</span>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
 {% endblock %}

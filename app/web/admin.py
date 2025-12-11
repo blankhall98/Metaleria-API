@@ -1,11 +1,14 @@
 # app/web/admin.py
-from fastapi import APIRouter, Depends, HTTPException, Request, Form
+import os
+import uuid
+from fastapi import APIRouter, Depends, HTTPException, Request, Form, UploadFile, File
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
+from typing import List
 
 from app.core.config import get_settings
 from app.core.security import hash_password
@@ -21,7 +24,9 @@ from app.models import (
     TipoOperacion,
     TipoCliente,
     Proveedor,
+    ProveedorPlaca,
     Cliente,
+    ClientePlaca,
     Nota,
     NotaEstado,
     Inventario,
@@ -37,6 +42,66 @@ templates = Jinja2Templates(directory="app/templates")
 settings = get_settings()
 
 router = APIRouter(prefix="/web/admin", tags=["web-admin"])
+
+LOGOS_DIR = os.path.join("app", "static", "uploads", "logos")
+os.makedirs(LOGOS_DIR, exist_ok=True)
+
+def _save_logo(upload: UploadFile | None) -> str | None:
+    if not upload or not upload.filename:
+        return None
+    _, ext = os.path.splitext(upload.filename.lower())
+    if ext not in [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]:
+        ext = ".png"
+    filename = f"logo_{uuid.uuid4().hex}{ext}"
+    dest_path = os.path.join(LOGOS_DIR, filename)
+    data = upload.file.read()
+    with open(dest_path, "wb") as f:
+        f.write(data)
+    return f"/static/uploads/logos/{filename}"
+
+
+def _parse_placas(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    parts = []
+    for line in raw.replace(",", "\n").splitlines():
+        val = line.strip().upper()
+        if val:
+            parts.append(val)
+    # dedupe preserving order
+    seen = set()
+    unique = []
+    for p in parts:
+        if p not in seen:
+            unique.append(p)
+            seen.add(p)
+    return unique
+
+
+def _set_proveedor_placas(db: Session, proveedor: Proveedor, placas_list: list[str]):
+    proveedor.placas_rel.clear()
+    proveedor.placas = placas_list[0] if placas_list else None
+    for pl in placas_list:
+        proveedor.placas_rel.append(ProveedorPlaca(placa=pl))
+    db.add(proveedor)
+
+
+def _set_cliente_placas(db: Session, cliente: Cliente, placas_list: list[str]):
+    cliente.placas_rel.clear()
+    cliente.placas = placas_list[0] if placas_list else None
+    for pl in placas_list:
+        cliente.placas_rel.append(ClientePlaca(placa=pl))
+    db.add(cliente)
+
+
+def _placas_conflict(db: Session, placas_list: list[str], modelo, owner_field: str, owner_id: int | None = None) -> str | None:
+    if not placas_list:
+        return None
+    existing = db.query(modelo).filter(modelo.placa.in_(placas_list)).all()
+    for ex in existing:
+        if owner_id is None or getattr(ex, owner_field) != owner_id:
+            return f"La placa {ex.placa} ya está asignada."
+    return None
 
 
 def require_superadmin(request: Request) -> dict:
@@ -77,8 +142,10 @@ async def sucursales_list(
 @router.get("/sucursales/nueva")
 async def sucursal_new_get(
     request: Request,
+    db: Session = Depends(get_db),
     current_user: dict = Depends(require_superadmin),
 ):
+    admins = db.query(User).filter(User.rol == UserRole.admin).order_by(User.nombre_completo).all()
     return templates.TemplateResponse(
         "admin/sucursal_form.html",
         {
@@ -86,6 +153,10 @@ async def sucursal_new_get(
             "env": settings.ENV,
             "user": current_user,
             "error": None,
+            "sucursal": None,
+            "admins": admins,
+            "selected_admin_ids": [],
+            "trabajadores": [],
         },
     )
 
@@ -95,11 +166,16 @@ async def sucursal_new_post(
     request: Request,
     nombre: str = Form(...),
     direccion: str = Form(""),
+    logo_url: str = Form(""),
+    logo_file: UploadFile | None = File(None),
+    admin_ids: List[str] = Form([]),
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_superadmin),
 ):
     nombre = nombre.strip()
     direccion = direccion.strip()
+    logo_url = logo_url.strip()
+    admins = db.query(User).filter(User.rol == UserRole.admin).order_by(User.nombre_completo).all()
 
     if not nombre:
         return templates.TemplateResponse(
@@ -109,6 +185,10 @@ async def sucursal_new_post(
                 "env": settings.ENV,
                 "user": current_user,
                 "error": "El nombre de la sucursal es obligatorio.",
+                "sucursal": None,
+                "admins": admins,
+                "selected_admin_ids": [int(aid) for aid in admin_ids if aid],
+                "trabajadores": [],
             },
             status_code=400,
         )
@@ -122,6 +202,10 @@ async def sucursal_new_post(
                 "env": settings.ENV,
                 "user": current_user,
                 "error": "Ya existe una sucursal con ese nombre.",
+                "sucursal": None,
+                "admins": admins,
+                "selected_admin_ids": [int(aid) for aid in admin_ids if aid],
+                "trabajadores": [],
             },
             status_code=400,
         )
@@ -130,10 +214,134 @@ async def sucursal_new_post(
         nombre=nombre,
         direccion=direccion or None,
         estado=SucursalStatus.activa,
+        logo_url=logo_url or None,
     )
     db.add(sucursal)
     db.commit()
+    db.refresh(sucursal)
 
+    saved_logo = _save_logo(logo_file)
+    if saved_logo:
+        sucursal.logo_url = saved_logo
+        db.add(sucursal)
+        db.commit()
+
+    selected_ids = {int(aid) for aid in admin_ids if aid}
+    if selected_ids:
+        for admin in admins:
+            if admin.id in selected_ids:
+                admin.sucursal_id = sucursal.id
+                db.add(admin)
+    db.commit()
+
+    return RedirectResponse(url="/web/admin/sucursales", status_code=303)
+
+
+@router.get("/sucursales/{sucursal_id}/editar")
+async def sucursal_edit_get(
+    sucursal_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    sucursal = db.query(Sucursal).get(sucursal_id)
+    if not sucursal:
+        raise HTTPException(status_code=404, detail="Sucursal no encontrada.")
+    admins = db.query(User).filter(User.rol == UserRole.admin).order_by(User.nombre_completo).all()
+    selected_admin_ids = [adm.id for adm in admins if adm.sucursal_id == sucursal.id]
+    trabajadores = (
+        db.query(User)
+        .filter(User.rol == UserRole.trabajador, User.sucursal_id == sucursal.id)
+        .order_by(User.nombre_completo)
+        .all()
+    )
+    return templates.TemplateResponse(
+        "admin/sucursal_form.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "error": None,
+            "sucursal": sucursal,
+            "admins": admins,
+            "selected_admin_ids": selected_admin_ids,
+            "trabajadores": trabajadores,
+        },
+    )
+
+
+@router.post("/sucursales/{sucursal_id}/editar")
+async def sucursal_edit_post(
+    sucursal_id: int,
+    request: Request,
+    nombre: str = Form(...),
+    direccion: str = Form(""),
+    logo_url: str = Form(""),
+    logo_file: UploadFile | None = File(None),
+    admin_ids: List[str] = Form([]),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    sucursal = db.query(Sucursal).get(sucursal_id)
+    if not sucursal:
+        raise HTTPException(status_code=404, detail="Sucursal no encontrada.")
+    admins = db.query(User).filter(User.rol == UserRole.admin).order_by(User.nombre_completo).all()
+    trabajadores = (
+        db.query(User)
+        .filter(User.rol == UserRole.trabajador, User.sucursal_id == sucursal.id)
+        .order_by(User.nombre_completo)
+        .all()
+    )
+    nombre = nombre.strip()
+    direccion = direccion.strip()
+    logo_url = logo_url.strip()
+    selected_admin_ids = [int(aid) for aid in admin_ids if aid]
+
+    def render_error(msg: str):
+        return templates.TemplateResponse(
+            "admin/sucursal_form.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "error": msg,
+                "sucursal": sucursal,
+                "admins": admins,
+                "selected_admin_ids": selected_admin_ids,
+                "trabajadores": trabajadores,
+            },
+            status_code=400,
+        )
+
+    if not nombre:
+        return render_error("El nombre de la sucursal es obligatorio.")
+
+    existing = (
+        db.query(Sucursal)
+        .filter(Sucursal.nombre == nombre, Sucursal.id != sucursal.id)
+        .first()
+    )
+    if existing:
+        return render_error("Ya existe otra sucursal con ese nombre.")
+
+    sucursal.nombre = nombre
+    sucursal.direccion = direccion or None
+    new_logo = _save_logo(logo_file)
+    if new_logo:
+        sucursal.logo_url = new_logo
+    elif logo_url:
+        sucursal.logo_url = logo_url
+    db.add(sucursal)
+
+    selected_ids_set = set(selected_admin_ids)
+    for adm in admins:
+        if adm.id in selected_ids_set:
+            adm.sucursal_id = sucursal.id
+        elif adm.sucursal_id == sucursal.id:
+            adm.sucursal_id = None
+        db.add(adm)
+
+    db.commit()
     return RedirectResponse(url="/web/admin/sucursales", status_code=303)
 
 
@@ -638,6 +846,7 @@ async def proveedor_new_get(
             "user": current_user,
             "proveedor": None,
             "error": None,
+            "placas_text": "",
         },
     )
 
@@ -655,7 +864,7 @@ async def proveedor_new_post(
     nombre_completo = nombre_completo.strip()
     telefono = telefono.strip()
     correo_electronico = correo_electronico.strip()
-    placas = placas.strip()
+    placas_list = _parse_placas(placas)
 
     if not nombre_completo:
         return templates.TemplateResponse(
@@ -666,33 +875,37 @@ async def proveedor_new_post(
                 "user": current_user,
                 "proveedor": None,
                 "error": "El nombre del proveedor es obligatorio.",
+                "placas_text": placas,
             },
             status_code=400,
         )
 
-    if placas:
-        existing = db.query(Proveedor).filter(Proveedor.placas == placas).first()
-        if existing:
-            return templates.TemplateResponse(
-                "admin/proveedor_form.html",
-                {
-                    "request": request,
-                    "env": settings.ENV,
-                    "user": current_user,
-                    "proveedor": None,
-                    "error": "Ya existe un proveedor con esas placas.",
-                },
-                status_code=400,
-            )
+    conflict = _placas_conflict(db, placas_list, ProveedorPlaca, "proveedor_id", None)
+    if conflict:
+        return templates.TemplateResponse(
+            "admin/proveedor_form.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "proveedor": None,
+                "error": conflict,
+                "placas_text": placas,
+            },
+            status_code=400,
+        )
 
     proveedor = Proveedor(
         nombre_completo=nombre_completo,
         telefono=telefono or None,
         correo_electronico=correo_electronico or None,
-        placas=placas or None,
+        placas=placas_list[0] if placas_list else None,
         activo=True,
     )
     db.add(proveedor)
+    db.commit()
+    db.refresh(proveedor)
+    _set_proveedor_placas(db, proveedor, placas_list)
     db.commit()
 
     return RedirectResponse(url="/web/admin/proveedores", status_code=303)
@@ -717,6 +930,7 @@ async def proveedor_edit_get(
             "user": current_user,
             "proveedor": proveedor,
             "error": None,
+            "placas_text": "\n".join([pl.placa for pl in proveedor.placas_rel]) if proveedor.placas_rel else (proveedor.placas or ""),
         },
     )
 
@@ -740,7 +954,7 @@ async def proveedor_edit_post(
     nombre_completo = nombre_completo.strip()
     telefono = telefono.strip()
     correo_electronico = correo_electronico.strip()
-    placas = placas.strip()
+    placas_list = _parse_placas(placas)
 
     if not nombre_completo:
         return templates.TemplateResponse(
@@ -751,36 +965,33 @@ async def proveedor_edit_post(
                 "user": current_user,
                 "proveedor": proveedor,
                 "error": "El nombre del proveedor es obligatorio.",
+                "placas_text": placas,
             },
             status_code=400,
         )
 
-    if placas:
-        existing = (
-            db.query(Proveedor)
-            .filter(Proveedor.placas == placas, Proveedor.id != proveedor.id)
-            .first()
+    conflict = _placas_conflict(db, placas_list, ProveedorPlaca, "proveedor_id", proveedor.id)
+    if conflict:
+        return templates.TemplateResponse(
+            "admin/proveedor_form.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "proveedor": proveedor,
+                "error": conflict,
+                "placas_text": placas,
+            },
+            status_code=400,
         )
-        if existing:
-            return templates.TemplateResponse(
-                "admin/proveedor_form.html",
-                {
-                    "request": request,
-                    "env": settings.ENV,
-                    "user": current_user,
-                    "proveedor": proveedor,
-                    "error": "Ya existe otro proveedor con esas placas.",
-                },
-                status_code=400,
-            )
 
     proveedor.nombre_completo = nombre_completo
     proveedor.telefono = telefono or None
     proveedor.correo_electronico = correo_electronico or None
-    proveedor.placas = placas or None
+    proveedor.placas = placas_list[0] if placas_list else None
     proveedor.activo = bool(activo)
 
-    db.add(proveedor)
+    _set_proveedor_placas(db, proveedor, placas_list)
     db.commit()
 
     return RedirectResponse(url="/web/admin/proveedores", status_code=303)
@@ -835,6 +1046,7 @@ async def cliente_new_get(
             "user": current_user,
             "cliente": None,
             "error": None,
+            "placas_text": "",
         },
     )
 
@@ -852,7 +1064,7 @@ async def cliente_new_post(
     nombre_completo = nombre_completo.strip()
     telefono = telefono.strip()
     correo_electronico = correo_electronico.strip()
-    placas = placas.strip()
+    placas_list = _parse_placas(placas)
 
     if not nombre_completo:
         return templates.TemplateResponse(
@@ -863,33 +1075,37 @@ async def cliente_new_post(
                 "user": current_user,
                 "cliente": None,
                 "error": "El nombre del cliente es obligatorio.",
+                "placas_text": placas,
             },
             status_code=400,
         )
 
-    if placas:
-        existing = db.query(Cliente).filter(Cliente.placas == placas).first()
-        if existing:
-            return templates.TemplateResponse(
-                "admin/cliente_form.html",
-                {
-                    "request": request,
-                    "env": settings.ENV,
-                    "user": current_user,
-                    "cliente": None,
-                    "error": "Ya existe un cliente con esas placas.",
-                },
-                status_code=400,
-            )
+    conflict = _placas_conflict(db, placas_list, ClientePlaca, "cliente_id", None)
+    if conflict:
+        return templates.TemplateResponse(
+            "admin/cliente_form.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "cliente": None,
+                "error": conflict,
+                "placas_text": placas,
+            },
+            status_code=400,
+        )
 
     cliente = Cliente(
         nombre_completo=nombre_completo,
         telefono=telefono or None,
         correo_electronico=correo_electronico or None,
-        placas=placas or None,
+        placas=placas_list[0] if placas_list else None,
         activo=True,
     )
     db.add(cliente)
+    db.commit()
+    db.refresh(cliente)
+    _set_cliente_placas(db, cliente, placas_list)
     db.commit()
 
     return RedirectResponse(url="/web/admin/clientes", status_code=303)
@@ -914,6 +1130,7 @@ async def cliente_edit_get(
             "user": current_user,
             "cliente": cliente,
             "error": None,
+            "placas_text": "\n".join([pl.placa for pl in cliente.placas_rel]) if cliente.placas_rel else (cliente.placas or ""),
         },
     )
 
@@ -937,7 +1154,7 @@ async def cliente_edit_post(
     nombre_completo = nombre_completo.strip()
     telefono = telefono.strip()
     correo_electronico = correo_electronico.strip()
-    placas = placas.strip()
+    placas_list = _parse_placas(placas)
 
     if not nombre_completo:
         return templates.TemplateResponse(
@@ -948,36 +1165,33 @@ async def cliente_edit_post(
                 "user": current_user,
                 "cliente": cliente,
                 "error": "El nombre del cliente es obligatorio.",
+                "placas_text": placas,
             },
             status_code=400,
         )
 
-    if placas:
-        existing = (
-            db.query(Cliente)
-            .filter(Cliente.placas == placas, Cliente.id != cliente.id)
-            .first()
+    conflict = _placas_conflict(db, placas_list, ClientePlaca, "cliente_id", cliente.id)
+    if conflict:
+        return templates.TemplateResponse(
+            "admin/cliente_form.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "cliente": cliente,
+                "error": conflict,
+                "placas_text": placas,
+            },
+            status_code=400,
         )
-        if existing:
-            return templates.TemplateResponse(
-                "admin/cliente_form.html",
-                {
-                    "request": request,
-                    "env": settings.ENV,
-                    "user": current_user,
-                    "cliente": cliente,
-                    "error": "Ya existe otro cliente con esas placas.",
-                },
-                status_code=400,
-            )
 
     cliente.nombre_completo = nombre_completo
     cliente.telefono = telefono or None
     cliente.correo_electronico = correo_electronico or None
-    cliente.placas = placas or None
+    cliente.placas = placas_list[0] if placas_list else None
     cliente.activo = bool(activo)
 
-    db.add(cliente)
+    _set_cliente_placas(db, cliente, placas_list)
     db.commit()
 
     return RedirectResponse(url="/web/admin/clientes", status_code=303)

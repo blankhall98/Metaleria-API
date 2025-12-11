@@ -66,17 +66,14 @@
                 </div>
 
                 <div class="col-md-6">
-                    <label class="form-label" for="placas">Placas (opcional)</label>
-                    <input
-                        class="form-control"
-                        type="text"
-                        id="placas"
-                        name="placas"
-                        value="{{ proveedor.placas if proveedor and proveedor.placas else '' }}"
-                    >
-                    <div class="form-text">
-                        Se usan para identificar el vehículo asociado. Deben ser únicas.
+                    <label class="form-label">Placas</label>
+                    <div class="input-group">
+                        <input class="form-control" type="text" id="placa_input" placeholder="ABC123" aria-label="Placa">
+                        <button class="btn btn-outline-primary" type="button" id="add_placa_btn">Agregar nueva placa</button>
                     </div>
+                    <input type="hidden" name="placas" id="placas_field" value="{{ placas_text if placas_text is defined else (proveedor.placas if proveedor and proveedor.placas else '') }}">
+                    <div id="placas_tags" class="d-flex flex-wrap gap-2 mt-2"></div>
+                    <div class="form-text">Puedes agregar varias placas. Haz clic en la “x” para eliminar.</div>
                 </div>
             </div>
 
@@ -104,4 +101,61 @@
         </form>
     </div>
 </div>
+<script>
+    (function() {
+        const input = document.getElementById('placa_input');
+        const hidden = document.getElementById('placas_field');
+        const container = document.getElementById('placas_tags');
+        const btn = document.getElementById('add_placa_btn');
+
+        let placas = [];
+        function render() {
+            container.innerHTML = '';
+            placas.forEach((pl, idx) => {
+                const pill = document.createElement('span');
+                pill.className = 'placa-chip';
+                const label = document.createElement('span');
+                label.textContent = pl;
+                const close = document.createElement('button');
+                close.type = 'button';
+                close.className = 'chip-remove';
+                close.textContent = '×';
+                close.onclick = () => {
+                    placas.splice(idx, 1);
+                    syncHidden();
+                    render();
+                };
+                pill.appendChild(label);
+                pill.appendChild(close);
+                container.appendChild(pill);
+            });
+            syncHidden();
+        }
+        function syncHidden() {
+            hidden.value = placas.join('\n');
+        }
+        function addPlaca() {
+            const val = (input.value || '').trim().toUpperCase();
+            if (!val) return;
+            if (!placas.includes(val)) {
+                placas.push(val);
+                render();
+            }
+            input.value = '';
+            input.focus();
+        }
+        if (btn) btn.addEventListener('click', addPlaca);
+        if (input) {
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addPlaca();
+                }
+            });
+        }
+        const initial = (hidden.value || '').split(/\r?\n/).map(v => v.trim().toUpperCase()).filter(Boolean);
+        placas = Array.from(new Set(initial));
+        render();
+    })();
+</script>
 {% endblock %}
