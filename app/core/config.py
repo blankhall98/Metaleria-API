@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     FIREBASE_CREDENTIALS_FILE: str = "secrets/metaleria-api-z2h-firebase-adminsdk-fbsvc-18da50717b.json"
     FIREBASE_MAX_MB: int = 8
 
+    # Notas: alerta de vencimiento (dias)
+    NOTA_VENCIMIENTO_ALERTA_DIAS: int = 5
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

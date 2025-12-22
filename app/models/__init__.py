@@ -4,7 +4,7 @@ from .branch import Sucursal, SucursalStatus
 from .material import Material
 from .pricing import TablaPrecio, TipoOperacion, TipoCliente, PriceChangeLog
 from .partner import Proveedor, Cliente, ProveedorPlaca, ClientePlaca
-from .note import Nota, NotaEstado, NotaMaterial, Subpesaje, NotaOriginal
+from .note import Nota, NotaEstado, NotaMaterial, Subpesaje, NotaOriginal, NotaPago
 from .inventory import Inventario, InventarioMovimiento, MovimientoContable
 
 __all__ = [
@@ -27,6 +27,7 @@ __all__ = [
     "NotaMaterial",
     "Subpesaje",
     "NotaOriginal",
+    "NotaPago",
     "Inventario",
     "InventarioMovimiento",
     "MovimientoContable",

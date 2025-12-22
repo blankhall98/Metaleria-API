@@ -20,6 +20,9 @@
         {% if error %}
             <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
         {% endif %}
+        {% if precios_updated %}
+            <div class="alert alert-success py-2 small mb-3">Precios actualizados.</div>
+        {% endif %}
         <div class="note-meta-grid">
             <div class="note-meta-item">
                 <span class="note-meta-label">Estado</span>
@@ -66,6 +69,18 @@
                 <span class="note-meta-label">Total</span>
                 <strong>${{ "%.2f"|format(nota.total_monto or 0) }}</strong>
             </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Monto pagado</span>
+                <strong>${{ "%.2f"|format(nota.monto_pagado or 0) }}</strong>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Saldo pendiente</span>
+                {% if saldo_pendiente > 0 %}
+                    <strong class="text-danger">${{ "%.2f"|format(saldo_pendiente) }}</strong>
+                {% else %}
+                    <strong class="text-success">$0.00</strong>
+                {% endif %}
+            </div>
         </div>
     </div>
 </div>
@@ -96,9 +111,9 @@
                             <td class="text-end">{{ "%.2f"|format(m.kg_neto or 0) }}</td>
                             <td>
                                 <select class="form-select form-select-sm" name="tipo_cliente_{{ m.id }}">
-                                    <option value="">Regular</option>
                                     {% for tc in tipos_cliente %}
-                                        <option value="{{ tc.value }}" {% if m.tipo_cliente and m.tipo_cliente.value == tc.value %}selected{% endif %}>
+                                        {% set is_selected = (m.tipo_cliente and m.tipo_cliente.value == tc.value) or (not m.tipo_cliente and tc.value == 'regular') %}
+                                        <option value="{{ tc.value }}" {% if is_selected %}selected{% endif %}>
                                             {{ tc.value|capitalize }}
                                         </option>
                                     {% endfor %}
@@ -132,12 +147,12 @@
             </div>
 
             <div class="row g-3 mt-3">
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label class="form-label">Fecha de caducidad de pago</label>
                     {% set fecha_val = form_fecha if form_fecha is not none else (nota.fecha_caducidad_pago.strftime("%Y-%m-%d") if nota.fecha_caducidad_pago else "") %}
                     <input class="form-control" type="date" name="fecha_caducidad_pago" value="{{ fecha_val }}">
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label class="form-label">M&eacute;todo de pago</label>
                     {% set selected_metodo = form_metodo if form_metodo is not none else nota.metodo_pago %}
                     <select class="form-select" name="metodo_pago" id="metodo_pago_select" required>
@@ -148,10 +163,16 @@
                     </select>
                     <div class="form-text text-muted">La cuenta solo es necesaria para transferencia o cheque.</div>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label class="form-label">Cuenta financiera</label>
                     {% set cuenta_val = form_cuenta if form_cuenta is not none else (nota.cuenta_financiera_id or "") %}
                     <input class="form-control" name="cuenta_financiera" id="cuenta_financiera_input" placeholder="ID o referencia de cuenta" value="{{ cuenta_val }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Pago inicial</label>
+                    {% set pagado_val = form_pagado if form_pagado is not none else (nota.monto_pagado or "") %}
+                    <input class="form-control" type="number" step="0.01" min="0" name="monto_pagado" value="{{ pagado_val }}">
+                    <div class="form-text text-muted">Opcional. Aplica solo para notas a credito.</div>
                 </div>
                 <div class="col-12">
                     <label class="form-label">Comentarios admin</label>
@@ -165,6 +186,13 @@
             <div class="note-actions-title">Acciones</div>
             <div class="note-actions-row">
                 <button type="submit" class="btn btn-primary note-action-primary" form="approveForm">Aprobar</button>
+                <button type="submit"
+                        class="btn btn-outline-primary"
+                        form="approveForm"
+                        formaction="/web/admin/notas/{{ nota.id }}/precios"
+                        formnovalidate>
+                    Actualizar precios
+                </button>
             <form method="post" action="/web/admin/notas/{{ nota.id }}/cancelar" class="m-0" onsubmit="syncCancelComment(this)">
                 <input type="hidden" name="comentarios_admin" value="">
                 <button type="submit" class="btn btn-outline-danger">Rechazar</button>
@@ -183,6 +211,86 @@
         </div>
     </div>
 </div>
+
+{% if nota.estado.value == 'APROBADA' %}
+<div class="card hover-lift mb-3 note-payments-card">
+    <div class="card-body">
+        <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
+            <h2 class="h6 text-dark mb-0 note-section-title">Pagos registrados</h2>
+            <div class="note-payment-summary">
+                <span>Total: <strong>${{ "%.2f"|format(nota.total_monto or 0) }}</strong></span>
+                <span>Saldo: <strong class="{{ 'text-danger' if saldo_pendiente > 0 else 'text-success' }}">${{ "%.2f"|format(saldo_pendiente) }}</strong></span>
+            </div>
+        </div>
+        <form method="post" action="/web/admin/notas/{{ nota.id }}/pago" class="note-payment-form">
+            <div class="row g-2 align-items-end">
+                <div class="col-lg-3 col-md-4">
+                    <label class="form-label">Monto</label>
+                    {% set pago_monto_val = form_pago_monto if form_pago_monto is not none else "" %}
+                    <input class="form-control form-control-sm" type="number" step="0.01" min="0" name="monto_pagado" value="{{ pago_monto_val }}" placeholder="0.00" required>
+                </div>
+                <div class="col-lg-3 col-md-4">
+                    <label class="form-label">M&eacute;todo</label>
+                    {% set pago_metodo_val = form_pago_metodo if form_pago_metodo else nota.metodo_pago %}
+                    <select class="form-select form-select-sm" name="pago_metodo" id="pago_metodo_select">
+                        <option value="" {% if not pago_metodo_val %}selected{% endif %}>Selecciona</option>
+                        <option value="transferencia" {% if pago_metodo_val == 'transferencia' %}selected{% endif %}>Transferencia</option>
+                        <option value="efectivo" {% if pago_metodo_val == 'efectivo' %}selected{% endif %}>Efectivo</option>
+                        <option value="cheque" {% if pago_metodo_val == 'cheque' %}selected{% endif %}>Cheque</option>
+                    </select>
+                </div>
+                <div class="col-lg-3 col-md-4">
+                    <label class="form-label">Cuenta</label>
+                    {% set pago_cuenta_val = form_pago_cuenta if form_pago_cuenta is not none else (nota.cuenta_financiera_id or "") %}
+                    <input class="form-control form-control-sm" name="pago_cuenta" id="pago_cuenta_input" placeholder="ID o referencia" value="{{ pago_cuenta_val }}">
+                </div>
+                <div class="col-lg-3 col-md-6">
+                    <label class="form-label">Comentario</label>
+                    {% set pago_comment_val = form_pago_comentario if form_pago_comentario is not none else "" %}
+                    <input class="form-control form-control-sm" name="pago_comentario" placeholder="Opcional" value="{{ pago_comment_val }}">
+                </div>
+                <div class="col-lg-2 col-md-3 d-grid">
+                    <button type="submit" class="btn btn-outline-primary btn-sm">Agregar pago</button>
+                </div>
+                {% if pago_updated %}
+                    <div class="col-12">
+                        <span class="text-success small">Pago registrado correctamente.</span>
+                    </div>
+                {% endif %}
+            </div>
+        </form>
+        <div class="table-responsive mt-3">
+            <table class="table table-sm align-middle mb-0 note-payments-table">
+                <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Monto</th>
+                    <th>M&eacute;todo</th>
+                    <th>Cuenta</th>
+                    <th>Usuario</th>
+                    <th>Comentario</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for pago in pagos %}
+                    <tr>
+                        <td>{{ pago.created_at.strftime("%Y-%m-%d %H:%M") if pago.created_at else '-' }}</td>
+                        <td class="fw-semibold">${{ "%.2f"|format(pago.monto or 0) }}</td>
+                        <td>{{ pago.metodo_pago|capitalize if pago.metodo_pago else '-' }}</td>
+                        <td>{{ pago.cuenta_financiera or '-' }}</td>
+                        <td>{{ pago.usuario.username if pago.usuario else (pago.usuario_id or '-') }}</td>
+                        <td>{{ pago.comentario or '-' }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if pagos|length == 0 %}
+            <p class="text-muted small mb-0 mt-3">Aun no hay pagos registrados.</p>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
 
 {% if inv_movs and inv_movs|length > 0 %}
 <div class="card hover-lift mb-3 note-report-card">
@@ -263,6 +371,23 @@
     if (metodoSelect) {
         metodoSelect.addEventListener('change', toggleCuenta);
         toggleCuenta();
+    }
+    const pagoMetodo = document.getElementById('pago_metodo_select');
+    const pagoCuenta = document.getElementById('pago_cuenta_input');
+    function togglePagoCuenta() {
+        if (!pagoMetodo || !pagoCuenta) return;
+        const metodo = (pagoMetodo.value || '').toLowerCase();
+        const needsAccount = metodo === 'transferencia' || metodo === 'cheque';
+        pagoCuenta.disabled = !needsAccount;
+        pagoCuenta.required = needsAccount;
+        pagoCuenta.placeholder = needsAccount ? 'ID o referencia' : 'No aplica';
+        if (!needsAccount) {
+            pagoCuenta.value = '';
+        }
+    }
+    if (pagoMetodo) {
+        pagoMetodo.addEventListener('change', togglePagoCuenta);
+        togglePagoCuenta();
     }
 </script>
 </div>

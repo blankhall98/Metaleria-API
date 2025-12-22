@@ -17,6 +17,7 @@ from app.models import (
     Inventario,
     InventarioMovimiento,
     MovimientoContable,
+    NotaPago,
 )
 
 
@@ -58,6 +59,20 @@ def _recalc_totals(nota: Nota) -> None:
     nota.total_kg_descuento = total_desc
     nota.total_kg_neto = total_neto
     nota.total_monto = total_monto
+
+
+def _normalize_pago_incremental(nota: Nota, monto_pagado: Decimal | None) -> Decimal:
+    pagado = Decimal(str(monto_pagado or 0))
+    if pagado <= Decimal("0"):
+        raise ValueError("El monto del pago debe ser mayor a 0.")
+    total = Decimal(str(nota.total_monto or 0))
+    acumulado = Decimal(str(nota.monto_pagado or 0))
+    saldo = total - acumulado
+    if saldo < Decimal("0"):
+        saldo = Decimal("0")
+    if pagado > saldo:
+        raise ValueError("El pago excede el saldo pendiente de la nota.")
+    return pagado
 
 
 def apply_prices(
@@ -253,19 +268,72 @@ def _registrar_movimiento_contable(
     comentario: str | None = None,
     metodo_pago: str | None = None,
     cuenta_financiera: str | None = None,
+    monto: Decimal | None = None,
+    tipo: str | None = None,
 ) -> None:
+    monto_val = Decimal(str(monto)) if monto is not None else Decimal(str(nota.total_monto or 0))
+    tipo_mov = tipo or nota.tipo_operacion.value
     mov = MovimientoContable(
         nota_id=nota.id,
         sucursal_id=nota.sucursal_id,
         usuario_id=usuario_id,
-        tipo=nota.tipo_operacion.value,
-        monto=Decimal(str(nota.total_monto or 0)),
+        tipo=tipo_mov,
+        monto=monto_val,
         metodo_pago=metodo_pago or nota.metodo_pago,
         cuenta_financiera=cuenta_financiera
         or (str(nota.cuenta_financiera_id) if nota.cuenta_financiera_id else None),
         comentario=comentario or None,
     )
     db.add(mov)
+
+
+def add_payment(
+    db: Session,
+    nota: Nota,
+    *,
+    monto_pagado: Decimal,
+    usuario_id: int | None = None,
+    metodo_pago: str | None = None,
+    cuenta_financiera: str | None = None,
+    comentario: str | None = None,
+    commit: bool = True,
+    registrar_contable: bool = True,
+) -> NotaPago:
+    if nota.estado != NotaEstado.aprobada:
+        raise ValueError("Solo puedes registrar pagos en notas aprobadas.")
+    monto = _normalize_pago_incremental(nota, monto_pagado)
+    metodo = (metodo_pago or nota.metodo_pago or "").strip().lower() or None
+    if metodo in ("transferencia", "cheque") and not cuenta_financiera:
+        raise ValueError("Debes indicar la cuenta para transferencia o cheque.")
+
+    pago = NotaPago(
+        nota_id=nota.id,
+        usuario_id=usuario_id,
+        monto=monto,
+        metodo_pago=metodo,
+        cuenta_financiera=cuenta_financiera or None,
+        comentario=comentario or None,
+    )
+    nota.monto_pagado = Decimal(str(nota.monto_pagado or 0)) + monto
+    nota.updated_at = datetime.utcnow()
+    db.add(pago)
+    db.add(nota)
+    if registrar_contable:
+        _registrar_movimiento_contable(
+            db,
+            nota=nota,
+            usuario_id=usuario_id,
+            comentario=comentario or f"Pago nota #{nota.id}",
+            metodo_pago=metodo,
+            cuenta_financiera=cuenta_financiera or None,
+            monto=monto,
+            tipo="pago",
+        )
+    if commit:
+        db.commit()
+        db.refresh(pago)
+        db.refresh(nota)
+    return pago
 
 
 def ajustar_stock(
@@ -326,6 +394,7 @@ def approve_note(
     fecha_caducidad_pago: date | None = None,
     metodo_pago: str | None = None,
     cuenta_financiera: str | None = None,
+    monto_pagado: Decimal | None = None,
 ) -> Nota:
     """
     Aprueba una nota aplicando precios, recalculando totales y registrando inventario/contable.
@@ -364,14 +433,32 @@ def approve_note(
     # registrar inventario y contabilidad
     for nm in nota.materiales:
         _registrar_movimiento_inventario(db, nota=nota, nm=nm, usuario_id=admin_id)
-    _registrar_movimiento_contable(
-        db,
-        nota=nota,
-        usuario_id=admin_id,
-        comentario=comentarios_admin,
-        metodo_pago=nota.metodo_pago,
-        cuenta_financiera=str(nota.cuenta_financiera_id) if nota.cuenta_financiera_id else None,
-    )
+    if metodo_pago_clean == "efectivo":
+        _registrar_movimiento_contable(
+            db,
+            nota=nota,
+            usuario_id=admin_id,
+            comentario=comentarios_admin,
+            metodo_pago=nota.metodo_pago,
+            cuenta_financiera=str(nota.cuenta_financiera_id) if nota.cuenta_financiera_id else None,
+        )
+    pago_inicial: Decimal | None = None
+    if metodo_pago_clean == "efectivo":
+        pago_inicial = Decimal(str(nota.total_monto or 0))
+    elif monto_pagado is not None and Decimal(str(monto_pagado)) > Decimal("0"):
+        pago_inicial = monto_pagado
+    if pago_inicial is not None and Decimal(str(pago_inicial)) > Decimal("0"):
+        add_payment(
+            db,
+            nota,
+            monto_pagado=pago_inicial,
+            usuario_id=admin_id,
+            metodo_pago=metodo_pago_clean,
+            cuenta_financiera=str(cuenta_id) if cuenta_id else None,
+            comentario="Pago inicial",
+            commit=False,
+            registrar_contable=metodo_pago_clean != "efectivo",
+        )
     db.commit()
     db.refresh(nota)
     return nota

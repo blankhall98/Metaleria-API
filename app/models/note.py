@@ -44,6 +44,7 @@ class Nota(Base):
     total_kg_descuento = Column(Numeric(12, 3), nullable=False, default=0)
     total_kg_neto = Column(Numeric(12, 3), nullable=False, default=0)
     total_monto = Column(Numeric(12, 2), nullable=False, default=0)
+    monto_pagado = Column(Numeric(12, 2), nullable=False, default=0)
 
     metodo_pago = Column(String(50), nullable=True)
     cuenta_financiera_id = Column(Integer, nullable=True)
@@ -56,6 +57,7 @@ class Nota(Base):
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     materiales = relationship("NotaMaterial", back_populates="nota", cascade="all, delete-orphan")
+    pagos = relationship("NotaPago", back_populates="nota", cascade="all, delete-orphan")
     original = relationship("NotaOriginal", back_populates="nota", uselist=False, cascade="all, delete-orphan")
 
 
@@ -108,3 +110,21 @@ class NotaOriginal(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     nota = relationship("Nota", back_populates="original")
+
+
+class NotaPago(Base):
+    __tablename__ = "nota_pagos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nota_id = Column(Integer, ForeignKey("notas.id"), nullable=False, index=True)
+    usuario_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+
+    monto = Column(Numeric(12, 2), nullable=False, default=0)
+    metodo_pago = Column(String(50), nullable=True)
+    cuenta_financiera = Column(String(100), nullable=True)
+    comentario = Column(String(255), nullable=True)
+
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    nota = relationship("Nota", back_populates="pagos")
+    usuario = relationship("User")

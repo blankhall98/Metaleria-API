@@ -7,7 +7,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from decimal import Decimal, InvalidOperation
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from typing import List
 
 from app.core.config import get_settings
@@ -31,6 +31,7 @@ from app.models import (
     NotaEstado,
     NotaMaterial,
     Subpesaje,
+    NotaPago,
     Inventario,
     MovimientoContable,
     Material,
@@ -1222,6 +1223,49 @@ async def notas_list(
         .limit(10)
         .all()
     )
+    hoy = date.today()
+    alerta_dias = max(1, int(getattr(settings, "NOTA_VENCIMIENTO_ALERTA_DIAS", 5)))
+    limite_alerta = hoy + timedelta(days=alerta_dias)
+    notas_con_vencimiento = (
+        db.query(Nota)
+        .filter(
+            Nota.estado == NotaEstado.aprobada,
+            Nota.fecha_caducidad_pago.isnot(None),
+        )
+        .order_by(Nota.fecha_caducidad_pago.asc())
+        .all()
+    )
+
+    def saldo_pendiente(nota: Nota) -> Decimal:
+        total = Decimal(str(nota.total_monto or 0))
+        pagado = Decimal(str(nota.monto_pagado or 0))
+        saldo = total - pagado
+        if saldo < Decimal("0"):
+            saldo = Decimal("0")
+        return saldo
+
+    notas_vencidas = []
+    notas_por_vencer = []
+    for nota in notas_con_vencimiento:
+        saldo = saldo_pendiente(nota)
+        if saldo <= Decimal("0"):
+            continue
+        if nota.fecha_caducidad_pago < hoy:
+            notas_vencidas.append(
+                {
+                    "nota": nota,
+                    "saldo_pendiente": saldo,
+                    "dias": (hoy - nota.fecha_caducidad_pago).days,
+                }
+            )
+        elif nota.fecha_caducidad_pago <= limite_alerta:
+            notas_por_vencer.append(
+                {
+                    "nota": nota,
+                    "saldo_pendiente": saldo,
+                    "dias": (nota.fecha_caducidad_pago - hoy).days,
+                }
+            )
     sucursales = {s.id: s for s in db.query(Sucursal).all()}
     proveedores = {p.id: p for p in db.query(Proveedor).all()}
     clientes = {c.id: c for c in db.query(Cliente).all()}
@@ -1234,6 +1278,9 @@ async def notas_list(
             "user": current_user,
             "notas_revision": notas_revision,
             "notas_recientes": notas_recientes,
+            "notas_vencidas": notas_vencidas,
+            "notas_por_vencer": notas_por_vencer,
+            "alerta_dias": alerta_dias,
             "sucursales": sucursales,
             "proveedores": proveedores,
             "clientes": clientes,
@@ -1248,17 +1295,33 @@ def _render_nota_detail(
     nota: Nota,
     error: str | None = None,
     form_state: dict | None = None,
+    pago_updated: bool = False,
+    precios_updated: bool = False,
 ):
     sucursal = db.get(Sucursal, nota.sucursal_id) if nota.sucursal_id else None
     proveedor = db.get(Proveedor, nota.proveedor_id) if nota.proveedor_id else None
     cliente = db.get(Cliente, nota.cliente_id) if nota.cliente_id else None
     trabajador = db.get(User, nota.trabajador_id) if nota.trabajador_id else None
     inv_movs = db.query(InventarioMovimiento).filter(InventarioMovimiento.nota_id == nota.id).all()
+    pagos = (
+        db.query(NotaPago)
+        .filter(NotaPago.nota_id == nota.id)
+        .order_by(NotaPago.created_at.desc())
+        .all()
+    )
+    saldo_pendiente = Decimal(str(nota.total_monto or 0)) - Decimal(str(nota.monto_pagado or 0))
+    if saldo_pendiente < Decimal("0"):
+        saldo_pendiente = Decimal("0")
     base_form_state = {
         "form_metodo": None,
         "form_cuenta": None,
         "form_fecha": None,
         "form_comentarios": None,
+        "form_pagado": None,
+        "form_pago_monto": None,
+        "form_pago_metodo": None,
+        "form_pago_cuenta": None,
+        "form_pago_comentario": None,
     }
     context = {
         "request": request,
@@ -1271,6 +1334,10 @@ def _render_nota_detail(
         "trabajador": trabajador,
         "tipos_cliente": list(TipoCliente),
         "inv_movs": inv_movs,
+        "pagos": pagos,
+        "saldo_pendiente": saldo_pendiente,
+        "pago_updated": pago_updated,
+        "precios_updated": precios_updated,
         "error": error,
     }
     context.update(base_form_state)
@@ -1294,7 +1361,16 @@ async def notas_detail(
     if not nota:
         raise HTTPException(status_code=404, detail="Nota no encontrada.")
 
-    return _render_nota_detail(request, db, current_user, nota)
+    pago_updated = request.query_params.get("pago") == "1"
+    precios_updated = request.query_params.get("precios") == "1"
+    return _render_nota_detail(
+        request,
+        db,
+        current_user,
+        nota,
+        pago_updated=pago_updated,
+        precios_updated=precios_updated,
+    )
 
 
 @router.get("/notas/{nota_id}/evidencias")
@@ -1435,11 +1511,13 @@ async def notas_aprobar(
     fecha_caducidad_pago_raw = (form.get("fecha_caducidad_pago") or "").strip()
     metodo_pago = (form.get("metodo_pago") or "").strip().lower()
     cuenta_financiera = (form.get("cuenta_financiera") or "").strip()
+    monto_pagado_raw = (form.get("monto_pagado") or "").strip()
     form_state = {
         "form_metodo": metodo_pago,
         "form_cuenta": cuenta_financiera,
         "form_fecha": fecha_caducidad_pago_raw,
         "form_comentarios": comentarios_admin,
+        "form_pagado": monto_pagado_raw,
     }
 
     fecha_caducidad_pago = None
@@ -1477,6 +1555,20 @@ async def notas_aprobar(
                         form_state=form_state,
                     )
 
+    monto_pagado = None
+    if monto_pagado_raw:
+        try:
+            monto_pagado = Decimal(str(monto_pagado_raw))
+        except (InvalidOperation, TypeError):
+            return _render_nota_detail(
+                request,
+                db,
+                current_user,
+                nota,
+                error="El pago inicial es invA­lido.",
+                form_state=form_state,
+            )
+
     try:
         note_service.approve_note(
             db,
@@ -1487,6 +1579,7 @@ async def notas_aprobar(
             fecha_caducidad_pago=fecha_caducidad_pago,
             metodo_pago=metodo_pago,
             cuenta_financiera=cuenta_financiera or None,
+            monto_pagado=monto_pagado,
         )
     except ValueError as e:
         return _render_nota_detail(
@@ -1499,6 +1592,148 @@ async def notas_aprobar(
         )
 
     return RedirectResponse(url="/web/admin/notas?approved=1", status_code=303)
+
+
+@router.post("/notas/{nota_id}/precios")
+async def notas_actualizar_precios(
+    nota_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    nota = db.get(Nota, nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    if nota.estado == NotaEstado.aprobada:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="No puedes actualizar precios en una nota aprobada.",
+        )
+
+    form = await request.form()
+    comentarios_admin = (form.get("comentarios_admin") or "").strip()
+    fecha_caducidad_pago_raw = (form.get("fecha_caducidad_pago") or "").strip()
+    metodo_pago = (form.get("metodo_pago") or "").strip().lower()
+    cuenta_financiera = (form.get("cuenta_financiera") or "").strip()
+    monto_pagado_raw = (form.get("monto_pagado") or "").strip()
+    form_state = {
+        "form_metodo": metodo_pago,
+        "form_cuenta": cuenta_financiera,
+        "form_fecha": fecha_caducidad_pago_raw,
+        "form_comentarios": comentarios_admin,
+        "form_pagado": monto_pagado_raw,
+    }
+
+    tipo_cliente_map: dict[int, TipoCliente] = {}
+    for key, value in form.items():
+        if key.startswith("tipo_cliente_"):
+            nm_key = key.rsplit("_", 1)[-1]
+            try:
+                nm_id = int(nm_key)
+            except ValueError:
+                continue
+            if not value:
+                continue
+            try:
+                tipo_cliente_map[nm_id] = TipoCliente(value)
+            except ValueError:
+                return _render_nota_detail(
+                    request,
+                    db,
+                    current_user,
+                    nota,
+                    error="Tipo de cliente invA­lido para un material.",
+                    form_state=form_state,
+                )
+    if not tipo_cliente_map:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="No hay cambios de precio para actualizar.",
+            form_state=form_state,
+        )
+
+    note_service.set_tipo_cliente_and_prices(db, nota, tipo_cliente_map)
+    return RedirectResponse(url=f"/web/admin/notas/{nota_id}?precios=1", status_code=303)
+
+
+@router.post("/notas/{nota_id}/pago")
+async def notas_actualizar_pago(
+    nota_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    nota = db.get(Nota, nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    if nota.estado != NotaEstado.aprobada:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="Solo puedes registrar pagos en notas aprobadas.",
+        )
+
+    form = await request.form()
+    monto_pagado_raw = (form.get("monto_pagado") or "").strip()
+    metodo_pago = (form.get("pago_metodo") or "").strip().lower()
+    cuenta_financiera = (form.get("pago_cuenta") or "").strip()
+    comentario = (form.get("pago_comentario") or "").strip()
+    form_state = {
+        "form_pago_monto": monto_pagado_raw,
+        "form_pago_metodo": metodo_pago,
+        "form_pago_cuenta": cuenta_financiera,
+        "form_pago_comentario": comentario,
+    }
+    if not monto_pagado_raw:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="Debes indicar el monto pagado.",
+            form_state=form_state,
+        )
+    try:
+        monto_pagado = Decimal(str(monto_pagado_raw))
+    except (InvalidOperation, TypeError):
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="El monto pagado es invA­lido.",
+            form_state=form_state,
+        )
+
+    try:
+        note_service.add_payment(
+            db,
+            nota,
+            monto_pagado=monto_pagado,
+            usuario_id=current_user.get("id"),
+            metodo_pago=metodo_pago or None,
+            cuenta_financiera=cuenta_financiera or None,
+            comentario=comentario or None,
+        )
+    except ValueError as e:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error=str(e),
+            form_state=form_state,
+        )
+
+    return RedirectResponse(url=f"/web/admin/notas/{nota_id}?pago=1", status_code=303)
 
 
 @router.post("/notas/{nota_id}/cancelar")
