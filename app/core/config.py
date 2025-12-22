@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     # Seguridad
     SECRET_KEY: str
 
+    # Firebase Storage
+    FIREBASE_BUCKET: str = "metaleria-api-z2h.firebasestorage.app"
+    FIREBASE_CREDENTIALS_FILE: str = "secrets/metaleria-api-z2h-firebase-adminsdk-fbsvc-18da50717b.json"
+    FIREBASE_MAX_MB: int = 8
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

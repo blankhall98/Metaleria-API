@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block title %}Evidencias - Nota {{ nota.id }}{% endblock %}
+
+{% block content %}
+<div class="evidence-page">
+    <div class="page-header">
+        <div>
+            <p class="text-uppercase text-muted small mb-1">Evidencias</p>
+            <h1 class="h4 text-dark mb-0">Nota #{{ nota.id }}</h1>
+        </div>
+        {% if back_url %}
+            <a href="{{ back_url }}" class="btn btn-outline-secondary btn-sm">Volver</a>
+        {% endif %}
+    </div>
+
+    {% if updated %}
+        <div class="alert alert-success py-2 small">Evidencia actualizada.</div>
+    {% endif %}
+    {% if error %}
+        {% if error == 'tipo' %}
+            <div class="alert alert-danger py-2 small">Solo se permiten imagenes.</div>
+        {% elif error == 'peso' %}
+            <div class="alert alert-danger py-2 small">La imagen supera el limite de {{ max_mb }}MB.</div>
+        {% elif error == 'estado' %}
+            <div class="alert alert-danger py-2 small">No puedes subir evidencia en este estado.</div>
+        {% else %}
+            <div class="alert alert-danger py-2 small">No se pudo subir la evidencia.</div>
+        {% endif %}
+    {% endif %}
+    {% if not can_upload %}
+        <div class="alert alert-secondary py-2 small">La nota ya no permite subir evidencia.</div>
+    {% endif %}
+
+    <div class="card hover-lift mb-3 note-summary-card">
+        <div class="card-body">
+            <div class="note-meta-grid">
+                <div class="note-meta-item">
+                    <span class="note-meta-label">Estado</span>
+                    {% if nota.estado.value == 'BORRADOR' %}
+                        <span class="badge bg-secondary">Borrador</span>
+                    {% elif nota.estado.value == 'EN_REVISION' %}
+                        <span class="badge bg-warning text-dark">En revisi&oacute;n</span>
+                    {% elif nota.estado.value == 'APROBADA' %}
+                        <span class="badge bg-success">Aprobada</span>
+                    {% else %}
+                        <span class="badge bg-danger">Cancelada</span>
+                    {% endif %}
+                </div>
+                <div class="note-meta-item">
+                    <span class="note-meta-label">Operaci&oacute;n</span>
+                    <strong>{{ nota.tipo_operacion.value|capitalize }}</strong>
+                </div>
+                <div class="note-meta-item">
+                    <span class="note-meta-label">{{ partner_label }}</span>
+                    <strong>{{ partner_name }}</strong>
+                </div>
+                {% if sucursal %}
+                    <div class="note-meta-item">
+                        <span class="note-meta-label">Sucursal</span>
+                        <strong>{{ sucursal.nombre }}</strong>
+                    </div>
+                {% endif %}
+                {% if trabajador_name %}
+                    <div class="note-meta-item">
+                        <span class="note-meta-label">Trabajador</span>
+                        <strong>{{ trabajador_name }}</strong>
+                    </div>
+                {% endif %}
+                <div class="note-meta-item">
+                    <span class="note-meta-label">Fecha</span>
+                    <strong>{{ nota.created_at.strftime("%Y-%m-%d %H:%M") if nota.created_at else '-' }}</strong>
+                </div>
+                <div class="note-meta-item">
+                    <span class="note-meta-label">Evidencias</span>
+                    <strong>{{ total_subpesajes - missing_subpesajes }} / {{ total_subpesajes }}</strong>
+                </div>
+                <div class="note-meta-item">
+                    <span class="note-meta-label">Pendientes</span>
+                    <strong>{{ missing_subpesajes }}</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if total_subpesajes == 0 %}
+        <div class="card hover-lift">
+            <div class="card-body">
+                <p class="text-muted mb-0">Aun no hay subpesajes registrados para esta nota.</p>
+            </div>
+        </div>
+    {% endif %}
+
+    {% for group in evidence_groups %}
+        <div class="card hover-lift mb-3">
+            <div class="card-body">
+                <div class="d-flex flex-column flex-md-row gap-2 justify-content-between align-items-start">
+                    <div>
+                        <div class="text-muted small mb-1">Tipo de material</div>
+                        <h2 class="h6 mb-1">{{ group.material_name }}</h2>
+                        <div class="text-muted small">Subpesajes: {{ group.subpesajes|length }}</div>
+                    </div>
+                    {% set group_missing = group.subpesajes | selectattr('foto_url', 'equalto', none) | list | length %}
+                    {% if group.subpesajes|length > 0 %}
+                        {% if group_missing == 0 %}
+                            <span class="badge bg-success">Completo</span>
+                        {% elif group_missing == group.subpesajes|length %}
+                            <span class="badge bg-danger">Sin evidencia</span>
+                        {% else %}
+                            <span class="badge bg-warning text-dark">Parcial</span>
+                        {% endif %}
+                    {% endif %}
+                </div>
+
+                {% if group.subpesajes|length > 0 %}
+                    <div class="evidence-grid mt-3">
+                        {% for sp in group.subpesajes %}
+                            <div class="evidence-item">
+                                <div class="evidence-item-head">
+                                    <div>
+                                        <div class="text-muted small">Pesaje {{ sp.order }}</div>
+                                        <div class="small text-muted">Neto {{ "%.2f"|format(sp.neto_kg or 0) }} {{ group.unit }}</div>
+                                    </div>
+                                    {% if sp.foto_url %}
+                                        <span class="badge bg-success">Con evidencia</span>
+                                    {% else %}
+                                        <span class="badge bg-danger">Pendiente</span>
+                                    {% endif %}
+                                </div>
+                                <div class="evidence-media">
+                                    {% if sp.foto_url %}
+                                        <a href="{{ sp.foto_url }}" target="_blank" rel="noopener" class="evidence-link">
+                                            <img src="{{ sp.foto_url }}" alt="Evidencia" loading="lazy">
+                                        </a>
+                                {% else %}
+                                    <div class="evidence-empty">
+                                        <div class="evidence-empty-line"></div>
+                                        <div class="small">Sin evidencia</div>
+                                    </div>
+                                {% endif %}
+                                </div>
+                                <div class="evidence-metrics">
+                                    <div>
+                                        <span class="text-muted small">Bruto</span>
+                                        <strong>{{ "%.2f"|format(sp.peso_kg or 0) }} {{ group.unit }}</strong>
+                                    </div>
+                                    <div>
+                                        <span class="text-muted small">Descuento</span>
+                                        <strong>{{ "%.2f"|format(sp.descuento_kg or 0) }} {{ group.unit }}</strong>
+                                    </div>
+                                    {% if sp.created_at %}
+                                        <div>
+                                            <span class="text-muted small">Registro</span>
+                                            <strong>{{ sp.created_at.strftime("%Y-%m-%d %H:%M") }}</strong>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                                {% if can_upload %}
+                                    <form method="post" enctype="multipart/form-data" action="{{ upload_action_base }}/{{ sp.id }}/evidencia" class="evidence-upload">
+                                        <input class="form-control form-control-sm" type="file" name="file" accept="image/*" {% if capture_mode %}capture="{{ capture_mode }}"{% endif %} required>
+                                        <button class="btn btn-sm btn-primary" type="submit">Subir evidencia</button>
+                                        <small class="text-muted">Max {{ max_mb }}MB</small>
+                                    </form>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-muted small mb-0 mt-3">No hay subpesajes registrados en este material.</p>
+                {% endif %}
+            </div>
+        </div>
+    {% endfor %}
+</div>
+{% endblock %}

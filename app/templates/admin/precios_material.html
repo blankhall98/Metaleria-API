@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 
-{% block title %}Precios · {{ material.nombre }}{% endblock %}
+{% block title %}Precios &middot; {{ material.nombre }}{% endblock %}
 
 {% block content %}
 <div class="page-header">
     <div>
         <p class="text-uppercase text-muted small mb-1">Precios</p>
-        <h1 class="h4 text-white mb-1">Precios · {{ material.nombre }}</h1>
+        <h1 class="h4 text-white mb-1">Precios &middot; {{ material.nombre }}</h1>
         <p class="text-muted small mb-0">
-            Unidad: {{ material.unidad_medida }} ·
+            Unidad: {{ material.unidad_medida }} &middot;
             {% if material.activo %}Material activo{% else %}Material inactivo{% endif %}
         </p>
     </div>

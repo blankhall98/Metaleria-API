@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}
-    {% if cliente %}Editar cliente{% else %}Nuevo cliente{% endif %} · Admin
+    {% if cliente %}Editar cliente{% else %}Nuevo cliente{% endif %} &middot; Admin
 {% endblock %}
 
 {% block content %}
@@ -73,7 +73,7 @@
                     </div>
                     <input type="hidden" name="placas" id="placas_field" value="{{ placas_text if placas_text is defined else (cliente.placas if cliente and cliente.placas else '') }}">
                     <div id="placas_tags" class="d-flex flex-wrap gap-2 mt-2"></div>
-                    <div class="form-text">Puedes agregar varias placas. Haz clic en la “x” para eliminar.</div>
+                    <div class="form-text">Puedes agregar varias placas. Haz clic en la "x" para eliminar.</div>
                 </div>
             </div>
 
@@ -119,7 +119,7 @@
                 const close = document.createElement('button');
                 close.type = 'button';
                 close.className = 'chip-remove';
-                close.textContent = '×';
+                close.textContent = '\u00d7';
                 close.onclick = () => {
                     placas.splice(idx, 1);
                     syncHidden();

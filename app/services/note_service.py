@@ -130,11 +130,13 @@ def create_draft_note(
 
         sub_list_payload = mp.get("subpesajes", []) or []
         if sub_list_payload:
-            neto_sum = _sum_decimal(sp.get("peso_kg", 0) for sp in sub_list_payload)
+            bruto_sum = _sum_decimal(sp.get("peso_kg", 0) for sp in sub_list_payload)
             desc_sum = _sum_decimal(sp.get("descuento_kg", 0) for sp in sub_list_payload)
-            kg_neto = neto_sum
+            kg_bruto = bruto_sum
             kg_descuento = desc_sum
-            kg_bruto = neto_sum + desc_sum
+            kg_neto = bruto_sum - desc_sum
+            if kg_neto < 0:
+                kg_neto = Decimal("0")
         else:
             kg_bruto = Decimal(str(mp.get("kg_bruto", 0)))
             kg_descuento = Decimal(str(mp.get("kg_descuento", 0)))
@@ -357,6 +359,7 @@ def approve_note(
         admin_id=admin_id,
         comentarios_admin=comentarios_admin,
         fecha_caducidad_pago=fecha_caducidad_pago,
+        commit=False,
     )
     # registrar inventario y contabilidad
     for nm in nota.materiales:
@@ -382,6 +385,7 @@ def update_state(
     admin_id: int | None = None,
     comentarios_admin: str | None = None,
     fecha_caducidad_pago: date | None = None,
+    commit: bool = True,
 ) -> Nota:
     """
     Transición de estados con campos adicionales para admins.
@@ -397,8 +401,9 @@ def update_state(
 
     _recalc_totals(nota)
     db.add(nota)
-    db.commit()
-    db.refresh(nota)
+    if commit:
+        db.commit()
+        db.refresh(nota)
     return nota
 
 

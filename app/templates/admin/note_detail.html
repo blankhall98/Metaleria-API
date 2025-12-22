@@ -3,95 +3,97 @@
 {% block title %}Nota {{ nota.id }}{% endblock %}
 
 {% block content %}
+<div class="note-detail-page">
 <div class="page-header">
     <div>
-        <p class="text-uppercase text-muted small mb-1">Revisión</p>
-        <h1 class="h4 text-white mb-0">Nota #{{ nota.id }}</h1>
+        <p class="text-uppercase text-muted small mb-1">Revisi&oacute;n</p>
+        <h1 class="h4 text-dark mb-0">Nota #{{ nota.id }}</h1>
     </div>
-    <a href="/web/admin/notas" class="btn btn-outline-secondary btn-sm">Volver</a>
+    <div class="d-flex gap-2">
+        <a href="/web/admin/notas/{{ nota.id }}/evidencias" class="btn btn-primary btn-sm note-evidence-btn">Evidencias</a>
+        <a href="/web/admin/notas" class="btn btn-outline-secondary btn-sm">Volver</a>
+    </div>
 </div>
 
-<div class="card hover-lift mb-3">
+<div class="card hover-lift mb-3 note-summary-card">
     <div class="card-body">
         {% if error %}
             <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
         {% endif %}
-        <div class="row g-3">
-            <div class="col-md-2">
-                <p class="text-muted small mb-1">Estado</p>
+        <div class="note-meta-grid">
+            <div class="note-meta-item">
+                <span class="note-meta-label">Estado</span>
                 {% if nota.estado.value == 'BORRADOR' %}
                     <span class="badge bg-secondary">Borrador</span>
                 {% elif nota.estado.value == 'EN_REVISION' %}
-                    <span class="badge bg-warning text-dark">En revisión</span>
+                    <span class="badge bg-warning text-dark">En revisi&oacute;n</span>
                 {% elif nota.estado.value == 'APROBADA' %}
                     <span class="badge bg-success">Aprobada</span>
                 {% else %}
                     <span class="badge bg-danger">Cancelada</span>
                 {% endif %}
             </div>
-            <div class="col-md-2">
-                <p class="text-muted small mb-1">Operación</p>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Operaci&oacute;n</span>
                 <strong>{{ nota.tipo_operacion.value|capitalize }}</strong>
             </div>
-            <div class="col-md-3">
-                <p class="text-muted small mb-1">Sucursal</p>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Sucursal</span>
                 <strong>{{ sucursal.nombre if sucursal else '-' }}</strong>
             </div>
-            <div class="col-md-3">
-                <p class="text-muted small mb-1">Trabajador</p>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Trabajador</span>
                 <strong>{{ trabajador.nombre_completo if trabajador else '-' }}</strong>
-                <div class="text-muted small">{{ trabajador.username if trabajador else '' }}</div>
+                <div class="note-meta-sub">{{ trabajador.username if trabajador else '' }}</div>
             </div>
-            <div class="col-md-2">
-                <p class="text-muted small mb-1">Fecha y hora</p>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Fecha y hora</span>
                 <strong>{{ nota.created_at.strftime("%Y-%m-%d %H:%M") if nota.created_at else '-' }}</strong>
             </div>
-        </div>
-        <div class="row g-3 mt-2">
-            <div class="col-md-4">
-                <p class="text-muted small mb-1">Partner</p>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Partner</span>
                 {% if nota.tipo_operacion.value == 'compra' %}
                     <strong>{{ proveedor.nombre_completo if proveedor else '-' }}</strong>
                 {% else %}
                     <strong>{{ cliente.nombre_completo if cliente else '-' }}</strong>
                 {% endif %}
             </div>
-            <div class="col-md-4">
-                <p class="text-muted small mb-1">Kg neto</p>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Kg neto</span>
                 <strong>{{ "%.2f"|format(nota.total_kg_neto or 0) }} kg</strong>
             </div>
-            <div class="col-md-4">
-                <p class="text-muted small mb-1">Total</p>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Total</span>
                 <strong>${{ "%.2f"|format(nota.total_monto or 0) }}</strong>
             </div>
         </div>
     </div>
 </div>
 
-<div class="card hover-lift mb-3">
+<div class="card hover-lift mb-3 note-report-card">
     <div class="card-body">
-        <form method="post" action="/web/admin/notas/{{ nota.id }}/aprobar">
-            <h2 class="h6 text-white mb-3">Materiales</h2>
+        <form method="post" action="/web/admin/notas/{{ nota.id }}/aprobar" id="approveForm">
+            <h2 class="h6 text-dark mb-3 note-section-title">Materiales</h2>
             <div class="table-responsive">
-                <table class="table table-hover table-sm align-middle mb-0">
+                <table class="table table-hover table-sm align-middle mb-0 note-table">
                     <thead>
                     <tr>
                         <th>Material</th>
-                        <th>Kg bruto</th>
-                        <th>Kg desc</th>
-                        <th>Kg neto</th>
+                        <th class="text-end">Kg bruto</th>
+                        <th class="text-end">Kg desc</th>
+                        <th class="text-end">Kg neto</th>
                         <th>Tipo precio</th>
-                        <th>Precio unit</th>
-                        <th>Subtotal</th>
+                        <th class="text-end">Precio unit</th>
+                        <th class="text-end">Subtotal</th>
                     </tr>
                     </thead>
                     <tbody>
                     {% for m in nota.materiales %}
                         <tr>
                             <td>{{ m.material.nombre if m.material else m.material_id }}</td>
-                            <td>{{ "%.2f"|format(m.kg_bruto or 0) }}</td>
-                            <td>{{ "%.2f"|format(m.kg_descuento or 0) }}</td>
-                            <td>{{ "%.2f"|format(m.kg_neto or 0) }}</td>
+                            <td class="text-end">{{ "%.2f"|format(m.kg_bruto or 0) }}</td>
+                            <td class="text-end">{{ "%.2f"|format(m.kg_descuento or 0) }}</td>
+                            <td class="text-end">{{ "%.2f"|format(m.kg_neto or 0) }}</td>
                             <td>
                                 <select class="form-select form-select-sm" name="tipo_cliente_{{ m.id }}">
                                     <option value="">Regular</option>
@@ -102,19 +104,24 @@
                                     {% endfor %}
                                 </select>
                             </td>
-                            <td>{{ "%.2f"|format(m.precio_unitario or 0) if m.precio_unitario else '-' }}</td>
-                            <td>{{ "%.2f"|format(m.subtotal or 0) if m.subtotal else '-' }}</td>
+                            <td class="text-end">{{ "%.2f"|format(m.precio_unitario or 0) if m.precio_unitario else '-' }}</td>
+                            <td class="text-end">{{ "%.2f"|format(m.subtotal or 0) if m.subtotal else '-' }}</td>
                         </tr>
                         {% if m.subpesajes %}
-                            <tr>
+                            <tr class="note-subpesaje-row">
                                 <td colspan="7">
-                                    <div class="text-muted small">Subpesajes:
-                                        {% for sp in m.subpesajes %}
-                                            <span class="pill">{{ "%.2f"|format(sp.peso_kg) }} kg</span>
-                                            {% if sp.foto_url %}
-                                                <a href="{{ sp.foto_url }}" target="_blank" rel="noopener" class="ms-2">Foto</a>
-                                            {% endif %}
-                                        {% endfor %}
+                                    <div class="note-subpesajes">
+                                        <span class="note-subpesajes-label">Subpesajes</span>
+                                        <div class="note-subpesajes-list">
+                                            {% for sp in m.subpesajes %}
+                                                <div class="note-subpesaje-item">
+                                                    <span class="pill">{{ "%.2f"|format(sp.peso_kg) }} kg</span>
+                                                    {% if sp.foto_url %}
+                                                        <a href="{{ sp.foto_url }}" target="_blank" rel="noopener" class="note-subpesaje-link">Ver evidencia</a>
+                                                    {% endif %}
+                                                </div>
+                                            {% endfor %}
+                                        </div>
                                     </div>
                                 </td>
                             </tr>
@@ -131,10 +138,10 @@
                     <input class="form-control" type="date" name="fecha_caducidad_pago" value="{{ fecha_val }}">
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label">Método de pago</label>
+                    <label class="form-label">M&eacute;todo de pago</label>
                     {% set selected_metodo = form_metodo if form_metodo is not none else nota.metodo_pago %}
                     <select class="form-select" name="metodo_pago" id="metodo_pago_select" required>
-                        <option value="" {% if not selected_metodo %}selected{% endif %}>Selecciona método</option>
+                        <option value="" {% if not selected_metodo %}selected{% endif %}>Selecciona m&eacute;todo</option>
                         <option value="transferencia" {% if selected_metodo == 'transferencia' %}selected{% endif %}>Transferencia</option>
                         <option value="efectivo" {% if selected_metodo == 'efectivo' %}selected{% endif %}>Efectivo</option>
                         <option value="cheque" {% if selected_metodo == 'cheque' %}selected{% endif %}>Cheque</option>
@@ -149,15 +156,15 @@
                 <div class="col-12">
                     <label class="form-label">Comentarios admin</label>
                     {% set comentarios_val = form_comentarios if form_comentarios is not none else (nota.comentarios_admin or "") %}
-                    <textarea class="form-control" name="comentarios_admin" rows="2" placeholder="Notas, método de pago, cuenta financiera, motivo de rechazo, etc.">{{ comentarios_val }}</textarea>
+                    <textarea class="form-control" name="comentarios_admin" rows="2" placeholder="Notas, m&eacute;todo de pago, cuenta financiera, motivo de rechazo, etc.">{{ comentarios_val }}</textarea>
                 </div>
             </div>
 
-            <div class="d-flex gap-2 mt-3 flex-wrap">
-                <button type="submit" class="btn btn-primary">Aprobar</button>
-            </div>
         </form>
-        <div class="d-flex gap-2 mt-3 flex-wrap">
+        <div class="note-actions">
+            <div class="note-actions-title">Acciones</div>
+            <div class="note-actions-row">
+                <button type="submit" class="btn btn-primary note-action-primary" form="approveForm">Aprobar</button>
             <form method="post" action="/web/admin/notas/{{ nota.id }}/cancelar" class="m-0" onsubmit="syncCancelComment(this)">
                 <input type="hidden" name="comentarios_admin" value="">
                 <button type="submit" class="btn btn-outline-danger">Rechazar</button>
@@ -172,23 +179,24 @@
                     <button type="submit" class="btn btn-outline-secondary">Eliminar (solo SA)</button>
                 </form>
             {% endif %}
+            </div>
         </div>
     </div>
 </div>
 
 {% if inv_movs and inv_movs|length > 0 %}
-<div class="card hover-lift mb-3">
+<div class="card hover-lift mb-3 note-report-card">
     <div class="card-body">
-        <h2 class="h6 text-white mb-3">Movimientos de inventario generados</h2>
+        <h2 class="h6 text-dark mb-3 note-section-title">Movimientos de inventario generados</h2>
         <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0">
+            <table class="table table-sm align-middle mb-0 note-table">
                 <thead>
                 <tr>
                     <th>Sucursal</th>
                     <th>Material</th>
                     <th>Tipo</th>
-                    <th>Cantidad</th>
-                    <th>Saldo</th>
+                    <th class="text-end">Cantidad</th>
+                    <th class="text-end">Saldo</th>
                     <th>Fecha</th>
                 </tr>
                 </thead>
@@ -198,8 +206,8 @@
                         <td>{{ mov.inventario.sucursal.nombre if mov.inventario and mov.inventario.sucursal else '-' }}</td>
                         <td>{{ mov.inventario.material.nombre if mov.inventario and mov.inventario.material else '-' }}</td>
                         <td class="text-uppercase">{{ mov.tipo }}</td>
-                        <td>{{ "%.2f"|format(mov.cantidad_kg or 0) }} kg</td>
-                        <td>{{ "%.2f"|format(mov.saldo_resultante or 0) }} kg</td>
+                        <td class="text-end">{{ "%.2f"|format(mov.cantidad_kg or 0) }} kg</td>
+                        <td class="text-end">{{ "%.2f"|format(mov.saldo_resultante or 0) }} kg</td>
                         <td>{{ mov.created_at.strftime("%Y-%m-%d %H:%M") if mov.created_at else '-' }}</td>
                     </tr>
                 {% endfor %}
@@ -210,17 +218,23 @@
 </div>
 {% endif %}
 
-<div class="card hover-lift">
+<div class="card hover-lift note-comments-card">
     <div class="card-body">
-        <h2 class="h6 text-white mb-3">Comentarios</h2>
-        <div class="row g-3">
+        <div class="note-comments-header">
+            <h2 class="h6 text-dark mb-0 note-section-title">Comentarios</h2>
+        </div>
+        <div class="row g-3 note-comments-grid">
             <div class="col-md-6">
-                <p class="text-muted small mb-1">Trabajador</p>
-                <div class="border rounded p-2 bg-white">{{ nota.comentarios_trabajador or '-' }}</div>
+                <div class="note-comment-panel">
+                    <div class="note-comment-title">Trabajador</div>
+                    <div class="note-comment-body">{{ nota.comentarios_trabajador or '-' }}</div>
+                </div>
             </div>
             <div class="col-md-6">
-                <p class="text-muted small mb-1">Admin</p>
-                <div class="border rounded p-2 bg-white">{{ nota.comentarios_admin or '-' }}</div>
+                <div class="note-comment-panel">
+                    <div class="note-comment-title">Admin</div>
+                    <div class="note-comment-body">{{ nota.comentarios_admin or '-' }}</div>
+                </div>
             </div>
         </div>
     </div>
@@ -251,4 +265,5 @@
         toggleCuenta();
     }
 </script>
+</div>
 {% endblock %}

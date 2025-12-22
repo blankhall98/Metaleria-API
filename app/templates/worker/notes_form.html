@@ -16,6 +16,7 @@
         {{ error }}
     </div>
 {% endif %}
+<div id="evidence-alert" class="alert alert-warning py-2 small d-none"></div>
 
 <div class="card hover-lift">
     <div class="card-body">
@@ -91,12 +92,13 @@
                                         <input class="form-control subpesaje-desc" type="number" step="0.01" min="0" placeholder="0.00" oninput="updatePesajes(this)">
                                         <span class="input-group-text bg-light">Neto</span>
                                         <span class="input-group-text subpesaje-neto">0.00</span>
-                                        <input class="subpesaje-evid d-none" type="file" accept="image/*" onchange="updatePesajes(this)">
-                                        <button type="button" class="evidence-btn" onclick="triggerEvidence(this)" title="Tomar/seleccionar foto">
+                                        <input class="subpesaje-evid d-none" type="file" accept="image/*" capture="environment" onchange="handleEvidenceChange(this)">
+                                        <button type="button" class="evidence-btn" onclick="triggerEvidence(this)" title="Tomar o seleccionar foto">
                                             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                                                 <path d="M9 4.5 7.8 6H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-2.8L15 4.5H9Zm3 10.75a3.25 3.25 0 1 1 0-6.5 3.25 3.25 0 0 1 0 6.5Z" fill="currentColor"/>
                                             </svg>
                                         </button>
+                                        <img class="evid-thumb d-none" alt="Evidencia">
                                         <span class="input-group-text bg-light evid-label">Sin foto</span>
                                         <button type="button" class="btn btn-outline-danger" onclick="removePesaje(this)">Eliminar</button>
                                     </div>
@@ -105,7 +107,7 @@
                                     <button type="button" class="btn btn-outline-primary btn-sm" onclick="addPesaje(this)">Agregar pesaje</button>
                                 </div>
                                 <input type="hidden" name="subpesajes" value="">
-                                <div class="form-text">Ingresa peso bruto y descuento; el neto se calcula solo. Sube la foto desde tu dispositivo (simulado).</div>
+                                <div class="form-text">Ingresa peso bruto y descuento; el neto se calcula solo. Sube la evidencia desde tu galer&iacute;a o c&aacute;mara.</div>
                             </div>
                             <div class="col-6">
                                 <label class="form-label">Kg bruto total (auto)</label>
@@ -181,11 +183,104 @@
 
 <script>
     const PRICE_MAP = {{ price_map | tojson | safe }};
+    const MAX_MB = {{ max_mb | default(8) }};
+    const UPLOAD_URL = '/web/files/upload';
+    let pendingUploads = 0;
+
+    function showEvidenceAlert(message, kind) {
+        const alertEl = document.getElementById('evidence-alert');
+        if (!alertEl) return;
+        alertEl.textContent = message;
+        alertEl.classList.remove('d-none', 'alert-warning', 'alert-danger', 'alert-success');
+        const cls = kind ? `alert-${kind}` : 'alert-warning';
+        alertEl.classList.add(cls);
+    }
+    function clearEvidenceAlert() {
+        const alertEl = document.getElementById('evidence-alert');
+        if (!alertEl) return;
+        alertEl.textContent = '';
+        alertEl.classList.add('d-none');
+    }
     function triggerEvidence(btn) {
         const group = btn.closest('.input-group');
         const input = group ? group.querySelector('.subpesaje-evid') : null;
         if (input) {
             input.click();
+        }
+    }
+    function setEvidenceLabel(groupEl, text, state) {
+        const label = groupEl ? groupEl.querySelector('.evid-label') : null;
+        if (!label) return;
+        label.textContent = text;
+        label.classList.remove('is-uploading', 'is-error', 'is-ready');
+        if (state === 'uploading') label.classList.add('is-uploading');
+        if (state === 'error') label.classList.add('is-error');
+        if (state === 'ready') label.classList.add('is-ready');
+    }
+    function handleEvidenceChange(inputEl) {
+        const file = inputEl.files && inputEl.files[0];
+        const group = inputEl.closest('.input-group');
+        if (!file || !group) return;
+        clearEvidenceAlert();
+        if (file.size > MAX_MB * 1024 * 1024) {
+            inputEl.value = '';
+            inputEl.dataset.error = '1';
+            inputEl.dataset.url = '';
+            inputEl.dataset.uploading = '';
+            setEvidenceLabel(group, `Imagen muy pesada (max ${MAX_MB}MB).`, 'error');
+            showEvidenceAlert(`La imagen supera ${MAX_MB}MB. Usa un archivo m&aacute;s ligero.`, 'warning');
+            updatePesajes(inputEl);
+            return;
+        }
+        inputEl.dataset.error = '';
+        inputEl.dataset.uploading = '1';
+        inputEl.dataset.url = '';
+        setEvidenceLabel(group, 'Subiendo...', 'uploading');
+        const thumb = group.querySelector('.evid-thumb');
+        if (thumb) {
+            const objectUrl = URL.createObjectURL(file);
+            thumb.src = objectUrl;
+            thumb.dataset.local = '1';
+            thumb.classList.remove('d-none');
+            thumb.onload = () => URL.revokeObjectURL(objectUrl);
+        }
+        pendingUploads += 1;
+        updateSteps();
+        uploadEvidence(inputEl, file);
+    }
+    async function uploadEvidence(inputEl, file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+            const response = await fetch(UPLOAD_URL, { method: 'POST', body: formData });
+            if (!response.ok) {
+                let detail = '';
+                try {
+                    const data = await response.json();
+                    detail = data.detail || '';
+                } catch (err) {
+                    detail = '';
+                }
+                throw new Error(detail || 'No se pudo subir la imagen.');
+            }
+            const data = await response.json();
+            if (!data.url) {
+                throw new Error('Respuesta sin URL.');
+            }
+            clearEvidenceAlert();
+            inputEl.dataset.url = data.url;
+            inputEl.dataset.error = '';
+            setEvidenceLabel(inputEl.closest('.input-group'), 'Evidencia cargada', 'ready');
+        } catch (err) {
+            inputEl.dataset.error = '1';
+            inputEl.dataset.url = '';
+            setEvidenceLabel(inputEl.closest('.input-group'), 'Error al subir', 'error');
+            showEvidenceAlert('No se pudo subir la evidencia. Intenta de nuevo.', 'danger');
+        } finally {
+            inputEl.dataset.uploading = '';
+            pendingUploads = Math.max(0, pendingUploads - 1);
+            updatePesajes(inputEl);
+            updateSteps();
         }
     }
     function togglePartner() {
@@ -213,8 +308,21 @@
             else if (inp.name === 'kg_descuento') inp.value = '0';
             else inp.value = '';
         });
+        clone.querySelectorAll('.subpesaje-evid').forEach(inp => {
+            inp.dataset.url = '';
+            inp.dataset.uploading = '';
+            inp.dataset.error = '';
+        });
+        clone.querySelectorAll('.evid-thumb').forEach(img => {
+            img.removeAttribute('src');
+            img.dataset.local = '';
+            img.classList.add('d-none');
+        });
         const evidLabel = clone.querySelector('.evid-label');
-        if (evidLabel) evidLabel.textContent = 'Sin foto';
+        if (evidLabel) {
+            evidLabel.textContent = 'Sin foto';
+            evidLabel.classList.remove('is-uploading', 'is-error', 'is-ready');
+        }
         // reset subpesajes a solo una fila vacía
         const subWrapper = clone.querySelector('.subpesajes-wrapper');
         subWrapper.innerHTML = `
@@ -225,12 +333,13 @@
                 <input class="form-control subpesaje-desc" type="number" step="0.01" min="0" placeholder="0.00" oninput="updatePesajes(this)">
                 <span class="input-group-text bg-light">Neto</span>
                 <span class="input-group-text subpesaje-neto">0.00</span>
-                <input class="subpesaje-evid d-none" type="file" accept="image/*" onchange="updatePesajes(this)">
-                <button type="button" class="evidence-btn" onclick="triggerEvidence(this)" title="Tomar/seleccionar foto">
+                <input class="subpesaje-evid d-none" type="file" accept="image/*" capture="environment" onchange="handleEvidenceChange(this)">
+                <button type="button" class="evidence-btn" onclick="triggerEvidence(this)" title="Tomar o seleccionar foto">
                     <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                         <path d="M9 4.5 7.8 6H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-2.8L15 4.5H9Zm3 10.75a3.25 3.25 0 1 1 0-6.5 3.25 3.25 0 0 1 0 6.5Z" fill="currentColor"/>
                     </svg>
                 </button>
+                <img class="evid-thumb d-none" alt="Evidencia">
                 <span class="input-group-text bg-light evid-label">Sin foto</span>
                 <button type="button" class="btn btn-outline-danger" onclick="removePesaje(this)">Eliminar</button>
             </div>
@@ -254,22 +363,37 @@
         const inputs = materialRow.querySelectorAll('.subpesaje-input');
         const descInputs = materialRow.querySelectorAll('.subpesaje-desc');
         const evidInputs = materialRow.querySelectorAll('.subpesaje-evid');
-        const hidden = materialRow.querySelector('input[type=\"hidden\"][name=\"subpesajes\"]');
+        const hidden = materialRow.querySelector('input[type="hidden"][name="subpesajes"]');
         let items = [];
         for (let idx = 0; idx < inputs.length; idx++) {
             const bruto = parseFloat(inputs[idx].value || '0');
             const desc = parseFloat(descInputs[idx].value || '0');
-            const evFile = evidInputs[idx].files ? evidInputs[idx].files[0] : null;
-            const evText = evidInputs[idx].value || '';
-            const evidencia = evFile ? evFile.name : evText;
+            const evidInput = evidInputs[idx];
+            const evidenciaUrl = evidInput.dataset.url || '';
+            const isUploading = evidInput.dataset.uploading === '1';
+            const hasError = evidInput.dataset.error === '1';
             const netoPesaje = Math.max(bruto - desc, 0);
-            const groupEl = evidInputs[idx].closest('.input-group');
+            const groupEl = evidInput.closest('.input-group');
             const netoLabel = groupEl?.querySelector('.subpesaje-neto');
             const evidLabel = groupEl?.querySelector('.evid-label');
             if (netoLabel) netoLabel.textContent = netoPesaje.toFixed(2);
-            if (evidLabel) evidLabel.textContent = evidencia ? evidencia : 'Sin foto';
-            if (bruto > 0 || desc > 0 || evidencia) {
-                items.push({peso_kg: bruto || 0, descuento_kg: desc || 0, foto_url: evidencia || null});
+            if (evidLabel) {
+                evidLabel.classList.remove('is-uploading', 'is-error', 'is-ready');
+                if (isUploading) {
+                    evidLabel.textContent = 'Subiendo...';
+                    evidLabel.classList.add('is-uploading');
+                } else if (hasError) {
+                    evidLabel.textContent = 'Error al subir';
+                    evidLabel.classList.add('is-error');
+                } else if (evidenciaUrl) {
+                    evidLabel.textContent = 'Evidencia cargada';
+                    evidLabel.classList.add('is-ready');
+                } else {
+                    evidLabel.textContent = 'Sin foto';
+                }
+            }
+            if (bruto > 0 || desc > 0 || evidenciaUrl) {
+                items.push({peso_kg: bruto || 0, descuento_kg: desc || 0, foto_url: evidenciaUrl || null});
             }
         }
         hidden.value = JSON.stringify(items);
@@ -311,12 +435,13 @@
             <input class="form-control subpesaje-desc" type="number" step="0.01" min="0" placeholder="0.00" oninput="updatePesajes(this)">
             <span class="input-group-text bg-light">Neto</span>
             <span class="input-group-text subpesaje-neto">0.00</span>
-            <input class="subpesaje-evid d-none" type="file" accept="image/*" onchange="updatePesajes(this)">
-            <button type="button" class="evidence-btn" onclick="triggerEvidence(this)" title="Tomar/seleccionar foto">
+            <input class="subpesaje-evid d-none" type="file" accept="image/*" capture="environment" onchange="handleEvidenceChange(this)">
+            <button type="button" class="evidence-btn" onclick="triggerEvidence(this)" title="Tomar o seleccionar foto">
                 <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                     <path d="M9 4.5 7.8 6H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-2.8L15 4.5H9Zm3 10.75a3.25 3.25 0 1 1 0-6.5 3.25 3.25 0 0 1 0 6.5Z" fill="currentColor"/>
                 </svg>
             </button>
+            <img class="evid-thumb d-none" alt="Evidencia">
             <span class="input-group-text bg-light evid-label">Sin foto</span>
             <button type="button" class="btn btn-outline-danger" onclick="removePesaje(this)">Eliminar</button>
         `;
@@ -329,6 +454,24 @@
         if (wrapper.querySelectorAll('.input-group').length <= 1) {
             const inputs = wrapper.querySelectorAll('input');
             inputs.forEach(i => i.value = '');
+            const evidInput = wrapper.querySelector('.subpesaje-evid');
+            if (evidInput) {
+                evidInput.dataset.url = '';
+                evidInput.dataset.uploading = '';
+                evidInput.dataset.error = '';
+                const groupEl = evidInput.closest('.input-group');
+                const evidLabel = groupEl ? groupEl.querySelector('.evid-label') : null;
+                if (evidLabel) {
+                    evidLabel.textContent = 'Sin foto';
+                    evidLabel.classList.remove('is-uploading', 'is-error', 'is-ready');
+                }
+                const thumb = groupEl ? groupEl.querySelector('.evid-thumb') : null;
+                if (thumb) {
+                    thumb.removeAttribute('src');
+                    thumb.dataset.local = '';
+                    thumb.classList.add('d-none');
+                }
+            }
             updatePesajes(wrapper.querySelector('.subpesaje-input'));
             return;
         }
@@ -406,7 +549,20 @@
         document.getElementById('nota-total').textContent = tienePrecio ? `$${totMonto.toFixed(2)}` : '-';
 
         const submitBtn = document.getElementById('submitBtn');
-        submitBtn.disabled = !step2Valid;
+        if (submitBtn) {
+            const blocked = pendingUploads > 0;
+            submitBtn.disabled = !step2Valid || blocked;
+            submitBtn.textContent = blocked ? 'Subiendo evidencias...' : 'Guardar borrador';
+        }
+    }
+    const formEl = document.querySelector('form');
+    if (formEl) {
+        formEl.addEventListener('submit', (event) => {
+            if (pendingUploads > 0) {
+                event.preventDefault();
+                showEvidenceAlert('Espera a que terminen las cargas de evidencia.', 'warning');
+            }
+        });
     }
     // inicializar partner visible y steps
     togglePartner();

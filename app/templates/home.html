@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Inicio · Metalería{% endblock %}
+{% block title %}Inicio &middot; Metalería{% endblock %}
 
 {% block content %}
 {% if user and user.rol == 'trabajador' %}
@@ -36,7 +36,7 @@
                     <div class="d-flex align-items-center gap-2 mb-2">
                         <span class="hero-badge">Panel operativo</span>
                     </div>
-                    <h1 class="display-6 fw-bold mb-2 text-white">Metalería · Control y Administración</h1>
+                    <h1 class="display-6 fw-bold mb-2 text-white">Metalería &middot; Control y Administración</h1>
                     <p class="mb-3 text-muted">
                         Inventario, compras, ventas y catálogos en un mismo lugar. Diseñado para equipos de campo y oficina.
                     </p>
@@ -63,15 +63,14 @@
                 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
                     <div>
                         <p class="text-uppercase text-muted small mb-1">Accesos rápidos</p>
-                        <h2 class="h5 text-white mb-0">Panel de {{ user.rol|capitalize }}</h2>
+                        <h2 class="h5 text-white mb-0">Panel de {{ user.rol|replace('_', ' ')|title }}</h2>
                     </div>
                 </div>
                 <div class="action-grid">
                     {% if user.rol == 'super_admin' %}
                         <a href="/web/admin/users" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                            <div class="d-flex align-items-center justify-content-between">
-                                <div class="action-icon">👤</div>
-                                <span class="action-arrow">→</span>
+                            <div class="action-top">
+                                <div class="action-icon">&#x1F464;</div>
                             </div>
                             <div>
                                 <h3 class="h6 mb-1 text-white">Usuarios</h3>
@@ -79,9 +78,8 @@
                             </div>
                         </a>
                         <a href="/web/admin/sucursales" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                            <div class="d-flex align-items-center justify-content-between">
-                                <div class="action-icon">🏢</div>
-                                <span class="action-arrow">→</span>
+                            <div class="action-top">
+                                <div class="action-icon">&#x1F3E2;</div>
                             </div>
                             <div>
                                 <h3 class="h6 mb-1 text-white">Sucursales</h3>
@@ -94,13 +92,12 @@
                         <a href="/web/admin/notas" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1 position-relative">
                             {% set badge_count = (notas_revision_count if notas_revision_count is defined else request.state.notas_revision_count) or 0 %}
                             {% if badge_count > 0 %}
-                                <span class="position-absolute top-0 end-0 translate-middle badge rounded-pill bg-danger">
+                                <span class="badge bg-danger action-badge">
                                     {{ badge_count }}
                                 </span>
                             {% endif %}
-                            <div class="d-flex align-items-center justify-content-between">
-                                <div class="action-icon">📝</div>
-                                <span class="action-arrow">→</span>
+                            <div class="action-top">
+                                <div class="action-icon">&#x1F4DD;</div>
                             </div>
                             <div>
                                 <h3 class="h6 mb-1 text-white">Notas</h3>
@@ -108,9 +105,8 @@
                             </div>
                         </a>
                         <a href="/web/admin/materiales" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                            <div class="d-flex align-items-center justify-content-between">
-                                <div class="action-icon">🧱</div>
-                                <span class="action-arrow">→</span>
+                            <div class="action-top">
+                                <div class="action-icon">&#x1F9F1;</div>
                             </div>
                             <div>
                                 <h3 class="h6 mb-1 text-white">Materiales</h3>
@@ -118,9 +114,8 @@
                             </div>
                         </a>
                         <a href="/web/admin/proveedores" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                            <div class="d-flex align-items-center justify-content-between">
-                                <div class="action-icon">🚚</div>
-                                <span class="action-arrow">→</span>
+                            <div class="action-top">
+                                <div class="action-icon">&#x1F69A;</div>
                             </div>
                             <div>
                                 <h3 class="h6 mb-1 text-white">Proveedores</h3>
@@ -128,9 +123,8 @@
                             </div>
                         </a>
                         <a href="/web/admin/clientes" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                            <div class="d-flex align-items-center justify-content-between">
-                                <div class="action-icon">🧾</div>
-                                <span class="action-arrow">→</span>
+                            <div class="action-top">
+                                <div class="action-icon">&#x1F9FE;</div>
                             </div>
                             <div>
                                 <h3 class="h6 mb-1 text-white">Clientes</h3>
@@ -138,9 +132,8 @@
                             </div>
                         </a>
                         <a href="/web/admin/inventario" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                            <div class="d-flex align-items-center justify-content-between">
-                                <div class="action-icon">📦</div>
-                                <span class="action-arrow">→</span>
+                            <div class="action-top">
+                                <div class="action-icon">&#x1F4E6;</div>
                             </div>
                             <div>
                                 <h3 class="h6 mb-1 text-white">Inventario</h3>
@@ -148,9 +141,8 @@
                             </div>
                         </a>
                         <a href="/web/admin/contabilidad" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                            <div class="d-flex align-items-center justify-content-between">
-                                <div class="action-icon">💼</div>
-                                <span class="action-arrow">→</span>
+                            <div class="action-top">
+                                <div class="action-icon">&#x1F4BC;</div>
                             </div>
                             <div>
                                 <h3 class="h6 mb-1 text-white">Log contable</h3>
@@ -162,41 +154,6 @@
             </div>
         </div>
 
-        <div class="row g-3">
-            <div class="col-lg-4">
-                <div class="card h-100 hover-lift">
-                    <div class="card-body">
-                        <p class="text-uppercase text-muted small mb-1">Seguridad</p>
-                        <h2 class="h5 mb-2 text-white">Roles claros</h2>
-                        <p class="text-muted mb-0">
-                            Super admin, admin y trabajadores con accesos diferenciados y visión adaptada a cada perfil.
-                        </p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-lg-4">
-                <div class="card h-100 hover-lift">
-                    <div class="card-body">
-                        <p class="text-uppercase text-muted small mb-1">Catálogos</p>
-                        <h2 class="h5 mb-2 text-white">Materiales y precios</h2>
-                        <p class="text-muted mb-0">
-                            Versionado de precios por material, tipo de operación y tipo de cliente, con bitácora de cambios.
-                        </p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-lg-4">
-                <div class="card h-100 hover-lift">
-                    <div class="card-body">
-                        <p class="text-uppercase text-muted small mb-1">Operación</p>
-                        <h2 class="h5 mb-2 text-white">Proveedores y clientes</h2>
-                        <p class="text-muted mb-0">
-                            Catálogo ágil con búsqueda por nombre, teléfono, correo o placas. Listo para notas y pesajes.
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
     {% endif %}
 {% endif %}
 {% endblock %}

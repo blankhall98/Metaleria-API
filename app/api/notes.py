@@ -31,8 +31,9 @@ class NotaMaterialIn(BaseModel):
     subpesajes: List[SubpesajeIn] = []
 
     @field_validator("kg_descuento")
-    def validate_descuento(cls, v, values):
-        kg_bruto = values.get("kg_bruto")
+    @classmethod
+    def validate_descuento(cls, v, info):
+        kg_bruto = info.data.get("kg_bruto")
         if kg_bruto is not None and v > kg_bruto:
             raise ValueError("El descuento no puede ser mayor que el peso bruto")
         return v
@@ -149,6 +150,26 @@ def update_note_state(
         raise HTTPException(status_code=404, detail="Nota no encontrada")
     if nota.estado == NotaEstado.cancelada:
         raise HTTPException(status_code=400, detail="La nota cancelada no puede cambiar de estado.")
+
+    if data.estado == NotaEstado.en_revision:
+        if nota.estado != NotaEstado.borrador:
+            raise HTTPException(status_code=400, detail="Solo borradores pueden enviarse a revisión.")
+        try:
+            return note_service.send_to_revision(db, nota)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    if data.estado == NotaEstado.aprobada:
+        raise HTTPException(
+            status_code=400,
+            detail="Usa el flujo de aprobación para registrar inventario y contabilidad.",
+        )
+
+    if data.estado == NotaEstado.cancelada and nota.estado == NotaEstado.aprobada:
+        raise HTTPException(status_code=400, detail="No puedes cancelar una nota aprobada por esta vía.")
+
+    if data.estado == NotaEstado.borrador and nota.estado not in (NotaEstado.en_revision, NotaEstado.borrador):
+        raise HTTPException(status_code=400, detail="Solo puedes devolver a borrador desde revisión.")
 
     nota = note_service.update_state(
         db,

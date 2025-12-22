@@ -11,6 +11,7 @@ from app.models import Nota, NotaEstado
 from app.api.router import api_router
 from app.web.admin import router as admin_web_router
 from app.web.worker import router as worker_web_router
+from app.web.files import router as files_web_router
 
 from app.core.config import get_settings
 from app.db.deps import get_db
@@ -54,6 +55,8 @@ def create_app() -> FastAPI:
     app.include_router(admin_web_router)
     # Web Worker
     app.include_router(worker_web_router)
+    # Web Files (uploads)
+    app.include_router(files_web_router)
 
     # Root JSON
     @app.get("/")

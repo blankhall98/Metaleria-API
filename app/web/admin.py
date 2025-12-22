@@ -29,6 +29,8 @@ from app.models import (
     ClientePlaca,
     Nota,
     NotaEstado,
+    NotaMaterial,
+    Subpesaje,
     Inventario,
     MovimientoContable,
     Material,
@@ -37,6 +39,8 @@ from app.models import (
 
 from app.services.pricing_service import create_price_version
 from app.services import note_service
+from app.services.evidence_service import build_evidence_groups
+from app.services.firebase_storage import upload_image
 
 templates = Jinja2Templates(directory="app/templates")
 settings = get_settings()
@@ -1291,6 +1295,120 @@ async def notas_detail(
         raise HTTPException(status_code=404, detail="Nota no encontrada.")
 
     return _render_nota_detail(request, db, current_user, nota)
+
+
+@router.get("/notas/{nota_id}/evidencias")
+async def notas_evidencias(
+    nota_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    nota = db.get(Nota, nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota no encontrada.")
+
+    sucursal = db.get(Sucursal, nota.sucursal_id) if nota.sucursal_id else None
+    proveedor = db.get(Proveedor, nota.proveedor_id) if nota.proveedor_id else None
+    cliente = db.get(Cliente, nota.cliente_id) if nota.cliente_id else None
+    trabajador = db.get(User, nota.trabajador_id) if nota.trabajador_id else None
+    if nota.tipo_operacion.value == "compra":
+        partner_label = "Proveedor"
+        partner_name = proveedor.nombre_completo if proveedor else "-"
+    else:
+        partner_label = "Cliente"
+        partner_name = cliente.nombre_completo if cliente else "-"
+
+    evidence_groups = build_evidence_groups(nota)
+    total_sub = sum(len(g["subpesajes"]) for g in evidence_groups)
+    missing = sum(
+        1
+        for g in evidence_groups
+        for sp in g["subpesajes"]
+        if not sp.get("foto_url")
+    )
+
+    return templates.TemplateResponse(
+        "note_evidencias.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "nota": nota,
+            "sucursal": sucursal,
+            "partner_label": partner_label,
+            "partner_name": partner_name,
+            "trabajador_name": trabajador.nombre_completo if trabajador else None,
+            "evidence_groups": evidence_groups,
+            "total_subpesajes": total_sub,
+            "missing_subpesajes": missing,
+            "can_upload": True,
+            "upload_action_base": f"/web/admin/notas/{nota.id}/subpesajes",
+            "back_url": f"/web/admin/notas/{nota.id}",
+            "max_mb": settings.FIREBASE_MAX_MB,
+            "capture_mode": None,
+            "updated": request.query_params.get("updated"),
+            "error": request.query_params.get("error"),
+        },
+    )
+
+
+@router.post("/notas/{nota_id}/subpesajes/{subpesaje_id}/evidencia")
+async def notas_subpesaje_upload(
+    nota_id: int,
+    subpesaje_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    nota = db.get(Nota, nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota no encontrada.")
+
+    subpesaje = (
+        db.query(Subpesaje)
+        .join(NotaMaterial, NotaMaterial.id == Subpesaje.nota_material_id)
+        .filter(Subpesaje.id == subpesaje_id, NotaMaterial.nota_id == nota_id)
+        .first()
+    )
+    if not subpesaje:
+        raise HTTPException(status_code=404, detail="Subpesaje no encontrado.")
+
+    if not file.content_type or not file.content_type.startswith("image/"):
+        return RedirectResponse(
+            url=f"/web/admin/notas/{nota_id}/evidencias?error=tipo",
+            status_code=303,
+        )
+
+    content = await file.read()
+    max_bytes = settings.FIREBASE_MAX_MB * 1024 * 1024
+    if len(content) > max_bytes:
+        return RedirectResponse(
+            url=f"/web/admin/notas/{nota_id}/evidencias?error=peso",
+            status_code=303,
+        )
+
+    try:
+        url = upload_image(
+            content=content,
+            filename=file.filename or "evidencia",
+            content_type=file.content_type,
+            folder=f"evidencias/nota_{nota_id}/sub_{subpesaje_id}",
+        )
+    except Exception:
+        return RedirectResponse(
+            url=f"/web/admin/notas/{nota_id}/evidencias?error=upload",
+            status_code=303,
+        )
+
+    subpesaje.foto_url = url
+    db.add(subpesaje)
+    db.commit()
+
+    return RedirectResponse(
+        url=f"/web/admin/notas/{nota_id}/evidencias?updated=1",
+        status_code=303,
+    )
 
 
 @router.post("/notas/{nota_id}/aprobar")
