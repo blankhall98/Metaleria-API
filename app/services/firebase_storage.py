@@ -58,3 +58,14 @@ def upload_image(*, content: bytes, filename: str, content_type: str | None, fol
     blob.upload_from_string(content, content_type=content_type or "application/octet-stream")
     blob.make_public()
     return blob.public_url
+
+
+def upload_file(*, content: bytes, filename: str, content_type: str | None, folder: str) -> str:
+    bucket = _ensure_bucket()
+    safe_name = _safe_filename(filename, content_type)
+    object_name = f"{folder}/{uuid.uuid4().hex}_{safe_name}"
+    blob = bucket.blob(object_name)
+    blob.cache_control = "public, max-age=31536000"
+    blob.upload_from_string(content, content_type=content_type or "application/octet-stream")
+    blob.make_public()
+    return blob.public_url

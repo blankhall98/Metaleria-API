@@ -14,6 +14,9 @@
             <a href="/web/admin/notas/{{ nota.id }}/editar" class="btn btn-outline-primary btn-sm">Editar</a>
         {% endif %}
         <a href="/web/admin/notas/{{ nota.id }}/evidencias" class="btn btn-primary btn-sm note-evidence-btn">Evidencias</a>
+        {% if nota.estado.value == 'APROBADA' %}
+            <a href="/web/admin/notas/{{ nota.id }}/factura" class="btn btn-outline-primary btn-sm">Factura PDF</a>
+        {% endif %}
         <a href="/web/admin/notas" class="btn btn-outline-secondary btn-sm">Volver</a>
     </div>
 </div>

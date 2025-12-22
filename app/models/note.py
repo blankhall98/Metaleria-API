@@ -47,6 +47,9 @@ class Nota(Base):
     monto_pagado = Column(Numeric(12, 2), nullable=False, default=0)
     folio_seq = Column(Integer, nullable=True, index=True)
 
+    factura_url = Column(String(255), nullable=True)
+    factura_generada_at = Column(DateTime, nullable=True)
+
     metodo_pago = Column(String(50), nullable=True)
     cuenta_financiera_id = Column(Integer, nullable=True)
     fecha_caducidad_pago = Column(Date, nullable=True)

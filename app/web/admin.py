@@ -1,4 +1,5 @@
 # app/web/admin.py
+import io
 import json
 import re
 
@@ -40,7 +41,7 @@ from app.models import (
 )
 
 from app.services.pricing_service import create_price_version
-from app.services import note_service
+from app.services import note_service, invoice_service
 from app.services.evidence_service import build_evidence_groups
 from app.services.firebase_storage import upload_image
 
@@ -2194,6 +2195,40 @@ async def notas_evidencias(
     )
 
 
+@router.get("/notas/{nota_id}/factura")
+async def notas_factura(
+    nota_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    nota = db.get(Nota, nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_nota_access(nota, allowed_suc_ids)
+    if nota.estado != NotaEstado.aprobada:
+        raise HTTPException(status_code=400, detail="La nota debe estar aprobada.")
+    if nota.factura_url:
+        return RedirectResponse(url=nota.factura_url, status_code=302)
+
+    pdf_bytes, filename = invoice_service.build_invoice_pdf(db, nota)
+    if current_user.get("rol") == UserRole.super_admin.value:
+        try:
+            factura_url = invoice_service.upload_invoice_pdf(pdf_bytes, filename, nota.id)
+            if factura_url:
+                nota.factura_url = factura_url
+                nota.factura_generada_at = datetime.utcnow()
+                db.add(nota)
+                db.commit()
+                return RedirectResponse(url=factura_url, status_code=302)
+        except Exception:
+            db.rollback()
+
+    headers = {"Content-Disposition": f"attachment; filename={filename}"}
+    return StreamingResponse(io.BytesIO(pdf_bytes), media_type="application/pdf", headers=headers)
+
+
 @router.get("/notas/{nota_id}/editar")
 async def notas_edit_get(
     nota_id: int,
@@ -2483,6 +2518,18 @@ async def notas_aprobar(
             error=str(e),
             form_state=form_state,
         )
+
+    if current_user.get("rol") == UserRole.super_admin.value:
+        try:
+            pdf_bytes, filename = invoice_service.build_invoice_pdf(db, nota)
+            factura_url = invoice_service.upload_invoice_pdf(pdf_bytes, filename, nota.id)
+            if factura_url:
+                nota.factura_url = factura_url
+                nota.factura_generada_at = datetime.utcnow()
+                db.add(nota)
+                db.commit()
+        except Exception:
+            db.rollback()
 
     return RedirectResponse(url="/web/admin/notas?approved=1", status_code=303)
 
