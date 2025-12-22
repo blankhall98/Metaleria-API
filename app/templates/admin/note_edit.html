@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% block title %}Editar nota {{ nota.id }}{% endblock %}
+
+{% block content %}
+<div class="note-detail-page">
+<div class="page-header">
+    <div>
+        <p class="text-uppercase text-muted small mb-1">Edici&oacute;n</p>
+        <h1 class="h4 text-dark mb-0">Nota #{{ nota.id }}</h1>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="/web/admin/notas/{{ nota.id }}" class="btn btn-outline-secondary btn-sm">Volver</a>
+    </div>
+</div>
+
+<div class="card hover-lift mb-3 note-summary-card">
+    <div class="card-body">
+        {% if error %}
+            <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
+        {% endif %}
+        {% if saved %}
+            <div class="alert alert-success py-2 small mb-3">Edici&oacute;n guardada.</div>
+        {% endif %}
+        <div class="note-meta-grid">
+            <div class="note-meta-item">
+                <span class="note-meta-label">Estado</span>
+                {% if nota.estado.value == 'BORRADOR' %}
+                    <span class="badge bg-secondary">Borrador</span>
+                {% elif nota.estado.value == 'EN_REVISION' %}
+                    <span class="badge bg-warning text-dark">En revisi&oacute;n</span>
+                {% elif nota.estado.value == 'APROBADA' %}
+                    <span class="badge bg-success">Aprobada</span>
+                {% else %}
+                    <span class="badge bg-danger">Cancelada</span>
+                {% endif %}
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Operaci&oacute;n</span>
+                <strong>{{ nota.tipo_operacion.value|capitalize }}</strong>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Sucursal</span>
+                <strong>{{ sucursal.nombre if sucursal else '-' }}</strong>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Trabajador</span>
+                <strong>{{ trabajador.nombre_completo if trabajador else '-' }}</strong>
+                <div class="note-meta-sub">{{ trabajador.username if trabajador else '' }}</div>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Partner</span>
+                {% if nota.tipo_operacion.value == 'compra' %}
+                    <strong>{{ proveedor.nombre_completo if proveedor else '-' }}</strong>
+                {% else %}
+                    <strong>{{ cliente.nombre_completo if cliente else '-' }}</strong>
+                {% endif %}
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Kg neto</span>
+                <strong>{{ "%.2f"|format(nota.total_kg_neto or 0) }} kg</strong>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Total</span>
+                <strong>${{ "%.2f"|format(nota.total_monto or 0) }}</strong>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Monto pagado</span>
+                <strong>${{ "%.2f"|format(nota.monto_pagado or 0) }}</strong>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Saldo pendiente</span>
+                {% if saldo_pendiente > 0 %}
+                    <strong class="text-danger">${{ "%.2f"|format(saldo_pendiente) }}</strong>
+                {% else %}
+                    <strong class="text-success">$0.00</strong>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<form method="post" class="d-grid gap-3">
+    <div class="card hover-lift mb-3 note-report-card">
+        <div class="card-body">
+            <h2 class="h6 text-dark mb-3 note-section-title">Materiales</h2>
+            <div class="table-responsive">
+                <table class="table table-hover table-sm align-middle mb-0 note-table">
+                    <thead>
+                    <tr>
+                        <th>Material</th>
+                        <th>Subpesajes</th>
+                        <th>Tipo precio</th>
+                        <th class="text-end">Kg bruto</th>
+                        <th class="text-end">Kg desc</th>
+                        <th class="text-end">Kg neto</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for m in nota.materiales %}
+                        <tr>
+                            <td>
+                                <div class="fw-semibold">{{ m.material.nombre if m.material else m.material_id }}</div>
+                                {% if m.subpesajes %}
+                                    <div class="text-muted small">Edita los subpesajes para ajustar los kg.</div>
+                                {% else %}
+                                    <div class="text-muted small">Sin subpesajes. Edita kg directo.</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if m.subpesajes %}
+                                    <div class="d-grid gap-2">
+                                        {% for sp in m.subpesajes %}
+                                            <div class="input-group input-group-sm">
+                                                <span class="input-group-text">Peso</span>
+                                                <input class="form-control" type="number" step="0.001" min="0.001" name="sp_peso_{{ sp.id }}" value="{{ "%.3f"|format(sp.peso_kg or 0) }}" required>
+                                                <span class="input-group-text">Desc</span>
+                                                <input class="form-control" type="number" step="0.001" min="0" name="sp_desc_{{ sp.id }}" value="{{ "%.3f"|format(sp.descuento_kg or 0) }}" required>
+                                                {% if sp.foto_url %}
+                                                    <a class="btn btn-outline-secondary btn-sm" href="{{ sp.foto_url }}" target="_blank" rel="noopener">Foto</a>
+                                                {% else %}
+                                                    <span class="input-group-text">Sin foto</span>
+                                                {% endif %}
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+                                {% else %}
+                                    <span class="text-muted small">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <select class="form-select form-select-sm" name="tipo_cliente_{{ m.id }}">
+                                    {% for tc in tipos_cliente %}
+                                        {% set is_selected = (m.tipo_cliente and m.tipo_cliente.value == tc.value) or (not m.tipo_cliente and tc.value == 'regular') %}
+                                        <option value="{{ tc.value }}" {% if is_selected %}selected{% endif %}>
+                                            {{ tc.value|capitalize }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td class="text-end">
+                                <input class="form-control form-control-sm text-end" type="number" step="0.001" min="0" name="kg_bruto_{{ m.id }}" value="{{ "%.3f"|format(m.kg_bruto or 0) }}" {% if m.subpesajes %}disabled{% endif %}>
+                            </td>
+                            <td class="text-end">
+                                <input class="form-control form-control-sm text-end" type="number" step="0.001" min="0" name="kg_desc_{{ m.id }}" value="{{ "%.3f"|format(m.kg_descuento or 0) }}" {% if m.subpesajes %}disabled{% endif %}>
+                            </td>
+                            <td class="text-end">{{ "%.3f"|format(m.kg_neto or 0) }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="row g-3 mt-3">
+                <div class="col-12">
+                    <label class="form-label">Comentario de edici&oacute;n</label>
+                    <textarea class="form-control" name="comentario_edicion" rows="2" placeholder="Opcional. Se registra en los ajustes." >{{ comentario_edicion }}</textarea>
+                    <div class="form-text text-muted">Los cambios actualizan inventario y log contable si la nota est&aacute; aprobada.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="note-actions">
+        <div class="note-actions-title">Acciones</div>
+        <div class="note-actions-row">
+            <button type="submit" class="btn btn-primary note-action-primary">Guardar cambios</button>
+            <a href="/web/admin/notas/{{ nota.id }}" class="btn btn-outline-secondary">Cancelar</a>
+        </div>
+    </div>
+</form>
+</div>
+{% endblock %}

@@ -362,7 +362,7 @@ def ajustar_stock(
         nota_id=None,
         nota_material_id=None,
         tipo="ajuste",
-        cantidad_kg=abs(delta),
+        cantidad_kg=delta,
         saldo_resultante=nuevo_saldo,
         comentario=comentario or "Ajuste manual",
         usuario_id=usuario_id,
@@ -552,6 +552,132 @@ def set_tipo_cliente_and_prices(
             nm.tipo_cliente = tipo_cliente_map[nm.id]
             db.add(nm)
     apply_prices(db, nota)
+    db.commit()
+    db.refresh(nota)
+    return nota
+
+
+def edit_note_by_superadmin(
+    db: Session,
+    nota: Nota,
+    *,
+    tipo_cliente_map: dict[int, TipoCliente] | None = None,
+    kg_override_map: dict[int, tuple[Decimal, Decimal]] | None = None,
+    subpesaje_map: dict[int, tuple[Decimal, Decimal]] | None = None,
+    admin_id: int | None = None,
+    comentario: str | None = None,
+) -> Nota:
+    """
+    Edita una nota (solo super admin). Si esta aprobada, registra ajustes en inventario y contabilidad.
+    """
+    old_total = Decimal(str(nota.total_monto or 0))
+    old_kg_map = {nm.id: Decimal(str(nm.kg_neto or 0)) for nm in nota.materiales}
+    old_tipo_cli_map = {nm.id: nm.tipo_cliente for nm in nota.materiales}
+
+    tipo_cliente_map = tipo_cliente_map or {}
+    kg_override_map = kg_override_map or {}
+    subpesaje_map = subpesaje_map or {}
+
+    for nm in nota.materiales:
+        if nm.id in tipo_cliente_map:
+            nm.tipo_cliente = tipo_cliente_map[nm.id]
+        if nm.subpesajes:
+            for sp in nm.subpesajes:
+                if sp.id in subpesaje_map:
+                    peso, desc = subpesaje_map[sp.id]
+                    sp.peso_kg = peso
+                    sp.descuento_kg = desc
+                    db.add(sp)
+        elif nm.id in kg_override_map:
+            kg_bruto, kg_desc = kg_override_map[nm.id]
+            nm.kg_bruto = kg_bruto
+            nm.kg_descuento = kg_desc
+        db.add(nm)
+
+    for nm in nota.materiales:
+        _recalc_material(nm)
+        tipo_cli = nm.tipo_cliente or TipoCliente.regular
+        needs_reprice = old_tipo_cli_map.get(nm.id) != tipo_cli or nm.precio_unitario is None
+        if needs_reprice:
+            tp = (
+                db.query(TablaPrecio)
+                .filter(
+                    TablaPrecio.material_id == nm.material_id,
+                    TablaPrecio.tipo_operacion == nota.tipo_operacion,
+                    TablaPrecio.tipo_cliente == tipo_cli,
+                    TablaPrecio.activo.is_(True),
+                )
+                .order_by(TablaPrecio.version.desc())
+                .first()
+            )
+            if tp:
+                nm.precio_unitario = tp.precio_por_unidad
+                nm.version_precio_id = tp.id
+            else:
+                nm.precio_unitario = None
+                nm.version_precio_id = None
+        if nm.precio_unitario is not None:
+            nm.subtotal = Decimal(str(nm.precio_unitario)) * Decimal(str(nm.kg_neto or 0))
+        else:
+            nm.subtotal = None
+        db.add(nm)
+
+    nota.total_kg_bruto = _sum_decimal(m.kg_bruto for m in nota.materiales)
+    nota.total_kg_descuento = _sum_decimal(m.kg_descuento for m in nota.materiales)
+    nota.total_kg_neto = _sum_decimal(m.kg_neto for m in nota.materiales)
+    nota.total_monto = _sum_decimal(m.subtotal for m in nota.materiales if m.subtotal is not None)
+    nota.updated_at = datetime.utcnow()
+
+    new_total = Decimal(str(nota.total_monto or 0))
+    pagado_actual = Decimal(str(nota.monto_pagado or 0))
+    if new_total < pagado_actual:
+        raise ValueError("El total no puede ser menor al monto pagado.")
+
+    if nota.estado == NotaEstado.aprobada:
+        comment_base = f"Edicion nota #{nota.id}"
+        if comentario:
+            comment_base = f"{comment_base}: {comentario}"
+
+        for nm in nota.materiales:
+            old_kg = old_kg_map.get(nm.id, Decimal("0"))
+            new_kg = Decimal(str(nm.kg_neto or 0))
+            delta = new_kg - old_kg
+            if delta == 0:
+                continue
+            stock_delta = delta if nota.tipo_operacion == TipoOperacion.compra else -delta
+            inv = _get_or_create_inventario(db, nota.sucursal_id, nm.material_id)
+            new_stock = Decimal(str(inv.stock_actual or 0)) + stock_delta
+            if new_stock < Decimal("0"):
+                nombre_mat = nm.material.nombre if nm.material else f"Material {nm.material_id}"
+                raise ValueError(f"Stock insuficiente para ajustar {nombre_mat}.")
+            inv.stock_actual = new_stock
+            inv.updated_at = datetime.utcnow()
+            mov = InventarioMovimiento(
+                inventario_id=inv.id,
+                nota_id=nota.id,
+                nota_material_id=nm.id,
+                tipo="ajuste",
+                cantidad_kg=stock_delta,
+                saldo_resultante=new_stock,
+                comentario=comment_base,
+                usuario_id=admin_id,
+            )
+            db.add(inv)
+            db.add(mov)
+
+        delta_total = new_total - old_total
+        if delta_total != 0:
+            _registrar_movimiento_contable(
+                db,
+                nota=nota,
+                usuario_id=admin_id,
+                comentario=comment_base,
+                metodo_pago=nota.metodo_pago,
+                cuenta_financiera=str(nota.cuenta_financiera_id) if nota.cuenta_financiera_id else None,
+                monto=delta_total,
+                tipo="ajuste",
+            )
+
     db.commit()
     db.refresh(nota)
     return nota

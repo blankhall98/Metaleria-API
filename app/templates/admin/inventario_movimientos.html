@@ -86,11 +86,15 @@
                 </thead>
                 <tbody>
                 {% for mov in movimientos %}
+                    {% set qty = mov.cantidad_kg or 0 %}
+                    {% if mov.tipo == 'venta' %}
+                        {% set qty = qty * -1 %}
+                    {% endif %}
                     <tr>
                         <td>{{ mov.inventario.sucursal.nombre if mov.inventario and mov.inventario.sucursal else '-' }}</td>
                         <td>{{ mov.inventario.material.nombre if mov.inventario and mov.inventario.material else '-' }}</td>
                         <td class="text-uppercase">{{ mov.tipo }}</td>
-                        <td>{{ "%.2f"|format(mov.cantidad_kg or 0) }} kg</td>
+                        <td>{{ "%.2f"|format(qty) }} kg</td>
                         <td>{{ "%.2f"|format(mov.saldo_resultante or 0) }} kg</td>
                         <td>
                             {% if mov.nota_id %}

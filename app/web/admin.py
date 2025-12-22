@@ -1,8 +1,8 @@
 # app/web/admin.py
-import os
-import uuid
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Form, UploadFile, File
-from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.responses import RedirectResponse, StreamingResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
@@ -48,21 +48,32 @@ settings = get_settings()
 
 router = APIRouter(prefix="/web/admin", tags=["web-admin"])
 
-LOGOS_DIR = os.path.join("app", "static", "uploads", "logos")
-os.makedirs(LOGOS_DIR, exist_ok=True)
+def _signed_inventario_qty(mov: InventarioMovimiento) -> Decimal:
+    qty = Decimal(str(mov.cantidad_kg or 0))
+    if mov.tipo == "venta":
+        return -abs(qty)
+    if mov.tipo == "compra":
+        return abs(qty)
+    return qty
 
-def _save_logo(upload: UploadFile | None) -> str | None:
+async def _upload_logo_file(upload: UploadFile | None, folder: str) -> str | None:
     if not upload or not upload.filename:
         return None
-    _, ext = os.path.splitext(upload.filename.lower())
-    if ext not in [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]:
-        ext = ".png"
-    filename = f"logo_{uuid.uuid4().hex}{ext}"
-    dest_path = os.path.join(LOGOS_DIR, filename)
-    data = upload.file.read()
-    with open(dest_path, "wb") as f:
-        f.write(data)
-    return f"/static/uploads/logos/{filename}"
+    if not upload.content_type or not upload.content_type.startswith("image/"):
+        raise ValueError("El logo debe ser una imagen.")
+    content = await upload.read()
+    max_bytes = settings.FIREBASE_MAX_MB * 1024 * 1024
+    if len(content) > max_bytes:
+        raise ValueError(f"El logo supera el limite de {settings.FIREBASE_MAX_MB} MB.")
+    try:
+        return upload_image(
+            content=content,
+            filename=upload.filename,
+            content_type=upload.content_type,
+            folder=folder,
+        )
+    except Exception:
+        raise ValueError("No se pudo subir el logo. Intenta nuevamente.")
 
 
 def _parse_placas(raw: str | None) -> list[str]:
@@ -171,7 +182,6 @@ async def sucursal_new_post(
     request: Request,
     nombre: str = Form(...),
     direccion: str = Form(""),
-    logo_url: str = Form(""),
     logo_file: UploadFile | None = File(None),
     admin_ids: List[str] = Form([]),
     db: Session = Depends(get_db),
@@ -179,7 +189,6 @@ async def sucursal_new_post(
 ):
     nombre = nombre.strip()
     direccion = direccion.strip()
-    logo_url = logo_url.strip()
     admins = db.query(User).filter(User.rol == UserRole.admin).order_by(User.nombre_completo).all()
 
     if not nombre:
@@ -219,17 +228,35 @@ async def sucursal_new_post(
         nombre=nombre,
         direccion=direccion or None,
         estado=SucursalStatus.activa,
-        logo_url=logo_url or None,
+        logo_url=None,
     )
     db.add(sucursal)
-    db.commit()
-    db.refresh(sucursal)
+    db.flush()
 
-    saved_logo = _save_logo(logo_file)
+    try:
+        saved_logo = await _upload_logo_file(
+            logo_file,
+            folder=f"logos/sucursales/{sucursal.id}",
+        )
+    except ValueError as exc:
+        db.rollback()
+        return templates.TemplateResponse(
+            "admin/sucursal_form.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "error": str(exc),
+                "sucursal": None,
+                "admins": admins,
+                "selected_admin_ids": [int(aid) for aid in admin_ids if aid],
+                "trabajadores": [],
+            },
+            status_code=400,
+        )
+
     if saved_logo:
         sucursal.logo_url = saved_logo
-        db.add(sucursal)
-        db.commit()
 
     selected_ids = {int(aid) for aid in admin_ids if aid}
     if selected_ids:
@@ -238,6 +265,7 @@ async def sucursal_new_post(
                 admin.sucursal_id = sucursal.id
                 db.add(admin)
     db.commit()
+    db.refresh(sucursal)
 
     return RedirectResponse(url="/web/admin/sucursales", status_code=303)
 
@@ -281,7 +309,6 @@ async def sucursal_edit_post(
     request: Request,
     nombre: str = Form(...),
     direccion: str = Form(""),
-    logo_url: str = Form(""),
     logo_file: UploadFile | None = File(None),
     admin_ids: List[str] = Form([]),
     db: Session = Depends(get_db),
@@ -299,7 +326,6 @@ async def sucursal_edit_post(
     )
     nombre = nombre.strip()
     direccion = direccion.strip()
-    logo_url = logo_url.strip()
     selected_admin_ids = [int(aid) for aid in admin_ids if aid]
 
     def render_error(msg: str):
@@ -331,11 +357,15 @@ async def sucursal_edit_post(
 
     sucursal.nombre = nombre
     sucursal.direccion = direccion or None
-    new_logo = _save_logo(logo_file)
+    try:
+        new_logo = await _upload_logo_file(
+            logo_file,
+            folder=f"logos/sucursales/{sucursal.id}",
+        )
+    except ValueError as exc:
+        return render_error(str(exc))
     if new_logo:
         sucursal.logo_url = new_logo
-    elif logo_url:
-        sucursal.logo_url = logo_url
     db.add(sucursal)
 
     selected_ids_set = set(selected_admin_ids)
@@ -359,6 +389,7 @@ async def users_list(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_superadmin),
 ):
+    updated = request.query_params.get("updated") == "1"
     sucursal_id = request.query_params.get("sucursal_id")
     try:
         sucursal_id_int = int(sucursal_id) if sucursal_id else None
@@ -383,6 +414,7 @@ async def users_list(
             "usuarios": usuarios,
             "sucursales_map": sucursales,
             "sucursal_id": sucursal_id_int,
+            "updated": updated,
         },
     )
 
@@ -494,6 +526,111 @@ async def user_new_post(
     db.commit()
 
     return RedirectResponse(url="/web/admin/users", status_code=303)
+
+
+@router.get("/users/{user_id}/editar")
+async def user_edit_get(
+    user_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    return templates.TemplateResponse(
+        "admin/user_edit.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "edit_user": user,
+            "sucursales": sucursales,
+            "error": None,
+        },
+    )
+
+
+@router.post("/users/{user_id}/editar")
+async def user_edit_post(
+    user_id: int,
+    request: Request,
+    username: str = Form(...),
+    nombre_completo: str = Form(...),
+    password: str = Form(""),
+    rol: str = Form(...),
+    estado: str = Form(...),
+    sucursal_id: str | None = Form(None),
+    super_admin_original: str | None = Form(None),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+
+    username = username.strip()
+    nombre_completo = nombre_completo.strip()
+    password = (password or "").strip()
+
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+
+    def render_error(msg: str):
+        return templates.TemplateResponse(
+            "admin/user_edit.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "edit_user": user,
+                "sucursales": sucursales,
+                "error": msg,
+            },
+            status_code=400,
+        )
+
+    if not username or not nombre_completo:
+        return render_error("Usuario y nombre son obligatorios.")
+
+    try:
+        user_role = UserRole(rol)
+    except ValueError:
+        return render_error("Rol invalido.")
+
+    try:
+        user_status = UserStatus(estado)
+    except ValueError:
+        return render_error("Estado invalido.")
+
+    suc_id: int | None = None
+    if sucursal_id:
+        try:
+            suc_id = int(sucursal_id)
+        except ValueError:
+            return render_error("Sucursal invalida.")
+        if not db.get(Sucursal, suc_id):
+            return render_error("Sucursal no encontrada.")
+
+    if user_role == UserRole.trabajador and not suc_id:
+        return render_error("Los trabajadores deben tener una sucursal asignada.")
+
+    existing = db.query(User).filter(User.username == username, User.id != user.id).first()
+    if existing:
+        return render_error("Ya existe un usuario con ese username.")
+
+    user.username = username
+    user.nombre_completo = nombre_completo
+    user.rol = user_role
+    user.estado = user_status
+    user.sucursal_id = suc_id
+    user.super_admin_original = bool(super_admin_original)
+    if password:
+        user.password_hash = hash_password(password)
+    db.add(user)
+    db.commit()
+
+    return RedirectResponse(url="/web/admin/users?updated=1", status_code=303)
 
 
 # ---------- MATERIALES ----------
@@ -1288,6 +1425,45 @@ async def notas_list(
     )
 
 
+@router.get("/notas/precio")
+async def nota_precio(
+    material_id: int,
+    tipo_operacion: str,
+    tipo_cliente: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    try:
+        tipo_op = TipoOperacion(tipo_operacion)
+    except ValueError:
+        return JSONResponse({"error": "tipo_operacion_invalido"}, status_code=400)
+    try:
+        tipo_cli = TipoCliente(tipo_cliente)
+    except ValueError:
+        return JSONResponse({"error": "tipo_cliente_invalido"}, status_code=400)
+
+    precio = (
+        db.query(TablaPrecio)
+        .filter(
+            TablaPrecio.material_id == material_id,
+            TablaPrecio.tipo_operacion == tipo_op,
+            TablaPrecio.tipo_cliente == tipo_cli,
+            TablaPrecio.activo.is_(True),
+        )
+        .order_by(TablaPrecio.version.desc())
+        .first()
+    )
+    if not precio:
+        return JSONResponse({"precio_unitario": None})
+
+    return JSONResponse(
+        {
+            "precio_unitario": float(precio.precio_por_unidad),
+            "version_id": precio.id,
+        }
+    )
+
+
 def _render_nota_detail(
     request: Request,
     db: Session,
@@ -1297,6 +1473,7 @@ def _render_nota_detail(
     form_state: dict | None = None,
     pago_updated: bool = False,
     precios_updated: bool = False,
+    edit_updated: bool = False,
 ):
     sucursal = db.get(Sucursal, nota.sucursal_id) if nota.sucursal_id else None
     proveedor = db.get(Proveedor, nota.proveedor_id) if nota.proveedor_id else None
@@ -1309,6 +1486,34 @@ def _render_nota_detail(
         .order_by(NotaPago.created_at.desc())
         .all()
     )
+    price_map: dict[str, dict[str, float]] = {}
+    material_ids = [m.material_id for m in nota.materiales if m.material_id]
+    if material_ids:
+        precios = (
+            db.query(TablaPrecio)
+            .filter(
+                TablaPrecio.material_id.in_(material_ids),
+                TablaPrecio.tipo_operacion == nota.tipo_operacion,
+                TablaPrecio.activo.is_(True),
+            )
+            .order_by(TablaPrecio.version.desc())
+            .all()
+        )
+        for p in precios:
+            mat_key = str(p.material_id)
+            tipo_cli = p.tipo_cliente.value
+            if mat_key not in price_map:
+                price_map[mat_key] = {}
+            if tipo_cli not in price_map[mat_key]:
+                price_map[mat_key][tipo_cli] = float(p.precio_por_unidad)
+    price_map_json = json.dumps(price_map, ensure_ascii=True)
+    price_map_by_material: dict[int, str] = {}
+    for mat_id in material_ids:
+        mat_key = str(mat_id)
+        price_map_by_material[mat_id] = json.dumps(
+            price_map.get(mat_key, {}),
+            ensure_ascii=True,
+        )
     saldo_pendiente = Decimal(str(nota.total_monto or 0)) - Decimal(str(nota.monto_pagado or 0))
     if saldo_pendiente < Decimal("0"):
         saldo_pendiente = Decimal("0")
@@ -1335,9 +1540,12 @@ def _render_nota_detail(
         "tipos_cliente": list(TipoCliente),
         "inv_movs": inv_movs,
         "pagos": pagos,
+        "price_map_json": price_map_json,
+        "price_map_by_material": price_map_by_material,
         "saldo_pendiente": saldo_pendiente,
         "pago_updated": pago_updated,
         "precios_updated": precios_updated,
+        "edit_updated": edit_updated,
         "error": error,
     }
     context.update(base_form_state)
@@ -1346,6 +1554,45 @@ def _render_nota_detail(
     return templates.TemplateResponse(
         "admin/note_detail.html",
         context,
+        status_code=400 if error else 200,
+    )
+
+
+def _render_nota_edit(
+    request: Request,
+    db: Session,
+    current_user: dict,
+    nota: Nota,
+    *,
+    error: str | None = None,
+    comentario_edicion: str | None = None,
+    saved: bool = False,
+):
+    sucursal = db.get(Sucursal, nota.sucursal_id) if nota.sucursal_id else None
+    proveedor = db.get(Proveedor, nota.proveedor_id) if nota.proveedor_id else None
+    cliente = db.get(Cliente, nota.cliente_id) if nota.cliente_id else None
+    trabajador = db.get(User, nota.trabajador_id) if nota.trabajador_id else None
+    saldo_pendiente = Decimal(str(nota.total_monto or 0)) - Decimal(str(nota.monto_pagado or 0))
+    if saldo_pendiente < Decimal("0"):
+        saldo_pendiente = Decimal("0")
+
+    return templates.TemplateResponse(
+        "admin/note_edit.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "nota": nota,
+            "sucursal": sucursal,
+            "proveedor": proveedor,
+            "cliente": cliente,
+            "trabajador": trabajador,
+            "tipos_cliente": list(TipoCliente),
+            "saldo_pendiente": saldo_pendiente,
+            "comentario_edicion": comentario_edicion or "",
+            "saved": saved,
+            "error": error,
+        },
         status_code=400 if error else 200,
     )
 
@@ -1363,6 +1610,7 @@ async def notas_detail(
 
     pago_updated = request.query_params.get("pago") == "1"
     precios_updated = request.query_params.get("precios") == "1"
+    edit_updated = request.query_params.get("edit") == "1"
     return _render_nota_detail(
         request,
         db,
@@ -1370,6 +1618,7 @@ async def notas_detail(
         nota,
         pago_updated=pago_updated,
         precios_updated=precios_updated,
+        edit_updated=edit_updated,
     )
 
 
@@ -1427,6 +1676,130 @@ async def notas_evidencias(
             "error": request.query_params.get("error"),
         },
     )
+
+
+@router.get("/notas/{nota_id}/editar")
+async def notas_edit_get(
+    nota_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    nota = db.get(Nota, nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    if nota.estado == NotaEstado.cancelada:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="No puedes editar una nota cancelada.",
+        )
+    saved = request.query_params.get("saved") == "1"
+    return _render_nota_edit(
+        request,
+        db,
+        current_user,
+        nota,
+        saved=saved,
+    )
+
+
+@router.post("/notas/{nota_id}/editar")
+async def notas_edit_post(
+    nota_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    nota = db.get(Nota, nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    if nota.estado == NotaEstado.cancelada:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="No puedes editar una nota cancelada.",
+        )
+
+    def parse_decimal(raw: str | None, field: str, default: Decimal | None = None) -> Decimal:
+        if raw is None or str(raw).strip() == "":
+            if default is not None:
+                return default
+            raise ValueError(f"{field} es obligatorio.")
+        try:
+            return Decimal(str(raw))
+        except (InvalidOperation, TypeError):
+            raise ValueError(f"{field} es invalido.")
+
+    form = await request.form()
+    comentario_edicion = (form.get("comentario_edicion") or "").strip() or None
+
+    try:
+        tipo_cliente_map: dict[int, TipoCliente] = {}
+        kg_override_map: dict[int, tuple[Decimal, Decimal]] = {}
+        subpesaje_map: dict[int, tuple[Decimal, Decimal]] = {}
+
+        for nm in nota.materiales:
+            tipo_raw = (form.get(f"tipo_cliente_{nm.id}") or "").strip()
+            if tipo_raw:
+                try:
+                    tipo_cliente_map[nm.id] = TipoCliente(tipo_raw)
+                except ValueError:
+                    raise ValueError("Tipo de precio invalido.")
+
+            if nm.subpesajes:
+                for sp in nm.subpesajes:
+                    peso_raw = form.get(f"sp_peso_{sp.id}")
+                    desc_raw = form.get(f"sp_desc_{sp.id}")
+                    peso = parse_decimal(peso_raw, "Peso bruto")
+                    desc = parse_decimal(desc_raw, "Descuento", default=Decimal("0"))
+                    if peso <= 0:
+                        raise ValueError("El peso bruto debe ser mayor a 0.")
+                    if desc < 0:
+                        raise ValueError("El descuento no puede ser negativo.")
+                    if desc > peso:
+                        raise ValueError("El descuento no puede ser mayor al peso bruto.")
+                    subpesaje_map[sp.id] = (peso, desc)
+            else:
+                kg_bruto = parse_decimal(form.get(f"kg_bruto_{nm.id}"), "Kg bruto")
+                kg_desc = parse_decimal(
+                    form.get(f"kg_desc_{nm.id}"),
+                    "Kg descuento",
+                    default=Decimal("0"),
+                )
+                if kg_bruto <= 0:
+                    raise ValueError("El kg bruto debe ser mayor a 0.")
+                if kg_desc < 0:
+                    raise ValueError("El kg descuento no puede ser negativo.")
+                if kg_desc > kg_bruto:
+                    raise ValueError("El kg descuento no puede ser mayor al kg bruto.")
+                kg_override_map[nm.id] = (kg_bruto, kg_desc)
+
+        note_service.edit_note_by_superadmin(
+            db,
+            nota,
+            tipo_cliente_map=tipo_cliente_map,
+            kg_override_map=kg_override_map,
+            subpesaje_map=subpesaje_map,
+            admin_id=current_user.get("id"),
+            comentario=comentario_edicion,
+        )
+    except ValueError as exc:
+        db.rollback()
+        return _render_nota_edit(
+            request,
+            db,
+            current_user,
+            nota,
+            error=str(exc),
+            comentario_edicion=comentario_edicion,
+        )
+
+    return RedirectResponse(url=f"/web/admin/notas/{nota_id}?edit=1", status_code=303)
 
 
 @router.post("/notas/{nota_id}/subpesajes/{subpesaje_id}/evidencia")
@@ -2208,10 +2581,7 @@ async def inventario_movimientos(
     movimientos = query.order_by(InventarioMovimiento.created_at.desc()).limit(200).all()
     total_firmado = 0
     for mov in movimientos:
-        delta = float(mov.cantidad_kg or 0)
-        if mov.tipo == "venta":
-            delta = -delta
-        total_firmado += delta
+        total_firmado += float(_signed_inventario_qty(mov))
 
     return templates.TemplateResponse(
         "admin/inventario_movimientos.html",
@@ -2279,11 +2649,12 @@ async def inventario_movimientos_export(
         writer = csv.writer(output)
         writer.writerow(headers_xml)
         for mov in movimientos:
+            qty = _signed_inventario_qty(mov)
             writer.writerow([
                 mov.inventario.sucursal.nombre if mov.inventario and mov.inventario.sucursal else mov.inventario_id,
                 mov.inventario.material.nombre if mov.inventario and mov.inventario.material else "",
                 mov.tipo,
-                float(mov.cantidad_kg or 0),
+                float(qty or 0),
                 float(mov.saldo_resultante or 0),
                 mov.nota_id or "",
                 (mov.comentario or "").replace("\n", " "),
@@ -2297,11 +2668,12 @@ async def inventario_movimientos_export(
     rows = []
     rows.append("<Row>" + "".join([f"<Cell><Data ss:Type='String'>{h}</Data></Cell>" for h in headers_xml]) + "</Row>")
     for mov in movimientos:
+        qty = _signed_inventario_qty(mov)
         vals = [
             mov.inventario.sucursal.nombre if mov.inventario and mov.inventario.sucursal else mov.inventario_id,
             mov.inventario.material.nombre if mov.inventario and mov.inventario.material else "",
             mov.tipo,
-            float(mov.cantidad_kg or 0),
+            float(qty or 0),
             float(mov.saldo_resultante or 0),
             mov.nota_id or "",
             (mov.comentario or "").replace("\\n", " "),
@@ -2332,11 +2704,12 @@ async def inventario_movimientos_export(
     header_line = " | ".join(headers_xml)
     text_lines = ["Movimientos de inventario", header_line]
     for mov in movimientos:
+        qty = _signed_inventario_qty(mov)
         vals = [
             mov.inventario.sucursal.nombre if mov.inventario and mov.inventario.sucursal else str(mov.inventario_id),
             mov.inventario.material.nombre if mov.inventario and mov.inventario.material else "",
             mov.tipo,
-            f"{float(mov.cantidad_kg or 0):.2f}",
+            f"{float(qty or 0):.2f}",
             f"{float(mov.saldo_resultante or 0):.2f}",
             str(mov.nota_id or ""),
             (mov.comentario or "").replace("\\n", " "),

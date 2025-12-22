@@ -1,11 +1,11 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}{{ 'Editar sucursal' if sucursal else 'Nueva sucursal' }} &middot; Admin{% endblock %}
 
 {% block content %}
 <div class="page-header">
     <div>
-        <p class="text-uppercase text-muted small mb-1">Administración</p>
+        <p class="text-uppercase text-muted small mb-1">Administraci&oacute;n</p>
         <h1 class="h4 text-white mb-0">{{ 'Editar sucursal' if sucursal else 'Nueva sucursal' }}</h1>
     </div>
     <a href="/web/admin/sucursales" class="btn btn-outline-secondary btn-sm">Volver</a>
@@ -26,14 +26,13 @@
                     <input class="form-control" type="text" id="nombre" name="nombre" required value="{{ sucursal.nombre if sucursal else '' }}">
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label" for="direccion">Dirección (opcional)</label>
+                    <label class="form-label" for="direccion">Direcci&oacute;n (opcional)</label>
                     <input class="form-control" type="text" id="direccion" name="direccion" value="{{ sucursal.direccion if sucursal else '' }}">
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label">Logo (subir o URL)</label>
-                    <input class="form-control mb-2" type="file" accept="image/*" name="logo_file">
-                    <input class="form-control" type="url" name="logo_url" placeholder="https://..." value="{{ sucursal.logo_url if sucursal else '' }}">
-                    <div class="form-text">Sube una imagen desde tu dispositivo o pega un URL. Si subes archivo, se guardará automáticamente.</div>
+                    <label class="form-label">Logo</label>
+                    <input class="form-control" type="file" accept="image/*" name="logo_file">
+                    <div class="form-text">Sube una imagen desde tu dispositivo. Se guardara en Firebase.</div>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Admins asignados</label>

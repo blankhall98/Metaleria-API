@@ -10,6 +10,9 @@
         <h1 class="h4 text-dark mb-0">Nota #{{ nota.id }}</h1>
     </div>
     <div class="d-flex gap-2">
+        {% if user.rol == 'super_admin' %}
+            <a href="/web/admin/notas/{{ nota.id }}/editar" class="btn btn-outline-primary btn-sm">Editar</a>
+        {% endif %}
         <a href="/web/admin/notas/{{ nota.id }}/evidencias" class="btn btn-primary btn-sm note-evidence-btn">Evidencias</a>
         <a href="/web/admin/notas" class="btn btn-outline-secondary btn-sm">Volver</a>
     </div>
@@ -19,6 +22,9 @@
     <div class="card-body">
         {% if error %}
             <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
+        {% endif %}
+        {% if edit_updated %}
+            <div class="alert alert-success py-2 small mb-3">Edici&oacute;n guardada.</div>
         {% endif %}
         {% if precios_updated %}
             <div class="alert alert-success py-2 small mb-3">Precios actualizados.</div>
@@ -90,7 +96,9 @@
         <form method="post" action="/web/admin/notas/{{ nota.id }}/aprobar" id="approveForm">
             <h2 class="h6 text-dark mb-3 note-section-title">Materiales</h2>
             <div class="table-responsive">
-                <table class="table table-hover table-sm align-middle mb-0 note-table">
+                <table class="table table-hover table-sm align-middle mb-0 note-table"
+                       data-tipo-operacion="{{ nota.tipo_operacion.value }}"
+                       data-precio-endpoint="/web/admin/notas/precio">
                     <thead>
                     <tr>
                         <th>Material</th>
@@ -104,13 +112,15 @@
                     </thead>
                     <tbody>
                     {% for m in nota.materiales %}
-                        <tr>
+                        <tr data-material-id="{{ m.material_id }}"
+                            data-kg-neto="{{ "%.3f"|format(m.kg_neto or 0) }}"
+                            data-precios='{{ price_map_by_material.get(m.material_id, "{}")|e }}'>
                             <td>{{ m.material.nombre if m.material else m.material_id }}</td>
                             <td class="text-end">{{ "%.2f"|format(m.kg_bruto or 0) }}</td>
                             <td class="text-end">{{ "%.2f"|format(m.kg_descuento or 0) }}</td>
                             <td class="text-end">{{ "%.2f"|format(m.kg_neto or 0) }}</td>
                             <td>
-                                <select class="form-select form-select-sm" name="tipo_cliente_{{ m.id }}">
+                                <select class="form-select form-select-sm note-tipo-precio" name="tipo_cliente_{{ m.id }}">
                                     {% for tc in tipos_cliente %}
                                         {% set is_selected = (m.tipo_cliente and m.tipo_cliente.value == tc.value) or (not m.tipo_cliente and tc.value == 'regular') %}
                                         <option value="{{ tc.value }}" {% if is_selected %}selected{% endif %}>
@@ -119,8 +129,8 @@
                                     {% endfor %}
                                 </select>
                             </td>
-                            <td class="text-end">{{ "%.2f"|format(m.precio_unitario or 0) if m.precio_unitario else '-' }}</td>
-                            <td class="text-end">{{ "%.2f"|format(m.subtotal or 0) if m.subtotal else '-' }}</td>
+                            <td class="text-end note-unit-price">{{ "%.2f"|format(m.precio_unitario or 0) if m.precio_unitario else '-' }}</td>
+                            <td class="text-end note-subtotal">{{ "%.2f"|format(m.subtotal or 0) if m.subtotal else '-' }}</td>
                         </tr>
                         {% if m.subpesajes %}
                             <tr class="note-subpesaje-row">
@@ -310,11 +320,15 @@
                 </thead>
                 <tbody>
                 {% for mov in inv_movs %}
+                    {% set qty = mov.cantidad_kg or 0 %}
+                    {% if mov.tipo == 'venta' %}
+                        {% set qty = qty * -1 %}
+                    {% endif %}
                     <tr>
                         <td>{{ mov.inventario.sucursal.nombre if mov.inventario and mov.inventario.sucursal else '-' }}</td>
                         <td>{{ mov.inventario.material.nombre if mov.inventario and mov.inventario.material else '-' }}</td>
                         <td class="text-uppercase">{{ mov.tipo }}</td>
-                        <td class="text-end">{{ "%.2f"|format(mov.cantidad_kg or 0) }} kg</td>
+                        <td class="text-end">{{ "%.2f"|format(qty) }} kg</td>
                         <td class="text-end">{{ "%.2f"|format(mov.saldo_resultante or 0) }} kg</td>
                         <td>{{ mov.created_at.strftime("%Y-%m-%d %H:%M") if mov.created_at else '-' }}</td>
                     </tr>
@@ -347,7 +361,17 @@
         </div>
     </div>
 </div>
+<script type="application/json" id="notePriceMap">{{ price_map_json|safe }}</script>
 <script>
+    const priceMapScript = document.getElementById('notePriceMap');
+    let priceMap = {};
+    if (priceMapScript) {
+        try {
+            priceMap = JSON.parse(priceMapScript.textContent || '{}');
+        } catch (err) {
+            priceMap = {};
+        }
+    }
     function syncCancelComment(formEl) {
         const comments = document.querySelector('textarea[name="comentarios_admin"]');
         const hidden = formEl.querySelector('input[name="comentarios_admin"]');
@@ -389,6 +413,96 @@
         pagoMetodo.addEventListener('change', togglePagoCuenta);
         togglePagoCuenta();
     }
+    const noteTable = document.querySelector('.note-table');
+    const priceEndpoint = noteTable ? noteTable.dataset.precioEndpoint : '';
+    const tipoOperacion = noteTable ? noteTable.dataset.tipoOperacion : '';
+    function formatMoney(value) {
+        return `$${value.toFixed(2)}`;
+    }
+    function getRowPriceMap(row) {
+        if (!row) return null;
+        const raw = row.dataset.precios;
+        if (!raw) return null;
+        try {
+            return JSON.parse(raw);
+        } catch (err) {
+            return null;
+        }
+    }
+    async function updateRowPrice(selectEl) {
+        if (!noteTable || !priceEndpoint || !tipoOperacion || !selectEl) return;
+        const row = selectEl.closest('tr');
+        if (!row) return;
+        const materialId = row.dataset.materialId;
+        const kgNeto = parseFloat(row.dataset.kgNeto || '0');
+        const unitCell = row.querySelector('.note-unit-price');
+        const subtotalCell = row.querySelector('.note-subtotal');
+        if (!materialId || !unitCell || !subtotalCell) return;
+        unitCell.textContent = '...';
+        subtotalCell.textContent = '...';
+        const tipoCliente = selectEl.value || '';
+        const rowMap = getRowPriceMap(row);
+        if (rowMap && Object.prototype.hasOwnProperty.call(rowMap, tipoCliente)) {
+            const unitLocal = parseFloat(rowMap[tipoCliente]);
+            const subtotalLocal = unitLocal * (Number.isNaN(kgNeto) ? 0 : kgNeto);
+            unitCell.textContent = formatMoney(unitLocal);
+            subtotalCell.textContent = formatMoney(subtotalLocal);
+            return;
+        }
+        if (priceMap[materialId] && Object.prototype.hasOwnProperty.call(priceMap[materialId], tipoCliente)) {
+            const unitLocal = parseFloat(priceMap[materialId][tipoCliente]);
+            const subtotalLocal = unitLocal * (Number.isNaN(kgNeto) ? 0 : kgNeto);
+            unitCell.textContent = formatMoney(unitLocal);
+            subtotalCell.textContent = formatMoney(subtotalLocal);
+            return;
+        }
+        const params = new URLSearchParams({
+            material_id: materialId,
+            tipo_operacion: tipoOperacion,
+            tipo_cliente: tipoCliente,
+        });
+        try {
+            const res = await fetch(`${priceEndpoint}?${params.toString()}`, { credentials: 'same-origin' });
+            if (!res.ok) {
+                unitCell.textContent = '-';
+                subtotalCell.textContent = '-';
+                return;
+            }
+            const data = await res.json();
+            if (data.precio_unitario === null || data.precio_unitario === undefined) {
+                unitCell.textContent = '-';
+                subtotalCell.textContent = '-';
+                return;
+            }
+            const unit = parseFloat(data.precio_unitario);
+            if (Number.isNaN(unit)) {
+                unitCell.textContent = '-';
+                subtotalCell.textContent = '-';
+                return;
+            }
+            const subtotal = unit * (Number.isNaN(kgNeto) ? 0 : kgNeto);
+            unitCell.textContent = formatMoney(unit);
+            subtotalCell.textContent = formatMoney(subtotal);
+            if (!priceMap[materialId]) {
+                priceMap[materialId] = {};
+            }
+            priceMap[materialId][tipoCliente] = unit;
+        } catch (err) {
+            unitCell.textContent = '-';
+            subtotalCell.textContent = '-';
+        }
+    }
+    const priceSelects = document.querySelectorAll('.note-tipo-precio');
+    priceSelects.forEach((sel) => {
+        sel.addEventListener('change', () => updateRowPrice(sel));
+        sel.addEventListener('input', () => updateRowPrice(sel));
+    });
+    document.addEventListener('change', (event) => {
+        const target = event.target;
+        if (target && target.classList && target.classList.contains('note-tipo-precio')) {
+            updateRowPrice(target);
+        }
+    });
 </script>
 </div>
 {% endblock %}
