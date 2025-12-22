@@ -1,5 +1,6 @@
 # app/web/admin.py
 import json
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Form, UploadFile, File
 from fastapi.responses import RedirectResponse, StreamingResponse, JSONResponse
@@ -47,6 +48,8 @@ templates = Jinja2Templates(directory="app/templates")
 settings = get_settings()
 
 router = APIRouter(prefix="/web/admin", tags=["web-admin"])
+
+_TRANSFER_RELATED_NOTE_RE = re.compile(r"Nota (?:entrada|salida) #(\d+)")
 
 def _signed_inventario_qty(mov: InventarioMovimiento) -> Decimal:
     qty = Decimal(str(mov.cantidad_kg or 0))
@@ -108,6 +111,60 @@ def _set_cliente_placas(db: Session, cliente: Cliente, placas_list: list[str]):
     for pl in placas_list:
         cliente.placas_rel.append(ClientePlaca(placa=pl))
     db.add(cliente)
+
+
+def _get_or_create_branch_cliente(db: Session, sucursal: Sucursal) -> Cliente:
+    nombre = f"Sucursal {sucursal.nombre}"
+    cliente = db.query(Cliente).filter(Cliente.nombre_completo == nombre).first()
+    if cliente:
+        return cliente
+    cliente = Cliente(nombre_completo=nombre, activo=True)
+    db.add(cliente)
+    db.flush()
+    return cliente
+
+
+def _get_or_create_branch_proveedor(db: Session, sucursal: Sucursal) -> Proveedor:
+    nombre = f"Sucursal {sucursal.nombre}"
+    proveedor = db.query(Proveedor).filter(Proveedor.nombre_completo == nombre).first()
+    if proveedor:
+        return proveedor
+    proveedor = Proveedor(nombre_completo=nombre, activo=True)
+    db.add(proveedor)
+    db.flush()
+    return proveedor
+
+
+def _is_transfer_note(
+    db: Session,
+    nota: Nota,
+    proveedor: Proveedor | None,
+    cliente: Cliente | None,
+) -> bool:
+    if nota.comentarios_admin and "Transferencia entre sucursales" in nota.comentarios_admin:
+        return True
+    partner_name = ""
+    if nota.tipo_operacion == TipoOperacion.compra:
+        partner_name = proveedor.nombre_completo if proveedor else ""
+    else:
+        partner_name = cliente.nombre_completo if cliente else ""
+    if partner_name.startswith("Sucursal "):
+        suc_name = partner_name.replace("Sucursal ", "", 1).strip()
+        if suc_name and db.query(Sucursal).filter(Sucursal.nombre == suc_name).first():
+            return True
+    return False
+
+
+def _extract_transfer_related_id(nota: Nota) -> int | None:
+    if not nota.comentarios_admin:
+        return None
+    match = _TRANSFER_RELATED_NOTE_RE.search(nota.comentarios_admin)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
 
 
 def _placas_conflict(db: Session, placas_list: list[str], modelo, owner_field: str, owner_id: int | None = None) -> str | None:
@@ -1425,6 +1482,208 @@ async def notas_list(
     )
 
 
+@router.get("/transferencias")
+async def transferencias_get(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    origin_locked = current_user.get("rol") == UserRole.admin.value
+    origin_id = current_user.get("sucursal_id") if origin_locked else None
+    origin_sucursal = db.get(Sucursal, origin_id) if origin_id else None
+    ok = request.query_params.get("ok") == "1"
+    nota_salida_id = request.query_params.get("salida")
+    nota_entrada_id = request.query_params.get("entrada")
+    nota_salida = None
+    nota_entrada = None
+    nota_salida_sucursal = None
+    nota_entrada_sucursal = None
+    missing_transfer_note = False
+    if nota_salida_id:
+        try:
+            nota_salida = db.get(Nota, int(nota_salida_id))
+        except ValueError:
+            nota_salida = None
+        if nota_salida and nota_salida.sucursal_id:
+            nota_salida_sucursal = db.get(Sucursal, nota_salida.sucursal_id)
+        elif nota_salida_id:
+            missing_transfer_note = True
+    if nota_entrada_id:
+        try:
+            nota_entrada = db.get(Nota, int(nota_entrada_id))
+        except ValueError:
+            nota_entrada = None
+        if nota_entrada and nota_entrada.sucursal_id:
+            nota_entrada_sucursal = db.get(Sucursal, nota_entrada.sucursal_id)
+        elif nota_entrada_id:
+            missing_transfer_note = True
+    return templates.TemplateResponse(
+        "admin/transferencias.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "materiales": materiales,
+            "sucursales": sucursales,
+            "tipos_cliente": list(TipoCliente),
+            "origin_locked": origin_locked,
+            "origin_sucursal": origin_sucursal,
+            "form_origen": origin_id,
+            "form_destino": None,
+            "form_rows": [],
+            "form_comentario": "",
+            "ok": ok,
+            "nota_salida_id": nota_salida_id,
+            "nota_entrada_id": nota_entrada_id,
+            "nota_salida": nota_salida,
+            "nota_entrada": nota_entrada,
+            "nota_salida_sucursal": nota_salida_sucursal,
+            "nota_entrada_sucursal": nota_entrada_sucursal,
+            "missing_transfer_note": missing_transfer_note,
+            "error": None,
+        },
+    )
+
+
+@router.post("/transferencias")
+async def transferencias_post(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    origin_locked = current_user.get("rol") == UserRole.admin.value
+    origin_id = current_user.get("sucursal_id") if origin_locked else None
+    origin_sucursal = db.get(Sucursal, origin_id) if origin_id else None
+
+    form = await request.form()
+    form_origen = origin_id or form.get("origen_sucursal_id")
+    form_destino = form.get("destino_sucursal_id")
+    comentario = (form.get("comentario") or "").strip()
+
+    def render_error(msg: str, rows: list[dict]):
+        return templates.TemplateResponse(
+            "admin/transferencias.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "materiales": materiales,
+                "sucursales": sucursales,
+                "tipos_cliente": list(TipoCliente),
+                "origin_locked": origin_locked,
+                "origin_sucursal": origin_sucursal,
+                "form_origen": form_origen,
+                "form_destino": form_destino,
+                "form_rows": rows,
+                "form_comentario": comentario,
+                "ok": False,
+                "nota_salida_id": None,
+                "nota_entrada_id": None,
+                "error": msg,
+            },
+            status_code=400,
+        )
+
+    try:
+        origen_id_int = int(form_origen) if form_origen else None
+        destino_id_int = int(form_destino) if form_destino else None
+    except ValueError:
+        return render_error("Sucursal invalida.", [])
+    if not origen_id_int or not destino_id_int:
+        return render_error("Debes seleccionar sucursal de origen y destino.", [])
+    if origen_id_int == destino_id_int:
+        return render_error("La sucursal de origen y destino deben ser diferentes.", [])
+
+    origen = db.get(Sucursal, origen_id_int)
+    destino = db.get(Sucursal, destino_id_int)
+    if not origen or not destino:
+        return render_error("Sucursal no encontrada.", [])
+
+    material_ids = form.getlist("material_id")
+    kg_netos = form.getlist("kg_neto")
+    tipos_cli = form.getlist("tipo_cliente")
+    precios_unit = form.getlist("precio_unitario")
+    rows: list[dict] = []
+    materiales_payload: list[dict] = []
+    for idx in range(max(len(material_ids), len(kg_netos), len(tipos_cli), len(precios_unit))):
+        mat_raw = material_ids[idx] if idx < len(material_ids) else ""
+        kg_raw = kg_netos[idx] if idx < len(kg_netos) else ""
+        tipo_raw = tipos_cli[idx] if idx < len(tipos_cli) else "regular"
+        precio_raw = precios_unit[idx] if idx < len(precios_unit) else ""
+        rows.append(
+            {
+                "material_id": mat_raw,
+                "kg_neto": kg_raw,
+                "tipo_cliente": tipo_raw or "regular",
+                "precio_unitario": precio_raw,
+            }
+        )
+        if not mat_raw and not kg_raw and not precio_raw:
+            continue
+        try:
+            mat_id = int(mat_raw)
+        except (TypeError, ValueError):
+            return render_error("Material invalido.", rows)
+        if not db.get(Material, mat_id):
+            return render_error("Material no encontrado.", rows)
+        try:
+            kg_val = Decimal(str(kg_raw))
+        except (InvalidOperation, TypeError):
+            return render_error("Cantidad invalida.", rows)
+        if kg_val <= 0:
+            return render_error("La cantidad debe ser mayor a 0.", rows)
+        try:
+            precio_val = Decimal(str(precio_raw))
+        except (InvalidOperation, TypeError):
+            return render_error("Precio unitario invalido.", rows)
+        if precio_val <= 0:
+            return render_error("El precio unitario debe ser mayor a 0.", rows)
+        try:
+            tipo_cli = TipoCliente(tipo_raw or "regular")
+        except ValueError:
+            return render_error("Tipo de precio invalido.", rows)
+        materiales_payload.append(
+            {
+                "material_id": mat_id,
+                "kg_bruto": kg_val,
+                "kg_descuento": Decimal("0"),
+                "tipo_cliente": tipo_cli.value,
+                "precio_unitario": precio_val,
+            }
+        )
+
+    if not materiales_payload:
+        return render_error("Debes agregar al menos un material.", rows)
+
+    try:
+        cliente = _get_or_create_branch_cliente(db, destino)
+        proveedor = _get_or_create_branch_proveedor(db, origen)
+        nota_salida, nota_entrada = note_service.create_transfer_notes(
+            db,
+            origen_sucursal_id=origen.id,
+            destino_sucursal_id=destino.id,
+            cliente_id=cliente.id,
+            proveedor_id=proveedor.id,
+            materiales_payload=materiales_payload,
+            admin_id=current_user.get("id"),
+            comentario=comentario or None,
+            origen_nombre=origen.nombre,
+            destino_nombre=destino.nombre,
+        )
+    except ValueError as exc:
+        db.rollback()
+        return render_error(str(exc), rows)
+
+    return RedirectResponse(
+        url=f"/web/admin/transferencias?ok=1&salida={nota_salida.id}&entrada={nota_entrada.id}",
+        status_code=303,
+    )
+
+
 @router.get("/notas/precio")
 async def nota_precio(
     material_id: int,
@@ -1517,6 +1776,15 @@ def _render_nota_detail(
     saldo_pendiente = Decimal(str(nota.total_monto or 0)) - Decimal(str(nota.monto_pagado or 0))
     if saldo_pendiente < Decimal("0"):
         saldo_pendiente = Decimal("0")
+    is_transfer = _is_transfer_note(db, nota, proveedor, cliente)
+    transfer_related = None
+    transfer_related_sucursal = None
+    if is_transfer:
+        related_id = _extract_transfer_related_id(nota)
+        if related_id:
+            transfer_related = db.get(Nota, related_id)
+            if transfer_related and transfer_related.sucursal_id:
+                transfer_related_sucursal = db.get(Sucursal, transfer_related.sucursal_id)
     base_form_state = {
         "form_metodo": None,
         "form_cuenta": None,
@@ -1543,6 +1811,9 @@ def _render_nota_detail(
         "price_map_json": price_map_json,
         "price_map_by_material": price_map_by_material,
         "saldo_pendiente": saldo_pendiente,
+        "is_transfer": is_transfer,
+        "transfer_related": transfer_related,
+        "transfer_related_sucursal": transfer_related_sucursal,
         "pago_updated": pago_updated,
         "precios_updated": precios_updated,
         "edit_updated": edit_updated,
@@ -1575,6 +1846,15 @@ def _render_nota_edit(
     saldo_pendiente = Decimal(str(nota.total_monto or 0)) - Decimal(str(nota.monto_pagado or 0))
     if saldo_pendiente < Decimal("0"):
         saldo_pendiente = Decimal("0")
+    is_transfer = _is_transfer_note(db, nota, proveedor, cliente)
+    transfer_related = None
+    transfer_related_sucursal = None
+    if is_transfer:
+        related_id = _extract_transfer_related_id(nota)
+        if related_id:
+            transfer_related = db.get(Nota, related_id)
+            if transfer_related and transfer_related.sucursal_id:
+                transfer_related_sucursal = db.get(Sucursal, transfer_related.sucursal_id)
 
     return templates.TemplateResponse(
         "admin/note_edit.html",
@@ -1589,6 +1869,9 @@ def _render_nota_edit(
             "trabajador": trabajador,
             "tipos_cliente": list(TipoCliente),
             "saldo_pendiente": saldo_pendiente,
+            "is_transfer": is_transfer,
+            "transfer_related": transfer_related,
+            "transfer_related_sucursal": transfer_related_sucursal,
             "comentario_edicion": comentario_edicion or "",
             "saved": saved,
             "error": error,

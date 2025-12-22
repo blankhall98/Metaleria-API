@@ -681,3 +681,112 @@ def edit_note_by_superadmin(
     db.commit()
     db.refresh(nota)
     return nota
+
+
+def create_transfer_notes(
+    db: Session,
+    *,
+    origen_sucursal_id: int,
+    destino_sucursal_id: int,
+    cliente_id: int,
+    proveedor_id: int,
+    materiales_payload: Sequence[dict],
+    admin_id: int | None,
+    comentario: str | None = None,
+    origen_nombre: str | None = None,
+    destino_nombre: str | None = None,
+) -> tuple[Nota, Nota]:
+    """
+    Crea dos notas aprobadas para una transferencia entre sucursales.
+    """
+    if not materiales_payload:
+        raise ValueError("Debes incluir al menos un material.")
+    if not admin_id:
+        raise ValueError("Usuario invalido.")
+    if origen_sucursal_id == destino_sucursal_id:
+        raise ValueError("La sucursal de origen y destino deben ser diferentes.")
+
+    def _build_note(
+        *,
+        sucursal_id: int,
+        tipo_operacion: TipoOperacion,
+        partner_id: int,
+    ) -> Nota:
+        nota = Nota(
+            sucursal_id=sucursal_id,
+            trabajador_id=admin_id,
+            admin_id=admin_id,
+            tipo_operacion=tipo_operacion,
+            estado=NotaEstado.aprobada,
+        )
+        if tipo_operacion == TipoOperacion.compra:
+            nota.proveedor_id = partner_id
+        else:
+            nota.cliente_id = partner_id
+        db.add(nota)
+        db.flush()
+
+        for idx, mp in enumerate(materiales_payload):
+            material_id = mp.get("material_id")
+            if not db.get(Material, material_id):
+                raise ValueError(f"Material {material_id} no existe")
+            tipo_cli_raw = mp.get("tipo_cliente") or TipoCliente.regular
+            tipo_cli = tipo_cli_raw if isinstance(tipo_cli_raw, TipoCliente) else TipoCliente(str(tipo_cli_raw))
+            kg_bruto = Decimal(str(mp.get("kg_bruto", 0)))
+            kg_desc = Decimal(str(mp.get("kg_descuento", 0)))
+            kg_neto = kg_bruto - kg_desc
+            precio_unitario = Decimal(str(mp.get("precio_unitario", 0)))
+            if precio_unitario <= 0:
+                raise ValueError("El precio unitario debe ser mayor a 0.")
+            nm = NotaMaterial(
+                nota=nota,
+                material_id=material_id,
+                kg_bruto=kg_bruto,
+                kg_descuento=kg_desc,
+                kg_neto=kg_neto,
+                orden=idx,
+                tipo_cliente=tipo_cli,
+            )
+            nm.precio_unitario = precio_unitario
+            nm.version_precio_id = None
+            nm.subtotal = precio_unitario * Decimal(str(kg_neto or 0))
+            db.add(nm)
+        db.flush()
+
+        _recalc_totals(nota)
+        nota.metodo_pago = None
+        nota.monto_pagado = Decimal("0")
+        nota.updated_at = datetime.utcnow()
+        db.add(nota)
+        return nota
+
+    nota_salida = _build_note(
+        sucursal_id=origen_sucursal_id,
+        tipo_operacion=TipoOperacion.venta,
+        partner_id=cliente_id,
+    )
+    nota_entrada = _build_note(
+        sucursal_id=destino_sucursal_id,
+        tipo_operacion=TipoOperacion.compra,
+        partner_id=proveedor_id,
+    )
+
+    _validar_stock_para_venta(db, nota_salida)
+
+    comment_base = comentario or "Transferencia entre sucursales"
+    destino_txt = destino_nombre or "sucursal destino"
+    origen_txt = origen_nombre or "sucursal origen"
+    nota_salida.comentarios_admin = f"{comment_base}. Destino: {destino_txt}. Nota entrada #{nota_entrada.id}"
+    nota_entrada.comentarios_admin = f"{comment_base}. Origen: {origen_txt}. Nota salida #{nota_salida.id}"
+    db.add(nota_salida)
+    db.add(nota_entrada)
+
+    for nm in nota_salida.materiales:
+        _registrar_movimiento_inventario(db, nota=nota_salida, nm=nm, usuario_id=admin_id)
+    for nm in nota_entrada.materiales:
+        _registrar_movimiento_inventario(db, nota=nota_entrada, nm=nm, usuario_id=admin_id)
+
+    db.commit()
+    db.refresh(nota_salida)
+    db.refresh(nota_entrada)
+    return nota_salida, nota_entrada

@@ -70,12 +70,36 @@
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Saldo pendiente</span>
-                {% if saldo_pendiente > 0 %}
-                    <strong class="text-danger">${{ "%.2f"|format(saldo_pendiente) }}</strong>
+                {% if is_transfer %}
+                    {% if saldo_pendiente > 0 %}
+                        {% if nota.tipo_operacion.value == 'venta' %}
+                            <strong class="text-success">+${{ "%.2f"|format(saldo_pendiente) }}</strong>
+                        {% else %}
+                            <strong class="text-danger">-${{ "%.2f"|format(saldo_pendiente) }}</strong>
+                        {% endif %}
+                    {% else %}
+                        <strong class="text-muted">$0.00</strong>
+                    {% endif %}
                 {% else %}
-                    <strong class="text-success">$0.00</strong>
+                    {% if saldo_pendiente > 0 %}
+                        <strong class="text-danger">${{ "%.2f"|format(saldo_pendiente) }}</strong>
+                    {% else %}
+                        <strong class="text-success">$0.00</strong>
+                    {% endif %}
                 {% endif %}
             </div>
+            {% if is_transfer %}
+                <div class="note-meta-item">
+                    <span class="note-meta-label">Transferencia</span>
+                    {% if transfer_related %}
+                        {% set rel_label = 'Nota entrada' if nota.tipo_operacion.value == 'venta' else 'Nota salida' %}
+                        <a href="/web/admin/notas/{{ transfer_related.id }}">{{ rel_label }} #{{ transfer_related.id }}</a>
+                        <div class="note-meta-sub">{{ transfer_related_sucursal.nombre if transfer_related_sucursal else '-' }}</div>
+                    {% else %}
+                        <span class="text-muted small">Nota relacionada pendiente</span>
+                    {% endif %}
+                </div>
+            {% endif %}
         </div>
     </div>
 </div>
