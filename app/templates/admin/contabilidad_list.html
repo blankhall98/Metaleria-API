@@ -51,6 +51,15 @@
                     <button type="button" class="btn btn-export w-100" onclick="exportContabilidad()">Exportar</button>
                 </div>
             </div>
+            <div class="col-md-3 d-grid">
+                <div class="d-flex gap-2">
+                    <select class="form-select" id="reportFormat">
+                        <option value="xlsx">Reporte Excel</option>
+                        <option value="pdf">Reporte PDF</option>
+                    </select>
+                    <button type="button" class="btn btn-primary w-100" onclick="exportContabilidadReport()">Reporte</button>
+                </div>
+            </div>
         </form>
         <div class="d-flex justify-content-end text-muted small mb-2">
             Total filtrado: <strong class="ms-1">${{ "%.2f"|format(total_filtrado or 0) }}</strong>
@@ -100,6 +109,12 @@
         const params = new URLSearchParams(window.location.search);
         params.set('format', fmt);
         window.location.href = `/web/admin/contabilidad/export?${params.toString()}`;
+    }
+    function exportContabilidadReport() {
+        const fmt = document.getElementById('reportFormat').value || 'pdf';
+        const params = new URLSearchParams(window.location.search);
+        params.set('format', fmt);
+        window.location.href = `/web/admin/contabilidad/reporte?${params.toString()}`;
     }
 </script>
 {% endblock %}

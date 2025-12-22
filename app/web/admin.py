@@ -41,7 +41,7 @@ from app.models import (
 )
 
 from app.services.pricing_service import create_price_version
-from app.services import note_service, invoice_service
+from app.services import note_service, invoice_service, contabilidad_report_service
 from app.services.evidence_service import build_evidence_groups
 from app.services.firebase_storage import upload_image
 
@@ -3149,6 +3149,68 @@ async def contabilidad_export(
     headers = {"Content-Disposition": "attachment; filename=movimientos_contables.pdf"}
     buffer.seek(0)
     return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
+
+
+@router.get("/contabilidad/reporte")
+async def contabilidad_reporte(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    params = request.query_params
+    sucursal_id = None
+    if params.get("sucursal_id"):
+        try:
+            sucursal_id = int(params.get("sucursal_id"))
+        except ValueError:
+            sucursal_id = None
+    if allowed_suc_ids is not None:
+        if sucursal_id and sucursal_id not in allowed_suc_ids:
+            sucursal_id = None
+        if sucursal_id is None and len(allowed_suc_ids) == 1:
+            sucursal_id = allowed_suc_ids[0]
+
+    date_from = None
+    date_to = None
+    if params.get("from"):
+        try:
+            date_from = datetime.strptime(params.get("from"), "%Y-%m-%d").date()
+        except ValueError:
+            date_from = None
+    if params.get("to"):
+        try:
+            date_to = datetime.strptime(params.get("to"), "%Y-%m-%d").date()
+        except ValueError:
+            date_to = None
+
+    report = contabilidad_report_service.build_report_data(
+        db,
+        sucursal_id=sucursal_id,
+        date_from=date_from,
+        date_to=date_to,
+        allowed_suc_ids=allowed_suc_ids,
+    )
+
+    fmt = (params.get("format") or "pdf").lower()
+    if fmt in ("xlsx", "xls", "excel"):
+        content, filename = contabilidad_report_service.build_report_excel(report)
+        headers = {"Content-Disposition": f"attachment; filename={filename}"}
+        return StreamingResponse(
+            io.BytesIO(content),
+            media_type="application/vnd.ms-excel",
+            headers=headers,
+        )
+    if fmt == "pdf":
+        content, filename = contabilidad_report_service.build_report_pdf(report)
+        headers = {"Content-Disposition": f"attachment; filename={filename}"}
+        return StreamingResponse(
+            io.BytesIO(content),
+            media_type="application/pdf",
+            headers=headers,
+        )
+
+    raise HTTPException(status_code=400, detail="Formato de reporte invalido.")
 
 
 @router.get("/inventario/movimientos")
