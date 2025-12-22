@@ -18,7 +18,7 @@
         <form method="post" class="row g-3">
             <div class="col-md-4">
                 <label class="form-label">Sucursal</label>
-                {% if user.rol == 'super_admin' %}
+                {% if user.rol == 'super_admin' or (user.rol == 'admin' and sucursales|length > 1) %}
                     <select class="form-select" name="sucursal_id" required>
                         {% for s in sucursales %}
                             <option value="{{ s.id }}">{{ s.nombre }}</option>

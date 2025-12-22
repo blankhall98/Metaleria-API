@@ -13,7 +13,7 @@
 <div class="card hover-lift mb-3">
     <div class="card-body">
         <form class="row g-2 align-items-end" method="get">
-            {% if user.rol == 'super_admin' %}
+            {% if user.rol == 'super_admin' or (user.rol == 'admin' and sucursales|length > 1) %}
                 <div class="col-lg-3 col-md-4">
                     <label class="form-label">Sucursal</label>
                     <select class="form-select" name="sucursal_id">

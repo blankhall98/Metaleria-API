@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import Iterable, Sequence
 
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from app.models import (
     Nota,
@@ -59,6 +60,51 @@ def _recalc_totals(nota: Nota) -> None:
     nota.total_kg_descuento = total_desc
     nota.total_kg_neto = total_neto
     nota.total_monto = total_monto
+
+
+def _normalize_tipo_operacion(
+    tipo_operacion: TipoOperacion | str | None,
+) -> TipoOperacion | None:
+    if isinstance(tipo_operacion, TipoOperacion):
+        return tipo_operacion
+    if not tipo_operacion:
+        return None
+    try:
+        return TipoOperacion(str(tipo_operacion))
+    except ValueError:
+        return None
+
+
+def format_folio(
+    *,
+    sucursal_id: int | None,
+    tipo_operacion: TipoOperacion | str | None,
+    folio_seq: int | None,
+) -> str | None:
+    tipo_norm = _normalize_tipo_operacion(tipo_operacion)
+    if not sucursal_id or not tipo_norm or not folio_seq:
+        return None
+    letra = "C" if tipo_norm == TipoOperacion.compra else "V"
+    return f"{str(int(sucursal_id)).zfill(2)}_{letra}_{int(folio_seq)}"
+
+
+def _next_folio_seq(
+    db: Session,
+    *,
+    sucursal_id: int,
+    tipo_operacion: TipoOperacion,
+) -> int:
+    max_seq = (
+        db.query(func.max(Nota.folio_seq))
+        .filter(
+            Nota.sucursal_id == sucursal_id,
+            Nota.tipo_operacion == tipo_operacion,
+        )
+        .scalar()
+    )
+    if not max_seq:
+        return 1
+    return int(max_seq) + 1
 
 
 def _normalize_pago_incremental(nota: Nota, monto_pagado: Decimal | None) -> Decimal:
@@ -129,6 +175,11 @@ def create_draft_note(
         tipo_operacion=tipo_operacion,
         estado=NotaEstado.borrador,
         comentarios_trabajador=(comentarios_trabajador or "").strip() or None,
+        folio_seq=_next_folio_seq(
+            db,
+            sucursal_id=sucursal_id,
+            tipo_operacion=tipo_operacion,
+        ),
     )
     # Asignar partner si viene
     if tipo_operacion == TipoOperacion.compra:
@@ -718,6 +769,11 @@ def create_transfer_notes(
             admin_id=admin_id,
             tipo_operacion=tipo_operacion,
             estado=NotaEstado.aprobada,
+            folio_seq=_next_folio_seq(
+                db,
+                sucursal_id=sucursal_id,
+                tipo_operacion=tipo_operacion,
+            ),
         )
         if tipo_operacion == TipoOperacion.compra:
             nota.proveedor_id = partner_id

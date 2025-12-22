@@ -22,7 +22,7 @@
             <table class="table table-hover table-sm align-middle mb-0">
                 <thead>
                 <tr>
-                    <th>ID</th>
+                    <th>Folio</th>
                     <th>Operación</th>
                     <th>Estado</th>
                     <th>Total kg</th>
@@ -34,7 +34,9 @@
                 <tbody>
                 {% for n in notas %}
                     <tr>
-                        <td>{{ n.id }}</td>
+                        <td>
+                            <div class="fw-semibold">{{ folio_map.get(n.id, '-') }}</div>
+                        </td>
                         <td>{{ n.tipo_operacion.value|capitalize }}</td>
                         <td>
                             {% if n.estado.value == 'BORRADOR' %}
@@ -72,7 +74,7 @@
                 <div class="card soft p-3">
                     <div class="d-flex justify-content-between align-items-start mb-2">
                         <div>
-                            <div class="text-muted small">Nota #{{ n.id }}</div>
+                            <div class="text-muted small">Folio {{ folio_map.get(n.id, '-') }}</div>
                             <div class="fw-bold">{{ n.tipo_operacion.value|capitalize }}</div>
                         </div>
                         <div>

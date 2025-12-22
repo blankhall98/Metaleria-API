@@ -66,6 +66,15 @@
                     </select>
                 </div>
             </div>
+            <div>
+                <label class="form-label" for="admin_sucursal_ids">Sucursales para admins</label>
+                <select class="form-select" id="admin_sucursal_ids" name="admin_sucursal_ids" multiple size="5">
+                    {% for s in sucursales %}
+                        <option value="{{ s.id }}" {% if admin_sucursal_ids and s.id in admin_sucursal_ids %}selected{% endif %}>{{ s.nombre }}</option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">Selecciona una o varias sucursales si el rol es admin.</div>
+            </div>
 
             <div class="form-check">
                 <input class="form-check-input" type="checkbox" id="super_admin_original" name="super_admin_original" value="1" {% if edit_user.super_admin_original %}checked{% endif %}>

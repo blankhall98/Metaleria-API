@@ -45,6 +45,7 @@ class Nota(Base):
     total_kg_neto = Column(Numeric(12, 3), nullable=False, default=0)
     total_monto = Column(Numeric(12, 2), nullable=False, default=0)
     monto_pagado = Column(Numeric(12, 2), nullable=False, default=0)
+    folio_seq = Column(Integer, nullable=True, index=True)
 
     metodo_pago = Column(String(50), nullable=True)
     cuenta_financiera_id = Column(Integer, nullable=True)

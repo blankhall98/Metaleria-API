@@ -50,7 +50,7 @@
         </div>
         <button class="btn btn-outline-secondary btn-sm" aria-label="Cerrar menú" onclick="toggleDrawer(false)">&times;</button>
     </div>
-    <div class="nav-drawer-body">
+    <div class="nav-drawer-body{% if user and user.rol == 'trabajador' %} nav-drawer-body-compact{% endif %}">
         <a class="nav-drawer-link {% if request.url.path == '/web' %}active{% endif %}" href="/web">Inicio</a>
         {% if user %}
             {% if user.rol == 'super_admin' %}

@@ -11,45 +11,95 @@
 </div>
 
 <div class="card hover-lift mb-3">
-    <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
-        <div>
-            <div class="d-flex align-items-center gap-2 mb-1">
-                        <span class="chip-strong">Notificaciones</span>
-                        <strong class="h6 mb-0">Notas en revisión: {{ notas_revision|length }}</strong>
-                    </div>
-                    <p class="text-muted mb-0">Revisa y aprueba las notas enviadas por los trabajadores.</p>
+    <div class="card-body">
+        <div class="d-flex flex-column flex-lg-row gap-4">
+            <div class="flex-grow-1">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="chip-strong">B&uacute;squeda</span>
+                    <span class="text-muted small">Folio de nota</span>
                 </div>
-                <div class="text-end">
-            {% if notas_revision|length > 0 %}
-                <a href="#tabla-revision" class="btn btn-primary btn-sm">Ver notas</a>
-            {% else %}
-                <span class="badge bg-secondary">Sin pendientes</span>
-            {% endif %}
-        </div>
-    </div>
-</div>
-
-{% if notas_por_vencer|length > 0 or notas_vencidas|length > 0 %}
-<div class="card hover-lift mb-3">
-    <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
-        <div>
-            <div class="d-flex align-items-center gap-2 mb-1">
-                <span class="chip-strong">Alertas</span>
-                <strong class="h6 mb-0">Vencimientos de pago</strong>
+                <form method="get">
+                    <div class="d-flex flex-wrap gap-2 align-items-end">
+                        <div class="flex-grow-1 min-w-0">
+                            <label class="form-label">Buscar por folio</label>
+                            <input class="form-control" name="folio" placeholder="01_C_1" value="{{ folio_query }}">
+                        </div>
+                        <div class="d-flex gap-2 align-items-end">
+                            <button class="btn btn-outline-primary">Buscar</button>
+                            {% if folio_query %}
+                                <a class="btn btn-outline-secondary" href="/web/admin/notas">Limpiar</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </form>
+                {% if folio_error %}
+                    <div class="alert alert-danger py-2 small mt-2 mb-0">{{ folio_error }}</div>
+                {% endif %}
+                {% if folio_result %}
+                    <div class="border rounded-3 p-3 mt-3 bg-light d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
+                        <div>
+                            <div class="text-uppercase text-muted small mb-1">Resultado</div>
+                            <div class="fw-semibold">Folio {{ folio_map.get(folio_result.id, '-') }}</div>
+                            <div class="text-muted small">
+                                {% if folio_result.tipo_operacion.value == 'compra' %}
+                                    {{ proveedores[folio_result.proveedor_id].nombre_completo if folio_result.proveedor_id else '-' }}
+                                {% else %}
+                                    {{ clientes[folio_result.cliente_id].nombre_completo if folio_result.cliente_id else '-' }}
+                                {% endif %}
+                                &middot;
+                                {{ sucursales[folio_result.sucursal_id].nombre if folio_result.sucursal_id else '-' }}
+                            </div>
+                        </div>
+                        <div class="text-end">
+                            <a href="/web/admin/notas/{{ folio_result.id }}" class="btn btn-primary btn-sm">Ver nota</a>
+                        </div>
+                    </div>
+                {% endif %}
             </div>
-            <p class="text-muted mb-0">Notas con saldo pendiente que vencen en los pr&oacute;ximos {{ alerta_dias }} d&iacute;as o ya vencieron.</p>
-        </div>
-        <div class="d-flex flex-wrap gap-2 justify-content-end">
-            {% if notas_por_vencer|length > 0 %}
-                <a href="#tabla-por-vencer" class="btn btn-outline-primary btn-sm">Por vencer ({{ notas_por_vencer|length }})</a>
-            {% endif %}
-            {% if notas_vencidas|length > 0 %}
-                <a href="#tabla-vencidas" class="btn btn-danger btn-sm">Vencidas ({{ notas_vencidas|length }})</a>
-            {% endif %}
+            <div class="d-none d-lg-block vr"></div>
+            <div class="flex-grow-1">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="chip-strong">Resumen</span>
+                    <span class="text-muted small">Notificaciones y alertas</span>
+                </div>
+                <div class="d-grid gap-3">
+                    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
+                        <div>
+                            <div class="fw-semibold">Notas en revision</div>
+                            <div class="text-muted small">Revisa y aprueba las notas enviadas por los trabajadores.</div>
+                        </div>
+                        <div class="text-end">
+                            {% if notas_revision|length > 0 %}
+                                <a href="#tabla-revision" class="btn btn-primary btn-sm">Ver notas</a>
+                            {% else %}
+                                <span class="badge bg-secondary">Sin pendientes</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="border-top pt-3">
+                        <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
+                            <div>
+                                <div class="fw-semibold">Vencimientos de pago</div>
+                                <div class="text-muted small">Notas con saldo pendiente que vencen en los pr&oacute;ximos {{ alerta_dias }} d&iacute;as o ya vencieron.</div>
+                            </div>
+                            <div class="d-flex flex-wrap gap-2 justify-content-end">
+                                {% if notas_por_vencer|length > 0 %}
+                                    <a href="#tabla-por-vencer" class="btn btn-outline-primary btn-sm">Por vencer ({{ notas_por_vencer|length }})</a>
+                                {% endif %}
+                                {% if notas_vencidas|length > 0 %}
+                                    <a href="#tabla-vencidas" class="btn btn-danger btn-sm">Vencidas ({{ notas_vencidas|length }})</a>
+                                {% endif %}
+                                {% if notas_por_vencer|length == 0 and notas_vencidas|length == 0 %}
+                                    <span class="badge bg-secondary">Sin alertas</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
-{% endif %}
 
 <div class="card hover-lift" id="tabla-revision">
     <div class="card-body">
@@ -58,7 +108,7 @@
             <table class="table table-hover table-sm align-middle mb-0">
                 <thead>
                 <tr>
-                    <th>ID</th>
+                    <th>Folio</th>
                     <th>Operación</th>
                     <th>Partner</th>
                     <th>Sucursal</th>
@@ -71,7 +121,9 @@
                 <tbody>
                 {% for n in notas_revision %}
                     <tr>
-                        <td>{{ n.id }}</td>
+                        <td>
+                            <div class="fw-semibold">{{ folio_map.get(n.id, '-') }}</div>
+                        </td>
                         <td>{{ n.tipo_operacion.value|capitalize }}</td>
                         <td>
                             {% if n.tipo_operacion.value == 'compra' %}
@@ -109,7 +161,7 @@
             <table class="table table-hover table-sm align-middle mb-0">
                 <thead>
                 <tr>
-                    <th>ID</th>
+                    <th>Folio</th>
                     <th>OperaciA3n</th>
                     <th>Partner</th>
                     <th>Sucursal</th>
@@ -124,7 +176,9 @@
                 {% for item in notas_vencidas %}
                     {% set n = item.nota %}
                     <tr>
-                        <td>{{ n.id }}</td>
+                        <td>
+                            <div class="fw-semibold">{{ folio_map.get(n.id, '-') }}</div>
+                        </td>
                         <td>{{ n.tipo_operacion.value|capitalize }}</td>
                         <td>
                             {% if n.tipo_operacion.value == 'compra' %}
@@ -161,7 +215,7 @@
             <table class="table table-hover table-sm align-middle mb-0">
                 <thead>
                 <tr>
-                    <th>ID</th>
+                    <th>Folio</th>
                     <th>OperaciA3n</th>
                     <th>Partner</th>
                     <th>Sucursal</th>
@@ -176,7 +230,9 @@
                 {% for item in notas_por_vencer %}
                     {% set n = item.nota %}
                     <tr>
-                        <td>{{ n.id }}</td>
+                        <td>
+                            <div class="fw-semibold">{{ folio_map.get(n.id, '-') }}</div>
+                        </td>
                         <td>{{ n.tipo_operacion.value|capitalize }}</td>
                         <td>
                             {% if n.tipo_operacion.value == 'compra' %}
@@ -212,7 +268,7 @@
             <table class="table table-hover table-sm align-middle mb-0">
                 <thead>
                 <tr>
-                    <th>ID</th>
+                    <th>Folio</th>
                     <th>Operación</th>
                     <th>Estado</th>
                     <th>Partner</th>
@@ -226,7 +282,9 @@
                 <tbody>
                 {% for n in notas_recientes %}
                     <tr>
-                        <td>{{ n.id }}</td>
+                        <td>
+                            <div class="fw-semibold">{{ folio_map.get(n.id, '-') }}</div>
+                        </td>
                         <td>{{ n.tipo_operacion.value|capitalize }}</td>
                         <td>
                             {% if n.estado.value == 'BORRADOR' %}

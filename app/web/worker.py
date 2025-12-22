@@ -68,6 +68,14 @@ async def notes_list(
         .order_by(Nota.id.desc())
         .all()
     )
+    folio_map = {}
+    for nota in notas:
+        folio = note_service.format_folio(
+            sucursal_id=nota.sucursal_id,
+            tipo_operacion=nota.tipo_operacion,
+            folio_seq=nota.folio_seq,
+        )
+        folio_map[nota.id] = folio or "-"
     return templates.TemplateResponse(
         "worker/notes_list.html",
         {
@@ -75,6 +83,7 @@ async def notes_list(
             "env": settings.ENV,
             "user": current_user,
             "notas": notas,
+            "folio_map": folio_map,
             "success": request.query_params.get("success"),
         },
     )

@@ -36,6 +36,10 @@
                 {% endif %}
             </div>
             <div class="note-meta-item">
+                <span class="note-meta-label">Folio</span>
+                <strong>{{ folio or '-' }}</strong>
+            </div>
+            <div class="note-meta-item">
                 <span class="note-meta-label">Operaci&oacute;n</span>
                 <strong>{{ nota.tipo_operacion.value|capitalize }}</strong>
             </div>

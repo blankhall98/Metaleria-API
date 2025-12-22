@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}Nota {{ nota.id }}{% endblock %}
+{% block title %}Nota {{ folio or '-' }}{% endblock %}
 
 {% block content %}
 <div class="note-detail-page">
 <div class="page-header">
     <div>
         <p class="text-uppercase text-muted small mb-1">Revisi&oacute;n</p>
-        <h1 class="h4 text-dark mb-0">Nota #{{ nota.id }}</h1>
+        <h1 class="h4 text-dark mb-0">Nota {{ folio or '-' }}</h1>
     </div>
     <div class="d-flex gap-2">
         {% if user.rol == 'super_admin' %}
@@ -41,6 +41,10 @@
                 {% else %}
                     <span class="badge bg-danger">Cancelada</span>
                 {% endif %}
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Folio</span>
+                <strong>{{ folio or '-' }}</strong>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Operaci&oacute;n</span>

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, timedelta
-from typing import List
+from typing import Iterable, List
 
 from app.core.config import get_settings
 from app.core.security import hash_password
@@ -50,6 +50,7 @@ settings = get_settings()
 router = APIRouter(prefix="/web/admin", tags=["web-admin"])
 
 _TRANSFER_RELATED_NOTE_RE = re.compile(r"Nota (?:entrada|salida) #(\d+)")
+_FOLIO_QUERY_RE = re.compile(r"^\s*(\d+)[-_]([CV])[_-](\d+)\s*$", re.IGNORECASE)
 
 def _signed_inventario_qty(mov: InventarioMovimiento) -> Decimal:
     qty = Decimal(str(mov.cantidad_kg or 0))
@@ -165,6 +166,78 @@ def _extract_transfer_related_id(nota: Nota) -> int | None:
         return int(match.group(1))
     except ValueError:
         return None
+
+
+def _parse_folio_query(
+    folio_raw: str,
+) -> tuple[int, TipoOperacion, int] | None:
+    if not folio_raw:
+        return None
+    match = _FOLIO_QUERY_RE.match(folio_raw.strip())
+    if not match:
+        return None
+    sucursal_id = int(match.group(1))
+    letter = match.group(2).upper()
+    seq = int(match.group(3))
+    tipo_op = TipoOperacion.compra if letter == "C" else TipoOperacion.venta
+    return sucursal_id, tipo_op, seq
+
+
+def _build_folio_map(notas: Iterable[Nota]) -> dict[int, str]:
+    folio_map: dict[int, str] = {}
+    for nota in notas:
+        if not nota:
+            continue
+        folio = note_service.format_folio(
+            sucursal_id=nota.sucursal_id,
+            tipo_operacion=nota.tipo_operacion,
+            folio_seq=nota.folio_seq,
+        )
+        folio_map[nota.id] = folio or "-"
+    return folio_map
+
+
+def _get_allowed_sucursal_ids(
+    db: Session,
+    current_user: dict,
+) -> list[int] | None:
+    if current_user.get("rol") != UserRole.admin.value:
+        return None
+    user = db.get(User, current_user.get("id"))
+    if not user:
+        raise HTTPException(status_code=403, detail="Usuario no encontrado.")
+    ids = [s.id for s in user.sucursales_admin]
+    if not ids and user.sucursal_id:
+        ids = [user.sucursal_id]
+    if not ids:
+        raise HTTPException(status_code=403, detail="No tienes sucursales asignadas.")
+    return sorted(set(ids))
+
+
+def _filter_sucursales_for_admin(
+    sucursales: list[Sucursal],
+    allowed_ids: list[int] | None,
+) -> list[Sucursal]:
+    if allowed_ids is None:
+        return sucursales
+    return [s for s in sucursales if s.id in allowed_ids]
+
+
+def _ensure_nota_access(
+    nota: Nota,
+    allowed_ids: list[int] | None,
+) -> None:
+    if allowed_ids is None:
+        return
+    if nota.sucursal_id not in allowed_ids:
+        raise HTTPException(status_code=403, detail="No tienes acceso a esta sucursal.")
+
+
+def _sync_admin_primary_sucursal(admin: User) -> None:
+    if admin.rol != UserRole.admin:
+        return
+    ids = [s.id for s in admin.sucursales_admin]
+    admin.sucursal_id = sorted(ids)[0] if ids else None
 
 
 def _placas_conflict(db: Session, placas_list: list[str], modelo, owner_field: str, owner_id: int | None = None) -> str | None:
@@ -319,7 +392,9 @@ async def sucursal_new_post(
     if selected_ids:
         for admin in admins:
             if admin.id in selected_ids:
-                admin.sucursal_id = sucursal.id
+                if sucursal not in admin.sucursales_admin:
+                    admin.sucursales_admin.append(sucursal)
+                _sync_admin_primary_sucursal(admin)
                 db.add(admin)
     db.commit()
     db.refresh(sucursal)
@@ -338,7 +413,9 @@ async def sucursal_edit_get(
     if not sucursal:
         raise HTTPException(status_code=404, detail="Sucursal no encontrada.")
     admins = db.query(User).filter(User.rol == UserRole.admin).order_by(User.nombre_completo).all()
-    selected_admin_ids = [adm.id for adm in admins if adm.sucursal_id == sucursal.id]
+    selected_admin_ids = [
+        adm.id for adm in admins if any(s.id == sucursal.id for s in adm.sucursales_admin)
+    ]
     trabajadores = (
         db.query(User)
         .filter(User.rol == UserRole.trabajador, User.sucursal_id == sucursal.id)
@@ -428,9 +505,12 @@ async def sucursal_edit_post(
     selected_ids_set = set(selected_admin_ids)
     for adm in admins:
         if adm.id in selected_ids_set:
-            adm.sucursal_id = sucursal.id
-        elif adm.sucursal_id == sucursal.id:
-            adm.sucursal_id = None
+            if sucursal not in adm.sucursales_admin:
+                adm.sucursales_admin.append(sucursal)
+        else:
+            if sucursal in adm.sucursales_admin:
+                adm.sucursales_admin.remove(sucursal)
+        _sync_admin_primary_sucursal(adm)
         db.add(adm)
 
     db.commit()
@@ -503,6 +583,7 @@ async def user_new_post(
     password: str = Form(...),
     rol: str = Form(...),
     sucursal_id: int | None = Form(None),
+    admin_sucursal_ids: List[str] = Form([]),
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_superadmin),
 ):
@@ -540,7 +621,8 @@ async def user_new_post(
             status_code=400,
         )
 
-    # Validar sucursal para trabajador
+    # Validar sucursal para trabajador/admin
+    selected_admin_suc_ids = [int(sid) for sid in admin_sucursal_ids if sid]
     if user_role == UserRole.trabajador and not sucursal_id:
         return templates.TemplateResponse(
             "admin/user_form.html",
@@ -553,6 +635,38 @@ async def user_new_post(
             },
             status_code=400,
         )
+    if user_role == UserRole.admin:
+        if not selected_admin_suc_ids and sucursal_id:
+            selected_admin_suc_ids = [sucursal_id]
+        if not selected_admin_suc_ids:
+            return templates.TemplateResponse(
+                "admin/user_form.html",
+                {
+                    "request": request,
+                    "env": settings.ENV,
+                    "user": current_user,
+                    "sucursales": sucursales,
+                    "error": "Los admins deben tener al menos una sucursal asignada.",
+                },
+                status_code=400,
+            )
+        found = (
+            db.query(Sucursal)
+            .filter(Sucursal.id.in_(selected_admin_suc_ids))
+            .all()
+        )
+        if len(found) != len(set(selected_admin_suc_ids)):
+            return templates.TemplateResponse(
+                "admin/user_form.html",
+                {
+                    "request": request,
+                    "env": settings.ENV,
+                    "user": current_user,
+                    "sucursales": sucursales,
+                    "error": "Una de las sucursales seleccionadas no existe.",
+                },
+                status_code=400,
+            )
 
     # Unicidad de username
     existing = db.query(User).filter(User.username == username).first()
@@ -575,12 +689,25 @@ async def user_new_post(
         password_hash=hash_password(password),
         rol=user_role,
         estado=UserStatus.activo,
-        sucursal_id=sucursal_id,
+        sucursal_id=(
+            sucursal_id
+            if user_role == UserRole.trabajador
+            else (selected_admin_suc_ids[0] if user_role == UserRole.admin else None)
+        ),
         super_admin_original=False,
     )
 
     db.add(user)
     db.commit()
+    if user_role == UserRole.admin and selected_admin_suc_ids:
+        user.sucursales_admin = (
+            db.query(Sucursal)
+            .filter(Sucursal.id.in_(selected_admin_suc_ids))
+            .all()
+        )
+        _sync_admin_primary_sucursal(user)
+        db.add(user)
+        db.commit()
 
     return RedirectResponse(url="/web/admin/users", status_code=303)
 
@@ -596,6 +723,11 @@ async def user_edit_get(
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    admin_sucursal_ids = []
+    if user.rol == UserRole.admin:
+        admin_sucursal_ids = [s.id for s in user.sucursales_admin]
+        if not admin_sucursal_ids and user.sucursal_id:
+            admin_sucursal_ids = [user.sucursal_id]
     return templates.TemplateResponse(
         "admin/user_edit.html",
         {
@@ -604,6 +736,7 @@ async def user_edit_get(
             "user": current_user,
             "edit_user": user,
             "sucursales": sucursales,
+            "admin_sucursal_ids": admin_sucursal_ids,
             "error": None,
         },
     )
@@ -619,6 +752,7 @@ async def user_edit_post(
     rol: str = Form(...),
     estado: str = Form(...),
     sucursal_id: str | None = Form(None),
+    admin_sucursal_ids: List[str] = Form([]),
     super_admin_original: str | None = Form(None),
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_superadmin),
@@ -632,6 +766,7 @@ async def user_edit_post(
     password = (password or "").strip()
 
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    selected_admin_suc_ids = [int(sid) for sid in admin_sucursal_ids if sid]
 
     def render_error(msg: str):
         return templates.TemplateResponse(
@@ -671,6 +806,18 @@ async def user_edit_post(
 
     if user_role == UserRole.trabajador and not suc_id:
         return render_error("Los trabajadores deben tener una sucursal asignada.")
+    if user_role == UserRole.admin:
+        if not selected_admin_suc_ids and suc_id:
+            selected_admin_suc_ids = [suc_id]
+        if not selected_admin_suc_ids:
+            return render_error("Los admins deben tener al menos una sucursal asignada.")
+        found = (
+            db.query(Sucursal)
+            .filter(Sucursal.id.in_(selected_admin_suc_ids))
+            .all()
+        )
+        if len(found) != len(set(selected_admin_suc_ids)):
+            return render_error("Una de las sucursales seleccionadas no existe.")
 
     existing = db.query(User).filter(User.username == username, User.id != user.id).first()
     if existing:
@@ -680,7 +827,12 @@ async def user_edit_post(
     user.nombre_completo = nombre_completo
     user.rol = user_role
     user.estado = user_status
-    user.sucursal_id = suc_id
+    if user_role == UserRole.admin:
+        user.sucursales_admin = found
+        _sync_admin_primary_sucursal(user)
+    else:
+        user.sucursales_admin = []
+        user.sucursal_id = suc_id
     user.super_admin_original = bool(super_admin_original)
     if password:
         user.password_hash = hash_password(password)
@@ -1405,14 +1557,19 @@ async def notas_list(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     notas_revision = (
         db.query(Nota)
-        .filter(Nota.estado == NotaEstado.en_revision)
+        .filter(
+            Nota.estado == NotaEstado.en_revision,
+            *([Nota.sucursal_id.in_(allowed_suc_ids)] if allowed_suc_ids else []),
+        )
         .order_by(Nota.id.desc())
         .all()
     )
     notas_recientes = (
         db.query(Nota)
+        .filter(*([Nota.sucursal_id.in_(allowed_suc_ids)] if allowed_suc_ids else []))
         .order_by(Nota.id.desc())
         .limit(10)
         .all()
@@ -1425,6 +1582,7 @@ async def notas_list(
         .filter(
             Nota.estado == NotaEstado.aprobada,
             Nota.fecha_caducidad_pago.isnot(None),
+            *([Nota.sucursal_id.in_(allowed_suc_ids)] if allowed_suc_ids else []),
         )
         .order_by(Nota.fecha_caducidad_pago.asc())
         .all()
@@ -1460,9 +1618,43 @@ async def notas_list(
                     "dias": (nota.fecha_caducidad_pago - hoy).days,
                 }
             )
-    sucursales = {s.id: s for s in db.query(Sucursal).all()}
+    folio_query = (request.query_params.get("folio") or "").strip()
+    folio_error = None
+    folio_result = None
+    if folio_query:
+        parsed = _parse_folio_query(folio_query)
+        if not parsed:
+            folio_error = "Formato de folio inv\u00e1lido. Usa 01_C_1."
+        else:
+            sucursal_id, tipo_op, seq = parsed
+            folio_result = (
+                db.query(Nota)
+                .filter(
+                    Nota.sucursal_id == sucursal_id,
+                    Nota.tipo_operacion == tipo_op,
+                    Nota.folio_seq == seq,
+                )
+                .first()
+            )
+            if folio_result and allowed_suc_ids and folio_result.sucursal_id not in allowed_suc_ids:
+                folio_result = None
+                folio_error = "No tienes acceso a esa sucursal."
+            if not folio_result and not folio_error:
+                folio_error = "No se encontr\u00f3 una nota con ese folio."
+    suc_query = db.query(Sucursal)
+    if allowed_suc_ids:
+        suc_query = suc_query.filter(Sucursal.id.in_(allowed_suc_ids))
+    sucursales = {s.id: s for s in suc_query.all()}
     proveedores = {p.id: p for p in db.query(Proveedor).all()}
     clientes = {c.id: c for c in db.query(Cliente).all()}
+    notas_folio = []
+    notas_folio.extend(notas_revision)
+    notas_folio.extend(notas_recientes)
+    notas_folio.extend([item["nota"] for item in notas_vencidas])
+    notas_folio.extend([item["nota"] for item in notas_por_vencer])
+    if folio_result:
+        notas_folio.append(folio_result)
+    folio_map = _build_folio_map(notas_folio)
 
     return templates.TemplateResponse(
         "admin/notes_list.html",
@@ -1478,6 +1670,10 @@ async def notas_list(
             "sucursales": sucursales,
             "proveedores": proveedores,
             "clientes": clientes,
+            "folio_query": folio_query,
+            "folio_error": folio_error,
+            "folio_result": folio_result,
+            "folio_map": folio_map,
         },
     )
 
@@ -1488,10 +1684,16 @@ async def transferencias_get(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
-    origin_locked = current_user.get("rol") == UserRole.admin.value
-    origin_id = current_user.get("sucursal_id") if origin_locked else None
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
+    origin_locked = (
+        current_user.get("rol") == UserRole.admin.value
+        and allowed_suc_ids
+        and len(allowed_suc_ids) == 1
+    )
+    origin_id = allowed_suc_ids[0] if origin_locked else None
     origin_sucursal = db.get(Sucursal, origin_id) if origin_id else None
     ok = request.query_params.get("ok") == "1"
     nota_salida_id = request.query_params.get("salida")
@@ -1506,6 +1708,8 @@ async def transferencias_get(
             nota_salida = db.get(Nota, int(nota_salida_id))
         except ValueError:
             nota_salida = None
+        if nota_salida:
+            _ensure_nota_access(nota_salida, allowed_suc_ids)
         if nota_salida and nota_salida.sucursal_id:
             nota_salida_sucursal = db.get(Sucursal, nota_salida.sucursal_id)
         elif nota_salida_id:
@@ -1515,6 +1719,8 @@ async def transferencias_get(
             nota_entrada = db.get(Nota, int(nota_entrada_id))
         except ValueError:
             nota_entrada = None
+        if nota_entrada:
+            _ensure_nota_access(nota_entrada, allowed_suc_ids)
         if nota_entrada and nota_entrada.sucursal_id:
             nota_entrada_sucursal = db.get(Sucursal, nota_entrada.sucursal_id)
         elif nota_entrada_id:
@@ -1553,10 +1759,16 @@ async def transferencias_post(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
-    origin_locked = current_user.get("rol") == UserRole.admin.value
-    origin_id = current_user.get("sucursal_id") if origin_locked else None
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
+    origin_locked = (
+        current_user.get("rol") == UserRole.admin.value
+        and allowed_suc_ids
+        and len(allowed_suc_ids) == 1
+    )
+    origin_id = allowed_suc_ids[0] if origin_locked else None
     origin_sucursal = db.get(Sucursal, origin_id) if origin_id else None
 
     form = await request.form()
@@ -1597,6 +1809,11 @@ async def transferencias_post(
         return render_error("Debes seleccionar sucursal de origen y destino.", [])
     if origen_id_int == destino_id_int:
         return render_error("La sucursal de origen y destino deben ser diferentes.", [])
+    if allowed_suc_ids:
+        if origen_id_int not in allowed_suc_ids:
+            return render_error("Sucursal de origen no autorizada.", [])
+        if destino_id_int not in allowed_suc_ids:
+            return render_error("Sucursal de destino no autorizada.", [])
 
     origen = db.get(Sucursal, origen_id_int)
     destino = db.get(Sucursal, destino_id_int)
@@ -1776,6 +1993,11 @@ def _render_nota_detail(
     saldo_pendiente = Decimal(str(nota.total_monto or 0)) - Decimal(str(nota.monto_pagado or 0))
     if saldo_pendiente < Decimal("0"):
         saldo_pendiente = Decimal("0")
+    folio = note_service.format_folio(
+        sucursal_id=nota.sucursal_id,
+        tipo_operacion=nota.tipo_operacion,
+        folio_seq=nota.folio_seq,
+    )
     is_transfer = _is_transfer_note(db, nota, proveedor, cliente)
     transfer_related = None
     transfer_related_sucursal = None
@@ -1811,6 +2033,7 @@ def _render_nota_detail(
         "price_map_json": price_map_json,
         "price_map_by_material": price_map_by_material,
         "saldo_pendiente": saldo_pendiente,
+        "folio": folio,
         "is_transfer": is_transfer,
         "transfer_related": transfer_related,
         "transfer_related_sucursal": transfer_related_sucursal,
@@ -1846,6 +2069,11 @@ def _render_nota_edit(
     saldo_pendiente = Decimal(str(nota.total_monto or 0)) - Decimal(str(nota.monto_pagado or 0))
     if saldo_pendiente < Decimal("0"):
         saldo_pendiente = Decimal("0")
+    folio = note_service.format_folio(
+        sucursal_id=nota.sucursal_id,
+        tipo_operacion=nota.tipo_operacion,
+        folio_seq=nota.folio_seq,
+    )
     is_transfer = _is_transfer_note(db, nota, proveedor, cliente)
     transfer_related = None
     transfer_related_sucursal = None
@@ -1869,6 +2097,7 @@ def _render_nota_edit(
             "trabajador": trabajador,
             "tipos_cliente": list(TipoCliente),
             "saldo_pendiente": saldo_pendiente,
+            "folio": folio,
             "is_transfer": is_transfer,
             "transfer_related": transfer_related,
             "transfer_related_sucursal": transfer_related_sucursal,
@@ -1890,6 +2119,8 @@ async def notas_detail(
     nota = db.get(Nota, nota_id)
     if not nota:
         raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_nota_access(nota, allowed_suc_ids)
 
     pago_updated = request.query_params.get("pago") == "1"
     precios_updated = request.query_params.get("precios") == "1"
@@ -1915,6 +2146,8 @@ async def notas_evidencias(
     nota = db.get(Nota, nota_id)
     if not nota:
         raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_nota_access(nota, allowed_suc_ids)
 
     sucursal = db.get(Sucursal, nota.sucursal_id) if nota.sucursal_id else None
     proveedor = db.get(Proveedor, nota.proveedor_id) if nota.proveedor_id else None
@@ -2096,6 +2329,8 @@ async def notas_subpesaje_upload(
     nota = db.get(Nota, nota_id)
     if not nota:
         raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_nota_access(nota, allowed_suc_ids)
 
     subpesaje = (
         db.query(Subpesaje)
@@ -2153,6 +2388,8 @@ async def notas_aprobar(
     nota = db.get(Nota, nota_id)
     if not nota:
         raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_nota_access(nota, allowed_suc_ids)
     if nota.estado not in (NotaEstado.en_revision, NotaEstado.borrador):
         return _render_nota_detail(
             request,
@@ -2260,6 +2497,8 @@ async def notas_actualizar_precios(
     nota = db.get(Nota, nota_id)
     if not nota:
         raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_nota_access(nota, allowed_suc_ids)
     if nota.estado == NotaEstado.aprobada:
         return _render_nota_detail(
             request,
@@ -2328,6 +2567,8 @@ async def notas_actualizar_pago(
     nota = db.get(Nota, nota_id)
     if not nota:
         raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_nota_access(nota, allowed_suc_ids)
     if nota.estado != NotaEstado.aprobada:
         return _render_nota_detail(
             request,
@@ -2402,6 +2643,8 @@ async def notas_cancelar(
     nota = db.get(Nota, nota_id)
     if not nota:
         raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_nota_access(nota, allowed_suc_ids)
     if nota.estado == NotaEstado.aprobada:
         return _render_nota_detail(
             request, db, current_user, nota, error="No puedes rechazar una nota aprobada."
@@ -2428,6 +2671,8 @@ async def notas_devolver(
     nota = db.get(Nota, nota_id)
     if not nota:
         raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_nota_access(nota, allowed_suc_ids)
     if nota.estado == NotaEstado.aprobada:
         return _render_nota_detail(
             request, db, current_user, nota, error="No puedes devolver una nota aprobada."
@@ -2466,10 +2711,10 @@ async def inventario_ajuste_get(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
-    if current_user.get("rol") == UserRole.admin.value:
-        sucursales = [s for s in sucursales if s.id == current_user.get("sucursal_id")]
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     suc_ids = [s.id for s in sucursales]
     inv_rows = db.query(Inventario).filter(Inventario.sucursal_id.in_(suc_ids)).all() if suc_ids else []
     inv_map: dict[int, dict[int, float]] = {}
@@ -2500,11 +2745,10 @@ async def inventario_ajuste_post(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
-    if current_user.get("rol") == UserRole.admin.value:
-        sucursal_id = str(current_user.get("sucursal_id"))
-        sucursales = [s for s in sucursales if s.id == current_user.get("sucursal_id")]
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
 
     suc_ids = [s.id for s in sucursales]
     inv_rows = db.query(Inventario).filter(Inventario.sucursal_id.in_(suc_ids)).all() if suc_ids else []
@@ -2527,11 +2771,21 @@ async def inventario_ajuste_post(
             status_code=400,
         )
 
+    if allowed_suc_ids:
+        if not sucursal_id:
+            if len(allowed_suc_ids) == 1:
+                sucursal_id = str(allowed_suc_ids[0])
+            else:
+                return render_error("Selecciona una sucursal valida.")
+
     try:
         suc_id = int(sucursal_id)
         mat_id = int(material_id)
     except ValueError:
         return render_error("Sucursal o material inválido.")
+
+    if allowed_suc_ids and suc_id not in allowed_suc_ids:
+        return render_error("Sucursal no autorizada.")
 
     suc = db.get(Sucursal, suc_id)
     if not suc:
@@ -2580,10 +2834,9 @@ async def inventario_list(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
-    allowed_suc_id = None
-    if current_user.get("rol") == UserRole.admin.value:
-        allowed_suc_id = current_user.get("sucursal_id")
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
 
     sel = request.query_params.get("sucursal_id")
     sucursal_id = None
@@ -2592,11 +2845,19 @@ async def inventario_list(
             sucursal_id = int(sel)
         except ValueError:
             sucursal_id = None
-    if allowed_suc_id:
-        sucursal_id = allowed_suc_id
+    if allowed_suc_ids is not None:
+        if sucursal_id and sucursal_id not in allowed_suc_ids:
+            sucursal_id = None
+        if sucursal_id is None and len(allowed_suc_ids) == 1:
+            sucursal_id = allowed_suc_ids[0]
 
     query = db.query(Inventario)
-    if sucursal_id:
+    if allowed_suc_ids is not None:
+        if sucursal_id:
+            query = query.filter(Inventario.sucursal_id == sucursal_id)
+        else:
+            query = query.filter(Inventario.sucursal_id.in_(allowed_suc_ids))
+    elif sucursal_id:
         query = query.filter(Inventario.sucursal_id == sucursal_id)
     inventarios = query.order_by(Inventario.sucursal_id, Inventario.material_id).all()
     return templates.TemplateResponse(
@@ -2618,7 +2879,9 @@ async def contabilidad_list(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     params = request.query_params
     sucursal_id = None
     if params.get("sucursal_id"):
@@ -2626,15 +2889,23 @@ async def contabilidad_list(
             sucursal_id = int(params.get("sucursal_id"))
         except ValueError:
             sucursal_id = None
-    if current_user.get("rol") == UserRole.admin.value:
-        sucursal_id = current_user.get("sucursal_id")
+    if allowed_suc_ids is not None:
+        if sucursal_id and sucursal_id not in allowed_suc_ids:
+            sucursal_id = None
+        if sucursal_id is None and len(allowed_suc_ids) == 1:
+            sucursal_id = allowed_suc_ids[0]
 
     date_from = params.get("from")
     date_to = params.get("to")
     export_query = request.url.query
     fmt = params.get("format") or "csv"
     query = db.query(MovimientoContable)
-    if sucursal_id:
+    if allowed_suc_ids is not None:
+        if sucursal_id:
+            query = query.filter(MovimientoContable.sucursal_id == sucursal_id)
+        else:
+            query = query.filter(MovimientoContable.sucursal_id.in_(allowed_suc_ids))
+    elif sucursal_id:
         query = query.filter(MovimientoContable.sucursal_id == sucursal_id)
     if date_from:
         try:
@@ -2672,6 +2943,7 @@ async def contabilidad_export(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     params = request.query_params
     sucursal_id = None
     if params.get("sucursal_id"):
@@ -2679,14 +2951,22 @@ async def contabilidad_export(
             sucursal_id = int(params.get("sucursal_id"))
         except ValueError:
             sucursal_id = None
-    if current_user.get("rol") == UserRole.admin.value:
-        sucursal_id = current_user.get("sucursal_id")
+    if allowed_suc_ids is not None:
+        if sucursal_id and sucursal_id not in allowed_suc_ids:
+            sucursal_id = None
+        if sucursal_id is None and len(allowed_suc_ids) == 1:
+            sucursal_id = allowed_suc_ids[0]
 
     date_from = params.get("from")
     date_to = params.get("to")
     fmt = params.get("format") or "csv"
     query = db.query(MovimientoContable)
-    if sucursal_id:
+    if allowed_suc_ids is not None:
+        if sucursal_id:
+            query = query.filter(MovimientoContable.sucursal_id == sucursal_id)
+        else:
+            query = query.filter(MovimientoContable.sucursal_id.in_(allowed_suc_ids))
+    elif sucursal_id:
         query = query.filter(MovimientoContable.sucursal_id == sucursal_id)
     if date_from:
         try:
@@ -2830,7 +3110,9 @@ async def inventario_movimientos(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     materiales = db.query(Material).order_by(Material.nombre).all()
     params = request.query_params
     sucursal_id = None
@@ -2839,8 +3121,11 @@ async def inventario_movimientos(
             sucursal_id = int(params.get("sucursal_id"))
         except ValueError:
             sucursal_id = None
-    if current_user.get("rol") == UserRole.admin.value:
-        sucursal_id = current_user.get("sucursal_id")
+    if allowed_suc_ids is not None:
+        if sucursal_id and sucursal_id not in allowed_suc_ids:
+            sucursal_id = None
+        if sucursal_id is None and len(allowed_suc_ids) == 1:
+            sucursal_id = allowed_suc_ids[0]
 
     material_id = None
     if params.get("material_id"):
@@ -2851,7 +3136,16 @@ async def inventario_movimientos(
     tipo = params.get("tipo") or None
 
     query = db.query(InventarioMovimiento)
-    if sucursal_id:
+    if allowed_suc_ids is not None:
+        if sucursal_id:
+            query = query.join(Inventario, Inventario.id == InventarioMovimiento.inventario_id).filter(
+                Inventario.sucursal_id == sucursal_id
+            )
+        else:
+            query = query.join(Inventario, Inventario.id == InventarioMovimiento.inventario_id).filter(
+                Inventario.sucursal_id.in_(allowed_suc_ids)
+            )
+    elif sucursal_id:
         query = query.join(Inventario, Inventario.id == InventarioMovimiento.inventario_id).filter(
             Inventario.sucursal_id == sucursal_id
         )
@@ -2889,7 +3183,9 @@ async def inventario_movimientos_export(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     materiales = db.query(Material).order_by(Material.nombre).all()
     params = request.query_params
     sucursal_id = None
@@ -2898,8 +3194,11 @@ async def inventario_movimientos_export(
             sucursal_id = int(params.get("sucursal_id"))
         except ValueError:
             sucursal_id = None
-    if current_user.get("rol") == UserRole.admin.value:
-        sucursal_id = current_user.get("sucursal_id")
+    if allowed_suc_ids is not None:
+        if sucursal_id and sucursal_id not in allowed_suc_ids:
+            sucursal_id = None
+        if sucursal_id is None and len(allowed_suc_ids) == 1:
+            sucursal_id = allowed_suc_ids[0]
 
     material_id = None
     if params.get("material_id"):
@@ -2911,7 +3210,16 @@ async def inventario_movimientos_export(
     fmt = params.get("format") or "csv"
 
     query = db.query(InventarioMovimiento)
-    if sucursal_id:
+    if allowed_suc_ids is not None:
+        if sucursal_id:
+            query = query.join(Inventario, Inventario.id == InventarioMovimiento.inventario_id).filter(
+                Inventario.sucursal_id == sucursal_id
+            )
+        else:
+            query = query.join(Inventario, Inventario.id == InventarioMovimiento.inventario_id).filter(
+                Inventario.sucursal_id.in_(allowed_suc_ids)
+            )
+    elif sucursal_id:
         query = query.join(Inventario, Inventario.id == InventarioMovimiento.inventario_id).filter(
             Inventario.sucursal_id == sucursal_id
         )

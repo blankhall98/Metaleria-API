@@ -26,3 +26,4 @@ class Sucursal(Base):
     logo_url = Column(String(255), nullable=True)
 
     usuarios = relationship("User", back_populates="sucursal")
+    admins = relationship("User", secondary="admin_sucursales", back_populates="sucursales_admin")
