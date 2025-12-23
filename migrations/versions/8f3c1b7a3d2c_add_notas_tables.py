@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 # revision identifiers, used by Alembic.
@@ -22,7 +23,7 @@ def upgrade() -> None:
     """Create notas core tables."""
     bind = op.get_bind()
     inspector = sa.inspect(bind)
-    nota_estado = sa.Enum(
+    nota_estado = postgresql.ENUM(
         "BORRADOR",
         "EN_REVISION",
         "APROBADA",
@@ -31,7 +32,7 @@ def upgrade() -> None:
         create_type=False,
     )
     nota_estado.create(bind, checkfirst=True)
-    tipo_operacion = sa.Enum("compra", "venta", name="tipo_operacion", create_type=False)
+    tipo_operacion = postgresql.ENUM("compra", "venta", name="tipo_operacion", create_type=False)
 
     if not inspector.has_table("notas"):
         op.create_table(
@@ -138,7 +139,7 @@ def downgrade() -> None:
     op.drop_index("ix_notas_estado", table_name="notas")
     op.drop_table("notas")
 
-    nota_estado = sa.Enum(
+    nota_estado = postgresql.ENUM(
         "BORRADOR",
         "EN_REVISION",
         "APROBADA",
