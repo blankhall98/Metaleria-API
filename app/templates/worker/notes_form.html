@@ -109,7 +109,7 @@
                                             <input class="form-control subpesaje-desc" type="number" step="0.01" min="0" placeholder="0.00" oninput="updatePesajes(this)">
                                             <span class="input-group-text bg-light">Neto</span>
                                             <span class="input-group-text subpesaje-neto">0.00</span>
-                                            <input class="subpesaje-evid d-none" type="file" accept="image/*" capture="environment" onchange="handleEvidenceChange(this)">
+                                            <input class="subpesaje-evid d-none" type="file" accept="image/*" data-capture="environment" onchange="handleEvidenceChange(this)">
                                             <button type="button" class="evidence-btn" onclick="triggerEvidence(this)" title="Tomar o seleccionar foto">
                                                 <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                                                     <path d="M9 4.5 7.8 6H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-2.8L15 4.5H9Zm3 10.75a3.25 3.25 0 1 1 0-6.5 3.25 3.25 0 0 1 0 6.5Z" fill="currentColor"/>
@@ -204,11 +204,67 @@
     </div>
 </div>
 
+<div class="evidence-picker-modal" id="workerEvidencePickerModal" aria-hidden="true">
+    <div class="evidence-picker-backdrop" data-evidence-close></div>
+    <div class="evidence-picker-card" role="dialog" aria-modal="true" aria-labelledby="workerEvidencePickerTitle">
+        <div class="evidence-picker-header">
+            <h3 id="workerEvidencePickerTitle">Agregar evidencia</h3>
+            <button type="button" class="evidence-picker-close" data-evidence-close aria-label="Cerrar">&times;</button>
+        </div>
+        <p class="text-muted small mb-0">Elige c&oacute;mo quieres subir la foto.</p>
+        <div class="evidence-picker-actions">
+            <button type="button" class="btn btn-primary w-100" data-evidence-option="camera">Tomar foto</button>
+            <button type="button" class="btn btn-outline-primary w-100" data-evidence-option="gallery">Elegir de la galer&iacute;a</button>
+        </div>
+        <div class="evidence-picker-hint text-muted small">Formatos JPG/PNG. Max {{ max_mb }}MB.</div>
+    </div>
+</div>
+
 <script>
     const PRICE_MAP = {{ price_map | tojson | safe }};
     const MAX_MB = {{ max_mb | default(8) }};
     const UPLOAD_URL = '/web/files/upload';
     let pendingUploads = 0;
+    const evidenceModal = document.getElementById('workerEvidencePickerModal');
+    let activeEvidenceInput = null;
+
+    function openEvidenceModal(inputEl) {
+        if (!evidenceModal || !inputEl) return;
+        activeEvidenceInput = inputEl;
+        evidenceModal.classList.add('is-open');
+        evidenceModal.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('modal-open');
+    }
+    function closeEvidenceModal() {
+        if (!evidenceModal) return;
+        evidenceModal.classList.remove('is-open');
+        evidenceModal.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('modal-open');
+        activeEvidenceInput = null;
+    }
+    if (evidenceModal) {
+        evidenceModal.querySelectorAll('[data-evidence-close]').forEach((btn) => {
+            btn.addEventListener('click', closeEvidenceModal);
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') closeEvidenceModal();
+        });
+        evidenceModal.querySelectorAll('[data-evidence-option]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const targetInput = activeEvidenceInput;
+                if (!targetInput) return;
+                const choice = btn.getAttribute('data-evidence-option');
+                if (choice === 'camera') {
+                    const cap = targetInput.dataset.capture || 'environment';
+                    targetInput.setAttribute('capture', cap);
+                } else {
+                    targetInput.removeAttribute('capture');
+                }
+                closeEvidenceModal();
+                targetInput.click();
+            });
+        });
+    }
 
     function showEvidenceAlert(message, kind) {
         const alertEl = document.getElementById('evidence-alert');
@@ -227,9 +283,12 @@
     function triggerEvidence(btn) {
         const group = btn.closest('.input-group');
         const input = group ? group.querySelector('.subpesaje-evid') : null;
-        if (input) {
+        if (!input) return;
+        if (!evidenceModal) {
             input.click();
+            return;
         }
+        openEvidenceModal(input);
     }
     function setEvidenceLabel(groupEl, text, state) {
         const label = groupEl ? groupEl.querySelector('.evid-label') : null;
@@ -356,7 +415,7 @@
                 <input class="form-control subpesaje-desc" type="number" step="0.01" min="0" placeholder="0.00" oninput="updatePesajes(this)">
                 <span class="input-group-text bg-light">Neto</span>
                 <span class="input-group-text subpesaje-neto">0.00</span>
-                <input class="subpesaje-evid d-none" type="file" accept="image/*" capture="environment" onchange="handleEvidenceChange(this)">
+                <input class="subpesaje-evid d-none" type="file" accept="image/*" data-capture="environment" onchange="handleEvidenceChange(this)">
                 <button type="button" class="evidence-btn" onclick="triggerEvidence(this)" title="Tomar o seleccionar foto">
                     <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                         <path d="M9 4.5 7.8 6H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-2.8L15 4.5H9Zm3 10.75a3.25 3.25 0 1 1 0-6.5 3.25 3.25 0 0 1 0 6.5Z" fill="currentColor"/>
@@ -458,7 +517,7 @@
             <input class="form-control subpesaje-desc" type="number" step="0.01" min="0" placeholder="0.00" oninput="updatePesajes(this)">
             <span class="input-group-text bg-light">Neto</span>
             <span class="input-group-text subpesaje-neto">0.00</span>
-            <input class="subpesaje-evid d-none" type="file" accept="image/*" capture="environment" onchange="handleEvidenceChange(this)">
+                <input class="subpesaje-evid d-none" type="file" accept="image/*" data-capture="environment" onchange="handleEvidenceChange(this)">
             <button type="button" class="evidence-btn" onclick="triggerEvidence(this)" title="Tomar o seleccionar foto">
                 <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                     <path d="M9 4.5 7.8 6H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-2.8L15 4.5H9Zm3 10.75a3.25 3.25 0 1 1 0-6.5 3.25 3.25 0 0 1 0 6.5Z" fill="currentColor"/>

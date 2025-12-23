@@ -156,10 +156,11 @@
                                     {% endif %}
                                 </div>
                                 {% if can_upload %}
-                                    <form method="post" enctype="multipart/form-data" action="{{ upload_action_base }}/{{ sp.id }}/evidencia" class="evidence-upload">
-                                        <input class="form-control form-control-sm" type="file" name="file" accept="image/*" {% if capture_mode %}capture="{{ capture_mode }}"{% endif %} required>
-                                        <button class="btn btn-sm btn-primary" type="submit">Subir evidencia</button>
+                                    <form method="post" enctype="multipart/form-data" action="{{ upload_action_base }}/{{ sp.id }}/evidencia" class="evidence-upload evidence-upload--picker" data-evidence-form>
+                                        <button class="btn btn-sm btn-primary evidence-picker-btn" type="button" data-evidence-trigger>Agregar evidencia</button>
                                         <small class="text-muted">Max {{ max_mb }}MB</small>
+                                        <input class="evidence-file-input" type="file" name="file" accept="image/*" data-evidence-input="gallery">
+                                        <input class="evidence-file-input" type="file" name="file" accept="image/*" {% if capture_mode %}capture="{{ capture_mode }}"{% endif %} data-evidence-input="camera">
                                     </form>
                                 {% endif %}
                             </div>
@@ -172,4 +173,77 @@
         </div>
     {% endfor %}
 </div>
+
+<div class="evidence-picker-modal" id="evidencePickerModal" aria-hidden="true">
+    <div class="evidence-picker-backdrop" data-evidence-close></div>
+    <div class="evidence-picker-card" role="dialog" aria-modal="true" aria-labelledby="evidencePickerTitle">
+        <div class="evidence-picker-header">
+            <h3 id="evidencePickerTitle">Agregar evidencia</h3>
+            <button type="button" class="evidence-picker-close" data-evidence-close aria-label="Cerrar">&times;</button>
+        </div>
+        <p class="text-muted small mb-0">Elige c&oacute;mo quieres subir la foto.</p>
+        <div class="evidence-picker-actions">
+            <button type="button" class="btn btn-primary w-100" data-evidence-option="camera">Tomar foto</button>
+            <button type="button" class="btn btn-outline-primary w-100" data-evidence-option="gallery">Elegir de la galer&iacute;a</button>
+        </div>
+        <div class="evidence-picker-hint text-muted small">Formatos JPG/PNG. Max {{ max_mb }}MB.</div>
+    </div>
+</div>
+<script>
+    (function () {
+        const modal = document.getElementById('evidencePickerModal');
+        if (!modal) return;
+        let activeForm = null;
+        function openModal(formEl) {
+            activeForm = formEl;
+            modal.classList.add('is-open');
+            modal.setAttribute('aria-hidden', 'false');
+            document.body.classList.add('modal-open');
+        }
+        function closeModal() {
+            modal.classList.remove('is-open');
+            modal.setAttribute('aria-hidden', 'true');
+            document.body.classList.remove('modal-open');
+            activeForm = null;
+        }
+        document.querySelectorAll('[data-evidence-trigger]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const formEl = btn.closest('form');
+                if (!formEl) return;
+                openModal(formEl);
+            });
+        });
+        document.querySelectorAll('[data-evidence-close]').forEach((btn) => {
+            btn.addEventListener('click', closeModal);
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') closeModal();
+        });
+        document.querySelectorAll('[data-evidence-option]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                if (!activeForm) return;
+                const choice = btn.getAttribute('data-evidence-option');
+                const targetInput = activeForm.querySelector(`input[data-evidence-input="${choice}"]`);
+                const otherChoice = choice === 'camera' ? 'gallery' : 'camera';
+                const otherInput = activeForm.querySelector(`input[data-evidence-input="${otherChoice}"]`);
+                if (otherInput) otherInput.value = '';
+                if (targetInput) targetInput.click();
+            });
+        });
+        document.querySelectorAll('.evidence-file-input').forEach((input) => {
+            input.addEventListener('change', () => {
+                if (!input.files || !input.files.length) return;
+                const formEl = input.closest('form');
+                if (!formEl) return;
+                closeModal();
+                const trigger = formEl.querySelector('[data-evidence-trigger]');
+                if (trigger) {
+                    trigger.disabled = true;
+                    trigger.textContent = 'Subiendo...';
+                }
+                formEl.submit();
+            });
+        });
+    })();
+</script>
 {% endblock %}
