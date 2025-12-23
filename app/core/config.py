@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # App
-    PROJECT_NAME: str = "Metalería MVP"
+    PROJECT_NAME: str = "Scrap360 MVP"
     BACKEND_CORS_ORIGINS: List[str] = ["*"]
 
     # Base de datos (ajustaremos en Paso 3)
@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     # Firebase Storage
     FIREBASE_BUCKET: str = "metaleria-api-z2h.firebasestorage.app"
     FIREBASE_CREDENTIALS_FILE: str = "secrets/metaleria-api-z2h-firebase-adminsdk-fbsvc-18da50717b.json"
+    FIREBASE_CREDENTIALS_JSON: str | None = None
     FIREBASE_MAX_MB: int = 8
 
     # Notas: alerta de vencimiento (dias)

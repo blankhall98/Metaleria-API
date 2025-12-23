@@ -1858,8 +1858,8 @@ async def transferencias_post(
             precio_val = Decimal(str(precio_raw))
         except (InvalidOperation, TypeError):
             return render_error("Precio unitario invalido.", rows)
-        if precio_val <= 0:
-            return render_error("El precio unitario debe ser mayor a 0.", rows)
+        if precio_val < 0:
+            return render_error("El precio unitario no puede ser negativo.", rows)
         try:
             tipo_cli = TipoCliente(tipo_raw or "regular")
         except ValueError:

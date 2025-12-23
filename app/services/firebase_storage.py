@@ -1,4 +1,5 @@
 # app/services/firebase_storage.py
+import json
 import os
 import re
 import uuid
@@ -19,6 +20,23 @@ def _ensure_bucket():
         return _BUCKET
 
     settings = get_settings()
+    cred_json = settings.FIREBASE_CREDENTIALS_JSON
+    if cred_json:
+        try:
+            cred_info = json.loads(cred_json)
+        except json.JSONDecodeError as exc:
+            raise ValueError("FIREBASE_CREDENTIALS_JSON no es JSON valido") from exc
+
+        if not firebase_admin._apps:
+            cred = credentials.Certificate(cred_info)
+            firebase_admin.initialize_app(
+                cred,
+                {"storageBucket": settings.FIREBASE_BUCKET},
+            )
+
+        _BUCKET = storage.bucket()
+        return _BUCKET
+
     cred_path = Path(settings.FIREBASE_CREDENTIALS_FILE)
     if not cred_path.exists():
         raise FileNotFoundError(f"No se encontro el archivo de credenciales: {cred_path}")

@@ -141,7 +141,7 @@ def build_invoice_pdf(db: Session, nota: Nota, generated_at: datetime | None = N
     right = 562
     top = 760
 
-    pdf.text(left, top, "METALERIA", size=18, font="F2")
+    pdf.text(left, top, "SCRAP360", size=18, font="F2")
     pdf.text(left, top - 18, f"Sucursal: {sucursal_name}", size=9)
     pdf.text(left, top - 30, f"Direccion: {sucursal_address}", size=9)
     pdf.text(left, top - 42, f"Operacion: {tipo_label}", size=9)
