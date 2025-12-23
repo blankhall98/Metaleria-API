@@ -38,7 +38,15 @@ class Nota(Base):
     cliente_id = Column(Integer, ForeignKey("clientes.id"), nullable=True, index=True)
 
     tipo_operacion = Column(Enum(TipoOperacion, name="tipo_operacion"), nullable=False)
-    estado = Column(Enum(NotaEstado, name="nota_estado"), nullable=False, index=True)
+    estado = Column(
+        Enum(
+            NotaEstado,
+            name="nota_estado",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
+        nullable=False,
+        index=True,
+    )
 
     total_kg_bruto = Column(Numeric(12, 3), nullable=False, default=0)
     total_kg_descuento = Column(Numeric(12, 3), nullable=False, default=0)

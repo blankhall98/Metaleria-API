@@ -31,7 +31,13 @@ def upgrade() -> None:
         name="nota_estado",
         create_type=False,
     )
-    nota_estado.create(bind, checkfirst=True)
+    op.execute(
+        "DO $$ BEGIN "
+        "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'nota_estado') THEN "
+        "CREATE TYPE nota_estado AS ENUM ('BORRADOR', 'EN_REVISION', 'APROBADA', 'CANCELADA'); "
+        "END IF; "
+        "END $$;"
+    )
     tipo_operacion = postgresql.ENUM("compra", "venta", name="tipo_operacion", create_type=False)
 
     if not inspector.has_table("notas"):
