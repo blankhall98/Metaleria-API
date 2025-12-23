@@ -20,11 +20,18 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Create notas core tables."""
-    nota_estado = sa.Enum("BORRADOR", "EN_REVISION", "APROBADA", "CANCELADA", name="nota_estado")
-    nota_estado.create(op.get_bind(), checkfirst=True)
-
     bind = op.get_bind()
     inspector = sa.inspect(bind)
+    nota_estado = sa.Enum(
+        "BORRADOR",
+        "EN_REVISION",
+        "APROBADA",
+        "CANCELADA",
+        name="nota_estado",
+        create_type=False,
+    )
+    nota_estado.create(bind, checkfirst=True)
+    tipo_operacion = sa.Enum("compra", "venta", name="tipo_operacion", create_type=False)
 
     if not inspector.has_table("notas"):
         op.create_table(
@@ -35,7 +42,7 @@ def upgrade() -> None:
             sa.Column("admin_id", sa.Integer(), sa.ForeignKey("users.id"), nullable=True),
             sa.Column("proveedor_id", sa.Integer(), sa.ForeignKey("proveedores.id"), nullable=True),
             sa.Column("cliente_id", sa.Integer(), sa.ForeignKey("clientes.id"), nullable=True),
-            sa.Column("tipo_operacion", sa.Enum("compra", "venta", name="tipo_operacion"), nullable=False),
+            sa.Column("tipo_operacion", tipo_operacion, nullable=False),
             sa.Column("estado", nota_estado, nullable=False),
             sa.Column("total_kg_bruto", sa.Numeric(12, 3), nullable=False, server_default=sa.text("0")),
             sa.Column("total_kg_descuento", sa.Numeric(12, 3), nullable=False, server_default=sa.text("0")),
@@ -131,5 +138,12 @@ def downgrade() -> None:
     op.drop_index("ix_notas_estado", table_name="notas")
     op.drop_table("notas")
 
-    nota_estado = sa.Enum("BORRADOR", "EN_REVISION", "APROBADA", "CANCELADA", name="nota_estado")
+    nota_estado = sa.Enum(
+        "BORRADOR",
+        "EN_REVISION",
+        "APROBADA",
+        "CANCELADA",
+        name="nota_estado",
+        create_type=False,
+    )
     nota_estado.drop(op.get_bind(), checkfirst=True)
