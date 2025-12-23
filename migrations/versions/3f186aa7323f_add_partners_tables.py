@@ -31,7 +31,7 @@ def upgrade() -> None:
             "activo",
             sa.Boolean(),
             nullable=False,
-            server_default=sa.text("1"),
+            server_default=sa.text("true"),
         ),
     )
     op.create_index(
@@ -67,7 +67,7 @@ def upgrade() -> None:
             "activo",
             sa.Boolean(),
             nullable=False,
-            server_default=sa.text("1"),
+            server_default=sa.text("true"),
         ),
     )
     op.create_index(
