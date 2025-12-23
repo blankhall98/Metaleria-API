@@ -478,7 +478,7 @@ label {
 .nav-drawer {
     position: fixed;
     top: 0;
-    right: -60%;
+    right: 0;
     width: 55vw;
     max-width: 420px;
     min-width: 320px;
@@ -488,13 +488,14 @@ label {
     box-shadow: -12px 0 35px rgba(15, 23, 42, 0.15);
     padding: 1.25rem;
     z-index: 1100;
-    transition: right 0.25s ease;
+    transform: translateX(110%);
+    transition: transform 0.25s ease;
     display: flex;
     flex-direction: column;
     gap: 1rem;
 }
 .nav-drawer.open {
-    right: 0;
+    transform: translateX(0);
 }
 .nav-drawer-header {
     border-bottom: 1px solid var(--border);
