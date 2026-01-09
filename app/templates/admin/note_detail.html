@@ -236,7 +236,9 @@
                 </button>
             <form method="post" action="/web/admin/notas/{{ nota.id }}/cancelar" class="m-0" onsubmit="syncCancelComment(this)">
                 <input type="hidden" name="comentarios_admin" value="">
-                <button type="submit" class="btn btn-outline-danger">Rechazar</button>
+                <button type="submit" class="btn btn-outline-danger">
+                    {% if nota.estado.value == 'APROBADA' %}Cancelar{% else %}Rechazar{% endif %}
+                </button>
             </form>
             {% if nota.estado.value in ['EN_REVISION'] %}
                 <form method="post" action="/web/admin/notas/{{ nota.id }}/devolver" class="m-0">

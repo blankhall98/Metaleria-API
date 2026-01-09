@@ -2209,8 +2209,9 @@ async def notas_factura(
     _ensure_nota_access(nota, allowed_suc_ids)
     if nota.estado != NotaEstado.aprobada:
         raise HTTPException(status_code=400, detail="La nota debe estar aprobada.")
-    if nota.factura_url:
-        return RedirectResponse(url=nota.factura_url, status_code=302)
+    if nota.factura_url and nota.factura_generada_at and nota.updated_at:
+        if nota.factura_generada_at >= nota.updated_at:
+            return RedirectResponse(url=nota.factura_url, status_code=302)
 
     pdf_bytes, filename = invoice_service.build_invoice_pdf(db, nota)
     if current_user.get("rol") == UserRole.super_admin.value:
@@ -2692,19 +2693,28 @@ async def notas_cancelar(
         raise HTTPException(status_code=404, detail="Nota no encontrada.")
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     _ensure_nota_access(nota, allowed_suc_ids)
-    if nota.estado == NotaEstado.aprobada:
-        return _render_nota_detail(
-            request, db, current_user, nota, error="No puedes rechazar una nota aprobada."
-        )
     form = await request.form()
     comentarios_admin = (form.get("comentarios_admin") or "").strip()
-    note_service.update_state(
-        db,
-        nota,
-        new_state=NotaEstado.cancelada,
-        admin_id=current_user.get("id"),
-        comentarios_admin=comentarios_admin,
-    )
+    if nota.estado == NotaEstado.aprobada:
+        try:
+            note_service.cancel_approved_note(
+                db,
+                nota,
+                admin_id=current_user.get("id"),
+                comentarios_admin=comentarios_admin,
+            )
+        except ValueError as e:
+            return _render_nota_detail(
+                request, db, current_user, nota, error=str(e)
+            )
+    else:
+        note_service.update_state(
+            db,
+            nota,
+            new_state=NotaEstado.cancelada,
+            admin_id=current_user.get("id"),
+            comentarios_admin=comentarios_admin,
+        )
     return RedirectResponse(url="/web/admin/notas?cancelled=1", status_code=303)
 
 

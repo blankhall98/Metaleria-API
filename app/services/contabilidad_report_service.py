@@ -95,6 +95,7 @@ def build_report_data(
     total_pagos_venta = Decimal("0")
     total_pagos_compra = Decimal("0")
     total_ajustes = Decimal("0")
+    total_reversos = Decimal("0")
 
     movimientos_rows: list[dict] = []
     for mov in movimientos:
@@ -103,19 +104,23 @@ def build_report_data(
         tipo_label = tipo or "-"
         if tipo == "pago" and nota and nota.tipo_operacion:
             tipo_label = f"pago {nota.tipo_operacion.value}"
+        elif tipo == "reverso_pago":
+            tipo_label = "reverso pago"
 
         monto = _safe_decimal(mov.monto)
         if tipo == "venta":
             total_ventas += monto
         elif tipo == "compra":
             total_compras += monto
-        elif tipo == "pago":
+        elif tipo in ("pago", "reverso_pago"):
             if nota and nota.tipo_operacion == TipoOperacion.compra:
                 total_pagos_compra += monto
             else:
                 total_pagos_venta += monto
         elif tipo == "ajuste":
             total_ajustes += monto
+        elif tipo == "reverso":
+            total_reversos += monto
 
         folio = None
         if nota:
@@ -209,20 +214,21 @@ def build_report_data(
                 }
             )
 
-    total_ingresos = total_ventas + total_pagos_venta
-    total_egresos = total_compras + total_pagos_compra
+    total_ingresos = total_pagos_venta
+    total_egresos = total_pagos_compra
     balance_neto = total_ingresos - total_egresos
 
     summary_items = [
         {"label": "Movimientos en periodo", "value": len(movimientos_rows), "type": "count"},
-        {"label": "Ventas contado", "value": total_ventas, "type": "money"},
-        {"label": "Compras contado", "value": total_compras, "type": "money"},
+        {"label": "Ventas registradas", "value": total_ventas, "type": "money"},
+        {"label": "Compras registradas", "value": total_compras, "type": "money"},
         {"label": "Pagos recibidos (venta)", "value": total_pagos_venta, "type": "money"},
         {"label": "Pagos realizados (compra)", "value": total_pagos_compra, "type": "money"},
-        {"label": "Ingresos totales", "value": total_ingresos, "type": "money"},
-        {"label": "Egresos totales", "value": total_egresos, "type": "money"},
-        {"label": "Balance neto", "value": balance_neto, "type": "money"},
+        {"label": "Ingresos en caja", "value": total_ingresos, "type": "money"},
+        {"label": "Egresos en caja", "value": total_egresos, "type": "money"},
+        {"label": "Balance neto caja", "value": balance_neto, "type": "money"},
         {"label": "Ajustes", "value": total_ajustes, "type": "money"},
+        {"label": "Reversos", "value": total_reversos, "type": "money"},
         {"label": "Notas aprobadas", "value": len(notas), "type": "count"},
         {"label": "Facturado ventas", "value": total_facturado_ventas, "type": "money"},
         {"label": "Pagado ventas", "value": total_pagado_ventas, "type": "money"},

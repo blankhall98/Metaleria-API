@@ -1,5 +1,6 @@
 # app/services/note_service.py
 from datetime import date, datetime
+import json
 from decimal import Decimal
 from typing import Iterable, Sequence
 
@@ -19,6 +20,7 @@ from app.models import (
     InventarioMovimiento,
     MovimientoContable,
     NotaPago,
+    NotaOriginal,
 )
 
 
@@ -60,6 +62,80 @@ def _recalc_totals(nota: Nota) -> None:
     nota.total_kg_descuento = total_desc
     nota.total_kg_neto = total_neto
     nota.total_monto = total_monto
+
+
+def _as_str(value: object) -> str | None:
+    if value is None:
+        return None
+    return str(value)
+
+
+def _build_nota_snapshot(nota: Nota) -> dict:
+    materials = []
+    for nm in nota.materiales:
+        subs = []
+        for sp in nm.subpesajes or []:
+            subs.append(
+                {
+                    "id": sp.id,
+                    "peso_kg": _as_str(sp.peso_kg),
+                    "descuento_kg": _as_str(getattr(sp, "descuento_kg", 0)),
+                    "foto_url": sp.foto_url,
+                    "created_at": sp.created_at.isoformat() if sp.created_at else None,
+                }
+            )
+        materials.append(
+            {
+                "id": nm.id,
+                "material_id": nm.material_id,
+                "tipo_cliente": nm.tipo_cliente.value if nm.tipo_cliente else None,
+                "kg_bruto": _as_str(nm.kg_bruto),
+                "kg_descuento": _as_str(nm.kg_descuento),
+                "kg_neto": _as_str(nm.kg_neto),
+                "precio_unitario": _as_str(nm.precio_unitario),
+                "subtotal": _as_str(nm.subtotal),
+                "orden": nm.orden,
+                "evidencia_url": nm.evidencia_url,
+                "subpesajes": subs,
+            }
+        )
+    return {
+        "nota_id": nota.id,
+        "sucursal_id": nota.sucursal_id,
+        "trabajador_id": nota.trabajador_id,
+        "proveedor_id": nota.proveedor_id,
+        "cliente_id": nota.cliente_id,
+        "tipo_operacion": nota.tipo_operacion.value if nota.tipo_operacion else None,
+        "estado": nota.estado.value if nota.estado else None,
+        "comentarios_trabajador": nota.comentarios_trabajador,
+        "totales": {
+            "kg_bruto": _as_str(nota.total_kg_bruto),
+            "kg_descuento": _as_str(nota.total_kg_descuento),
+            "kg_neto": _as_str(nota.total_kg_neto),
+            "monto": _as_str(nota.total_monto),
+        },
+        "materiales": materials,
+        "created_at": nota.created_at.isoformat() if nota.created_at else None,
+    }
+
+
+def _store_nota_snapshot(db: Session, nota: Nota) -> None:
+    payload = json.dumps(_build_nota_snapshot(nota), ensure_ascii=True)
+    if nota.original:
+        nota.original.payload_json = payload
+        nota.original.created_at = datetime.utcnow()
+        db.add(nota.original)
+    else:
+        db.add(NotaOriginal(nota_id=nota.id, payload_json=payload))
+
+
+def _has_base_contable_movement(db: Session, nota_id: int, tipo: str) -> bool:
+    existing = (
+        db.query(MovimientoContable)
+        .filter(MovimientoContable.nota_id == nota_id, MovimientoContable.tipo == tipo)
+        .first()
+    )
+    return existing is not None
 
 
 def _normalize_tipo_operacion(
@@ -484,14 +560,15 @@ def approve_note(
     # registrar inventario y contabilidad
     for nm in nota.materiales:
         _registrar_movimiento_inventario(db, nota=nota, nm=nm, usuario_id=admin_id)
-    if metodo_pago_clean == "efectivo":
+    if nota.tipo_operacion and not _has_base_contable_movement(db, nota.id, nota.tipo_operacion.value):
         _registrar_movimiento_contable(
             db,
             nota=nota,
             usuario_id=admin_id,
-            comentario=comentarios_admin,
+            comentario=comentarios_admin or f"Nota aprobada #{nota.id}",
             metodo_pago=nota.metodo_pago,
             cuenta_financiera=str(nota.cuenta_financiera_id) if nota.cuenta_financiera_id else None,
+            tipo=nota.tipo_operacion.value,
         )
     pago_inicial: Decimal | None = None
     if metodo_pago_clean == "efectivo":
@@ -508,7 +585,7 @@ def approve_note(
             cuenta_financiera=str(cuenta_id) if cuenta_id else None,
             comentario="Pago inicial",
             commit=False,
-            registrar_contable=metodo_pago_clean != "efectivo",
+            registrar_contable=True,
         )
     db.commit()
     db.refresh(nota)
@@ -562,6 +639,99 @@ def send_to_revision(
     nota.estado = NotaEstado.en_revision
     nota.updated_at = datetime.utcnow()
     _recalc_totals(nota)
+    _store_nota_snapshot(db, nota)
+    db.add(nota)
+    db.commit()
+    db.refresh(nota)
+    return nota
+
+
+def cancel_approved_note(
+    db: Session,
+    nota: Nota,
+    *,
+    admin_id: int | None = None,
+    comentarios_admin: str | None = None,
+) -> Nota:
+    """
+    Cancela una nota aprobada, revierte inventario y registra reversos contables.
+    """
+    if nota.estado != NotaEstado.aprobada:
+        raise ValueError("Solo puedes cancelar notas aprobadas.")
+    if nota.tipo_operacion is None:
+        raise ValueError("La nota no tiene tipo de operacion valido.")
+
+    base_tipo = nota.tipo_operacion.value
+    if not _has_base_contable_movement(db, nota.id, base_tipo):
+        _registrar_movimiento_contable(
+            db,
+            nota=nota,
+            usuario_id=admin_id,
+            comentario=f"Movimiento base generado para cancelacion nota #{nota.id}",
+            metodo_pago=nota.metodo_pago,
+            cuenta_financiera=str(nota.cuenta_financiera_id) if nota.cuenta_financiera_id else None,
+            tipo=base_tipo,
+        )
+
+    comment_base = comentarios_admin or f"Cancelacion nota #{nota.id}"
+
+    for nm in nota.materiales:
+        delta = Decimal(str(nm.kg_neto or 0))
+        if nota.tipo_operacion == TipoOperacion.compra:
+            signed_delta = -delta
+        else:
+            signed_delta = delta
+        inv = _get_or_create_inventario(db, nota.sucursal_id, nm.material_id)
+        nuevo_saldo = Decimal(str(inv.stock_actual or 0)) + signed_delta
+        if nuevo_saldo < Decimal("0"):
+            nombre_mat = nm.material.nombre if nm.material else f"Material {nm.material_id}"
+            raise ValueError(f"Stock insuficiente para revertir {nombre_mat}.")
+        inv.stock_actual = nuevo_saldo
+        inv.updated_at = datetime.utcnow()
+        mov = InventarioMovimiento(
+            inventario_id=inv.id,
+            nota_id=nota.id,
+            nota_material_id=nm.id,
+            tipo="ajuste",
+            cantidad_kg=signed_delta,
+            saldo_resultante=nuevo_saldo,
+            comentario=comment_base,
+            usuario_id=admin_id,
+        )
+        db.add(inv)
+        db.add(mov)
+
+    _registrar_movimiento_contable(
+        db,
+        nota=nota,
+        usuario_id=admin_id,
+        comentario=comment_base,
+        metodo_pago=nota.metodo_pago,
+        cuenta_financiera=str(nota.cuenta_financiera_id) if nota.cuenta_financiera_id else None,
+        monto=Decimal(str(nota.total_monto or 0)) * Decimal("-1"),
+        tipo="reverso",
+    )
+
+    for pago in nota.pagos or []:
+        _registrar_movimiento_contable(
+            db,
+            nota=nota,
+            usuario_id=admin_id,
+            comentario=f"Reverso pago nota #{nota.id}",
+            metodo_pago=pago.metodo_pago or nota.metodo_pago,
+            cuenta_financiera=pago.cuenta_financiera,
+            monto=Decimal(str(pago.monto or 0)) * Decimal("-1"),
+            tipo="reverso_pago",
+        )
+
+    nota.estado = NotaEstado.cancelada
+    if comentarios_admin is not None:
+        nota.comentarios_admin = comentarios_admin.strip() or None
+    if admin_id is not None:
+        nota.admin_id = admin_id
+    nota.factura_url = None
+    nota.factura_generada_at = None
+    nota.updated_at = datetime.utcnow()
     db.add(nota)
     db.commit()
     db.refresh(nota)
