@@ -21,6 +21,8 @@ from app.models import (
     MovimientoContable,
     NotaPago,
     NotaOriginal,
+    NotaEvidenciaExtra,
+    Cuenta,
 )
 
 
@@ -99,6 +101,16 @@ def _build_nota_snapshot(nota: Nota) -> dict:
                 "subpesajes": subs,
             }
         )
+    extra_evidencias = []
+    for ev in nota.evidencias_extra or []:
+        extra_evidencias.append(
+            {
+                "id": ev.id,
+                "url": ev.url,
+                "uploaded_by_id": ev.uploaded_by_id,
+                "created_at": ev.created_at.isoformat() if ev.created_at else None,
+            }
+        )
     return {
         "nota_id": nota.id,
         "sucursal_id": nota.sucursal_id,
@@ -115,6 +127,7 @@ def _build_nota_snapshot(nota: Nota) -> dict:
             "monto": _as_str(nota.total_monto),
         },
         "materiales": materials,
+        "evidencias_extra": extra_evidencias,
         "created_at": nota.created_at.isoformat() if nota.created_at else None,
     }
 
@@ -197,6 +210,28 @@ def _normalize_pago_incremental(nota: Nota, monto_pagado: Decimal | None) -> Dec
     return pagado
 
 
+def _parse_cuenta_id(raw: str | None) -> int | None:
+    if not raw:
+        return None
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _validate_cuenta_for_nota(db: Session, nota: Nota, cuenta_id: int) -> Cuenta:
+    cuenta = db.get(Cuenta, cuenta_id)
+    if not cuenta or not cuenta.activo:
+        raise ValueError("La cuenta seleccionada no existe o esta inactiva.")
+    if cuenta.sucursal_id and cuenta.sucursal_id == nota.sucursal_id:
+        return cuenta
+    if nota.tipo_operacion == TipoOperacion.compra and cuenta.proveedor_id == nota.proveedor_id:
+        return cuenta
+    if nota.tipo_operacion == TipoOperacion.venta and cuenta.cliente_id == nota.cliente_id:
+        return cuenta
+    raise ValueError("La cuenta seleccionada no esta vinculada a esta nota.")
+
+
 def apply_prices(
     db: Session,
     nota: Nota,
@@ -240,10 +275,12 @@ def create_draft_note(
     comentarios_trabajador: str | None = None,
     proveedor_id: int | None = None,
     cliente_id: int | None = None,
+    extra_evidencias_payload: Sequence[str] | None = None,
 ) -> Nota:
     """
     Crea una nota en BORRADOR con materiales y subpesajes opcionales.
     materiales_payload: lista de dicts con material_id, kg_bruto, kg_descuento, subpesajes=[{peso_kg, foto_url}]
+    extra_evidencias_payload: lista de URLs de evidencia extra.
     """
     nota = Nota(
         sucursal_id=sucursal_id,
@@ -313,6 +350,21 @@ def create_draft_note(
                 foto_url=(sp.get("foto_url") or None),
             )
             db.add(sub)
+
+    extra_evidencias_payload = extra_evidencias_payload or []
+    seen_urls: set[str] = set()
+    for raw_url in extra_evidencias_payload:
+        url = (raw_url or "").strip()
+        if not url or url in seen_urls:
+            continue
+        seen_urls.add(url)
+        db.add(
+            NotaEvidenciaExtra(
+                nota_id=nota.id,
+                url=url,
+                uploaded_by_id=trabajador_id,
+            )
+        )
 
     _recalc_totals(nota)
     apply_prices(db, nota)
@@ -395,11 +447,21 @@ def _registrar_movimiento_contable(
     comentario: str | None = None,
     metodo_pago: str | None = None,
     cuenta_financiera: str | None = None,
+    cuenta_id: int | None = None,
+    cuenta_label: str | None = None,
     monto: Decimal | None = None,
     tipo: str | None = None,
 ) -> None:
     monto_val = Decimal(str(monto)) if monto is not None else Decimal(str(nota.total_monto or 0))
     tipo_mov = tipo or nota.tipo_operacion.value
+    resolved_id = cuenta_id if cuenta_id is not None else nota.cuenta_financiera_id
+    resolved_label = cuenta_label
+    if resolved_id and not resolved_label:
+        cuenta = db.get(Cuenta, resolved_id)
+        if cuenta:
+            resolved_label = cuenta.display_label
+    if not resolved_label:
+        resolved_label = cuenta_financiera or None
     mov = MovimientoContable(
         nota_id=nota.id,
         sucursal_id=nota.sucursal_id,
@@ -407,8 +469,8 @@ def _registrar_movimiento_contable(
         tipo=tipo_mov,
         monto=monto_val,
         metodo_pago=metodo_pago or nota.metodo_pago,
-        cuenta_financiera=cuenta_financiera
-        or (str(nota.cuenta_financiera_id) if nota.cuenta_financiera_id else None),
+        cuenta_financiera=resolved_label,
+        cuenta_id=resolved_id,
         comentario=comentario or None,
     )
     db.add(mov)
@@ -430,15 +492,24 @@ def add_payment(
         raise ValueError("Solo puedes registrar pagos en notas aprobadas.")
     monto = _normalize_pago_incremental(nota, monto_pagado)
     metodo = (metodo_pago or nota.metodo_pago or "").strip().lower() or None
+    cuenta_id: int | None = None
+    cuenta_label: str | None = None
     if metodo in ("transferencia", "cheque") and not cuenta_financiera:
         raise ValueError("Debes indicar la cuenta para transferencia o cheque.")
+    if metodo in ("transferencia", "cheque"):
+        cuenta_id = _parse_cuenta_id(cuenta_financiera)
+        if cuenta_id is None:
+            raise ValueError("La cuenta debe ser un numero valido.")
+        cuenta = _validate_cuenta_for_nota(db, nota, cuenta_id)
+        cuenta_label = cuenta.display_label
 
     pago = NotaPago(
         nota_id=nota.id,
         usuario_id=usuario_id,
+        cuenta_id=cuenta_id,
         monto=monto,
         metodo_pago=metodo,
-        cuenta_financiera=cuenta_financiera or None,
+        cuenta_financiera=cuenta_label or (cuenta_financiera or None),
         comentario=comentario or None,
     )
     nota.monto_pagado = Decimal(str(nota.monto_pagado or 0)) + monto
@@ -452,7 +523,8 @@ def add_payment(
             usuario_id=usuario_id,
             comentario=comentario or f"Pago nota #{nota.id}",
             metodo_pago=metodo,
-            cuenta_financiera=cuenta_financiera or None,
+            cuenta_label=cuenta_label,
+            cuenta_id=cuenta_id,
             monto=monto,
             tipo="pago",
         )
@@ -536,12 +608,14 @@ def approve_note(
     _validar_stock_para_venta(db, nota)
     metodo_pago_clean = (metodo_pago or "").strip().lower() or None
     cuenta_id: int | None = None
+    cuenta_label: str | None = None
     if metodo_pago_clean in ("transferencia", "cheque"):
         if cuenta_financiera:
-            try:
-                cuenta_id = int(cuenta_financiera)
-            except (TypeError, ValueError):
-                raise ValueError("La cuenta debe ser un número para transferencia o cheque.")
+            cuenta_id = _parse_cuenta_id(cuenta_financiera)
+            if cuenta_id is None:
+                raise ValueError("La cuenta debe ser un numero valido.")
+            cuenta = _validate_cuenta_for_nota(db, nota, cuenta_id)
+            cuenta_label = cuenta.display_label
         else:
             raise ValueError("Debes indicar la cuenta para transferencia o cheque.")
     elif metodo_pago_clean == "efectivo":
@@ -567,7 +641,8 @@ def approve_note(
             usuario_id=admin_id,
             comentario=comentarios_admin or f"Nota aprobada #{nota.id}",
             metodo_pago=nota.metodo_pago,
-            cuenta_financiera=str(nota.cuenta_financiera_id) if nota.cuenta_financiera_id else None,
+            cuenta_label=cuenta_label,
+            cuenta_id=nota.cuenta_financiera_id,
             tipo=nota.tipo_operacion.value,
         )
     pago_inicial: Decimal | None = None
@@ -582,7 +657,7 @@ def approve_note(
             monto_pagado=pago_inicial,
             usuario_id=admin_id,
             metodo_pago=metodo_pago_clean,
-            cuenta_financiera=str(cuenta_id) if cuenta_id else None,
+            cuenta_financiera=cuenta_label or (str(cuenta_id) if cuenta_id else None),
             comentario="Pago inicial",
             commit=False,
             registrar_contable=True,
@@ -669,7 +744,7 @@ def cancel_approved_note(
             usuario_id=admin_id,
             comentario=f"Movimiento base generado para cancelacion nota #{nota.id}",
             metodo_pago=nota.metodo_pago,
-            cuenta_financiera=str(nota.cuenta_financiera_id) if nota.cuenta_financiera_id else None,
+            cuenta_id=nota.cuenta_financiera_id,
             tipo=base_tipo,
         )
 
@@ -707,7 +782,7 @@ def cancel_approved_note(
         usuario_id=admin_id,
         comentario=comment_base,
         metodo_pago=nota.metodo_pago,
-        cuenta_financiera=str(nota.cuenta_financiera_id) if nota.cuenta_financiera_id else None,
+        cuenta_id=nota.cuenta_financiera_id,
         monto=Decimal(str(nota.total_monto or 0)) * Decimal("-1"),
         tipo="reverso",
     )
@@ -719,7 +794,8 @@ def cancel_approved_note(
             usuario_id=admin_id,
             comentario=f"Reverso pago nota #{nota.id}",
             metodo_pago=pago.metodo_pago or nota.metodo_pago,
-            cuenta_financiera=pago.cuenta_financiera,
+            cuenta_label=pago.cuenta_financiera,
+            cuenta_id=pago.cuenta_id,
             monto=Decimal(str(pago.monto or 0)) * Decimal("-1"),
             tipo="reverso_pago",
         )
@@ -888,6 +964,9 @@ def edit_note_by_superadmin(
 
         delta_total = new_total - old_total
         if delta_total != 0:
+            ajuste_monto = delta_total
+            if nota.tipo_operacion == TipoOperacion.compra:
+                ajuste_monto = -delta_total
             _registrar_movimiento_contable(
                 db,
                 nota=nota,
@@ -895,7 +974,7 @@ def edit_note_by_superadmin(
                 comentario=comment_base,
                 metodo_pago=nota.metodo_pago,
                 cuenta_financiera=str(nota.cuenta_financiera_id) if nota.cuenta_financiera_id else None,
-                monto=delta_total,
+                monto=ajuste_monto,
                 tipo="ajuste",
             )
 
@@ -1016,3 +1095,4 @@ def create_transfer_notes(
     db.refresh(nota_salida)
     db.refresh(nota_entrada)
     return nota_salida, nota_entrada
+

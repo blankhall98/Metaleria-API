@@ -13,6 +13,7 @@ from app.models import (
     Cliente,
     User,
     TipoOperacion,
+    Cuenta,
 )
 from app.services import note_service
 from app.services.firebase_storage import upload_file
@@ -171,10 +172,16 @@ def build_invoice_pdf(db: Session, nota: Nota, generated_at: datetime | None = N
         y -= 12
 
     metodo = (nota.metodo_pago or "").capitalize() or "-"
-    cuenta = str(nota.cuenta_financiera_id or "-")
+    cuenta_label = "-"
+    if nota.cuenta_financiera_id:
+        cuenta = db.get(Cuenta, nota.cuenta_financiera_id)
+        if cuenta:
+            cuenta_label = cuenta.display_label
+        else:
+            cuenta_label = str(nota.cuenta_financiera_id)
     caducidad = nota.fecha_caducidad_pago.strftime("%Y-%m-%d") if nota.fecha_caducidad_pago else "-"
     pdf.text(380, top - 70, f"Metodo de pago: {metodo}", size=9)
-    pdf.text(380, top - 82, f"Cuenta: {cuenta}", size=9)
+    pdf.text(380, top - 82, f"Cuenta: {cuenta_label}", size=9)
     pdf.text(380, top - 94, f"Vencimiento: {caducidad}", size=9)
 
     table_width = right - left

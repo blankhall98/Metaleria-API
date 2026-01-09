@@ -10,9 +10,261 @@
     </div>
 </div>
 
+<div class="card hover-lift mb-3">
+    <div class="card-body">
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="chip-strong">Saldo total</span>
+            <span class="text-muted small">Clientes y proveedores</span>
+        </div>
+        <div class="note-meta-grid">
+            <div class="note-meta-item">
+                <span class="note-meta-label">Por cobrar clientes</span>
+                <strong class="text-success">${{ "%.2f"|format(total_por_cobrar or 0) }}</strong>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Por pagar proveedores</span>
+                <strong class="text-danger">${{ "%.2f"|format(total_por_pagar or 0) }}</strong>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Saldo neto</span>
+                {% if saldo_neto >= 0 %}
+                    <strong class="text-success">+${{ "%.2f"|format(saldo_neto) }}</strong>
+                {% else %}
+                    <strong class="text-danger">-${{ "%.2f"|format(-saldo_neto) }}</strong>
+                {% endif %}
+                <div class="note-meta-sub">{{ saldo_scope }}</div>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Saldo a favor clientes</span>
+                <strong class="text-warning">${{ "%.2f"|format(saldo_favor_clientes or 0) }}</strong>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Saldo a favor empresa</span>
+                <strong class="text-warning">${{ "%.2f"|format(saldo_favor_empresa or 0) }}</strong>
+            </div>
+        </div>
+        <div class="text-muted small mt-2">
+            Basado en notas aprobadas. No incluye transferencias internas. Los filtros de fecha aplican solo al log de movimientos.
+        </div>
+    </div>
+</div>
+
+<div class="card hover-lift mb-3">
+    <div class="card-body">
+        <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2">
+            <div>
+                <h2 class="h6 text-dark mb-1">Saldo por entidad</h2>
+                <div class="text-muted small">Selecciona un cliente o proveedor para ver su saldo e historial.</div>
+            </div>
+        </div>
+        <form class="row g-2 align-items-end mt-3" method="get">
+            <input type="hidden" name="sucursal_id" value="{{ sucursal_id or '' }}">
+            <input type="hidden" name="from" value="{{ date_from }}">
+            <input type="hidden" name="to" value="{{ date_to }}">
+            <input type="hidden" name="cuenta_id" value="{{ cuenta_id or '' }}">
+            <div class="col-lg-6 col-md-8">
+                <label class="form-label">Cliente o proveedor</label>
+                <select class="form-select" name="partner_key">
+                    <option value="">Selecciona una entidad</option>
+                    <optgroup label="Clientes">
+                        {% for c in clientes %}
+                            {% set key = "cliente:" ~ c.id %}
+                            <option value="{{ key }}" {% if partner_key == key %}selected{% endif %}>{{ c.nombre_completo }}</option>
+                        {% endfor %}
+                    </optgroup>
+                    <optgroup label="Proveedores">
+                        {% for p in proveedores %}
+                            {% set key = "proveedor:" ~ p.id %}
+                            <option value="{{ key }}" {% if partner_key == key %}selected{% endif %}>{{ p.nombre_completo }}</option>
+                        {% endfor %}
+                    </optgroup>
+                </select>
+            </div>
+            <div class="col-lg-2 col-md-4 d-grid">
+                <button class="btn btn-outline-primary">Ver saldo</button>
+            </div>
+            <div class="col-lg-2 col-md-4 d-grid">
+                {% if partner_key %}
+                    <a class="btn btn-outline-secondary" href="/web/admin/contabilidad?sucursal_id={{ sucursal_id or '' }}&from={{ date_from }}&to={{ date_to }}">Limpiar</a>
+                {% endif %}
+            </div>
+        </form>
+
+        {% if partner_error %}
+            <div class="alert alert-danger py-2 small mt-2 mb-0">{{ partner_error }}</div>
+        {% endif %}
+
+        {% if partner_context %}
+            <div class="border-top pt-3 mt-3">
+                <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2">
+                    <div>
+                        <div class="text-uppercase text-muted small mb-1">{{ partner_context.partner_label }}</div>
+                        <div class="fw-semibold">{{ partner_context.partner.nombre_completo }}</div>
+                        <div class="text-muted small">ID {{ partner_context.partner.id }} &middot; {{ partner_context.tipo_operacion_label }}</div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <a href="{{ partner_context.record_link }}" class="btn btn-sm btn-outline-primary">Record completo</a>
+                    </div>
+                </div>
+
+                <div class="note-meta-grid mt-3">
+                    <div class="note-meta-item">
+                        <span class="note-meta-label">{{ partner_context.total_facturado_label }}</span>
+                        <strong>${{ "%.2f"|format(partner_context.summary.total_facturado or 0) }}</strong>
+                    </div>
+                    <div class="note-meta-item">
+                        <span class="note-meta-label">{{ partner_context.total_pagado_label }}</span>
+                        <strong>${{ "%.2f"|format(partner_context.summary.total_pagado or 0) }}</strong>
+                    </div>
+                    <div class="note-meta-item">
+                        <span class="note-meta-label">{{ partner_context.saldo_pendiente_label }}</span>
+                        <strong class="text-danger">${{ "%.2f"|format(partner_context.summary.saldo_pendiente or 0) }}</strong>
+                    </div>
+                    <div class="note-meta-item">
+                        <span class="note-meta-label">{{ partner_context.saldo_favor_label }}</span>
+                        <strong class="text-success">${{ "%.2f"|format(partner_context.summary.saldo_favor or 0) }}</strong>
+                    </div>
+                </div>
+                <div class="text-muted small mt-2">Saldos calculados solo con notas aprobadas.</div>
+
+                <div class="d-flex align-items-center justify-content-between mt-3">
+                    <h3 class="h6 text-dark mb-0">Historial de notas</h3>
+                    <div class="text-muted small">Total {{ partner_context.record_total_count }}</div>
+                </div>
+                <div class="table-responsive mt-2">
+                    <table class="table table-hover table-sm align-middle mb-0">
+                        <thead>
+                        <tr>
+                            <th>Folio</th>
+                            <th>Estado</th>
+                            <th>Fecha</th>
+                            <th>Sucursal</th>
+                            <th class="text-end">Total $</th>
+                            <th class="text-end">Pagado $</th>
+                            <th class="text-end">Saldo pendiente</th>
+                            <th class="text-end">Saldo a favor</th>
+                            <th></th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for row in partner_context.record_rows %}
+                            {% set nota = row.nota %}
+                            {% set suc = sucursales_map.get(nota.sucursal_id) %}
+                            <tr>
+                                <td>
+                                    <div class="fw-semibold">{{ row.folio }}</div>
+                                    <div class="text-muted small">#{{ nota.id }}</div>
+                                </td>
+                                <td>
+                                    {% if nota.estado.value == 'BORRADOR' %}
+                                        <span class="badge bg-secondary">Borrador</span>
+                                    {% elif nota.estado.value == 'EN_REVISION' %}
+                                        <span class="badge bg-warning text-dark">En revision</span>
+                                    {% elif nota.estado.value == 'APROBADA' %}
+                                        <span class="badge bg-success">Aprobada</span>
+                                    {% else %}
+                                        <span class="badge bg-danger">Cancelada</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ nota.created_at.strftime("%Y-%m-%d %H:%M") if nota.created_at else "-" }}</td>
+                                <td>{{ suc.nombre if suc else "-" }}</td>
+                                <td class="text-end">${{ "%.2f"|format(row.total or 0) }}</td>
+                                <td class="text-end">${{ "%.2f"|format(row.pagado or 0) }}</td>
+                                <td class="text-end">
+                                    {% if row.saldo_aplicable %}
+                                        {% if row.saldo_pendiente > 0 %}
+                                            <span class="text-danger fw-semibold">${{ "%.2f"|format(row.saldo_pendiente) }}</span>
+                                        {% else %}
+                                            <span class="text-muted">$0.00</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">
+                                    {% if row.saldo_aplicable %}
+                                        {% if row.saldo_favor > 0 %}
+                                            <span class="text-success fw-semibold">${{ "%.2f"|format(row.saldo_favor) }}</span>
+                                        {% else %}
+                                            <span class="text-muted">$0.00</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">
+                                    <a href="/web/admin/notas/{{ nota.id }}" class="btn btn-sm btn-outline-primary">Ver nota</a>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% if partner_context.record_rows|length == 0 %}
+                    <p class="text-muted small mt-3 mb-0">No hay notas para esta entidad.</p>
+                {% endif %}
+
+                <div class="d-flex align-items-center justify-content-between mt-3">
+                    <h3 class="h6 text-dark mb-0">Historial de pagos</h3>
+                    <div class="text-muted small">Total {{ partner_context.pagos|length }}</div>
+                </div>
+                <div class="table-responsive mt-2">
+                    <table class="table table-hover table-sm align-middle mb-0">
+                        <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Nota</th>
+                            <th class="text-end">Monto</th>
+                            <th>Metodo</th>
+                            <th>Cuenta</th>
+                            <th>Usuario</th>
+                            <th>Comentario</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for pago in partner_context.pagos %}
+                            {% set nota = pago.nota %}
+                            <tr>
+                                <td>{{ pago.created_at.strftime("%Y-%m-%d %H:%M") if pago.created_at else "-" }}</td>
+                                <td>
+                                    {% if nota %}
+                                        <div class="fw-semibold">{{ partner_context.folio_map.get(nota.id, '-') }}</div>
+                                        <div class="text-muted small">#{{ nota.id }}</div>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">${{ "%.2f"|format(pago.monto or 0) }}</td>
+                                <td>{{ pago.metodo_pago or "-" }}</td>
+                                <td>{{ pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or "-") }}</td>
+                                <td>
+                                    {% if pago.usuario %}
+                                        <div class="fw-semibold">{{ pago.usuario.nombre_completo or pago.usuario.username }}</div>
+                                        <div class="text-muted small">{{ pago.usuario.username }}</div>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-muted">{{ pago.comentario or "-" }}</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% if partner_context.pagos|length == 0 %}
+                    <p class="text-muted small mt-3 mb-0">No hay pagos registrados.</p>
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+</div>
+
 <div class="card hover-lift">
     <div class="card-body">
         <form class="row g-2 align-items-end mb-3" method="get">
+            {% if partner_key %}
+                <input type="hidden" name="partner_key" value="{{ partner_key }}">
+            {% endif %}
             {% if user.rol == 'super_admin' or (user.rol == 'admin' and sucursales|length > 1) %}
                 <div class="col-lg-3 col-md-4">
                     <label class="form-label">Sucursal</label>
@@ -30,6 +282,17 @@
                     <div class="form-control-plaintext fw-semibold">{{ suc.nombre if suc else sucursal_id }}</div>
                 </div>
             {% endif %}
+            <div class="col-lg-3 col-md-4">
+                <label class="form-label">Cuenta</label>
+                <select class="form-select" name="cuenta_id">
+                    <option value="">Todas</option>
+                    {% for c in cuentas %}
+                        <option value="{{ c.id }}" {% if cuenta_id and cuenta_id == c.id %}selected{% endif %}>
+                            {{ c.display_label }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
             <div class="col-lg-3 col-md-4">
                 <label class="form-label">Desde</label>
                 <input type="date" class="form-control" name="from" value="{{ date_from }}">
@@ -61,8 +324,11 @@
                 </div>
             </div>
         </form>
+        {% if cuenta_error %}
+            <div class="alert alert-danger py-2 small mt-2 mb-0">{{ cuenta_error }}</div>
+        {% endif %}
         <div class="d-flex justify-content-end text-muted small mb-2">
-            Total filtrado: <strong class="ms-1">${{ "%.2f"|format(total_filtrado or 0) }}</strong>
+            Total firmado: <strong class="ms-1">${{ "%.2f"|format(total_filtrado or 0) }}</strong>
         </div>
         <div class="table-responsive">
             <table class="table table-hover table-sm align-middle mb-0">
@@ -70,8 +336,10 @@
                 <tr>
                     <th>ID</th>
                     <th>Tipo</th>
+                    <th>Naturaleza</th>
                     <th>Monto</th>
                     <th>Nota</th>
+                    <th>Cuenta</th>
                     <th>Sucursal</th>
                     <th>Usuario</th>
                     <th>Fecha</th>
@@ -81,8 +349,9 @@
                 {% for m in movimientos %}
                     <tr>
                         <td>{{ m.id }}</td>
-                        <td>{{ m.tipo|upper }}</td>
-                        <td>${{ "%.2f"|format(m.monto or 0) }}</td>
+                        <td>{{ m.tipo }}</td>
+                        <td>{{ m.naturaleza }}</td>
+                        <td>${{ "%.2f"|format(m.monto_firmado or 0) }}</td>
                         <td>
                             {% if m.nota_id %}
                                 <a href="/web/admin/notas/{{ m.nota_id }}">#{{ m.nota_id }}</a>
@@ -90,8 +359,9 @@
                                 -
                             {% endif %}
                         </td>
-                        <td>{{ m.sucursal.nombre if m.sucursal else m.sucursal_id or "-" }}</td>
-                        <td>{{ m.usuario_id or "-" }}</td>
+                        <td>{{ m.cuenta_financiera or '-' }}</td>
+                        <td>{{ m.sucursal }}</td>
+                        <td>{{ m.usuario_id }}</td>
                         <td>{{ m.created_at.strftime("%Y-%m-%d %H:%M") if m.created_at else "-" }}</td>
                     </tr>
                 {% endfor %}

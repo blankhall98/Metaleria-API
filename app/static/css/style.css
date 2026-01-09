@@ -927,6 +927,35 @@ label {
     align-items: stretch;
     justify-content: start;
 }
+.extra-evidence-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+.extra-evidence-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    width: 140px;
+}
+.extra-evidence-thumb {
+    width: 100%;
+    height: 96px;
+    object-fit: cover;
+    border-radius: 0.6rem;
+    border: 1px solid var(--border);
+    background: #f8fafc;
+}
+.extra-evidence-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+.extra-evidence-actions .btn {
+    padding: 0.15rem 0.45rem;
+    font-size: 0.75rem;
+}
 .evidence-item {
     border: 1px solid var(--border);
     border-radius: 0.9rem;
@@ -1299,6 +1328,30 @@ body.modal-open {
 }
 .note-report-card .table-hover tbody tr.note-subpesaje-row:hover {
     background: #f1f5f9;
+}
+.note-state-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+.note-state-tab {
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+.note-state-tab.active {
+    background: linear-gradient(135deg, var(--blue), var(--blue-soft));
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 10px 20px rgba(37, 99, 235, 0.2);
+}
+.note-state-tab.active .badge {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+}
+.note-state-tab .badge {
+    font-size: 0.7rem;
 }
 .note-comment-box {
     background: #f8fafc;

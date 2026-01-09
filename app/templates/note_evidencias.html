@@ -79,6 +79,10 @@
                     <span class="note-meta-label">Pendientes</span>
                     <strong>{{ missing_subpesajes }}</strong>
                 </div>
+                <div class="note-meta-item">
+                    <span class="note-meta-label">Extra fotos</span>
+                    <strong>{{ extra_evidencias_total | default(0) }}</strong>
+                </div>
             </div>
         </div>
     </div>
@@ -172,6 +176,35 @@
             </div>
         </div>
     {% endfor %}
+
+    <div class="card hover-lift mb-3">
+        <div class="card-body">
+            <div class="d-flex flex-column flex-sm-row gap-2 justify-content-between align-items-sm-center">
+                <div>
+                    <div class="text-muted small mb-1">Evidencia extra</div>
+                    <h2 class="h6 mb-0">Galer&iacute;a adicional</h2>
+                </div>
+                <span class="badge bg-light text-dark">Total: {{ extra_evidencias_total | default(0) }}</span>
+            </div>
+            {% if extra_evidencias and extra_evidencias|length > 0 %}
+                <div class="extra-evidence-grid mt-3">
+                    {% for ev in extra_evidencias %}
+                        <div class="extra-evidence-item">
+                            <a href="{{ ev.url }}" target="_blank" rel="noopener">
+                                <img src="{{ ev.url }}" alt="Evidencia extra" loading="lazy" class="extra-evidence-thumb">
+                            </a>
+                            <div class="extra-evidence-actions">
+                                <span class="text-muted small">{{ ev.created_at.strftime("%Y-%m-%d %H:%M") if ev.created_at else "-" }}</span>
+                                <a href="{{ ev.url }}" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm">Ver</a>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-muted small mb-0 mt-3">No hay evidencia extra registrada.</p>
+            {% endif %}
+        </div>
+    </div>
 </div>
 
 <div class="evidence-picker-modal" id="evidencePickerModal" aria-hidden="true">

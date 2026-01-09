@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}
+    {% if cuenta %}Editar cuenta{% else %}Nueva cuenta{% endif %} &middot; Admin
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="text-uppercase text-muted small mb-1">Finanzas</p>
+        <h1 class="h4 text-white mb-0">
+            {% if cuenta %}Editar cuenta{% else %}Nueva cuenta{% endif %}
+        </h1>
+    </div>
+    <a href="/web/admin/cuentas" class="btn btn-outline-secondary btn-sm">Volver</a>
+</div>
+
+{% if error %}
+    <div class="alert alert-danger py-2 small">{{ error }}</div>
+{% endif %}
+
+{% set nombre_val = form_data.get('nombre') if form_data else (cuenta.nombre if cuenta else '') %}
+{% set tipo_val = form_data.get('tipo') if form_data else (cuenta.tipo if cuenta else '') %}
+{% set banco_val = form_data.get('banco') if form_data else (cuenta.banco if cuenta else '') %}
+{% set numero_val = form_data.get('numero') if form_data else (cuenta.numero if cuenta else '') %}
+{% set clabe_val = form_data.get('clabe') if form_data else (cuenta.clabe if cuenta else '') %}
+{% set titular_val = form_data.get('titular') if form_data else (cuenta.titular if cuenta else '') %}
+{% set referencia_val = form_data.get('referencia') if form_data else (cuenta.referencia if cuenta else '') %}
+{% set activo_val = form_data.get('activo') if form_data else (cuenta.activo if cuenta is not none else True) %}
+
+<div class="card hover-lift">
+    <div class="card-body">
+        <form
+            method="post"
+            action="{% if cuenta %}/web/admin/cuentas/{{ cuenta.id }}/editar{% else %}/web/admin/cuentas/nueva{% endif %}"
+            class="d-grid gap-3"
+        >
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Nombre</label>
+                    <input class="form-control" type="text" name="nombre" required value="{{ nombre_val }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Tipo</label>
+                    <input class="form-control" type="text" name="tipo" placeholder="Cuenta bancaria, chequera, etc" value="{{ tipo_val }}">
+                </div>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Banco</label>
+                    <input class="form-control" type="text" name="banco" value="{{ banco_val }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Numero</label>
+                    <input class="form-control" type="text" name="numero" value="{{ numero_val }}">
+                </div>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">CLABE</label>
+                    <input class="form-control" type="text" name="clabe" value="{{ clabe_val }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Titular</label>
+                    <input class="form-control" type="text" name="titular" value="{{ titular_val }}">
+                </div>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Referencia</label>
+                    <input class="form-control" type="text" name="referencia" value="{{ referencia_val }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Vinculo</label>
+                    <select class="form-select" name="owner_key">
+                        <option value="" {% if not owner_key %}selected{% endif %}>Sin vinculo</option>
+                        <optgroup label="Sucursales">
+                            {% for s in sucursales %}
+                                {% set key = "sucursal:" ~ s.id %}
+                                <option value="{{ key }}" {% if owner_key == key %}selected{% endif %}>{{ s.nombre }}</option>
+                            {% endfor %}
+                        </optgroup>
+                        <optgroup label="Clientes">
+                            {% for c in clientes %}
+                                {% set key = "cliente:" ~ c.id %}
+                                <option value="{{ key }}" {% if owner_key == key %}selected{% endif %}>{{ c.nombre_completo }}</option>
+                            {% endfor %}
+                        </optgroup>
+                        <optgroup label="Proveedores">
+                            {% for p in proveedores %}
+                                {% set key = "proveedor:" ~ p.id %}
+                                <option value="{{ key }}" {% if owner_key == key %}selected{% endif %}>{{ p.nombre_completo }}</option>
+                            {% endfor %}
+                        </optgroup>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-check mb-2">
+                <input
+                    class="form-check-input"
+                    type="checkbox"
+                    id="activo"
+                    name="activo"
+                    {% if activo_val %}checked{% endif %}
+                >
+                <label class="form-check-label" for="activo">
+                    Cuenta activa
+                </label>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">Guardar</button>
+                <a href="/web/admin/cuentas" class="btn btn-outline-secondary">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block title %}Cuentas &middot; Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="text-uppercase text-muted small mb-1">Finanzas</p>
+        <h1 class="h4 text-white mb-0">Cuentas</h1>
+    </div>
+    {% set new_url = "/web/admin/cuentas/nueva" %}
+    {% if owner_key %}
+        {% set new_url = new_url ~ "?owner_key=" ~ owner_key %}
+    {% endif %}
+    <a href="{{ new_url }}" class="btn btn-primary btn-sm">Nueva cuenta</a>
+</div>
+
+<form method="get" class="row g-2 mb-3">
+    <div class="col-lg-4 col-md-6">
+        <label class="form-label">Buscar</label>
+        <input
+            type="text"
+            class="form-control"
+            name="q"
+            placeholder="Nombre, banco, numero, titular"
+            value="{{ q }}"
+        >
+    </div>
+    <div class="col-lg-4 col-md-6">
+        <label class="form-label">Vinculo</label>
+        <select class="form-select" name="owner_key">
+            <option value="">Todos</option>
+            <optgroup label="Sucursales">
+                {% for s in sucursales %}
+                    {% set key = "sucursal:" ~ s.id %}
+                    <option value="{{ key }}" {% if owner_key == key %}selected{% endif %}>{{ s.nombre }}</option>
+                {% endfor %}
+            </optgroup>
+            <optgroup label="Clientes">
+                {% for c in clientes %}
+                    {% set key = "cliente:" ~ c.id %}
+                    <option value="{{ key }}" {% if owner_key == key %}selected{% endif %}>{{ c.nombre_completo }}</option>
+                {% endfor %}
+            </optgroup>
+            <optgroup label="Proveedores">
+                {% for p in proveedores %}
+                    {% set key = "proveedor:" ~ p.id %}
+                    <option value="{{ key }}" {% if owner_key == key %}selected{% endif %}>{{ p.nombre_completo }}</option>
+                {% endfor %}
+            </optgroup>
+        </select>
+    </div>
+    <div class="col-lg-2 col-md-4">
+        <label class="form-label">Estado</label>
+        <select class="form-select" name="activo">
+            <option value="">Todos</option>
+            <option value="1" {% if activo == '1' %}selected{% endif %}>Activa</option>
+            <option value="0" {% if activo == '0' %}selected{% endif %}>Inactiva</option>
+        </select>
+    </div>
+    <div class="col-md-2 d-grid">
+        <button class="btn btn-outline-primary">Filtrar</button>
+    </div>
+</form>
+
+{% if owner_error %}
+    <div class="alert alert-danger py-2 small mb-3">{{ owner_error }}</div>
+{% endif %}
+
+<div class="card hover-lift">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle mb-0">
+                <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Nombre</th>
+                    <th>Tipo</th>
+                    <th>Banco</th>
+                    <th>Numero</th>
+                    <th>Titular</th>
+                    <th>Vinculo</th>
+                    <th>Estado</th>
+                    <th></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for row in cuentas %}
+                    {% set cuenta = row.cuenta %}
+                    <tr>
+                        <td>{{ cuenta.id }}</td>
+                        <td>
+                            <div class="fw-semibold">{{ cuenta.nombre }}</div>
+                            <div class="text-muted small">{{ cuenta.display_label }}</div>
+                        </td>
+                        <td>{{ cuenta.tipo or "-" }}</td>
+                        <td>{{ cuenta.banco or "-" }}</td>
+                        <td>
+                            {% if cuenta.numero %}
+                                {% set last4 = cuenta.numero[-4:] if cuenta.numero|length >= 4 else cuenta.numero %}
+                                ****{{ last4 }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>{{ cuenta.titular or "-" }}</td>
+                        <td>{{ row.owner_label }}</td>
+                        <td>
+                            <span class="badge {{ 'bg-success' if cuenta.activo else 'bg-secondary' }}">
+                                {{ 'Activa' if cuenta.activo else 'Inactiva' }}
+                            </span>
+                        </td>
+                        <td class="text-end">
+                            <div class="d-flex gap-2 justify-content-end flex-wrap">
+                                <a href="/web/admin/cuentas/{{ cuenta.id }}" class="btn btn-sm btn-outline-primary">Auditar</a>
+                                <a href="/web/admin/cuentas/{{ cuenta.id }}/editar" class="btn btn-sm btn-outline-secondary">Editar</a>
+                            </div>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if cuentas|length == 0 %}
+            <p class="text-muted small mt-3 mb-0">No hay cuentas con estos filtros.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,390 @@
+{% extends "base.html" %}
+
+{% block title %}Cuenta {{ cuenta.nombre }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="text-uppercase text-muted small mb-1">Finanzas</p>
+        <h1 class="h4 text-white mb-0">{{ cuenta.nombre }}</h1>
+        <div class="text-muted small">{{ cuenta.display_label }}</div>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="/web/admin/cuentas" class="btn btn-outline-secondary btn-sm">Volver</a>
+        <a href="/web/admin/cuentas/{{ cuenta.id }}/editar" class="btn btn-outline-primary btn-sm">Editar</a>
+    </div>
+</div>
+
+<div class="card hover-lift mb-3">
+    <div class="card-body">
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="chip-strong">Datos</span>
+            <span class="text-muted small">Cuenta y vinculo</span>
+        </div>
+        <div class="note-meta-grid">
+            <div class="note-meta-item">
+                <span class="note-meta-label">ID</span>
+                <strong>{{ cuenta.id }}</strong>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Tipo</span>
+                <strong>{{ cuenta.tipo or '-' }}</strong>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Banco</span>
+                <strong>{{ cuenta.banco or '-' }}</strong>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Numero</span>
+                {% if cuenta.numero %}
+                    {% set last4 = cuenta.numero[-4:] if cuenta.numero|length >= 4 else cuenta.numero %}
+                    <strong>****{{ last4 }}</strong>
+                {% else %}
+                    <strong>-</strong>
+                {% endif %}
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">CLABE</span>
+                {% if cuenta.clabe %}
+                    {% set last4 = cuenta.clabe[-4:] if cuenta.clabe|length >= 4 else cuenta.clabe %}
+                    <strong>****{{ last4 }}</strong>
+                {% else %}
+                    <strong>-</strong>
+                {% endif %}
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Titular</span>
+                <strong>{{ cuenta.titular or '-' }}</strong>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Referencia</span>
+                <strong>{{ cuenta.referencia or '-' }}</strong>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Vinculo</span>
+                <strong>{{ owner_label }}</strong>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Estado</span>
+                <span class="badge {{ 'bg-success' if cuenta.activo else 'bg-secondary' }}">
+                    {{ 'Activa' if cuenta.activo else 'Inactiva' }}
+                </span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card hover-lift mb-3">
+    <div class="card-body">
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="chip-strong">Resumen</span>
+            <span class="text-muted small">Movimientos y pagos</span>
+        </div>
+        <div class="note-meta-grid">
+            <div class="note-meta-item">
+                <span class="note-meta-label">Movimientos</span>
+                <strong>{{ movimientos_total }}</strong>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Ingresos</span>
+                <strong class="text-success">${{ "%.2f"|format(total_ingresos or 0) }}</strong>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Egresos</span>
+                <strong class="text-danger">${{ "%.2f"|format(total_egresos or 0) }}</strong>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Saldo neto</span>
+                {% if saldo_neto >= 0 %}
+                    <strong class="text-success">+${{ "%.2f"|format(saldo_neto) }}</strong>
+                {% else %}
+                    <strong class="text-danger">-${{ "%.2f"|format(-saldo_neto) }}</strong>
+                {% endif %}
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Pagos</span>
+                <strong>{{ pagos|length }}</strong>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Total pagos</span>
+                <strong>${{ "%.2f"|format(pagos_total or 0) }}</strong>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Notas vinculadas</span>
+                <strong>{{ notas_total }}</strong>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card hover-lift mb-3">
+    <div class="card-body">
+        <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2 mb-2">
+            <div>
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <span class="chip-strong">KPIs</span>
+                    <span class="text-muted small">Saldo por mes</span>
+                </div>
+                <div class="text-muted small">Ultimos 12 meses.</div>
+            </div>
+        </div>
+        <div class="note-meta-grid mb-3">
+            <div class="note-meta-item">
+                <span class="note-meta-label">Mes actual</span>
+                {% if kpi_current %}
+                    {% if kpi_current.saldo >= 0 %}
+                        <strong class="text-success">+${{ "%.2f"|format(kpi_current.saldo) }}</strong>
+                    {% else %}
+                        <strong class="text-danger">-${{ "%.2f"|format(-kpi_current.saldo) }}</strong>
+                    {% endif %}
+                    <div class="note-meta-sub">{{ kpi_current.label }}</div>
+                {% else %}
+                    <strong>$0.00</strong>
+                {% endif %}
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Promedio mensual</span>
+                {% if kpi_promedio is not none %}
+                    {% if kpi_promedio >= 0 %}
+                        <strong class="text-success">+${{ "%.2f"|format(kpi_promedio) }}</strong>
+                    {% else %}
+                        <strong class="text-danger">-${{ "%.2f"|format(-kpi_promedio) }}</strong>
+                    {% endif %}
+                {% else %}
+                    <strong>$0.00</strong>
+                {% endif %}
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Mejor mes</span>
+                {% if kpi_best %}
+                    <strong class="text-success">+${{ "%.2f"|format(kpi_best.saldo) }}</strong>
+                    <div class="note-meta-sub">{{ kpi_best.label }}</div>
+                {% else %}
+                    <strong>$0.00</strong>
+                {% endif %}
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Peor mes</span>
+                {% if kpi_worst %}
+                    {% if kpi_worst.saldo >= 0 %}
+                        <strong class="text-success">+${{ "%.2f"|format(kpi_worst.saldo) }}</strong>
+                    {% else %}
+                        <strong class="text-danger">-${{ "%.2f"|format(-kpi_worst.saldo) }}</strong>
+                    {% endif %}
+                    <div class="note-meta-sub">{{ kpi_worst.label }}</div>
+                {% else %}
+                    <strong>$0.00</strong>
+                {% endif %}
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle mb-0">
+                <thead>
+                <tr>
+                    <th>Mes</th>
+                    <th class="text-end">Movs</th>
+                    <th class="text-end">Ingresos</th>
+                    <th class="text-end">Egresos</th>
+                    <th class="text-end">Saldo neto</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for row in kpi_months %}
+                    <tr>
+                        <td>{{ row.label }}</td>
+                        <td class="text-end">{{ row.movs }}</td>
+                        <td class="text-end">${{ "%.2f"|format(row.ingresos or 0) }}</td>
+                        <td class="text-end">${{ "%.2f"|format(row.egresos or 0) }}</td>
+                        <td class="text-end">
+                            {% if row.saldo >= 0 %}
+                                <span class="text-success">+${{ "%.2f"|format(row.saldo) }}</span>
+                            {% else %}
+                                <span class="text-danger">-${{ "%.2f"|format(-row.saldo) }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if kpi_movs_total == 0 %}
+            <p class="text-muted small mt-3 mb-0">No hay movimientos para calcular KPIs.</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card hover-lift mb-3">
+    <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+            <h2 class="h6 text-dark mb-0">Movimientos contables</h2>
+            <div class="text-muted small">Ultimos {{ movimientos|length }}</div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle mb-0">
+                <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Tipo</th>
+                    <th>Naturaleza</th>
+                    <th>Monto</th>
+                    <th>Nota</th>
+                    <th>Sucursal</th>
+                    <th>Usuario</th>
+                    <th>Fecha</th>
+                    <th>Comentario</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for m in movimientos %}
+                    <tr>
+                        <td>{{ m.id }}</td>
+                        <td>{{ m.tipo }}</td>
+                        <td>{{ m.naturaleza }}</td>
+                        <td>${{ "%.2f"|format(m.monto_firmado or 0) }}</td>
+                        <td>
+                            {% if m.nota_id %}
+                                <a href="/web/admin/notas/{{ m.nota_id }}">#{{ m.nota_id }}</a>
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>{{ m.sucursal }}</td>
+                        <td>{{ m.usuario_id }}</td>
+                        <td>{{ m.created_at.strftime("%Y-%m-%d %H:%M") if m.created_at else "-" }}</td>
+                        <td class="small text-muted">{{ m.comentario or "-" }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if movimientos|length == 0 %}
+            <p class="text-muted small mt-3 mb-0">No hay movimientos contables para esta cuenta.</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card hover-lift mb-3">
+    <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+            <h2 class="h6 text-dark mb-0">Pagos vinculados</h2>
+            <div class="text-muted small">Ultimos {{ pagos|length }}</div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle mb-0">
+                <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Nota</th>
+                    <th class="text-end">Monto</th>
+                    <th>Metodo</th>
+                    <th>Usuario</th>
+                    <th>Comentario</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for pago in pagos %}
+                    {% set nota = pago.nota %}
+                    <tr>
+                        <td>{{ pago.created_at.strftime("%Y-%m-%d %H:%M") if pago.created_at else "-" }}</td>
+                        <td>
+                            {% if nota %}
+                                <div class="fw-semibold">{{ folio_map.get(nota.id, '-') }}</div>
+                                <div class="text-muted small">#{{ nota.id }}</div>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">${{ "%.2f"|format(pago.monto or 0) }}</td>
+                        <td>{{ pago.metodo_pago or "-" }}</td>
+                        <td>
+                            {% if pago.usuario %}
+                                <div class="fw-semibold">{{ pago.usuario.nombre_completo or pago.usuario.username }}</div>
+                                <div class="text-muted small">{{ pago.usuario.username }}</div>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-muted">{{ pago.comentario or "-" }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if pagos|length == 0 %}
+            <p class="text-muted small mt-3 mb-0">No hay pagos registrados para esta cuenta.</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card hover-lift">
+    <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+            <h2 class="h6 text-dark mb-0">Notas vinculadas</h2>
+            <div class="text-muted small">Ultimas {{ nota_rows|length }}</div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle mb-0">
+                <thead>
+                <tr>
+                    <th>Folio</th>
+                    <th>Operacion</th>
+                    <th>Partner</th>
+                    <th>Estado</th>
+                    <th>Sucursal</th>
+                    <th class="text-end">Total</th>
+                    <th class="text-end">Pagado</th>
+                    <th class="text-end">Saldo</th>
+                    <th></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for row in nota_rows %}
+                    {% set nota = row.nota %}
+                    {% set suc = sucursales_map.get(nota.sucursal_id) %}
+                    {% if nota.tipo_operacion.value == 'compra' %}
+                        {% set partner = proveedores_map.get(nota.proveedor_id) %}
+                    {% else %}
+                        {% set partner = clientes_map.get(nota.cliente_id) %}
+                    {% endif %}
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">{{ row.folio }}</div>
+                            <div class="text-muted small">#{{ nota.id }}</div>
+                        </td>
+                        <td>{{ nota.tipo_operacion.value|capitalize }}</td>
+                        <td>{{ partner.nombre_completo if partner else '-' }}</td>
+                        <td>
+                            {% if nota.estado.value == 'BORRADOR' %}
+                                <span class="badge bg-secondary">Borrador</span>
+                            {% elif nota.estado.value == 'EN_REVISION' %}
+                                <span class="badge bg-warning text-dark">En revision</span>
+                            {% elif nota.estado.value == 'APROBADA' %}
+                                <span class="badge bg-success">Aprobada</span>
+                            {% else %}
+                                <span class="badge bg-danger">Cancelada</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ suc.nombre if suc else '-' }}</td>
+                        <td class="text-end">${{ "%.2f"|format(row.total or 0) }}</td>
+                        <td class="text-end">${{ "%.2f"|format(row.pagado or 0) }}</td>
+                        <td class="text-end">
+                            {% if row.saldo_pendiente > 0 %}
+                                <span class="text-danger fw-semibold">${{ "%.2f"|format(row.saldo_pendiente) }}</span>
+                            {% else %}
+                                <span class="text-muted">$0.00</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a href="/web/admin/notas/{{ nota.id }}" class="btn btn-sm btn-outline-primary">Ver nota</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if nota_rows|length == 0 %}
+            <p class="text-muted small mt-3 mb-0">No hay notas vinculadas a esta cuenta.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

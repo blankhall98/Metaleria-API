@@ -1,5 +1,6 @@
 # app/web/worker.py
 from decimal import Decimal
+from datetime import datetime
 from typing import List
 import json
 
@@ -180,6 +181,7 @@ async def notes_new_post(
     subpesajes: List[str] = Form([]),
     tipo_cliente: List[str] = Form([]),
     comentarios_trabajador: str = Form(""),
+    extra_evidencias: str = Form(""),
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_worker),
 ):
@@ -243,6 +245,45 @@ async def notes_new_post(
             status_code=400,
         )
 
+    extra_evidencias_payload: list[str] = []
+    if extra_evidencias:
+        try:
+            loaded = json.loads(extra_evidencias)
+        except json.JSONDecodeError:
+            return templates.TemplateResponse(
+                "worker/notes_form.html",
+                {
+                    "request": request,
+                    "env": settings.ENV,
+                    "user": current_user,
+                    "materiales": materiales,
+                    "proveedores": proveedores,
+                    "clientes": clientes,
+                    "error": "Formato de evidencia extra invalido.",
+                    "price_map": price_map,
+                    "max_mb": settings.FIREBASE_MAX_MB,
+                },
+                status_code=400,
+            )
+        if isinstance(loaded, list):
+            extra_evidencias_payload = [str(u) for u in loaded if u]
+        else:
+            return templates.TemplateResponse(
+                "worker/notes_form.html",
+                {
+                    "request": request,
+                    "env": settings.ENV,
+                    "user": current_user,
+                    "materiales": materiales,
+                    "proveedores": proveedores,
+                    "clientes": clientes,
+                    "error": "Formato de evidencia extra invalido.",
+                    "price_map": price_map,
+                    "max_mb": settings.FIREBASE_MAX_MB,
+                },
+                status_code=400,
+            )
+
     if tipo_op == TipoOperacion.compra and not proveedor_id:
         return templates.TemplateResponse(
             "worker/notes_form.html",
@@ -286,6 +327,7 @@ async def notes_new_post(
             comentarios_trabajador=comentarios_trabajador,
             proveedor_id=int(proveedor_id) if proveedor_id else None,
             cliente_id=int(cliente_id) if cliente_id else None,
+            extra_evidencias_payload=extra_evidencias_payload,
         )
     except ValueError as e:
         return templates.TemplateResponse(
@@ -370,6 +412,10 @@ async def notes_evidencias(
         if not sp.get("foto_url")
     )
     can_upload = nota.estado in (NotaEstado.borrador, NotaEstado.en_revision)
+    extra_evidencias = sorted(
+        list(nota.evidencias_extra or []),
+        key=lambda e: e.created_at or datetime.min,
+    )
 
     return templates.TemplateResponse(
         "note_evidencias.html",
@@ -385,6 +431,8 @@ async def notes_evidencias(
             "evidence_groups": evidence_groups,
             "total_subpesajes": total_sub,
             "missing_subpesajes": missing,
+            "extra_evidencias": extra_evidencias,
+            "extra_evidencias_total": len(extra_evidencias),
             "can_upload": can_upload,
             "upload_action_base": f"/web/worker/notes/{nota.id}/subpesajes",
             "back_url": "/web/worker/notes",

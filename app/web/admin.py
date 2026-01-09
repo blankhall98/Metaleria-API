@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Form, UploadFile
 from fastapi.responses import RedirectResponse, StreamingResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, func
+from urllib.parse import urlencode
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, timedelta
 from typing import Iterable, List
@@ -34,6 +35,7 @@ from app.models import (
     NotaMaterial,
     Subpesaje,
     NotaPago,
+    Cuenta,
     Inventario,
     MovimientoContable,
     Material,
@@ -52,6 +54,108 @@ router = APIRouter(prefix="/web/admin", tags=["web-admin"])
 
 _TRANSFER_RELATED_NOTE_RE = re.compile(r"Nota (?:entrada|salida) #(\d+)")
 _FOLIO_QUERY_RE = re.compile(r"^\s*(\d+)[-_]([CV])[_-](\d+)\s*$", re.IGNORECASE)
+
+
+def _movimiento_tipo_operacion(mov: MovimientoContable) -> str | None:
+    tipo_raw = (mov.tipo or "").lower()
+    if tipo_raw in ("compra", "venta"):
+        return tipo_raw
+    if mov.nota and mov.nota.tipo_operacion:
+        return mov.nota.tipo_operacion.value
+    return None
+
+
+def _movimiento_label(tipo_raw: str, tipo_op: str | None) -> str:
+    if tipo_raw == "pago":
+        return f"PAGO {tipo_op.upper()}" if tipo_op else "PAGO"
+    if tipo_raw == "reverso_pago":
+        return f"REVERSO PAGO {tipo_op.upper()}" if tipo_op else "REVERSO PAGO"
+    if tipo_raw == "reverso":
+        return f"REVERSO {tipo_op.upper()}" if tipo_op else "REVERSO"
+    if tipo_raw in ("compra", "venta"):
+        return tipo_raw.upper()
+    if tipo_raw == "ajuste":
+        return "AJUSTE"
+    return tipo_raw.upper() if tipo_raw else "-"
+
+
+def _movimiento_naturaleza(tipo_raw: str, tipo_op: str | None) -> str:
+    if tipo_raw == "compra":
+        return "EGRESO"
+    if tipo_raw == "venta":
+        return "INGRESO"
+    if tipo_raw == "pago":
+        if tipo_op == "compra":
+            return "EGRESO"
+        if tipo_op == "venta":
+            return "INGRESO"
+    if tipo_raw == "reverso":
+        if tipo_op == "compra":
+            return "INGRESO"
+        if tipo_op == "venta":
+            return "EGRESO"
+    if tipo_raw == "reverso_pago":
+        if tipo_op == "compra":
+            return "INGRESO"
+        if tipo_op == "venta":
+            return "EGRESO"
+    if tipo_raw == "ajuste":
+        return "AJUSTE"
+    return "-"
+
+
+def _movimiento_monto_firmado(mov: MovimientoContable, tipo_raw: str, tipo_op: str | None) -> Decimal:
+    base = Decimal(str(mov.monto or 0))
+    abs_val = abs(base)
+    if tipo_raw == "compra":
+        return -abs_val
+    if tipo_raw == "venta":
+        return abs_val
+    if tipo_raw == "pago":
+        if tipo_op == "compra":
+            return -abs_val
+        if tipo_op == "venta":
+            return abs_val
+        return base
+    if tipo_raw == "reverso":
+        if tipo_op == "compra":
+            return abs_val
+        if tipo_op == "venta":
+            return -abs_val
+        return base
+    if tipo_raw == "reverso_pago":
+        if tipo_op == "compra":
+            return abs_val
+        if tipo_op == "venta":
+            return -abs_val
+        return base
+    return base
+
+
+def _movimiento_display(mov: MovimientoContable) -> dict:
+    tipo_raw = (mov.tipo or "").lower()
+    tipo_op = _movimiento_tipo_operacion(mov)
+    label = _movimiento_label(tipo_raw, tipo_op)
+    naturaleza = _movimiento_naturaleza(tipo_raw, tipo_op)
+    monto_firmado = _movimiento_monto_firmado(mov, tipo_raw, tipo_op)
+    cuenta_label = ""
+    if getattr(mov, "cuenta", None):
+        cuenta_label = mov.cuenta.display_label
+    else:
+        cuenta_label = mov.cuenta_financiera or ""
+    return {
+        "id": mov.id,
+        "tipo": label,
+        "naturaleza": naturaleza,
+        "monto_firmado": monto_firmado,
+        "nota_id": mov.nota_id,
+        "sucursal": mov.sucursal.nombre if mov.sucursal else mov.sucursal_id or "-",
+        "usuario_id": mov.usuario_id or "-",
+        "metodo_pago": mov.metodo_pago or "",
+        "cuenta_financiera": cuenta_label,
+        "comentario": (mov.comentario or "").replace("\n", " "),
+        "created_at": mov.created_at,
+    }
 
 def _signed_inventario_qty(mov: InventarioMovimiento) -> Decimal:
     qty = Decimal(str(mov.cantidad_kg or 0))
@@ -198,6 +302,199 @@ def _build_folio_map(notas: Iterable[Nota]) -> dict[int, str]:
     return folio_map
 
 
+def _build_notas_estado_links(folio_query: str | None) -> dict[str, str]:
+    def build(estado: str | None) -> str:
+        params: dict[str, str] = {}
+        if folio_query:
+            params["folio"] = folio_query
+        if estado:
+            params["estado"] = estado
+        qs = urlencode(params)
+        return f"/web/admin/notas?{qs}" if qs else "/web/admin/notas"
+
+    return {
+        "TODAS": build(None),
+        "BORRADOR": build("BORRADOR"),
+        "EN_REVISION": build("EN_REVISION"),
+        "APROBADA": build("APROBADA"),
+        "CANCELADA": build("CANCELADA"),
+    }
+
+
+def _filter_notes_by_query(notas: list[Nota], q: str | None) -> tuple[list[Nota], dict[int, str]]:
+    folio_map = _build_folio_map(notas)
+    if not q:
+        return notas, folio_map
+    term = q.strip().lower()
+    if not term:
+        return notas, folio_map
+    filtered: list[Nota] = []
+    for nota in notas:
+        folio = (folio_map.get(nota.id) or "").lower()
+        if term in str(nota.id) or (folio and term in folio):
+            filtered.append(nota)
+    return filtered, folio_map
+
+
+def _build_partner_record_rows(notas: list[Nota], folio_map: dict[int, str]) -> list[dict]:
+    rows: list[dict] = []
+    for nota in notas:
+        total = Decimal(str(nota.total_monto or 0))
+        pagado = Decimal(str(nota.monto_pagado or 0))
+        saldo_aplicable = nota.estado == NotaEstado.aprobada
+        saldo = (total - pagado) if saldo_aplicable else Decimal("0")
+        saldo_pendiente = saldo if saldo > Decimal("0") else Decimal("0")
+        saldo_favor = -saldo if saldo < Decimal("0") else Decimal("0")
+        rows.append(
+            {
+                "nota": nota,
+                "folio": folio_map.get(nota.id) or "-",
+                "total": total,
+                "pagado": pagado,
+                "saldo": saldo,
+                "saldo_pendiente": saldo_pendiente,
+                "saldo_favor": saldo_favor,
+                "saldo_aplicable": saldo_aplicable,
+            }
+        )
+    return rows
+
+def _parse_owner_key(owner_key: str | None) -> tuple[str | None, int | None]:
+    if not owner_key:
+        return None, None
+    try:
+        owner_type, raw_id = owner_key.split(":", 1)
+        owner_id = int(raw_id)
+    except (ValueError, AttributeError):
+        return None, None
+    if owner_type not in ("sucursal", "cliente", "proveedor"):
+        return None, None
+    return owner_type, owner_id
+
+
+def _build_owner_key_from_cuenta(cuenta: Cuenta | None) -> str:
+    if not cuenta:
+        return ""
+    if cuenta.sucursal_id:
+        return f"sucursal:{cuenta.sucursal_id}"
+    if cuenta.cliente_id:
+        return f"cliente:{cuenta.cliente_id}"
+    if cuenta.proveedor_id:
+        return f"proveedor:{cuenta.proveedor_id}"
+    return ""
+
+
+def _build_cuenta_owner_label(
+    cuenta: Cuenta,
+    sucursales_map: dict[int, str],
+    clientes_map: dict[int, str],
+    proveedores_map: dict[int, str],
+) -> str:
+    if cuenta.sucursal_id:
+        return f"Sucursal: {sucursales_map.get(cuenta.sucursal_id, cuenta.sucursal_id)}"
+    if cuenta.cliente_id:
+        return f"Cliente: {clientes_map.get(cuenta.cliente_id, cuenta.cliente_id)}"
+    if cuenta.proveedor_id:
+        return f"Proveedor: {proveedores_map.get(cuenta.proveedor_id, cuenta.proveedor_id)}"
+    return "Sin vinculo"
+
+
+def _render_cuenta_form(
+    request: Request,
+    db: Session,
+    current_user: dict,
+    *,
+    cuenta: Cuenta | None,
+    owner_key: str,
+    error: str | None,
+    form_data: dict | None = None,
+):
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    clientes = db.query(Cliente).order_by(Cliente.nombre_completo).all()
+    proveedores = db.query(Proveedor).order_by(Proveedor.nombre_completo).all()
+    return templates.TemplateResponse(
+        "admin/cuenta_form.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "cuenta": cuenta,
+            "sucursales": sucursales,
+            "clientes": clientes,
+            "proveedores": proveedores,
+            "owner_key": owner_key or "",
+            "error": error,
+            "form_data": form_data,
+        },
+        status_code=400 if error else 200,
+    )
+
+
+def _get_cuentas_for_nota(db: Session, nota: Nota) -> tuple[list[Cuenta], list[Cuenta]]:
+    cuentas_sucursal = (
+        db.query(Cuenta)
+        .filter(
+            Cuenta.activo.is_(True),
+            Cuenta.sucursal_id == nota.sucursal_id,
+        )
+        .order_by(Cuenta.nombre)
+        .all()
+    )
+    cuentas_partner: list[Cuenta] = []
+    if nota.tipo_operacion == TipoOperacion.compra and nota.proveedor_id:
+        cuentas_partner = (
+            db.query(Cuenta)
+            .filter(
+                Cuenta.activo.is_(True),
+                Cuenta.proveedor_id == nota.proveedor_id,
+            )
+            .order_by(Cuenta.nombre)
+            .all()
+        )
+    elif nota.tipo_operacion == TipoOperacion.venta and nota.cliente_id:
+        cuentas_partner = (
+            db.query(Cuenta)
+            .filter(
+                Cuenta.activo.is_(True),
+                Cuenta.cliente_id == nota.cliente_id,
+            )
+            .order_by(Cuenta.nombre)
+            .all()
+        )
+    return cuentas_sucursal, cuentas_partner
+
+def _aggregate_partner_record_summary(notas: list[Nota]) -> dict:
+    summary = {
+        "total_notas": len(notas),
+        "notas_aprobadas": 0,
+        "notas_revision": 0,
+        "notas_borrador": 0,
+        "notas_canceladas": 0,
+        "total_facturado": Decimal("0"),
+        "total_pagado": Decimal("0"),
+        "saldo_pendiente": Decimal("0"),
+        "saldo_favor": Decimal("0"),
+    }
+    for nota in notas:
+        if nota.estado == NotaEstado.aprobada:
+            summary["notas_aprobadas"] += 1
+            total = Decimal(str(nota.total_monto or 0))
+            pagado = Decimal(str(nota.monto_pagado or 0))
+            summary["total_facturado"] += total
+            summary["total_pagado"] += pagado
+            saldo = total - pagado
+            if saldo > Decimal("0"):
+                summary["saldo_pendiente"] += saldo
+            elif saldo < Decimal("0"):
+                summary["saldo_favor"] += -saldo
+        elif nota.estado == NotaEstado.en_revision:
+            summary["notas_revision"] += 1
+        elif nota.estado == NotaEstado.borrador:
+            summary["notas_borrador"] += 1
+        elif nota.estado == NotaEstado.cancelada:
+            summary["notas_canceladas"] += 1
+    return summary
+
 def _get_allowed_sucursal_ids(
     db: Session,
     current_user: dict,
@@ -222,6 +519,16 @@ def _filter_sucursales_for_admin(
     if allowed_ids is None:
         return sucursales
     return [s for s in sucursales if s.id in allowed_ids]
+
+def _apply_sucursal_filter(query, allowed_ids: list[int] | None, sucursal_id: int | None, field):
+    if allowed_ids is not None:
+        if sucursal_id:
+            query = query.filter(field == sucursal_id)
+        else:
+            query = query.filter(field.in_(allowed_ids))
+    elif sucursal_id:
+        query = query.filter(field == sucursal_id)
+    return query
 
 
 def _ensure_nota_access(
@@ -1348,6 +1655,76 @@ async def proveedor_edit_post(
 
     return RedirectResponse(url="/web/admin/proveedores", status_code=303)
 
+
+@router.get("/proveedores/{proveedor_id}/record")
+async def proveedor_record(
+    proveedor_id: int,
+    request: Request,
+    q: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    proveedor = db.get(Proveedor, proveedor_id)
+    if not proveedor:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado.")
+
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    notas_query = (
+        db.query(Nota)
+        .filter(
+            Nota.proveedor_id == proveedor_id,
+            Nota.tipo_operacion == TipoOperacion.compra,
+            *([Nota.sucursal_id.in_(allowed_suc_ids)] if allowed_suc_ids else []),
+        )
+        .order_by(Nota.created_at.desc())
+    )
+    notas = notas_query.all()
+    notas_filtradas, folio_map = _filter_notes_by_query(notas, q)
+    rows = _build_partner_record_rows(notas_filtradas, folio_map)
+    summary = _aggregate_partner_record_summary(notas)
+
+    pagos_query = (
+        db.query(NotaPago)
+        .join(Nota, NotaPago.nota_id == Nota.id)
+        .filter(
+            Nota.proveedor_id == proveedor_id,
+            Nota.tipo_operacion == TipoOperacion.compra,
+            *([Nota.sucursal_id.in_(allowed_suc_ids)] if allowed_suc_ids else []),
+        )
+        .order_by(NotaPago.created_at.desc())
+    )
+    pagos = pagos_query.all()
+
+    suc_query = db.query(Sucursal)
+    if allowed_suc_ids:
+        suc_query = suc_query.filter(Sucursal.id.in_(allowed_suc_ids))
+    sucursales = {s.id: s for s in suc_query.all()}
+
+    return templates.TemplateResponse(
+        "admin/partner_record.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "partner": proveedor,
+            "partner_label": "Proveedor",
+            "partner_base": "proveedores",
+            "tipo_operacion_label": "Compra",
+            "record_rows": rows,
+            "record_total_count": len(notas),
+            "record_filtered_count": len(notas_filtradas),
+            "summary": summary,
+            "total_facturado_label": "Total compras aprobadas",
+            "total_pagado_label": "Total pagado",
+            "saldo_pendiente_label": "Saldo pendiente (por pagar al proveedor)",
+            "saldo_favor_label": "Saldo a favor de la empresa",
+            "pagos": pagos,
+            "folio_map": folio_map,
+            "sucursales": sucursales,
+            "q": q or "",
+        },
+    )
+
 # ---------- CLIENTES ----------
 
 
@@ -1549,6 +1926,686 @@ async def cliente_edit_post(
     return RedirectResponse(url="/web/admin/clientes", status_code=303)
 
 
+@router.get("/clientes/{cliente_id}/record")
+async def cliente_record(
+    cliente_id: int,
+    request: Request,
+    q: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    cliente = db.get(Cliente, cliente_id)
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado.")
+
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    notas_query = (
+        db.query(Nota)
+        .filter(
+            Nota.cliente_id == cliente_id,
+            Nota.tipo_operacion == TipoOperacion.venta,
+            *([Nota.sucursal_id.in_(allowed_suc_ids)] if allowed_suc_ids else []),
+        )
+        .order_by(Nota.created_at.desc())
+    )
+    notas = notas_query.all()
+    notas_filtradas, folio_map = _filter_notes_by_query(notas, q)
+    rows = _build_partner_record_rows(notas_filtradas, folio_map)
+    summary = _aggregate_partner_record_summary(notas)
+
+    pagos_query = (
+        db.query(NotaPago)
+        .join(Nota, NotaPago.nota_id == Nota.id)
+        .filter(
+            Nota.cliente_id == cliente_id,
+            Nota.tipo_operacion == TipoOperacion.venta,
+            *([Nota.sucursal_id.in_(allowed_suc_ids)] if allowed_suc_ids else []),
+        )
+        .order_by(NotaPago.created_at.desc())
+    )
+    pagos = pagos_query.all()
+
+    suc_query = db.query(Sucursal)
+    if allowed_suc_ids:
+        suc_query = suc_query.filter(Sucursal.id.in_(allowed_suc_ids))
+    sucursales = {s.id: s for s in suc_query.all()}
+
+    return templates.TemplateResponse(
+        "admin/partner_record.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "partner": cliente,
+            "partner_label": "Cliente",
+            "partner_base": "clientes",
+            "tipo_operacion_label": "Venta",
+            "record_rows": rows,
+            "record_total_count": len(notas),
+            "record_filtered_count": len(notas_filtradas),
+            "summary": summary,
+            "total_facturado_label": "Total ventas aprobadas",
+            "total_pagado_label": "Total cobrado",
+            "saldo_pendiente_label": "Saldo pendiente (por cobrar al cliente)",
+            "saldo_favor_label": "Saldo a favor del cliente",
+            "pagos": pagos,
+            "folio_map": folio_map,
+            "sucursales": sucursales,
+            "q": q or "",
+        },
+    )
+
+
+# ---------- CUENTAS ----------
+
+
+@router.get("/cuentas")
+async def cuentas_list(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    params = request.query_params
+    q = (params.get("q") or "").strip()
+    owner_key = (params.get("owner_key") or "").strip()
+    activo = (params.get("activo") or "").strip()
+
+    query = db.query(Cuenta)
+    if q:
+        term = f"%{q}%"
+        query = query.filter(
+            or_(
+                Cuenta.nombre.ilike(term),
+                Cuenta.banco.ilike(term),
+                Cuenta.numero.ilike(term),
+                Cuenta.clabe.ilike(term),
+                Cuenta.titular.ilike(term),
+                Cuenta.referencia.ilike(term),
+            )
+        )
+
+    owner_error = None
+    owner_type, owner_id = _parse_owner_key(owner_key)
+    if owner_key and not owner_type:
+        owner_error = "Vinculo invalido."
+        owner_key = ""
+    elif owner_type == "sucursal":
+        query = query.filter(Cuenta.sucursal_id == owner_id)
+    elif owner_type == "cliente":
+        query = query.filter(Cuenta.cliente_id == owner_id)
+    elif owner_type == "proveedor":
+        query = query.filter(Cuenta.proveedor_id == owner_id)
+
+    if activo in ("1", "0"):
+        query = query.filter(Cuenta.activo.is_(activo == "1"))
+
+    cuentas = query.order_by(Cuenta.nombre).all()
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    clientes = db.query(Cliente).order_by(Cliente.nombre_completo).all()
+    proveedores = db.query(Proveedor).order_by(Proveedor.nombre_completo).all()
+    sucursales_map = {s.id: s.nombre for s in sucursales}
+    clientes_map = {c.id: c.nombre_completo for c in clientes}
+    proveedores_map = {p.id: p.nombre_completo for p in proveedores}
+
+    cuentas_view = [
+        {
+            "cuenta": cuenta,
+            "owner_label": _build_cuenta_owner_label(cuenta, sucursales_map, clientes_map, proveedores_map),
+        }
+        for cuenta in cuentas
+    ]
+
+    return templates.TemplateResponse(
+        "admin/cuentas_list.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "cuentas": cuentas_view,
+            "sucursales": sucursales,
+            "clientes": clientes,
+            "proveedores": proveedores,
+            "owner_key": owner_key or "",
+            "owner_error": owner_error,
+            "activo": activo or "",
+            "q": q or "",
+        },
+    )
+
+
+@router.get("/cuentas/nueva")
+async def cuenta_new_get(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    owner_key = (request.query_params.get("owner_key") or "").strip()
+    owner_type, _ = _parse_owner_key(owner_key)
+    error = None
+    if owner_key and not owner_type:
+        error = "Vinculo invalido."
+        owner_key = ""
+    return _render_cuenta_form(
+        request,
+        db,
+        current_user,
+        cuenta=None,
+        owner_key=owner_key,
+        error=error,
+        form_data=None,
+    )
+
+
+@router.post("/cuentas/nueva")
+async def cuenta_new_post(
+    request: Request,
+    nombre: str = Form(...),
+    tipo: str = Form(""),
+    banco: str = Form(""),
+    numero: str = Form(""),
+    clabe: str = Form(""),
+    titular: str = Form(""),
+    referencia: str = Form(""),
+    owner_key: str = Form(""),
+    activo: str = Form(""),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    nombre = nombre.strip()
+    tipo = tipo.strip()
+    banco = banco.strip()
+    numero = numero.strip()
+    clabe = clabe.strip()
+    titular = titular.strip()
+    referencia = referencia.strip()
+    owner_key = (owner_key or "").strip()
+
+    if not nombre:
+        return _render_cuenta_form(
+            request,
+            db,
+            current_user,
+            cuenta=None,
+            owner_key=owner_key,
+            error="El nombre de la cuenta es obligatorio.",
+            form_data={
+                "nombre": nombre,
+                "tipo": tipo,
+                "banco": banco,
+                "numero": numero,
+                "clabe": clabe,
+                "titular": titular,
+                "referencia": referencia,
+                "activo": bool(activo),
+            },
+        )
+
+    owner_type, owner_id = _parse_owner_key(owner_key)
+    if owner_key and not owner_type:
+        return _render_cuenta_form(
+            request,
+            db,
+            current_user,
+            cuenta=None,
+            owner_key="",
+            error="Vinculo invalido.",
+            form_data={
+                "nombre": nombre,
+                "tipo": tipo,
+                "banco": banco,
+                "numero": numero,
+                "clabe": clabe,
+                "titular": titular,
+                "referencia": referencia,
+                "activo": bool(activo),
+            },
+        )
+
+    sucursal_id = None
+    cliente_id = None
+    proveedor_id = None
+    if owner_type == "sucursal":
+        if not db.get(Sucursal, owner_id):
+            return _render_cuenta_form(
+                request,
+                db,
+                current_user,
+                cuenta=None,
+                owner_key="",
+                error="Sucursal invalida.",
+                form_data={
+                    "nombre": nombre,
+                    "tipo": tipo,
+                    "banco": banco,
+                    "numero": numero,
+                    "clabe": clabe,
+                    "titular": titular,
+                    "referencia": referencia,
+                    "activo": bool(activo),
+                },
+            )
+        sucursal_id = owner_id
+    elif owner_type == "cliente":
+        if not db.get(Cliente, owner_id):
+            return _render_cuenta_form(
+                request,
+                db,
+                current_user,
+                cuenta=None,
+                owner_key="",
+                error="Cliente invalido.",
+                form_data={
+                    "nombre": nombre,
+                    "tipo": tipo,
+                    "banco": banco,
+                    "numero": numero,
+                    "clabe": clabe,
+                    "titular": titular,
+                    "referencia": referencia,
+                    "activo": bool(activo),
+                },
+            )
+        cliente_id = owner_id
+    elif owner_type == "proveedor":
+        if not db.get(Proveedor, owner_id):
+            return _render_cuenta_form(
+                request,
+                db,
+                current_user,
+                cuenta=None,
+                owner_key="",
+                error="Proveedor invalido.",
+                form_data={
+                    "nombre": nombre,
+                    "tipo": tipo,
+                    "banco": banco,
+                    "numero": numero,
+                    "clabe": clabe,
+                    "titular": titular,
+                    "referencia": referencia,
+                    "activo": bool(activo),
+                },
+            )
+        proveedor_id = owner_id
+
+    cuenta = Cuenta(
+        nombre=nombre,
+        tipo=tipo or None,
+        banco=banco or None,
+        numero=numero or None,
+        clabe=clabe or None,
+        titular=titular or None,
+        referencia=referencia or None,
+        activo=bool(activo),
+        sucursal_id=sucursal_id,
+        cliente_id=cliente_id,
+        proveedor_id=proveedor_id,
+    )
+    db.add(cuenta)
+    db.commit()
+
+    redirect_url = "/web/admin/cuentas"
+    if owner_key:
+        redirect_url = f"/web/admin/cuentas?owner_key={owner_key}"
+    return RedirectResponse(url=redirect_url, status_code=303)
+
+
+@router.get("/cuentas/{cuenta_id}/editar")
+async def cuenta_edit_get(
+    cuenta_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    cuenta = db.get(Cuenta, cuenta_id)
+    if not cuenta:
+        raise HTTPException(status_code=404, detail="Cuenta no encontrada.")
+    owner_key = _build_owner_key_from_cuenta(cuenta)
+    return _render_cuenta_form(
+        request,
+        db,
+        current_user,
+        cuenta=cuenta,
+        owner_key=owner_key,
+        error=None,
+        form_data=None,
+    )
+
+
+@router.post("/cuentas/{cuenta_id}/editar")
+async def cuenta_edit_post(
+    cuenta_id: int,
+    request: Request,
+    nombre: str = Form(...),
+    tipo: str = Form(""),
+    banco: str = Form(""),
+    numero: str = Form(""),
+    clabe: str = Form(""),
+    titular: str = Form(""),
+    referencia: str = Form(""),
+    owner_key: str = Form(""),
+    activo: str = Form(""),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    cuenta = db.get(Cuenta, cuenta_id)
+    if not cuenta:
+        raise HTTPException(status_code=404, detail="Cuenta no encontrada.")
+
+    nombre = nombre.strip()
+    tipo = tipo.strip()
+    banco = banco.strip()
+    numero = numero.strip()
+    clabe = clabe.strip()
+    titular = titular.strip()
+    referencia = referencia.strip()
+    owner_key = (owner_key or "").strip()
+
+    if not nombre:
+        return _render_cuenta_form(
+            request,
+            db,
+            current_user,
+            cuenta=cuenta,
+            owner_key=owner_key,
+            error="El nombre de la cuenta es obligatorio.",
+            form_data={
+                "nombre": nombre,
+                "tipo": tipo,
+                "banco": banco,
+                "numero": numero,
+                "clabe": clabe,
+                "titular": titular,
+                "referencia": referencia,
+                "activo": bool(activo),
+            },
+        )
+
+    owner_type, owner_id = _parse_owner_key(owner_key)
+    if owner_key and not owner_type:
+        return _render_cuenta_form(
+            request,
+            db,
+            current_user,
+            cuenta=cuenta,
+            owner_key="",
+            error="Vinculo invalido.",
+            form_data={
+                "nombre": nombre,
+                "tipo": tipo,
+                "banco": banco,
+                "numero": numero,
+                "clabe": clabe,
+                "titular": titular,
+                "referencia": referencia,
+                "activo": bool(activo),
+            },
+        )
+
+    sucursal_id = None
+    cliente_id = None
+    proveedor_id = None
+    if owner_type == "sucursal":
+        if not db.get(Sucursal, owner_id):
+            return _render_cuenta_form(
+                request,
+                db,
+                current_user,
+                cuenta=cuenta,
+                owner_key="",
+                error="Sucursal invalida.",
+                form_data={
+                    "nombre": nombre,
+                    "tipo": tipo,
+                    "banco": banco,
+                    "numero": numero,
+                    "clabe": clabe,
+                    "titular": titular,
+                    "referencia": referencia,
+                    "activo": bool(activo),
+                },
+            )
+        sucursal_id = owner_id
+    elif owner_type == "cliente":
+        if not db.get(Cliente, owner_id):
+            return _render_cuenta_form(
+                request,
+                db,
+                current_user,
+                cuenta=cuenta,
+                owner_key="",
+                error="Cliente invalido.",
+                form_data={
+                    "nombre": nombre,
+                    "tipo": tipo,
+                    "banco": banco,
+                    "numero": numero,
+                    "clabe": clabe,
+                    "titular": titular,
+                    "referencia": referencia,
+                    "activo": bool(activo),
+                },
+            )
+        cliente_id = owner_id
+    elif owner_type == "proveedor":
+        if not db.get(Proveedor, owner_id):
+            return _render_cuenta_form(
+                request,
+                db,
+                current_user,
+                cuenta=cuenta,
+                owner_key="",
+                error="Proveedor invalido.",
+                form_data={
+                    "nombre": nombre,
+                    "tipo": tipo,
+                    "banco": banco,
+                    "numero": numero,
+                    "clabe": clabe,
+                    "titular": titular,
+                    "referencia": referencia,
+                    "activo": bool(activo),
+                },
+            )
+        proveedor_id = owner_id
+
+    cuenta.nombre = nombre
+    cuenta.tipo = tipo or None
+    cuenta.banco = banco or None
+    cuenta.numero = numero or None
+    cuenta.clabe = clabe or None
+    cuenta.titular = titular or None
+    cuenta.referencia = referencia or None
+    cuenta.activo = bool(activo)
+    cuenta.sucursal_id = sucursal_id
+    cuenta.cliente_id = cliente_id
+    cuenta.proveedor_id = proveedor_id
+    cuenta.updated_at = datetime.utcnow()
+    db.add(cuenta)
+    db.commit()
+
+    return RedirectResponse(url=f"/web/admin/cuentas/{cuenta.id}", status_code=303)
+
+
+@router.get("/cuentas/{cuenta_id}")
+async def cuenta_detail(
+    cuenta_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    cuenta = db.get(Cuenta, cuenta_id)
+    if not cuenta:
+        raise HTTPException(status_code=404, detail="Cuenta no encontrada.")
+
+    owner_label = "Sin vinculo"
+    if cuenta.sucursal_id:
+        suc = db.get(Sucursal, cuenta.sucursal_id)
+        owner_label = f"Sucursal: {suc.nombre if suc else cuenta.sucursal_id}"
+    elif cuenta.cliente_id:
+        cli = db.get(Cliente, cuenta.cliente_id)
+        owner_label = f"Cliente: {cli.nombre_completo if cli else cuenta.cliente_id}"
+    elif cuenta.proveedor_id:
+        prov = db.get(Proveedor, cuenta.proveedor_id)
+        owner_label = f"Proveedor: {prov.nombre_completo if prov else cuenta.proveedor_id}"
+
+    movimientos = (
+        db.query(MovimientoContable)
+        .filter(MovimientoContable.cuenta_id == cuenta_id)
+        .order_by(MovimientoContable.created_at.desc())
+        .limit(200)
+        .all()
+    )
+    movimientos_view = [_movimiento_display(m) for m in movimientos]
+    total_ingresos = Decimal("0")
+    total_egresos = Decimal("0")
+    saldo_neto = Decimal("0")
+    for mov in movimientos_view:
+        saldo_neto += mov["monto_firmado"]
+        if mov["monto_firmado"] >= 0:
+            total_ingresos += mov["monto_firmado"]
+        else:
+            total_egresos += abs(mov["monto_firmado"])
+
+    today = date.today()
+    start_month = date(today.year, today.month, 1)
+
+    def _shift_month(base: date, offset: int) -> date:
+        month_idx = (base.month - 1) + offset
+        year = base.year + (month_idx // 12)
+        month = (month_idx % 12) + 1
+        return date(year, month, 1)
+
+    kpi_months: list[dict] = []
+    month_map: dict[str, dict] = {}
+    for offset in range(-11, 1):
+        month_date = _shift_month(start_month, offset)
+        key = f"{month_date.year}-{month_date.month:02d}"
+        row = {
+            "label": key,
+            "ingresos": Decimal("0"),
+            "egresos": Decimal("0"),
+            "saldo": Decimal("0"),
+            "movs": 0,
+        }
+        kpi_months.append(row)
+        month_map[key] = row
+
+    start_kpi = _shift_month(start_month, -11)
+    start_dt = datetime(start_kpi.year, start_kpi.month, 1)
+    kpi_movs = (
+        db.query(MovimientoContable)
+        .filter(
+            MovimientoContable.cuenta_id == cuenta_id,
+            MovimientoContable.created_at >= start_dt,
+        )
+        .order_by(MovimientoContable.created_at.asc())
+        .all()
+    )
+    for mov in kpi_movs:
+        if not mov.created_at:
+            continue
+        key = mov.created_at.strftime("%Y-%m")
+        row = month_map.get(key)
+        if not row:
+            continue
+        tipo_raw = (mov.tipo or "").lower()
+        tipo_op = _movimiento_tipo_operacion(mov)
+        signed = _movimiento_monto_firmado(mov, tipo_raw, tipo_op)
+        row["saldo"] += signed
+        if signed >= 0:
+            row["ingresos"] += signed
+        else:
+            row["egresos"] += abs(signed)
+        row["movs"] += 1
+
+    kpi_current = kpi_months[-1] if kpi_months else None
+    kpi_promedio = None
+    kpi_best = None
+    kpi_worst = None
+    kpi_movs_total = sum((row["movs"] for row in kpi_months), 0)
+    if kpi_months:
+        total_net = sum((row["saldo"] for row in kpi_months), Decimal("0"))
+        kpi_promedio = total_net / Decimal(len(kpi_months))
+        kpi_best = max(kpi_months, key=lambda r: r["saldo"])
+        kpi_worst = min(kpi_months, key=lambda r: r["saldo"])
+
+    pagos = (
+        db.query(NotaPago)
+        .filter(NotaPago.cuenta_id == cuenta_id)
+        .order_by(NotaPago.created_at.desc())
+        .limit(200)
+        .all()
+    )
+    pagos_total = Decimal("0")
+    for pago in pagos:
+        pagos_total += Decimal(str(pago.monto or 0))
+
+    notas = (
+        db.query(Nota)
+        .filter(Nota.cuenta_financiera_id == cuenta_id)
+        .order_by(Nota.created_at.desc())
+        .limit(200)
+        .all()
+    )
+    notas_for_folio = list(notas)
+    extra_ids = {p.nota_id for p in pagos if p.nota_id} - {n.id for n in notas}
+    if extra_ids:
+        notas_extra = db.query(Nota).filter(Nota.id.in_(extra_ids)).all()
+        notas_for_folio.extend(notas_extra)
+    folio_map = _build_folio_map(notas_for_folio)
+    nota_rows = _build_partner_record_rows(notas, folio_map)
+
+    suc_ids = {n.sucursal_id for n in notas if n.sucursal_id}
+    sucursales_map = {}
+    if suc_ids:
+        sucursales_map = {
+            s.id: s for s in db.query(Sucursal).filter(Sucursal.id.in_(suc_ids)).all()
+        }
+    prov_ids = {n.proveedor_id for n in notas if n.proveedor_id}
+    cli_ids = {n.cliente_id for n in notas if n.cliente_id}
+    proveedores_map = {}
+    clientes_map = {}
+    if prov_ids:
+        proveedores_map = {
+            p.id: p for p in db.query(Proveedor).filter(Proveedor.id.in_(prov_ids)).all()
+        }
+    if cli_ids:
+        clientes_map = {
+            c.id: c for c in db.query(Cliente).filter(Cliente.id.in_(cli_ids)).all()
+        }
+
+    return templates.TemplateResponse(
+        "admin/cuenta_detail.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "cuenta": cuenta,
+            "owner_label": owner_label,
+            "movimientos": movimientos_view,
+            "pagos": pagos,
+            "pagos_total": pagos_total,
+            "nota_rows": nota_rows,
+            "folio_map": folio_map,
+            "sucursales_map": sucursales_map,
+            "proveedores_map": proveedores_map,
+            "clientes_map": clientes_map,
+            "movimientos_total": len(movimientos_view),
+            "total_ingresos": total_ingresos,
+            "total_egresos": total_egresos,
+            "saldo_neto": saldo_neto,
+            "notas_total": len(nota_rows),
+            "kpi_months": kpi_months,
+            "kpi_current": kpi_current,
+            "kpi_promedio": kpi_promedio,
+            "kpi_best": kpi_best,
+            "kpi_worst": kpi_worst,
+            "kpi_movs_total": kpi_movs_total,
+        },
+    )
+
+
 # ---------- NOTAS ----------
 
 
@@ -1559,6 +2616,31 @@ async def notas_list(
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    folio_query = (request.query_params.get("folio") or "").strip()
+    estado_raw = (request.query_params.get("estado") or "").strip().upper()
+    estado_aliases = {
+        "REVISION": "EN_REVISION",
+        "ENREVISION": "EN_REVISION",
+        "APROBADO": "APROBADA",
+        "CANCELADO": "CANCELADA",
+        "TODOS": "",
+        "TODAS": "",
+    }
+    if estado_raw in estado_aliases:
+        estado_raw = estado_aliases[estado_raw]
+    estado_filter = None
+    estado_current = "TODAS"
+    if estado_raw and estado_raw in {e.value for e in NotaEstado}:
+        estado_filter = NotaEstado(estado_raw)
+        estado_current = estado_filter.value
+    estado_labels = {
+        "TODAS": "Todas",
+        "BORRADOR": "Borrador",
+        "EN_REVISION": "En revision",
+        "APROBADA": "Aprobadas",
+        "CANCELADA": "Canceladas",
+    }
+    estado_label = estado_labels.get(estado_current, "Todas")
     notas_revision = (
         db.query(Nota)
         .filter(
@@ -1588,6 +2670,21 @@ async def notas_list(
         .order_by(Nota.fecha_caducidad_pago.asc())
         .all()
     )
+    estado_counts = {e.value: 0 for e in NotaEstado}
+    counts_query = db.query(Nota.estado, func.count(Nota.id))
+    if allowed_suc_ids:
+        counts_query = counts_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
+    counts_query = counts_query.group_by(Nota.estado).all()
+    for estado, cantidad in counts_query:
+        if estado and estado.value in estado_counts:
+            estado_counts[estado.value] = int(cantidad or 0)
+    estado_total = sum(estado_counts.values())
+    notas_estado_query = db.query(Nota)
+    if allowed_suc_ids:
+        notas_estado_query = notas_estado_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
+    if estado_filter:
+        notas_estado_query = notas_estado_query.filter(Nota.estado == estado_filter)
+    notas_estado = notas_estado_query.order_by(Nota.created_at.desc()).limit(200).all()
 
     def saldo_pendiente(nota: Nota) -> Decimal:
         total = Decimal(str(nota.total_monto or 0))
@@ -1619,7 +2716,6 @@ async def notas_list(
                     "dias": (nota.fecha_caducidad_pago - hoy).days,
                 }
             )
-    folio_query = (request.query_params.get("folio") or "").strip()
     folio_error = None
     folio_result = None
     if folio_query:
@@ -1653,9 +2749,11 @@ async def notas_list(
     notas_folio.extend(notas_recientes)
     notas_folio.extend([item["nota"] for item in notas_vencidas])
     notas_folio.extend([item["nota"] for item in notas_por_vencer])
+    notas_folio.extend(notas_estado)
     if folio_result:
         notas_folio.append(folio_result)
     folio_map = _build_folio_map(notas_folio)
+    estado_links = _build_notas_estado_links(folio_query)
 
     return templates.TemplateResponse(
         "admin/notes_list.html",
@@ -1675,6 +2773,12 @@ async def notas_list(
             "folio_error": folio_error,
             "folio_result": folio_result,
             "folio_map": folio_map,
+            "notas_estado": notas_estado,
+            "estado_current": estado_current,
+            "estado_label": estado_label,
+            "estado_counts": estado_counts,
+            "estado_total": estado_total,
+            "estado_links": estado_links,
         },
     )
 
@@ -1963,6 +3067,30 @@ def _render_nota_detail(
         .order_by(NotaPago.created_at.desc())
         .all()
     )
+    devolucion_check = None
+    if nota.estado == NotaEstado.cancelada:
+        cont_movs = (
+            db.query(MovimientoContable)
+            .filter(MovimientoContable.nota_id == nota.id)
+            .all()
+        )
+        cont_saldo = Decimal("0")
+        for mov in cont_movs:
+            tipo_raw = (mov.tipo or "").lower()
+            tipo_op = _movimiento_tipo_operacion(mov)
+            cont_saldo += _movimiento_monto_firmado(mov, tipo_raw, tipo_op)
+        inv_saldo = Decimal("0")
+        for mov in inv_movs:
+            inv_saldo += _signed_inventario_qty(mov)
+        devolucion_check = {
+            "contabilidad_saldo": cont_saldo,
+            "contabilidad_ok": abs(cont_saldo) <= Decimal("0.01"),
+            "contabilidad_movs": len(cont_movs),
+            "inventario_saldo": inv_saldo,
+            "inventario_ok": abs(inv_saldo) <= Decimal("0.001"),
+            "inventario_movs": len(inv_movs),
+            "aplica": bool(cont_movs or inv_movs),
+        }
     price_map: dict[str, dict[str, float]] = {}
     material_ids = [m.material_id for m in nota.materiales if m.material_id]
     if material_ids:
@@ -2008,6 +3136,8 @@ def _render_nota_detail(
             transfer_related = db.get(Nota, related_id)
             if transfer_related and transfer_related.sucursal_id:
                 transfer_related_sucursal = db.get(Sucursal, transfer_related.sucursal_id)
+    cuentas_sucursal, cuentas_partner = _get_cuentas_for_nota(db, nota)
+    cuentas_partner_label = "Proveedor" if nota.tipo_operacion == TipoOperacion.compra else "Cliente"
     base_form_state = {
         "form_metodo": None,
         "form_cuenta": None,
@@ -2038,9 +3168,13 @@ def _render_nota_detail(
         "is_transfer": is_transfer,
         "transfer_related": transfer_related,
         "transfer_related_sucursal": transfer_related_sucursal,
+        "cuentas_sucursal": cuentas_sucursal,
+        "cuentas_partner": cuentas_partner,
+        "cuentas_partner_label": cuentas_partner_label,
         "pago_updated": pago_updated,
         "precios_updated": precios_updated,
         "edit_updated": edit_updated,
+        "devolucion_check": devolucion_check,
         "error": error,
     }
     context.update(base_form_state)
@@ -2169,6 +3303,10 @@ async def notas_evidencias(
         for sp in g["subpesajes"]
         if not sp.get("foto_url")
     )
+    extra_evidencias = sorted(
+        list(nota.evidencias_extra or []),
+        key=lambda e: e.created_at or datetime.min,
+    )
 
     return templates.TemplateResponse(
         "note_evidencias.html",
@@ -2184,6 +3322,8 @@ async def notas_evidencias(
             "evidence_groups": evidence_groups,
             "total_subpesajes": total_sub,
             "missing_subpesajes": missing,
+            "extra_evidencias": extra_evidencias,
+            "extra_evidencias_total": len(extra_evidencias),
             "can_upload": True,
             "upload_action_base": f"/web/admin/notas/{nota.id}/subpesajes",
             "back_url": f"/web/admin/notas/{nota.id}",
@@ -2946,11 +4086,172 @@ async def contabilidad_list(
             sucursal_id = int(params.get("sucursal_id"))
         except ValueError:
             sucursal_id = None
+    cuenta_id = None
+    cuenta_error = None
+    if params.get("cuenta_id"):
+        try:
+            cuenta_id = int(params.get("cuenta_id"))
+        except ValueError:
+            cuenta_id = None
+            cuenta_error = "Cuenta invalida."
     if allowed_suc_ids is not None:
         if sucursal_id and sucursal_id not in allowed_suc_ids:
             sucursal_id = None
         if sucursal_id is None and len(allowed_suc_ids) == 1:
             sucursal_id = allowed_suc_ids[0]
+    if cuenta_id:
+        if not db.get(Cuenta, cuenta_id):
+            cuenta_error = "Cuenta no encontrada."
+            cuenta_id = None
+
+    proveedores = db.query(Proveedor).order_by(Proveedor.nombre_completo).all()
+    clientes = db.query(Cliente).order_by(Cliente.nombre_completo).all()
+    cuentas = db.query(Cuenta).order_by(Cuenta.nombre).all()
+    sucursales_all = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales_map = {s.id: s for s in sucursales}
+    sucursal_names = {s.nombre for s in sucursales_all if s.nombre}
+    proveedores_map = {p.id: p.nombre_completo for p in proveedores}
+    clientes_map = {c.id: c.nombre_completo for c in clientes}
+
+    notas_query = db.query(Nota).filter(Nota.estado == NotaEstado.aprobada)
+    notas_query = _apply_sucursal_filter(notas_query, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
+    notas_aprobadas = notas_query.all()
+    total_por_cobrar = Decimal("0")
+    total_por_pagar = Decimal("0")
+    saldo_favor_clientes = Decimal("0")
+    saldo_favor_empresa = Decimal("0")
+
+    def _is_internal_partner(nombre: str | None) -> bool:
+        if not nombre or not nombre.startswith("Sucursal "):
+            return False
+        suc_name = nombre.replace("Sucursal ", "", 1).strip()
+        return suc_name in sucursal_names
+
+    for nota in notas_aprobadas:
+        total = Decimal(str(nota.total_monto or 0))
+        pagado = Decimal(str(nota.monto_pagado or 0))
+        diff = total - pagado
+        if nota.tipo_operacion == TipoOperacion.venta:
+            nombre = clientes_map.get(nota.cliente_id)
+            if _is_internal_partner(nombre):
+                continue
+            if diff >= Decimal("0"):
+                total_por_cobrar += diff
+            else:
+                saldo_favor_clientes += -diff
+        elif nota.tipo_operacion == TipoOperacion.compra:
+            nombre = proveedores_map.get(nota.proveedor_id)
+            if _is_internal_partner(nombre):
+                continue
+            if diff >= Decimal("0"):
+                total_por_pagar += diff
+            else:
+                saldo_favor_empresa += -diff
+
+    saldo_neto = total_por_cobrar - total_por_pagar
+    saldo_scope = "Todas las sucursales"
+    if sucursal_id:
+        suc = sucursales_map.get(sucursal_id)
+        saldo_scope = f"Sucursal {suc.nombre}" if suc else f"Sucursal {sucursal_id}"
+
+    partner_key = (params.get("partner_key") or "").strip()
+    partner_context = None
+    partner_error = None
+    if partner_key:
+        try:
+            partner_type, raw_id = partner_key.split(":", 1)
+            partner_id = int(raw_id)
+        except (ValueError, AttributeError):
+            partner_error = "Seleccion invalida."
+            partner_key = ""
+        else:
+            if partner_type == "cliente":
+                partner = db.get(Cliente, partner_id)
+                if not partner:
+                    partner_error = "Cliente no encontrado."
+                else:
+                    notas_p = (
+                        db.query(Nota)
+                        .filter(
+                            Nota.cliente_id == partner_id,
+                            Nota.tipo_operacion == TipoOperacion.venta,
+                        )
+                    )
+                    notas_p = _apply_sucursal_filter(notas_p, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
+                    notas_p = notas_p.order_by(Nota.created_at.desc()).all()
+                    folio_map = _build_folio_map(notas_p)
+                    record_rows = _build_partner_record_rows(notas_p, folio_map)
+                    summary = _aggregate_partner_record_summary(notas_p)
+                    pagos_p = (
+                        db.query(NotaPago)
+                        .join(Nota, NotaPago.nota_id == Nota.id)
+                        .filter(
+                            Nota.cliente_id == partner_id,
+                            Nota.tipo_operacion == TipoOperacion.venta,
+                        )
+                    )
+                    pagos_p = _apply_sucursal_filter(pagos_p, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
+                    pagos_p = pagos_p.order_by(NotaPago.created_at.desc()).all()
+                    partner_context = {
+                        "partner": partner,
+                        "partner_label": "Cliente",
+                        "tipo_operacion_label": "Venta",
+                        "record_rows": record_rows,
+                        "record_total_count": len(notas_p),
+                        "summary": summary,
+                        "pagos": pagos_p,
+                        "folio_map": folio_map,
+                        "record_link": f"/web/admin/clientes/{partner_id}/record",
+                        "total_facturado_label": "Total ventas aprobadas",
+                        "total_pagado_label": "Total cobrado",
+                        "saldo_pendiente_label": "Saldo pendiente (por cobrar al cliente)",
+                        "saldo_favor_label": "Saldo a favor del cliente",
+                    }
+            elif partner_type == "proveedor":
+                partner = db.get(Proveedor, partner_id)
+                if not partner:
+                    partner_error = "Proveedor no encontrado."
+                else:
+                    notas_p = (
+                        db.query(Nota)
+                        .filter(
+                            Nota.proveedor_id == partner_id,
+                            Nota.tipo_operacion == TipoOperacion.compra,
+                        )
+                    )
+                    notas_p = _apply_sucursal_filter(notas_p, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
+                    notas_p = notas_p.order_by(Nota.created_at.desc()).all()
+                    folio_map = _build_folio_map(notas_p)
+                    record_rows = _build_partner_record_rows(notas_p, folio_map)
+                    summary = _aggregate_partner_record_summary(notas_p)
+                    pagos_p = (
+                        db.query(NotaPago)
+                        .join(Nota, NotaPago.nota_id == Nota.id)
+                        .filter(
+                            Nota.proveedor_id == partner_id,
+                            Nota.tipo_operacion == TipoOperacion.compra,
+                        )
+                    )
+                    pagos_p = _apply_sucursal_filter(pagos_p, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
+                    pagos_p = pagos_p.order_by(NotaPago.created_at.desc()).all()
+                    partner_context = {
+                        "partner": partner,
+                        "partner_label": "Proveedor",
+                        "tipo_operacion_label": "Compra",
+                        "record_rows": record_rows,
+                        "record_total_count": len(notas_p),
+                        "summary": summary,
+                        "pagos": pagos_p,
+                        "folio_map": folio_map,
+                        "record_link": f"/web/admin/proveedores/{partner_id}/record",
+                        "total_facturado_label": "Total compras aprobadas",
+                        "total_pagado_label": "Total pagado",
+                        "saldo_pendiente_label": "Saldo pendiente (por pagar al proveedor)",
+                        "saldo_favor_label": "Saldo a favor de la empresa",
+                    }
+            else:
+                partner_error = "Seleccion invalida."
+                partner_key = ""
 
     date_from = params.get("from")
     date_to = params.get("to")
@@ -2976,21 +4277,39 @@ async def contabilidad_list(
             query = query.filter(MovimientoContable.created_at <= dt_to)
         except ValueError:
             pass
+    if cuenta_id:
+        query = query.filter(MovimientoContable.cuenta_id == cuenta_id)
     movimientos = query.order_by(MovimientoContable.created_at.desc()).limit(200).all()
-    total_filtrado = sum([float(m.monto or 0) for m in movimientos])
+    movimientos_view = [_movimiento_display(m) for m in movimientos]
+    total_filtrado = sum((m["monto_firmado"] for m in movimientos_view), Decimal("0"))
     return templates.TemplateResponse(
         "admin/contabilidad_list.html",
         {
             "request": request,
             "env": settings.ENV,
             "user": current_user,
-            "movimientos": movimientos,
+            "movimientos": movimientos_view,
             "sucursales": sucursales,
             "sucursal_id": sucursal_id,
             "date_from": date_from or "",
             "date_to": date_to or "",
+            "cuenta_id": cuenta_id,
             "total_filtrado": total_filtrado,
             "export_query": export_query,
+            "proveedores": proveedores,
+            "clientes": clientes,
+            "cuentas": cuentas,
+            "sucursales_map": sucursales_map,
+            "total_por_cobrar": total_por_cobrar,
+            "total_por_pagar": total_por_pagar,
+            "saldo_favor_clientes": saldo_favor_clientes,
+            "saldo_favor_empresa": saldo_favor_empresa,
+            "saldo_neto": saldo_neto,
+            "saldo_scope": saldo_scope,
+            "partner_key": partner_key,
+            "partner_context": partner_context,
+            "partner_error": partner_error,
+            "cuenta_error": cuenta_error,
         },
     )
 
@@ -3008,6 +4327,12 @@ async def contabilidad_export(
             sucursal_id = int(params.get("sucursal_id"))
         except ValueError:
             sucursal_id = None
+    cuenta_id = None
+    if params.get("cuenta_id"):
+        try:
+            cuenta_id = int(params.get("cuenta_id"))
+        except ValueError:
+            cuenta_id = None
     if allowed_suc_ids is not None:
         if sucursal_id and sucursal_id not in allowed_suc_ids:
             sucursal_id = None
@@ -3037,7 +4362,11 @@ async def contabilidad_export(
             query = query.filter(MovimientoContable.created_at <= dt_to)
         except ValueError:
             pass
+    if cuenta_id:
+        query = query.filter(MovimientoContable.cuenta_id == cuenta_id)
     movimientos = query.order_by(MovimientoContable.created_at.desc()).limit(1000).all()
+
+    movimientos_view = [_movimiento_display(m) for m in movimientos]
 
     if fmt == "csv":
         import csv
@@ -3045,44 +4374,46 @@ async def contabilidad_export(
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow([
-            "id", "tipo", "monto", "nota_id", "sucursal",
+            "id", "tipo", "naturaleza", "monto_firmado", "nota_id", "sucursal",
             "usuario_id", "metodo_pago", "cuenta_financiera", "comentario", "created_at",
         ])
-        for m in movimientos:
+        for m in movimientos_view:
             writer.writerow([
-                m.id,
-                m.tipo,
-                float(m.monto or 0),
-                m.nota_id or "",
-                m.sucursal.nombre if m.sucursal else m.sucursal_id or "",
-                m.usuario_id or "",
-                m.metodo_pago or "",
-                m.cuenta_financiera or "",
-                (m.comentario or "").replace("\n", " "),
-                m.created_at.strftime("%Y-%m-%d %H:%M") if m.created_at else "",
+                m["id"],
+                m["tipo"],
+                m["naturaleza"],
+                float(m["monto_firmado"] or 0),
+                m["nota_id"] or "",
+                m["sucursal"],
+                m["usuario_id"],
+                m["metodo_pago"],
+                m["cuenta_financiera"],
+                m["comentario"],
+                m["created_at"].strftime("%Y-%m-%d %H:%M") if m["created_at"] else "",
             ])
         output.seek(0)
         headers = {"Content-Disposition": "attachment; filename=movimientos_contables.csv"}
         return StreamingResponse(iter([output.getvalue()]), media_type="text/csv", headers=headers)
 
-    headers_xml = ["id", "tipo", "monto", "nota_id", "sucursal", "usuario_id", "metodo_pago", "cuenta_financiera", "comentario", "created_at"]
+    headers_xml = ["id", "tipo", "naturaleza", "monto_firmado", "nota_id", "sucursal", "usuario_id", "metodo_pago", "cuenta_financiera", "comentario", "created_at"]
 
     if fmt in ("xlsx", "xls", "excel"):
         import io
         rows = []
         rows.append("<Row>" + "".join([f"<Cell><Data ss:Type='String'>{h}</Data></Cell>" for h in headers_xml]) + "</Row>")
-        for m in movimientos:
+        for m in movimientos_view:
             vals = [
-                m.id,
-                m.tipo,
-                float(m.monto or 0),
-                m.nota_id or "",
-                m.sucursal.nombre if m.sucursal else m.sucursal_id or "",
-                m.usuario_id or "",
-                m.metodo_pago or "",
-                m.cuenta_financiera or "",
-                (m.comentario or "").replace("\\n", " "),
-                m.created_at.strftime("%Y-%m-%d %H:%M") if m.created_at else "",
+                m["id"],
+                m["tipo"],
+                m["naturaleza"],
+                float(m["monto_firmado"] or 0),
+                m["nota_id"] or "",
+                m["sucursal"],
+                m["usuario_id"],
+                m["metodo_pago"],
+                m["cuenta_financiera"],
+                m["comentario"].replace("\\n", " "),
+                m["created_at"].strftime("%Y-%m-%d %H:%M") if m["created_at"] else "",
             ]
             rows.append("<Row>" + "".join([f"<Cell><Data ss:Type='String'>{v}</Data></Cell>" for v in vals]) + "</Row>")
         workbook = f"""<?xml version="1.0"?>
@@ -3108,20 +4439,26 @@ async def contabilidad_export(
 
     header_line = " | ".join(headers_xml)
     suc_label = f"Sucursal: {sucursal_id or 'Todas'}"
+    cuenta_label = "Cuenta: Todas"
+    if cuenta_id:
+        cuenta = db.get(Cuenta, cuenta_id)
+        if cuenta:
+            cuenta_label = f"Cuenta: {cuenta.display_label}"
     range_label = f"Rango: {date_from or '---'} a {date_to or '---'}"
-    text_lines = ["Movimientos contables", suc_label, range_label, "", header_line]
-    for m in movimientos:
+    text_lines = ["Movimientos contables", suc_label, cuenta_label, range_label, "", header_line]
+    for m in movimientos_view:
         vals = [
-            str(m.id),
-            m.tipo,
-            f"{float(m.monto or 0):.2f}",
-            str(m.nota_id or ""),
-            m.sucursal.nombre if m.sucursal else str(m.sucursal_id or ""),
-            str(m.usuario_id or ""),
-            m.metodo_pago or "",
-            m.cuenta_financiera or "",
-            (m.comentario or "").replace("\n", " "),
-            m.created_at.strftime("%Y-%m-%d %H:%M") if m.created_at else "",
+            str(m["id"]),
+            m["tipo"],
+            m["naturaleza"],
+            f"{float(m['monto_firmado'] or 0):.2f}",
+            str(m["nota_id"] or ""),
+            str(m["sucursal"] or ""),
+            str(m["usuario_id"] or ""),
+            m["metodo_pago"],
+            m["cuenta_financiera"],
+            m["comentario"].replace("\n", " "),
+            m["created_at"].strftime("%Y-%m-%d %H:%M") if m["created_at"] else "",
         ]
         text_lines.append(" | ".join(vals))
 
@@ -3175,6 +4512,12 @@ async def contabilidad_reporte(
             sucursal_id = int(params.get("sucursal_id"))
         except ValueError:
             sucursal_id = None
+    cuenta_id = None
+    if params.get("cuenta_id"):
+        try:
+            cuenta_id = int(params.get("cuenta_id"))
+        except ValueError:
+            cuenta_id = None
     if allowed_suc_ids is not None:
         if sucursal_id and sucursal_id not in allowed_suc_ids:
             sucursal_id = None
@@ -3199,6 +4542,7 @@ async def contabilidad_reporte(
         sucursal_id=sucursal_id,
         date_from=date_from,
         date_to=date_to,
+        cuenta_id=cuenta_id,
         allowed_suc_ids=allowed_suc_ids,
     )
 

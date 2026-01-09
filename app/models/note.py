@@ -59,7 +59,7 @@ class Nota(Base):
     factura_generada_at = Column(DateTime, nullable=True)
 
     metodo_pago = Column(String(50), nullable=True)
-    cuenta_financiera_id = Column(Integer, nullable=True)
+    cuenta_financiera_id = Column(Integer, ForeignKey("cuentas.id"), nullable=True)
     fecha_caducidad_pago = Column(Date, nullable=True)
 
     comentarios_trabajador = Column(Text, nullable=True)
@@ -71,6 +71,12 @@ class Nota(Base):
     materiales = relationship("NotaMaterial", back_populates="nota", cascade="all, delete-orphan")
     pagos = relationship("NotaPago", back_populates="nota", cascade="all, delete-orphan")
     original = relationship("NotaOriginal", back_populates="nota", uselist=False, cascade="all, delete-orphan")
+    cuenta = relationship("Cuenta", foreign_keys=[cuenta_financiera_id])
+    evidencias_extra = relationship(
+        "NotaEvidenciaExtra",
+        back_populates="nota",
+        cascade="all, delete-orphan",
+    )
 
 
 class NotaMaterial(Base):
@@ -124,12 +130,26 @@ class NotaOriginal(Base):
     nota = relationship("Nota", back_populates="original")
 
 
+class NotaEvidenciaExtra(Base):
+    __tablename__ = "nota_evidencias_extra"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nota_id = Column(Integer, ForeignKey("notas.id"), nullable=False, index=True)
+    url = Column(String(255), nullable=False)
+    uploaded_by_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    nota = relationship("Nota", back_populates="evidencias_extra")
+    usuario = relationship("User")
+
+
 class NotaPago(Base):
     __tablename__ = "nota_pagos"
 
     id = Column(Integer, primary_key=True, index=True)
     nota_id = Column(Integer, ForeignKey("notas.id"), nullable=False, index=True)
     usuario_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    cuenta_id = Column(Integer, ForeignKey("cuentas.id"), nullable=True, index=True)
 
     monto = Column(Numeric(12, 2), nullable=False, default=0)
     metodo_pago = Column(String(50), nullable=True)
@@ -140,3 +160,4 @@ class NotaPago(Base):
 
     nota = relationship("Nota", back_populates="pagos")
     usuario = relationship("User")
+    cuenta = relationship("Cuenta")

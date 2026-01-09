@@ -66,9 +66,17 @@
                             </span>
                         </td>
                         <td class="text-end">
-                            <a href="/web/admin/clientes/{{ c.id }}/editar" class="btn btn-sm btn-outline-secondary">
-                                Editar
-                            </a>
+                            <div class="d-flex gap-2 justify-content-end flex-wrap">
+                                <a href="/web/admin/clientes/{{ c.id }}/record" class="btn btn-sm btn-outline-primary">
+                                    Historial
+                                </a>
+                                <a href="/web/admin/cuentas?owner_key=cliente:{{ c.id }}" class="btn btn-sm btn-outline-primary">
+                                    Cuentas
+                                </a>
+                                <a href="/web/admin/clientes/{{ c.id }}/editar" class="btn btn-sm btn-outline-secondary">
+                                    Editar
+                                </a>
+                            </div>
                         </td>
                     </tr>
                 {% endfor %}

@@ -16,6 +16,7 @@ from app.models import (
     Cliente,
     Sucursal,
     TipoOperacion,
+    Cuenta,
 )
 from app.services import note_service
 
@@ -49,16 +50,89 @@ def _safe_filename(value: str) -> str:
     return slug or "reporte"
 
 
+def _movimiento_label(tipo_raw: str, tipo_op: str | None) -> str:
+    if tipo_raw == "pago":
+        return f"PAGO {tipo_op.upper()}" if tipo_op else "PAGO"
+    if tipo_raw == "reverso_pago":
+        return f"REVERSO PAGO {tipo_op.upper()}" if tipo_op else "REVERSO PAGO"
+    if tipo_raw == "reverso":
+        return f"REVERSO {tipo_op.upper()}" if tipo_op else "REVERSO"
+    if tipo_raw in ("compra", "venta"):
+        return tipo_raw.upper()
+    if tipo_raw == "ajuste":
+        return "AJUSTE"
+    return tipo_raw.upper() if tipo_raw else "-"
+
+
+def _movimiento_monto_firmado(
+    monto: Decimal,
+    tipo_raw: str,
+    tipo_op: str | None,
+) -> Decimal:
+    abs_val = abs(monto)
+    if tipo_raw == "compra":
+        return -abs_val
+    if tipo_raw == "venta":
+        return abs_val
+    if tipo_raw == "pago":
+        if tipo_op == "compra":
+            return -abs_val
+        if tipo_op == "venta":
+            return abs_val
+        return monto
+    if tipo_raw == "reverso":
+        if tipo_op == "compra":
+            return abs_val
+        if tipo_op == "venta":
+            return -abs_val
+        return monto
+    if tipo_raw == "reverso_pago":
+        if tipo_op == "compra":
+            return abs_val
+        if tipo_op == "venta":
+            return -abs_val
+        return monto
+    return monto
+
+
+def _movimiento_naturaleza(tipo_raw: str, tipo_op: str | None) -> str:
+    if tipo_raw == "compra":
+        return "EGRESO"
+    if tipo_raw == "venta":
+        return "INGRESO"
+    if tipo_raw == "pago":
+        if tipo_op == "compra":
+            return "EGRESO"
+        if tipo_op == "venta":
+            return "INGRESO"
+    if tipo_raw == "reverso":
+        if tipo_op == "compra":
+            return "INGRESO"
+        if tipo_op == "venta":
+            return "EGRESO"
+    if tipo_raw == "reverso_pago":
+        if tipo_op == "compra":
+            return "INGRESO"
+        if tipo_op == "venta":
+            return "EGRESO"
+    if tipo_raw == "ajuste":
+        return "AJUSTE"
+    return "-"
+
+
 def build_report_data(
     db: Session,
     *,
     sucursal_id: int | None,
     date_from: date | None,
     date_to: date | None,
+    cuenta_id: int | None,
     allowed_suc_ids: list[int] | None,
 ) -> dict:
     sucursal = db.get(Sucursal, sucursal_id) if sucursal_id else None
     sucursal_label = sucursal.nombre if sucursal else "Todas"
+    cuenta = db.get(Cuenta, cuenta_id) if cuenta_id else None
+    cuenta_label = cuenta.display_label if cuenta else "Todas"
 
     query = db.query(MovimientoContable)
     if allowed_suc_ids is not None:
@@ -75,6 +149,8 @@ def build_report_data(
     if date_to:
         dt_to = datetime.strptime(date_to.isoformat(), "%Y-%m-%d")
         query = query.filter(MovimientoContable.created_at <= dt_to)
+    if cuenta_id:
+        query = query.filter(MovimientoContable.cuenta_id == cuenta_id)
 
     movimientos = query.order_by(MovimientoContable.created_at.desc()).all()
     nota_ids = {m.nota_id for m in movimientos if m.nota_id}
@@ -101,13 +177,16 @@ def build_report_data(
     for mov in movimientos:
         nota = notas_map.get(mov.nota_id)
         tipo = (mov.tipo or "").lower()
-        tipo_label = tipo or "-"
-        if tipo == "pago" and nota and nota.tipo_operacion:
-            tipo_label = f"pago {nota.tipo_operacion.value}"
-        elif tipo == "reverso_pago":
-            tipo_label = "reverso pago"
+        tipo_op = None
+        if tipo in ("compra", "venta"):
+            tipo_op = tipo
+        elif nota and nota.tipo_operacion:
+            tipo_op = nota.tipo_operacion.value
+        tipo_label = _movimiento_label(tipo, tipo_op)
 
         monto = _safe_decimal(mov.monto)
+        monto_firmado = _movimiento_monto_firmado(monto, tipo, tipo_op)
+        naturaleza = _movimiento_naturaleza(tipo, tipo_op)
         if tipo == "venta":
             total_ventas += monto
         elif tipo == "compra":
@@ -132,15 +211,16 @@ def build_report_data(
         movimientos_rows.append(
             {
                 "fecha": mov.created_at,
-                "tipo": tipo_label.upper() if tipo_label else "-",
-                "monto": monto,
+                "tipo": tipo_label,
+                "naturaleza": naturaleza,
+                "monto": monto_firmado,
                 "nota_id": mov.nota_id,
                 "folio": folio or (f"#{mov.nota_id}" if mov.nota_id else "-"),
                 "sucursal": (
                     mov.sucursal.nombre if mov.sucursal else sucursal_map.get(mov.sucursal_id, "-")
                 ),
                 "metodo": mov.metodo_pago or "-",
-                "cuenta": mov.cuenta_financiera or "-",
+                "cuenta": mov.cuenta.display_label if mov.cuenta else (mov.cuenta_financiera or "-"),
                 "comentario": mov.comentario or "-",
             }
         )
@@ -241,6 +321,7 @@ def build_report_data(
     return {
         "generated_at": datetime.utcnow(),
         "sucursal": sucursal_label,
+        "cuenta": cuenta_label,
         "date_from": date_from,
         "date_to": date_to,
         "summary_items": summary_items,
@@ -258,6 +339,7 @@ def build_report_excel(report: dict) -> tuple[bytes, str]:
 
     title = "Reporte contable"
     sucursal = report["sucursal"]
+    cuenta = report.get("cuenta") or "Todas"
     date_from = report["date_from"].isoformat() if report.get("date_from") else "---"
     date_to = report["date_to"].isoformat() if report.get("date_to") else "---"
     generated_at = report["generated_at"].strftime("%Y-%m-%d %H:%M")
@@ -265,6 +347,7 @@ def build_report_excel(report: dict) -> tuple[bytes, str]:
     summary_rows = [
         row([(title, "String")]),
         row([(f"Sucursal: {sucursal}", "String")]),
+        row([(f"Cuenta: {cuenta}", "String")]),
         row([(f"Periodo: {date_from} a {date_to}", "String")]),
         row([(f"Generado: {generated_at}", "String")]),
         row([("", "String")]),
@@ -287,7 +370,8 @@ def build_report_excel(report: dict) -> tuple[bytes, str]:
     mov_headers = [
         "Fecha",
         "Tipo",
-        "Monto",
+        "Naturaleza",
+        "Monto firmado",
         "Folio",
         "Sucursal",
         "Metodo",
@@ -303,6 +387,7 @@ def build_report_excel(report: dict) -> tuple[bytes, str]:
                 [
                     (mov["fecha"].strftime("%Y-%m-%d %H:%M") if mov["fecha"] else "-", "String"),
                     (mov["tipo"], "String"),
+                    (mov["naturaleza"], "String"),
                     (str(_safe_decimal(mov["monto"])), "Number"),
                     (mov["folio"], "String"),
                     (mov["sucursal"], "String"),
@@ -489,11 +574,12 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
 
     page.text(left, y, "Reporte contable", size=16, font="F2")
     page.text(left, y - 16, f"Sucursal: {report['sucursal']}", size=9)
-    page.text(left, y - 28, f"Periodo: {date_from} a {date_to}", size=9)
+    page.text(left, y - 28, f"Cuenta: {report.get('cuenta') or 'Todas'}", size=9)
+    page.text(left, y - 40, f"Periodo: {date_from} a {date_to}", size=9)
     page.text(right - 140, y - 16, f"Generado: {generated}", size=9)
-    page.line(left, y - 36, right, y - 36)
+    page.line(left, y - 48, right, y - 48)
 
-    y = y - 54
+    y = y - 66
     page.rect(left, y - 18, right - left, 18, fill_gray=0.93, stroke_gray=0.85)
     page.text(left + 8, y - 6, "Resumen", size=10, font="F2")
     y = y - 26
@@ -531,13 +617,15 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
     def draw_mov_header(p: _PdfPage, y_pos: float) -> float:
         p.rect(left, y_pos - 16, right - left, 16, fill_gray=0.93, stroke_gray=0.85)
         cols = [
-            ("Fecha", left, 70, "left"),
-            ("Tipo", left + 70, 60, "left"),
-            ("Monto", left + 130, 70, "right"),
-            ("Folio", left + 200, 70, "left"),
-            ("Sucursal", left + 270, 90, "left"),
-            ("Metodo", left + 360, 60, "left"),
-            ("Comentario", left + 420, 146, "left"),
+            ("Fecha", left, 54, "left"),
+            ("Tipo", left + 54, 64, "left"),
+            ("Naturaleza", left + 118, 52, "left"),
+            ("Monto firmado", left + 170, 60, "right"),
+            ("Folio", left + 230, 52, "left"),
+            ("Sucursal", left + 282, 70, "left"),
+            ("Metodo", left + 352, 48, "left"),
+            ("Cuenta", left + 400, 50, "left"),
+            ("Comentario", left + 450, 70, "left"),
         ]
         for title, x, width, align in cols:
             draw_x = x + 2
@@ -548,13 +636,15 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
 
     def draw_mov_row(p: _PdfPage, y_pos: float, mov: dict) -> float:
         cols = [
-            (mov["fecha"].strftime("%Y-%m-%d") if mov["fecha"] else "-", left, 70, "left"),
-            (mov["tipo"], left + 70, 60, "left"),
-            (_format_money(_safe_decimal(mov["monto"])), left + 130, 70, "right"),
-            (mov["folio"], left + 200, 70, "left"),
-            (mov["sucursal"], left + 270, 90, "left"),
-            (mov["metodo"], left + 360, 60, "left"),
-            (mov["comentario"], left + 420, 146, "left"),
+            (mov["fecha"].strftime("%Y-%m-%d") if mov["fecha"] else "-", left, 54, "left"),
+            (mov["tipo"], left + 54, 64, "left"),
+            (mov["naturaleza"], left + 118, 52, "left"),
+            (_format_money(_safe_decimal(mov["monto"])), left + 170, 60, "right"),
+            (mov["folio"], left + 230, 52, "left"),
+            (mov["sucursal"], left + 282, 70, "left"),
+            (mov["metodo"], left + 352, 48, "left"),
+            (mov["cuenta"], left + 400, 50, "left"),
+            (mov["comentario"], left + 450, 70, "left"),
         ]
         for text, x, width, align in cols:
             display = _truncate_text(str(text), width - 4, 8)
@@ -572,8 +662,9 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
                 y = top
                 page.text(left, y, "Reporte contable (continuacion)", size=12, font="F2")
                 page.text(left, y - 14, f"Sucursal: {report['sucursal']}", size=9)
-                page.text(left, y - 26, f"Periodo: {date_from} a {date_to}", size=9)
-                y = y - 40
+                page.text(left, y - 26, f"Cuenta: {report.get('cuenta') or 'Todas'}", size=9)
+                page.text(left, y - 38, f"Periodo: {date_from} a {date_to}", size=9)
+                y = y - 52
                 y = draw_mov_header(page, y)
             y = draw_mov_row(page, y, mov)
     else:

@@ -119,8 +119,49 @@
                 </div>
             {% endif %}
         </div>
+</div>
+</div>
+
+{% if nota.estado.value == 'CANCELADA' %}
+<div class="card hover-lift mb-3">
+    <div class="card-body">
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="chip-strong">Devolucion</span>
+            <span class="text-muted small">Verificacion automatica</span>
+        </div>
+        {% if devolucion_check and devolucion_check.aplica %}
+            <div class="note-meta-grid">
+                <div class="note-meta-item">
+                    <span class="note-meta-label">Contabilidad neta</span>
+                    <strong class="{{ 'text-success' if devolucion_check.contabilidad_ok else 'text-danger' }}">
+                        {{ '+' if devolucion_check.contabilidad_saldo > 0 else '' }}${{ "%.2f"|format(devolucion_check.contabilidad_saldo or 0) }}
+                    </strong>
+                    <div class="note-meta-sub">Movimientos: {{ devolucion_check.contabilidad_movs }}</div>
+                    {% if devolucion_check.contabilidad_ok %}
+                        <span class="badge bg-success">OK</span>
+                    {% else %}
+                        <span class="badge bg-danger">Revisar</span>
+                    {% endif %}
+                </div>
+                <div class="note-meta-item">
+                    <span class="note-meta-label">Inventario neto</span>
+                    <strong class="{{ 'text-success' if devolucion_check.inventario_ok else 'text-danger' }}">
+                        {{ '+' if devolucion_check.inventario_saldo > 0 else '' }}{{ "%.3f"|format(devolucion_check.inventario_saldo or 0) }} kg
+                    </strong>
+                    <div class="note-meta-sub">Movimientos: {{ devolucion_check.inventario_movs }}</div>
+                    {% if devolucion_check.inventario_ok %}
+                        <span class="badge bg-success">OK</span>
+                    {% else %}
+                        <span class="badge bg-danger">Revisar</span>
+                    {% endif %}
+                </div>
+            </div>
+        {% else %}
+            <p class="text-muted small mb-0">No hay movimientos registrados para verificar esta devolucion.</p>
+        {% endif %}
     </div>
 </div>
+{% endif %}
 
 <div class="card hover-lift mb-3 note-report-card">
     <div class="card-body">
@@ -207,7 +248,30 @@
                 <div class="col-md-3">
                     <label class="form-label">Cuenta financiera</label>
                     {% set cuenta_val = form_cuenta if form_cuenta is not none else (nota.cuenta_financiera_id or "") %}
-                    <input class="form-control" name="cuenta_financiera" id="cuenta_financiera_input" placeholder="ID o referencia de cuenta" value="{{ cuenta_val }}">
+                    <select class="form-select" name="cuenta_financiera" id="cuenta_financiera_select">
+                        <option value="" {% if not cuenta_val %}selected{% endif %}>Selecciona cuenta</option>
+                        {% if cuentas_sucursal %}
+                            <optgroup label="Sucursal">
+                                {% for cuenta in cuentas_sucursal %}
+                                    <option value="{{ cuenta.id }}" {% if cuenta_val|string == cuenta.id|string %}selected{% endif %}>
+                                        {{ cuenta.display_label }}
+                                    </option>
+                                {% endfor %}
+                            </optgroup>
+                        {% endif %}
+                        {% if cuentas_partner %}
+                            <optgroup label="{{ cuentas_partner_label }}">
+                                {% for cuenta in cuentas_partner %}
+                                    <option value="{{ cuenta.id }}" {% if cuenta_val|string == cuenta.id|string %}selected{% endif %}>
+                                        {{ cuenta.display_label }}
+                                    </option>
+                                {% endfor %}
+                            </optgroup>
+                        {% endif %}
+                    </select>
+                    {% if cuentas_sucursal|length == 0 and cuentas_partner|length == 0 %}
+                        <div class="form-text text-muted">No hay cuentas registradas para esta nota.</div>
+                    {% endif %}
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Pago inicial</label>
@@ -237,7 +301,7 @@
             <form method="post" action="/web/admin/notas/{{ nota.id }}/cancelar" class="m-0" onsubmit="syncCancelComment(this)">
                 <input type="hidden" name="comentarios_admin" value="">
                 <button type="submit" class="btn btn-outline-danger">
-                    {% if nota.estado.value == 'APROBADA' %}Cancelar{% else %}Rechazar{% endif %}
+                    {% if nota.estado.value == 'APROBADA' %}Devolucion{% else %}Rechazar{% endif %}
                 </button>
             </form>
             {% if nota.estado.value in ['EN_REVISION'] %}
@@ -285,7 +349,27 @@
                 <div class="col-lg-3 col-md-4">
                     <label class="form-label">Cuenta</label>
                     {% set pago_cuenta_val = form_pago_cuenta if form_pago_cuenta is not none else (nota.cuenta_financiera_id or "") %}
-                    <input class="form-control form-control-sm" name="pago_cuenta" id="pago_cuenta_input" placeholder="ID o referencia" value="{{ pago_cuenta_val }}">
+                    <select class="form-select form-select-sm" name="pago_cuenta" id="pago_cuenta_select">
+                        <option value="" {% if not pago_cuenta_val %}selected{% endif %}>Selecciona cuenta</option>
+                        {% if cuentas_sucursal %}
+                            <optgroup label="Sucursal">
+                                {% for cuenta in cuentas_sucursal %}
+                                    <option value="{{ cuenta.id }}" {% if pago_cuenta_val|string == cuenta.id|string %}selected{% endif %}>
+                                        {{ cuenta.display_label }}
+                                    </option>
+                                {% endfor %}
+                            </optgroup>
+                        {% endif %}
+                        {% if cuentas_partner %}
+                            <optgroup label="{{ cuentas_partner_label }}">
+                                {% for cuenta in cuentas_partner %}
+                                    <option value="{{ cuenta.id }}" {% if pago_cuenta_val|string == cuenta.id|string %}selected{% endif %}>
+                                        {{ cuenta.display_label }}
+                                    </option>
+                                {% endfor %}
+                            </optgroup>
+                        {% endif %}
+                    </select>
                 </div>
                 <div class="col-lg-3 col-md-6">
                     <label class="form-label">Comentario</label>
@@ -320,7 +404,7 @@
                         <td>{{ pago.created_at.strftime("%Y-%m-%d %H:%M") if pago.created_at else '-' }}</td>
                         <td class="fw-semibold">${{ "%.2f"|format(pago.monto or 0) }}</td>
                         <td>{{ pago.metodo_pago|capitalize if pago.metodo_pago else '-' }}</td>
-                        <td>{{ pago.cuenta_financiera or '-' }}</td>
+                        <td>{{ pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or '-') }}</td>
                         <td>{{ pago.usuario.username if pago.usuario else (pago.usuario_id or '-') }}</td>
                         <td>{{ pago.comentario or '-' }}</td>
                     </tr>
@@ -413,14 +497,13 @@
         }
     }
     const metodoSelect = document.getElementById('metodo_pago_select');
-    const cuentaInput = document.getElementById('cuenta_financiera_input');
+    const cuentaInput = document.getElementById('cuenta_financiera_select');
     function toggleCuenta() {
         if (!metodoSelect || !cuentaInput) return;
         const metodo = (metodoSelect.value || '').toLowerCase();
         const needsAccount = metodo === 'transferencia' || metodo === 'cheque';
         cuentaInput.disabled = !needsAccount;
         cuentaInput.required = needsAccount;
-        cuentaInput.placeholder = needsAccount ? 'ID o referencia de cuenta' : 'No aplica para efectivo';
         if (!needsAccount) {
             cuentaInput.value = '';
         }
@@ -430,14 +513,13 @@
         toggleCuenta();
     }
     const pagoMetodo = document.getElementById('pago_metodo_select');
-    const pagoCuenta = document.getElementById('pago_cuenta_input');
+    const pagoCuenta = document.getElementById('pago_cuenta_select');
     function togglePagoCuenta() {
         if (!pagoMetodo || !pagoCuenta) return;
         const metodo = (pagoMetodo.value || '').toLowerCase();
         const needsAccount = metodo === 'transferencia' || metodo === 'cheque';
         pagoCuenta.disabled = !needsAccount;
         pagoCuenta.required = needsAccount;
-        pagoCuenta.placeholder = needsAccount ? 'ID o referencia' : 'No aplica';
         if (!needsAccount) {
             pagoCuenta.value = '';
         }

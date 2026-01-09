@@ -56,8 +56,10 @@ class MovimientoContable(Base):
     monto = Column(Numeric(12, 2), nullable=False)
     metodo_pago = Column(String(50), nullable=True)
     cuenta_financiera = Column(String(100), nullable=True)
+    cuenta_id = Column(Integer, ForeignKey("cuentas.id"), nullable=True, index=True)
     comentario = Column(String(255), nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     nota = relationship("Nota")
     sucursal = relationship("Sucursal")
+    cuenta = relationship("Cuenta")

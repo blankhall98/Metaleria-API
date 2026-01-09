@@ -24,6 +24,9 @@
                             <label class="form-label">Buscar por folio</label>
                             <input class="form-control" name="folio" placeholder="01_C_1" value="{{ folio_query }}">
                         </div>
+                        {% if estado_current and estado_current != 'TODAS' %}
+                            <input type="hidden" name="estado" value="{{ estado_current }}">
+                        {% endif %}
                         <div class="d-flex gap-2 align-items-end">
                             <button class="btn btn-outline-primary">Buscar</button>
                             {% if folio_query %}
@@ -261,26 +264,50 @@
 </div>
 {% endif %}
 
-<div class="card hover-lift mt-4">
+<div class="card hover-lift mt-4" id="tabla-estado">
     <div class="card-body">
-        <h2 class="h6 text-white mb-3">Últimas notas</h2>
+        <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2 mb-3">
+            <div>
+                <h2 class="h6 text-white mb-1">Clasificaci&oacute;n por estado</h2>
+                <div class="text-muted small">Mostrando {{ notas_estado|length }} de {{ estado_total }} notas &middot; Estado: {{ estado_label }}</div>
+            </div>
+            <div class="note-state-tabs">
+                <a href="{{ estado_links.TODAS }}" class="btn btn-sm note-state-tab {{ 'active' if estado_current == 'TODAS' else 'btn-outline-secondary' }}">
+                    Todas <span class="badge bg-secondary">{{ estado_total }}</span>
+                </a>
+                <a href="{{ estado_links.EN_REVISION }}" class="btn btn-sm note-state-tab {{ 'active' if estado_current == 'EN_REVISION' else 'btn-outline-secondary' }}">
+                    En revisi&oacute;n <span class="badge bg-warning text-dark">{{ estado_counts['EN_REVISION'] }}</span>
+                </a>
+                <a href="{{ estado_links.APROBADA }}" class="btn btn-sm note-state-tab {{ 'active' if estado_current == 'APROBADA' else 'btn-outline-secondary' }}">
+                    Aprobadas <span class="badge bg-success">{{ estado_counts['APROBADA'] }}</span>
+                </a>
+                <a href="{{ estado_links.BORRADOR }}" class="btn btn-sm note-state-tab {{ 'active' if estado_current == 'BORRADOR' else 'btn-outline-secondary' }}">
+                    Borrador <span class="badge bg-secondary">{{ estado_counts['BORRADOR'] }}</span>
+                </a>
+                <a href="{{ estado_links.CANCELADA }}" class="btn btn-sm note-state-tab {{ 'active' if estado_current == 'CANCELADA' else 'btn-outline-secondary' }}">
+                    Canceladas <span class="badge bg-danger">{{ estado_counts['CANCELADA'] }}</span>
+                </a>
+            </div>
+        </div>
         <div class="table-responsive">
             <table class="table table-hover table-sm align-middle mb-0">
                 <thead>
                 <tr>
                     <th>Folio</th>
-                    <th>Operación</th>
+                    <th>Operaci&oacute;n</th>
                     <th>Estado</th>
                     <th>Partner</th>
                     <th>Sucursal</th>
                     <th>Kg neto</th>
                     <th>Total $</th>
+                    <th>Saldo $</th>
                     <th>Fecha</th>
                     <th></th>
                 </tr>
                 </thead>
                 <tbody>
-                {% for n in notas_recientes %}
+                {% for n in notas_estado %}
+                    {% set saldo = (n.total_monto or 0) - (n.monto_pagado or 0) %}
                     <tr>
                         <td>
                             <div class="fw-semibold">{{ folio_map.get(n.id, '-') }}</div>
@@ -290,7 +317,7 @@
                             {% if n.estado.value == 'BORRADOR' %}
                                 <span class="badge bg-secondary">Borrador</span>
                             {% elif n.estado.value == 'EN_REVISION' %}
-                                <span class="badge bg-warning text-dark">En revisión</span>
+                                <span class="badge bg-warning text-dark">En revisi&oacute;n</span>
                             {% elif n.estado.value == 'APROBADA' %}
                                 <span class="badge bg-success">Aprobada</span>
                             {% else %}
@@ -307,6 +334,15 @@
                         <td>{{ sucursales[n.sucursal_id].nombre if n.sucursal_id else '-' }}</td>
                         <td>{{ "%.2f"|format(n.total_kg_neto or 0) }} kg</td>
                         <td>${{ "%.2f"|format(n.total_monto or 0) }}</td>
+                        <td>
+                            {% if n.estado.value == 'APROBADA' %}
+                                <span class="{{ 'text-danger' if saldo > 0 else 'text-success' }}">
+                                    ${{ "%.2f"|format(saldo) }}
+                                </span>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
                         <td>{{ n.created_at.strftime("%Y-%m-%d %H:%M") if n.created_at else '-' }}</td>
                         <td class="text-end">
                             <div class="d-flex gap-2 justify-content-end flex-wrap">
@@ -319,6 +355,10 @@
                 </tbody>
             </table>
         </div>
+        {% if notas_estado|length == 0 %}
+            <p class="text-muted small mt-3 mb-0">No hay notas en este estado.</p>
+        {% endif %}
     </div>
 </div>
 {% endblock %}
+

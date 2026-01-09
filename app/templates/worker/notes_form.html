@@ -196,6 +196,26 @@
                 </div>
             </section>
 
+            <section class="step-card worker-step-card" id="step4">
+                <div class="note-step-header">
+                    <span class="chip-strong note-step-pill">Paso 4</span>
+                    <div>
+                        <div class="note-step-title">Evidencia extra</div>
+                        <div class="note-step-sub">Agrega fotos adicionales para respaldar la nota.</div>
+                    </div>
+                </div>
+                <div class="note-step-panel">
+                    <div class="d-flex flex-column flex-sm-row gap-2 align-items-sm-center justify-content-between">
+                        <div class="text-muted small">Fotos cargadas: <strong id="extra-evidence-count">0</strong></div>
+                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="triggerExtraEvidence()">Agregar fotos</button>
+                    </div>
+                    <input class="d-none" type="file" id="extra_evidence_input" accept="image/*" multiple>
+                    <input type="hidden" name="extra_evidencias" id="extra_evidencias" value="[]">
+                    <div id="extra-evidence-list" class="extra-evidence-grid mt-3"></div>
+                    <div class="form-text">Puedes seleccionar varias fotos desde tu galer&iacute;a. Max {{ max_mb }}MB por imagen.</div>
+                </div>
+            </section>
+
             <div class="note-submit-panel d-grid gap-2">
                 <button type="submit" class="btn btn-primary btn-lg" id="submitBtn" disabled>Guardar borrador</button>
                 <small class="text-muted">Este registro quedará en estado borrador y será visible para revisión.</small>
@@ -227,6 +247,11 @@
     let pendingUploads = 0;
     const evidenceModal = document.getElementById('workerEvidencePickerModal');
     let activeEvidenceInput = null;
+    const extraEvidenceInput = document.getElementById('extra_evidence_input');
+    const extraEvidenceList = document.getElementById('extra-evidence-list');
+    const extraEvidenceHidden = document.getElementById('extra_evidencias');
+    const extraEvidenceCount = document.getElementById('extra-evidence-count');
+    let extraEvidenceUrls = [];
 
     function openEvidenceModal(inputEl) {
         if (!evidenceModal || !inputEl) return;
@@ -364,6 +389,103 @@
             updatePesajes(inputEl);
             updateSteps();
         }
+    }
+
+    function triggerExtraEvidence() {
+        if (!extraEvidenceInput) return;
+        extraEvidenceInput.click();
+    }
+    function renderExtraEvidence() {
+        if (!extraEvidenceHidden) return;
+        extraEvidenceHidden.value = JSON.stringify(extraEvidenceUrls);
+        if (extraEvidenceCount) {
+            extraEvidenceCount.textContent = String(extraEvidenceUrls.length);
+        }
+        if (!extraEvidenceList) return;
+        extraEvidenceList.innerHTML = '';
+        if (extraEvidenceUrls.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'text-muted small';
+            empty.textContent = 'Sin evidencia extra por ahora.';
+            extraEvidenceList.appendChild(empty);
+            return;
+        }
+        extraEvidenceUrls.forEach((url, index) => {
+            const item = document.createElement('div');
+            item.className = 'extra-evidence-item';
+            const img = document.createElement('img');
+            img.src = url;
+            img.alt = 'Evidencia extra';
+            img.loading = 'lazy';
+            img.className = 'extra-evidence-thumb';
+            const actions = document.createElement('div');
+            actions.className = 'extra-evidence-actions';
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'btn btn-outline-danger btn-sm';
+            removeBtn.textContent = 'Quitar';
+            removeBtn.addEventListener('click', () => {
+                extraEvidenceUrls.splice(index, 1);
+                renderExtraEvidence();
+            });
+            const link = document.createElement('a');
+            link.href = url;
+            link.target = '_blank';
+            link.rel = 'noopener';
+            link.className = 'small text-muted';
+            link.textContent = 'Ver';
+            actions.appendChild(link);
+            actions.appendChild(removeBtn);
+            item.appendChild(img);
+            item.appendChild(actions);
+            extraEvidenceList.appendChild(item);
+        });
+    }
+    async function uploadExtraEvidenceFiles(files) {
+        for (const file of files) {
+            if (!file) continue;
+            if (file.size > MAX_MB * 1024 * 1024) {
+                showEvidenceAlert(`La imagen supera ${MAX_MB}MB. Usa un archivo mas ligero.`, 'warning');
+                continue;
+            }
+            pendingUploads += 1;
+            updateSteps();
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                const response = await fetch(UPLOAD_URL, { method: 'POST', body: formData });
+                if (!response.ok) {
+                    let detail = '';
+                    try {
+                        const data = await response.json();
+                        detail = data.detail || '';
+                    } catch (err) {
+                        detail = '';
+                    }
+                    throw new Error(detail || 'No se pudo subir la imagen.');
+                }
+                const data = await response.json();
+                if (!data.url) {
+                    throw new Error('Respuesta sin URL.');
+                }
+                clearEvidenceAlert();
+                extraEvidenceUrls.push(data.url);
+                renderExtraEvidence();
+            } catch (err) {
+                showEvidenceAlert('No se pudo subir la evidencia extra. Intenta de nuevo.', 'danger');
+            } finally {
+                pendingUploads = Math.max(0, pendingUploads - 1);
+                updateSteps();
+            }
+        }
+    }
+    if (extraEvidenceInput) {
+        extraEvidenceInput.addEventListener('change', (event) => {
+            const files = Array.from(event.target.files || []);
+            event.target.value = '';
+            if (files.length === 0) return;
+            uploadExtraEvidenceFiles(files);
+        });
     }
     function togglePartner() {
         const tipo = document.getElementById('tipo_operacion').value;
@@ -649,5 +771,6 @@
     // inicializar partner visible y steps
     togglePartner();
     updateSteps();
+    renderExtraEvidence();
 </script>
 {% endblock %}
