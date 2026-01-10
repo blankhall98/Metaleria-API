@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Iterable, Sequence
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from app.models import (
     Nota,
@@ -217,6 +217,39 @@ def _parse_cuenta_id(raw: str | None) -> int | None:
         return int(str(raw).strip())
     except (TypeError, ValueError):
         return None
+
+
+def _resolve_cuenta_id(db: Session, nota: Nota, raw: str | None) -> int | None:
+    cuenta_id = _parse_cuenta_id(raw)
+    if cuenta_id is not None:
+        return cuenta_id
+    if not raw:
+        return None
+    raw_clean = str(raw).strip()
+    if not raw_clean:
+        return None
+    conds = []
+    if nota.sucursal_id:
+        conds.append(Cuenta.sucursal_id == nota.sucursal_id)
+    if nota.tipo_operacion == TipoOperacion.compra and nota.proveedor_id:
+        conds.append(Cuenta.proveedor_id == nota.proveedor_id)
+    if nota.tipo_operacion == TipoOperacion.venta and nota.cliente_id:
+        conds.append(Cuenta.cliente_id == nota.cliente_id)
+    if not conds:
+        return None
+    allowed = (
+        db.query(Cuenta)
+        .filter(Cuenta.activo.is_(True), or_(*conds))
+        .all()
+    )
+    matches = [
+        c
+        for c in allowed
+        if raw_clean in (c.display_label, c.nombre or "", c.referencia or "")
+    ]
+    if len(matches) == 1:
+        return matches[0].id
+    return None
 
 
 def _validate_cuenta_for_nota(db: Session, nota: Nota, cuenta_id: int) -> Cuenta:
@@ -497,9 +530,9 @@ def add_payment(
     if metodo in ("transferencia", "cheque") and not cuenta_financiera:
         raise ValueError("Debes indicar la cuenta para transferencia o cheque.")
     if metodo in ("transferencia", "cheque"):
-        cuenta_id = _parse_cuenta_id(cuenta_financiera)
+        cuenta_id = _resolve_cuenta_id(db, nota, cuenta_financiera)
         if cuenta_id is None:
-            raise ValueError("La cuenta debe ser un numero valido.")
+            raise ValueError("Selecciona una cuenta valida.")
         cuenta = _validate_cuenta_for_nota(db, nota, cuenta_id)
         cuenta_label = cuenta.display_label
 
@@ -611,9 +644,9 @@ def approve_note(
     cuenta_label: str | None = None
     if metodo_pago_clean in ("transferencia", "cheque"):
         if cuenta_financiera:
-            cuenta_id = _parse_cuenta_id(cuenta_financiera)
+            cuenta_id = _resolve_cuenta_id(db, nota, cuenta_financiera)
             if cuenta_id is None:
-                raise ValueError("La cuenta debe ser un numero valido.")
+                raise ValueError("Selecciona una cuenta valida.")
             cuenta = _validate_cuenta_for_nota(db, nota, cuenta_id)
             cuenta_label = cuenta.display_label
         else:
@@ -641,8 +674,8 @@ def approve_note(
             usuario_id=admin_id,
             comentario=comentarios_admin or f"Nota aprobada #{nota.id}",
             metodo_pago=nota.metodo_pago,
-            cuenta_label=cuenta_label,
-            cuenta_id=nota.cuenta_financiera_id,
+            cuenta_label=None,
+            cuenta_id=None,
             tipo=nota.tipo_operacion.value,
         )
     pago_inicial: Decimal | None = None
@@ -782,7 +815,7 @@ def cancel_approved_note(
         usuario_id=admin_id,
         comentario=comment_base,
         metodo_pago=nota.metodo_pago,
-        cuenta_id=nota.cuenta_financiera_id,
+        cuenta_id=None,
         monto=Decimal(str(nota.total_monto or 0)) * Decimal("-1"),
         tipo="reverso",
     )

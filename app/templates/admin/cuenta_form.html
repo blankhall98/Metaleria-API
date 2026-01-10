@@ -21,6 +21,7 @@
 
 {% set nombre_val = form_data.get('nombre') if form_data else (cuenta.nombre if cuenta else '') %}
 {% set tipo_val = form_data.get('tipo') if form_data else (cuenta.tipo if cuenta else '') %}
+{% set tipo_norm = tipo_val|lower %}
 {% set banco_val = form_data.get('banco') if form_data else (cuenta.banco if cuenta else '') %}
 {% set numero_val = form_data.get('numero') if form_data else (cuenta.numero if cuenta else '') %}
 {% set clabe_val = form_data.get('clabe') if form_data else (cuenta.clabe if cuenta else '') %}
@@ -42,7 +43,14 @@
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Tipo</label>
-                    <input class="form-control" type="text" name="tipo" placeholder="Cuenta bancaria, chequera, etc" value="{{ tipo_val }}">
+                    <select class="form-select" name="tipo">
+                        <option value="" {% if not tipo_val %}selected{% endif %}>Selecciona tipo</option>
+                        <option value="cuenta bancaria" {% if tipo_norm == 'cuenta bancaria' %}selected{% endif %}>Cuenta bancaria</option>
+                        <option value="cuenta cheques" {% if tipo_norm == 'cuenta cheques' %}selected{% endif %}>Cuenta cheques</option>
+                    </select>
+                    {% if tipo_val and tipo_norm not in ['cuenta bancaria', 'cuenta cheques'] %}
+                        <div class="form-text text-muted">Tipo actual no estandar: {{ tipo_val }}</div>
+                    {% endif %}
                 </div>
             </div>
 

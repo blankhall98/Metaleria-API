@@ -23,22 +23,33 @@ def upgrade() -> None:
     """Create notas core tables."""
     bind = op.get_bind()
     inspector = sa.inspect(bind)
-    nota_estado = postgresql.ENUM(
-        "BORRADOR",
-        "EN_REVISION",
-        "APROBADA",
-        "CANCELADA",
-        name="nota_estado",
-        create_type=False,
-    )
-    op.execute(
-        "DO $$ BEGIN "
-        "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'nota_estado') THEN "
-        "CREATE TYPE nota_estado AS ENUM ('BORRADOR', 'EN_REVISION', 'APROBADA', 'CANCELADA'); "
-        "END IF; "
-        "END $$;"
-    )
-    tipo_operacion = postgresql.ENUM("compra", "venta", name="tipo_operacion", create_type=False)
+    dialect = bind.dialect.name
+    if dialect == "postgresql":
+        nota_estado = postgresql.ENUM(
+            "BORRADOR",
+            "EN_REVISION",
+            "APROBADA",
+            "CANCELADA",
+            name="nota_estado",
+            create_type=False,
+        )
+        op.execute(
+            "DO $$ BEGIN "
+            "IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'nota_estado') THEN "
+            "CREATE TYPE nota_estado AS ENUM ('BORRADOR', 'EN_REVISION', 'APROBADA', 'CANCELADA'); "
+            "END IF; "
+            "END $$;"
+        )
+        tipo_operacion = postgresql.ENUM("compra", "venta", name="tipo_operacion", create_type=False)
+    else:
+        nota_estado = sa.Enum(
+            "BORRADOR",
+            "EN_REVISION",
+            "APROBADA",
+            "CANCELADA",
+            name="nota_estado",
+        )
+        tipo_operacion = sa.Enum("compra", "venta", name="tipo_operacion")
 
     if not inspector.has_table("notas"):
         op.create_table(
@@ -145,12 +156,14 @@ def downgrade() -> None:
     op.drop_index("ix_notas_estado", table_name="notas")
     op.drop_table("notas")
 
-    nota_estado = postgresql.ENUM(
-        "BORRADOR",
-        "EN_REVISION",
-        "APROBADA",
-        "CANCELADA",
-        name="nota_estado",
-        create_type=False,
-    )
-    nota_estado.drop(op.get_bind(), checkfirst=True)
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        nota_estado = postgresql.ENUM(
+            "BORRADOR",
+            "EN_REVISION",
+            "APROBADA",
+            "CANCELADA",
+            name="nota_estado",
+            create_type=False,
+        )
+        nota_estado.drop(op.get_bind(), checkfirst=True)
