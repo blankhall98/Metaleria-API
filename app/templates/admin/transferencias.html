@@ -213,21 +213,26 @@
     function updateTransferTotals() {
         const rows = document.querySelectorAll('#transferRows .transfer-row');
         let total = 0;
+        let hasAny = false;
         rows.forEach((row) => {
             const kgInput = row.querySelector('input[name="kg_neto"]');
             const priceInput = row.querySelector('input[name="precio_unitario"]');
             const subtotalEl = row.querySelector('.transfer-subtotal');
             const kg = parseNumber(kgInput ? kgInput.value : 0);
             const price = parseNumber(priceInput ? priceInput.value : 0);
-            const subtotal = kg > 0 && price > 0 ? kg * price : 0;
+            const hasKg = kg > 0;
+            const subtotal = hasKg ? kg * price : 0;
             if (subtotalEl) {
-                subtotalEl.textContent = subtotal > 0 ? `$${subtotal.toFixed(2)}` : '-';
+                subtotalEl.textContent = hasKg ? `$${subtotal.toFixed(2)}` : '-';
+            }
+            if (hasKg) {
+                hasAny = true;
             }
             total += subtotal;
         });
         const totalEl = document.getElementById('transferTotal');
         if (totalEl) {
-            totalEl.textContent = total > 0 ? `$${total.toFixed(2)}` : '-';
+            totalEl.textContent = hasAny ? `$${total.toFixed(2)}` : '-';
         }
     }
 

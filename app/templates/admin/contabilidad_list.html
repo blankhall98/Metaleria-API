@@ -13,26 +13,39 @@
 <div class="card hover-lift mb-3">
     <div class="card-body">
         <div class="d-flex align-items-center gap-2 mb-2">
-            <span class="chip-strong">Saldo total</span>
-            <span class="text-muted small">Clientes y proveedores</span>
+            <span class="chip-strong">Resumen contable</span>
+            <span class="text-muted small">Alcance: {{ saldo_scope }}</span>
         </div>
         <div class="note-meta-grid">
             <div class="note-meta-item">
+                <span class="note-meta-label">Ventas aprobadas (devengado)</span>
+                <strong>${{ "%.2f"|format(total_ventas_aprobadas or 0) }}</strong>
+                <div class="note-meta-sub">Clientes</div>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Cobrado a clientes</span>
+                <strong class="text-success">${{ "%.2f"|format(total_cobrado_clientes or 0) }}</strong>
+                <div class="note-meta-sub">Pagos registrados</div>
+            </div>
+            <div class="note-meta-item">
                 <span class="note-meta-label">Por cobrar clientes</span>
                 <strong class="text-success">${{ "%.2f"|format(total_por_cobrar or 0) }}</strong>
+                <div class="note-meta-sub">Pendiente</div>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Compras aprobadas (devengado)</span>
+                <strong>${{ "%.2f"|format(total_compras_aprobadas or 0) }}</strong>
+                <div class="note-meta-sub">Proveedores</div>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Pagado a proveedores</span>
+                <strong class="text-danger">${{ "%.2f"|format(total_pagado_proveedores or 0) }}</strong>
+                <div class="note-meta-sub">Pagos registrados</div>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Por pagar proveedores</span>
                 <strong class="text-danger">${{ "%.2f"|format(total_por_pagar or 0) }}</strong>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Saldo neto</span>
-                {% if saldo_neto >= 0 %}
-                    <strong class="text-success">+${{ "%.2f"|format(saldo_neto) }}</strong>
-                {% else %}
-                    <strong class="text-danger">-${{ "%.2f"|format(-saldo_neto) }}</strong>
-                {% endif %}
-                <div class="note-meta-sub">{{ saldo_scope }}</div>
+                <div class="note-meta-sub">Pendiente</div>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Saldo a favor clientes</span>
@@ -42,9 +55,19 @@
                 <span class="note-meta-label">Saldo a favor empresa</span>
                 <strong class="text-warning">${{ "%.2f"|format(saldo_favor_empresa or 0) }}</strong>
             </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Saldo neto (cobrar - pagar)</span>
+                {% if saldo_neto >= 0 %}
+                    <strong class="text-success">+${{ "%.2f"|format(saldo_neto) }}</strong>
+                {% else %}
+                    <strong class="text-danger">-${{ "%.2f"|format(-saldo_neto) }}</strong>
+                {% endif %}
+                <div class="note-meta-sub">Notas consideradas: {{ notas_consideradas }}</div>
+            </div>
         </div>
         <div class="text-muted small mt-2">
-            Basado en notas aprobadas. No incluye transferencias internas. Los filtros de fecha aplican solo al log de movimientos.
+            Devengado = total de notas aprobadas. Pagos = registros de pagos.
+            No incluye transferencias internas. Los filtros de fecha aplican solo al log de movimientos.
         </div>
     </div>
 </div>

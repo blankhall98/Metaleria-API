@@ -106,6 +106,70 @@
 
     <div class="card hover-lift mb-3">
         <div class="card-body">
+            <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2">
+                <div>
+                    <h2 class="h6 text-dark mb-1">Estado de cuenta</h2>
+                    <div class="text-muted small">Movimientos cronologicos con saldo acumulado.</div>
+                </div>
+                <div class="text-muted small">
+                    {{ ledger_saldo_label }}:
+                    {% if ledger_final >= 0 %}
+                        <span class="text-danger fw-semibold">${{ "%.2f"|format(ledger_final) }}</span>
+                    {% else %}
+                        <span class="text-success fw-semibold">-${{ "%.2f"|format(-ledger_final) }}</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="text-muted small mt-1">{{ ledger_saldo_help }}</div>
+            <div class="table-responsive mt-3">
+                <table class="table table-hover table-sm align-middle mb-0">
+                    <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Movimiento</th>
+                        <th>Nota</th>
+                        <th>Metodo</th>
+                        <th>Cuenta</th>
+                        <th class="text-end">Cargo</th>
+                        <th class="text-end">Abono</th>
+                        <th class="text-end">Saldo</th>
+                        <th>Comentario</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for row in ledger_rows %}
+                        <tr>
+                            <td>{{ row.fecha.strftime("%Y-%m-%d %H:%M") if row.fecha else "-" }}</td>
+                            <td>{{ row.tipo }}</td>
+                            <td>
+                                <div class="fw-semibold">{{ row.folio }}</div>
+                                <div class="text-muted small">#{{ row.nota_id }}</div>
+                            </td>
+                            <td>{{ row.metodo or "-" }}</td>
+                            <td>{{ row.cuenta or "-" }}</td>
+                            <td class="text-end">${{ "%.2f"|format(row.cargo or 0) }}</td>
+                            <td class="text-end">${{ "%.2f"|format(row.abono or 0) }}</td>
+                            <td class="text-end">
+                                {% if row.saldo >= 0 %}
+                                    <span class="text-danger fw-semibold">${{ "%.2f"|format(row.saldo) }}</span>
+                                {% else %}
+                                    <span class="text-success fw-semibold">-${{ "%.2f"|format(-row.saldo) }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-muted small">{{ row.comentario or "-" }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if ledger_rows|length == 0 %}
+                <p class="text-muted small mt-3 mb-0">No hay movimientos para generar el estado de cuenta.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card hover-lift mb-3">
+        <div class="card-body">
             <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
                 <div>
                     <h2 class="h6 text-dark mb-1">Historial de notas</h2>

@@ -1074,8 +1074,8 @@ def create_transfer_notes(
             kg_desc = Decimal(str(mp.get("kg_descuento", 0)))
             kg_neto = kg_bruto - kg_desc
             precio_unitario = Decimal(str(mp.get("precio_unitario", 0)))
-            if precio_unitario <= 0:
-                raise ValueError("El precio unitario debe ser mayor a 0.")
+            if precio_unitario < 0:
+                raise ValueError("El precio unitario no puede ser negativo.")
             nm = NotaMaterial(
                 nota=nota,
                 material_id=material_id,

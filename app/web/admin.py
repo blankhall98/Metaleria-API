@@ -178,6 +178,134 @@ def _movimiento_display_partner(mov: MovimientoContable) -> dict:
         view["naturaleza"] = "REVERSO"
     return view
 
+
+def _build_partner_ledger(
+    db: Session,
+    *,
+    partner_type: str,
+    partner_id: int,
+    allowed_suc_ids: list[int] | None,
+) -> list[dict]:
+    if partner_type == "cliente":
+        tipo_op = TipoOperacion.venta
+        notes_query = db.query(Nota).filter(Nota.cliente_id == partner_id)
+    else:
+        tipo_op = TipoOperacion.compra
+        notes_query = db.query(Nota).filter(Nota.proveedor_id == partner_id)
+
+    notes_query = notes_query.filter(Nota.tipo_operacion == tipo_op, Nota.estado.in_([NotaEstado.aprobada, NotaEstado.cancelada]))
+    notes_query = _apply_sucursal_filter(notes_query, allowed_suc_ids, None, Nota.sucursal_id)
+    notas = notes_query.all()
+    if not notas:
+        return []
+
+    note_ids = [n.id for n in notas]
+    folio_map = _build_folio_map(notas)
+
+    base_movs = {
+        mov.nota_id: mov
+        for mov in db.query(MovimientoContable)
+        .filter(
+            MovimientoContable.nota_id.in_(note_ids),
+            MovimientoContable.tipo.in_([tipo_op.value]),
+        )
+        .all()
+    }
+    reversos = (
+        db.query(MovimientoContable)
+        .filter(
+            MovimientoContable.nota_id.in_(note_ids),
+            MovimientoContable.tipo.in_(["reverso", "reverso_pago"]),
+        )
+        .all()
+    )
+    pagos = (
+        db.query(NotaPago)
+        .filter(NotaPago.nota_id.in_(note_ids))
+        .order_by(NotaPago.created_at.asc())
+        .all()
+    )
+
+    events: list[dict] = []
+    for nota in notas:
+        base_mov = base_movs.get(nota.id)
+        fecha = base_mov.created_at if base_mov and base_mov.created_at else nota.created_at
+        total = Decimal(str(nota.total_monto or 0))
+        events.append(
+            {
+                "fecha": fecha,
+                "orden": 0,
+                "tipo": "Nota aprobada",
+                "nota_id": nota.id,
+                "folio": folio_map.get(nota.id) or f"#{nota.id}",
+                "cargo": total,
+                "abono": Decimal("0"),
+                "metodo": "-",
+                "cuenta": "-",
+                "comentario": nota.comentarios_admin or "",
+            }
+        )
+
+    for pago in pagos:
+        cuenta_label = pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or "-")
+        events.append(
+            {
+                "fecha": pago.created_at,
+                "orden": 1,
+                "tipo": "Pago",
+                "nota_id": pago.nota_id,
+                "folio": folio_map.get(pago.nota_id) or f"#{pago.nota_id}",
+                "cargo": Decimal("0"),
+                "abono": Decimal(str(pago.monto or 0)),
+                "metodo": pago.metodo_pago or "-",
+                "cuenta": cuenta_label,
+                "comentario": pago.comentario or "",
+            }
+        )
+
+    for mov in reversos:
+        monto = abs(Decimal(str(mov.monto or 0)))
+        if mov.tipo == "reverso":
+            events.append(
+                {
+                    "fecha": mov.created_at,
+                    "orden": 2,
+                    "tipo": "Devolucion",
+                    "nota_id": mov.nota_id,
+                    "folio": folio_map.get(mov.nota_id) or f"#{mov.nota_id}",
+                    "cargo": Decimal("0"),
+                    "abono": monto,
+                    "metodo": mov.metodo_pago or "-",
+                    "cuenta": mov.cuenta.display_label if mov.cuenta else (mov.cuenta_financiera or "-"),
+                    "comentario": mov.comentario or "",
+                }
+            )
+        elif mov.tipo == "reverso_pago":
+            events.append(
+                {
+                    "fecha": mov.created_at,
+                    "orden": 3,
+                    "tipo": "Reverso pago",
+                    "nota_id": mov.nota_id,
+                    "folio": folio_map.get(mov.nota_id) or f"#{mov.nota_id}",
+                    "cargo": monto,
+                    "abono": Decimal("0"),
+                    "metodo": mov.metodo_pago or "-",
+                    "cuenta": mov.cuenta.display_label if mov.cuenta else (mov.cuenta_financiera or "-"),
+                    "comentario": mov.comentario or "",
+                }
+            )
+
+    events = [e for e in events if e["fecha"] is not None]
+    events.sort(key=lambda e: (e["fecha"], e["orden"]))
+
+    saldo = Decimal("0")
+    for event in events:
+        saldo += event["cargo"] - event["abono"]
+        event["saldo"] = saldo
+
+    return events
+
 def _signed_inventario_qty(mov: InventarioMovimiento) -> Decimal:
     qty = Decimal(str(mov.cantidad_kg or 0))
     if mov.tipo == "venta":
@@ -1703,6 +1831,15 @@ async def proveedor_record(
     notas_filtradas, folio_map = _filter_notes_by_query(notas, q)
     rows = _build_partner_record_rows(notas_filtradas, folio_map)
     summary = _aggregate_partner_record_summary(notas)
+    ledger_rows = _build_partner_ledger(
+        db,
+        partner_type="proveedor",
+        partner_id=proveedor_id,
+        allowed_suc_ids=allowed_suc_ids,
+    )
+    ledger_final = ledger_rows[-1]["saldo"] if ledger_rows else Decimal("0")
+    ledger_saldo_label = "Saldo acumulado (por pagar al proveedor)"
+    ledger_saldo_help = "Saldo positivo indica pendiente por pagar. Saldo negativo indica saldo a favor de la empresa."
 
     pagos_query = (
         db.query(NotaPago)
@@ -1735,6 +1872,10 @@ async def proveedor_record(
             "record_total_count": len(notas),
             "record_filtered_count": len(notas_filtradas),
             "summary": summary,
+            "ledger_rows": ledger_rows,
+            "ledger_final": ledger_final,
+            "ledger_saldo_label": ledger_saldo_label,
+            "ledger_saldo_help": ledger_saldo_help,
             "total_facturado_label": "Total compras aprobadas",
             "total_pagado_label": "Total pagado",
             "saldo_pendiente_label": "Saldo pendiente (por pagar al proveedor)",
@@ -1973,6 +2114,15 @@ async def cliente_record(
     notas_filtradas, folio_map = _filter_notes_by_query(notas, q)
     rows = _build_partner_record_rows(notas_filtradas, folio_map)
     summary = _aggregate_partner_record_summary(notas)
+    ledger_rows = _build_partner_ledger(
+        db,
+        partner_type="cliente",
+        partner_id=cliente_id,
+        allowed_suc_ids=allowed_suc_ids,
+    )
+    ledger_final = ledger_rows[-1]["saldo"] if ledger_rows else Decimal("0")
+    ledger_saldo_label = "Saldo acumulado (por cobrar al cliente)"
+    ledger_saldo_help = "Saldo positivo indica pendiente por cobrar. Saldo negativo indica saldo a favor del cliente."
 
     pagos_query = (
         db.query(NotaPago)
@@ -2005,6 +2155,10 @@ async def cliente_record(
             "record_total_count": len(notas),
             "record_filtered_count": len(notas_filtradas),
             "summary": summary,
+            "ledger_rows": ledger_rows,
+            "ledger_final": ledger_final,
+            "ledger_saldo_label": ledger_saldo_label,
+            "ledger_saldo_help": ledger_saldo_help,
             "total_facturado_label": "Total ventas aprobadas",
             "total_pagado_label": "Total cobrado",
             "saldo_pendiente_label": "Saldo pendiente (por cobrar al cliente)",
@@ -2614,14 +2768,127 @@ async def cuenta_detail(
     for pago in pagos:
         pagos_total += Decimal(str(pago.monto or 0))
 
-    notas_query = db.query(Nota).filter(Nota.cuenta_financiera_id == cuenta_id)
+    tipo_filter = None
     if owner_kind == "proveedor":
-        notas_query = notas_query.filter(Nota.tipo_operacion == TipoOperacion.compra)
+        tipo_filter = TipoOperacion.compra
     elif owner_kind == "cliente":
-        notas_query = notas_query.filter(Nota.tipo_operacion == TipoOperacion.venta)
+        tipo_filter = TipoOperacion.venta
+
+    notas_query = db.query(Nota).filter(Nota.cuenta_financiera_id == cuenta_id)
+    if tipo_filter:
+        notas_query = notas_query.filter(Nota.tipo_operacion == tipo_filter)
     notas = notas_query.order_by(Nota.created_at.desc()).limit(200).all()
+
+    notas_recon_query = db.query(Nota).filter(
+        Nota.cuenta_financiera_id == cuenta_id,
+        Nota.estado == NotaEstado.aprobada,
+    )
+    if tipo_filter:
+        notas_recon_query = notas_recon_query.filter(Nota.tipo_operacion == tipo_filter)
+    notas_recon = notas_recon_query.all()
+
+    pagos_match_query = (
+        db.query(NotaPago)
+        .join(Nota, NotaPago.nota_id == Nota.id)
+        .filter(
+            NotaPago.cuenta_id == cuenta_id,
+            Nota.cuenta_financiera_id == cuenta_id,
+            Nota.estado == NotaEstado.aprobada,
+        )
+    )
+    if tipo_filter:
+        pagos_match_query = pagos_match_query.filter(Nota.tipo_operacion == tipo_filter)
+    pagos_matched = pagos_match_query.all()
+
+    recon_map: dict[tuple[str, int], dict] = {}
+    for nota in notas_recon:
+        if nota.tipo_operacion == TipoOperacion.compra:
+            key = ("proveedor", nota.proveedor_id or 0)
+        else:
+            key = ("cliente", nota.cliente_id or 0)
+        if not key[1]:
+            continue
+        entry = recon_map.setdefault(
+            key,
+            {
+                "expected": Decimal("0"),
+                "paid": Decimal("0"),
+                "notas": 0,
+                "pagos": 0,
+            },
+        )
+        entry["expected"] += Decimal(str(nota.total_monto or 0))
+        entry["notas"] += 1
+
+    for pago in pagos_matched:
+        nota = pago.nota
+        if not nota:
+            continue
+        if nota.tipo_operacion == TipoOperacion.compra:
+            key = ("proveedor", nota.proveedor_id or 0)
+        else:
+            key = ("cliente", nota.cliente_id or 0)
+        if not key[1]:
+            continue
+        entry = recon_map.setdefault(
+            key,
+            {
+                "expected": Decimal("0"),
+                "paid": Decimal("0"),
+                "notas": 0,
+                "pagos": 0,
+            },
+        )
+        entry["paid"] += Decimal(str(pago.monto or 0))
+        entry["pagos"] += 1
+
+    pagos_sin_nota_query = (
+        db.query(NotaPago)
+        .outerjoin(Nota, NotaPago.nota_id == Nota.id)
+        .filter(NotaPago.cuenta_id == cuenta_id, Nota.id.is_(None))
+    )
+    pagos_sin_nota_count = pagos_sin_nota_query.order_by(None).count()
+    pagos_sin_nota = pagos_sin_nota_query.order_by(NotaPago.created_at.desc()).limit(50).all()
+
+    pagos_fuera_cuenta_query = (
+        db.query(NotaPago)
+        .join(Nota, NotaPago.nota_id == Nota.id)
+        .filter(
+            NotaPago.cuenta_id == cuenta_id,
+            or_(Nota.cuenta_financiera_id.is_(None), Nota.cuenta_financiera_id != cuenta_id),
+        )
+    )
+    if tipo_filter:
+        pagos_fuera_cuenta_query = pagos_fuera_cuenta_query.filter(Nota.tipo_operacion == tipo_filter)
+    pagos_fuera_cuenta_count = pagos_fuera_cuenta_query.order_by(None).count()
+    pagos_fuera_cuenta = pagos_fuera_cuenta_query.order_by(NotaPago.created_at.desc()).limit(50).all()
+
+    pagos_no_aprobados_query = (
+        db.query(NotaPago)
+        .join(Nota, NotaPago.nota_id == Nota.id)
+        .filter(
+            NotaPago.cuenta_id == cuenta_id,
+            Nota.cuenta_financiera_id == cuenta_id,
+            Nota.estado != NotaEstado.aprobada,
+        )
+    )
+    if tipo_filter:
+        pagos_no_aprobados_query = pagos_no_aprobados_query.filter(Nota.tipo_operacion == tipo_filter)
+    pagos_no_aprobados_count = pagos_no_aprobados_query.order_by(None).count()
+    pagos_no_aprobados = pagos_no_aprobados_query.order_by(NotaPago.created_at.desc()).limit(50).all()
+
     notas_for_folio = list(notas)
-    extra_ids = {p.nota_id for p in pagos if p.nota_id} - {n.id for n in notas}
+    note_ids = {n.id for n in notas}
+    for pago in pagos:
+        if pago.nota_id:
+            note_ids.add(pago.nota_id)
+    for pago in pagos_fuera_cuenta:
+        if pago.nota_id:
+            note_ids.add(pago.nota_id)
+    for pago in pagos_no_aprobados:
+        if pago.nota_id:
+            note_ids.add(pago.nota_id)
+    extra_ids = note_ids - {n.id for n in notas}
     if extra_ids:
         notas_extra = db.query(Nota).filter(Nota.id.in_(extra_ids)).all()
         notas_for_folio.extend(notas_extra)
@@ -2640,14 +2907,19 @@ async def cuenta_detail(
         else:
             saldo_favor_total += -saldo
 
-    suc_ids = {n.sucursal_id for n in notas if n.sucursal_id}
+    suc_ids = {n.sucursal_id for n in notas_for_folio if n.sucursal_id}
     sucursales_map = {}
     if suc_ids:
         sucursales_map = {
             s.id: s for s in db.query(Sucursal).filter(Sucursal.id.in_(suc_ids)).all()
         }
-    prov_ids = {n.proveedor_id for n in notas if n.proveedor_id}
-    cli_ids = {n.cliente_id for n in notas if n.cliente_id}
+    prov_ids = {n.proveedor_id for n in notas_for_folio if n.proveedor_id}
+    cli_ids = {n.cliente_id for n in notas_for_folio if n.cliente_id}
+    for key in recon_map:
+        if key[0] == "proveedor":
+            prov_ids.add(key[1])
+        elif key[0] == "cliente":
+            cli_ids.add(key[1])
     proveedores_map = {}
     clientes_map = {}
     if prov_ids:
@@ -2658,6 +2930,37 @@ async def cuenta_detail(
         clientes_map = {
             c.id: c for c in db.query(Cliente).filter(Cliente.id.in_(cli_ids)).all()
         }
+
+    recon_rows: list[dict] = []
+    for key, data in recon_map.items():
+        partner_kind, partner_id = key
+        partner = proveedores_map.get(partner_id) if partner_kind == "proveedor" else clientes_map.get(partner_id)
+        partner_name = partner.nombre_completo if partner else f"ID {partner_id}"
+        expected = data["expected"]
+        paid = data["paid"]
+        pending = expected - paid
+        recon_rows.append(
+            {
+                "partner_kind": partner_kind,
+                "partner_id": partner_id,
+                "partner_name": partner_name,
+                "expected": expected,
+                "paid": paid,
+                "pending": pending,
+                "notas": data["notas"],
+                "pagos": data["pagos"],
+            }
+        )
+    recon_rows.sort(key=lambda r: r["pending"], reverse=True)
+
+    recon_totals = {
+        "expected": sum((row["expected"] for row in recon_rows), Decimal("0")),
+        "paid": sum((row["paid"] for row in recon_rows), Decimal("0")),
+        "pending": sum((row["pending"] for row in recon_rows), Decimal("0")),
+        "notas": sum((row["notas"] for row in recon_rows), 0),
+        "pagos": sum((row["pagos"] for row in recon_rows), 0),
+    }
+    recon_alerts_total = pagos_sin_nota_count + pagos_fuera_cuenta_count + pagos_no_aprobados_count
 
     return templates.TemplateResponse(
         "admin/cuenta_detail.html",
@@ -2676,6 +2979,15 @@ async def cuenta_detail(
             "sucursales_map": sucursales_map,
             "proveedores_map": proveedores_map,
             "clientes_map": clientes_map,
+            "recon_rows": recon_rows,
+            "recon_totals": recon_totals,
+            "recon_alerts_total": recon_alerts_total,
+            "pagos_sin_nota": pagos_sin_nota,
+            "pagos_sin_nota_count": pagos_sin_nota_count,
+            "pagos_fuera_cuenta": pagos_fuera_cuenta,
+            "pagos_fuera_cuenta_count": pagos_fuera_cuenta_count,
+            "pagos_no_aprobados": pagos_no_aprobados,
+            "pagos_no_aprobados_count": pagos_no_aprobados_count,
             "movimientos_total": len(movimientos_view),
             "total_ingresos": total_ingresos,
             "total_egresos": total_egresos,
@@ -4207,6 +4519,11 @@ async def contabilidad_list(
     total_por_pagar = Decimal("0")
     saldo_favor_clientes = Decimal("0")
     saldo_favor_empresa = Decimal("0")
+    total_ventas_aprobadas = Decimal("0")
+    total_compras_aprobadas = Decimal("0")
+    total_cobrado_clientes = Decimal("0")
+    total_pagado_proveedores = Decimal("0")
+    notas_consideradas = 0
 
     def _is_internal_partner(nombre: str | None) -> bool:
         if not nombre or not nombre.startswith("Sucursal "):
@@ -4222,6 +4539,9 @@ async def contabilidad_list(
             nombre = clientes_map.get(nota.cliente_id)
             if _is_internal_partner(nombre):
                 continue
+            notas_consideradas += 1
+            total_ventas_aprobadas += total
+            total_cobrado_clientes += pagado
             if diff >= Decimal("0"):
                 total_por_cobrar += diff
             else:
@@ -4230,6 +4550,9 @@ async def contabilidad_list(
             nombre = proveedores_map.get(nota.proveedor_id)
             if _is_internal_partner(nombre):
                 continue
+            notas_consideradas += 1
+            total_compras_aprobadas += total
+            total_pagado_proveedores += pagado
             if diff >= Decimal("0"):
                 total_por_pagar += diff
             else:
@@ -4393,6 +4716,11 @@ async def contabilidad_list(
             "saldo_favor_empresa": saldo_favor_empresa,
             "saldo_neto": saldo_neto,
             "saldo_scope": saldo_scope,
+            "total_ventas_aprobadas": total_ventas_aprobadas,
+            "total_compras_aprobadas": total_compras_aprobadas,
+            "total_cobrado_clientes": total_cobrado_clientes,
+            "total_pagado_proveedores": total_pagado_proveedores,
+            "notas_consideradas": notas_consideradas,
             "partner_key": partner_key,
             "partner_context": partner_context,
             "partner_error": partner_error,
