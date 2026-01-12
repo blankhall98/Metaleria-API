@@ -18,9 +18,12 @@ depends_on = None
 def upgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
+    dialect = bind.dialect.name
 
     def has_column(table: str, column: str) -> bool:
         return any(col["name"] == column for col in inspector.get_columns(table))
+
+    bool_default = sa.text("0") if dialect == "sqlite" else sa.text("false")
 
     if not has_column("notas", "iva_incluido"):
         op.add_column(
@@ -29,7 +32,7 @@ def upgrade() -> None:
                 "iva_incluido",
                 sa.Boolean(),
                 nullable=False,
-                server_default=sa.text("0"),
+                server_default=bool_default,
             ),
         )
     if not has_column("notas", "iva_porcentaje"):
