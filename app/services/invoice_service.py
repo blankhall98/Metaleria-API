@@ -241,29 +241,39 @@ def build_invoice_pdf(db: Session, nota: Nota, generated_at: datetime | None = N
             pdf.text(draw_x, row_y, value, size=9)
         row_y -= row_height
 
+    total_kg = _format_decimal(nota.total_kg_neto, 2)
+    total_val = Decimal(str(nota.total_monto or 0))
+    pagado_val = Decimal(str(nota.monto_pagado or 0))
+    iva_val = Decimal(str(nota.iva_monto or 0))
+    subtotal_val = total_val - iva_val if iva_val else total_val
+    if subtotal_val < 0:
+        subtotal_val = Decimal("0")
+    try:
+        saldo_val = total_val - pagado_val
+    except (InvalidOperation, ValueError):
+        saldo_val = Decimal("0")
+    iva_pct_raw = nota.iva_porcentaje if nota.iva_porcentaje is not None else Decimal("16.00")
+    iva_pct = Decimal(str(iva_pct_raw or 0))
+    iva_label = "IVA (No incluido)"
+    if nota.iva_incluido:
+        iva_label = f"IVA ({_format_decimal(iva_pct, 2)}%)"
+
+    summary_lines = [
+        ("Total kg neto", f"{total_kg} kg"),
+        ("Subtotal", f"${_format_decimal(subtotal_val, 2)}"),
+        (iva_label, f"${_format_decimal(iva_val, 2)}"),
+        ("Total", f"${_format_decimal(total_val, 2)}"),
+        ("Pagado", f"${_format_decimal(pagado_val, 2)}"),
+        ("Saldo", f"${_format_decimal(saldo_val, 2)}"),
+    ]
+
     summary_top = max(row_y - 8, 140)
     box_width = 220
-    box_height = 70
+    box_height = 20 + (12 * len(summary_lines))
     box_x = right - box_width
     box_y = summary_top - box_height
     pdf.rect(box_x, box_y, box_width, box_height, stroke_gray=0.8)
     pdf.text(box_x + 10, summary_top - 16, "Resumen", size=10, font="F2")
-
-    total_kg = _format_decimal(nota.total_kg_neto, 2)
-    total = _format_decimal(nota.total_monto, 2)
-    pagado = _format_decimal(nota.monto_pagado, 2)
-    try:
-        saldo_val = Decimal(str(nota.total_monto or 0)) - Decimal(str(nota.monto_pagado or 0))
-    except (InvalidOperation, ValueError):
-        saldo_val = Decimal("0")
-    saldo = _format_decimal(saldo_val, 2)
-
-    summary_lines = [
-        ("Total kg neto", f"{total_kg} kg"),
-        ("Total", f"${total}"),
-        ("Pagado", f"${pagado}"),
-        ("Saldo", f"${saldo}"),
-    ]
     summary_y = summary_top - 30
     for label, value in summary_lines:
         pdf.text(box_x + 10, summary_y, label, size=9)

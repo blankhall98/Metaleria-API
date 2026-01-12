@@ -1,11 +1,13 @@
 # app/models/note.py
 import enum
+from decimal import Decimal
 from datetime import datetime, date
 
 from sqlalchemy import (
     Column,
     Integer,
     ForeignKey,
+    Boolean,
     Numeric,
     String,
     DateTime,
@@ -54,6 +56,10 @@ class Nota(Base):
     total_monto = Column(Numeric(12, 2), nullable=False, default=0)
     monto_pagado = Column(Numeric(12, 2), nullable=False, default=0)
     folio_seq = Column(Integer, nullable=True, index=True)
+
+    iva_incluido = Column(Boolean, nullable=False, default=False)
+    iva_porcentaje = Column(Numeric(5, 2), nullable=False, default=Decimal("16.00"))
+    iva_monto = Column(Numeric(12, 2), nullable=False, default=0)
 
     factura_url = Column(String(255), nullable=True)
     factura_generada_at = Column(DateTime, nullable=True)
@@ -150,6 +156,7 @@ class NotaPago(Base):
     nota_id = Column(Integer, ForeignKey("notas.id"), nullable=False, index=True)
     usuario_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     cuenta_id = Column(Integer, ForeignKey("cuentas.id"), nullable=True, index=True)
+    cuenta_scrap360_id = Column(Integer, ForeignKey("cuentas_scrap360.id"), nullable=True, index=True)
 
     monto = Column(Numeric(12, 2), nullable=False, default=0)
     metodo_pago = Column(String(50), nullable=True)
@@ -161,3 +168,4 @@ class NotaPago(Base):
     nota = relationship("Nota", back_populates="pagos")
     usuario = relationship("User")
     cuenta = relationship("Cuenta")
+    cuenta_scrap360 = relationship("CuentaScrap360")

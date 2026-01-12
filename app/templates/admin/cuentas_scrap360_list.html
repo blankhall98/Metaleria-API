@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Cuentas Scrap360 &middot; Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="text-uppercase text-muted small mb-1">Finanzas</p>
+        <h1 class="h4 text-white mb-0">Cuentas Scrap360</h1>
+    </div>
+    <a href="/web/admin/cuentas-scrap360/nueva" class="btn btn-primary btn-sm">Nueva cuenta</a>
+</div>
+
+<form method="get" class="row g-2 mb-3">
+    <div class="col-lg-4 col-md-6">
+        <label class="form-label">Buscar</label>
+        <input
+            type="text"
+            class="form-control"
+            name="q"
+            placeholder="Nombre de cuenta"
+            value="{{ q }}"
+        >
+    </div>
+    <div class="col-lg-3 col-md-6">
+        <label class="form-label">Tipo</label>
+        <select class="form-select" name="tipo">
+            <option value="">Todos</option>
+            {% for t in tipos_scrap360 %}
+                <option value="{{ t }}" {% if tipo == t %}selected{% endif %}>{{ t|capitalize }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-lg-3 col-md-6">
+        <label class="form-label">Sucursal</label>
+        <select class="form-select" name="sucursal_id">
+            <option value="">Todas</option>
+            {% for s in sucursales %}
+                <option value="{{ s.id }}" {% if sucursal_id and sucursal_id == s.id %}selected{% endif %}>{{ s.nombre }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-lg-2 col-md-4">
+        <label class="form-label">Estado</label>
+        <select class="form-select" name="activo">
+            <option value="">Todos</option>
+            <option value="1" {% if activo == '1' %}selected{% endif %}>Activa</option>
+            <option value="0" {% if activo == '0' %}selected{% endif %}>Inactiva</option>
+        </select>
+    </div>
+    <div class="col-md-2 d-grid">
+        <button class="btn btn-outline-primary">Filtrar</button>
+    </div>
+</form>
+
+{% if sucursal_error %}
+    <div class="alert alert-danger py-2 small mb-3">{{ sucursal_error }}</div>
+{% endif %}
+
+<div class="card hover-lift">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle mb-0">
+                <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Nombre</th>
+                    <th>Tipo</th>
+                    <th>Sucursales</th>
+                    <th class="text-end">Saldo inicial</th>
+                    <th class="text-end">Saldo actual</th>
+                    <th>Estado</th>
+                    <th></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for row in cuentas %}
+                    {% set cuenta = row.cuenta %}
+                    <tr>
+                        <td>{{ cuenta.id }}</td>
+                        <td class="fw-semibold">{{ cuenta.nombre }}</td>
+                        <td>{{ cuenta.tipo|capitalize }}</td>
+                        <td>{{ row.sucursales_label }}</td>
+                        <td class="text-end">${{ "%.2f"|format(cuenta.saldo_inicial or 0) }}</td>
+                        <td class="text-end">${{ "%.2f"|format(cuenta.saldo_actual or 0) }}</td>
+                        <td>
+                            <span class="badge {{ 'bg-success' if cuenta.activo else 'bg-secondary' }}">
+                                {{ 'Activa' if cuenta.activo else 'Inactiva' }}
+                            </span>
+                        </td>
+                        <td class="text-end">
+                            <div class="d-flex gap-2 justify-content-end flex-wrap">
+                                <a href="/web/admin/cuentas-scrap360/{{ cuenta.id }}" class="btn btn-sm btn-outline-primary">Detalle</a>
+                                <a href="/web/admin/cuentas-scrap360/{{ cuenta.id }}/editar" class="btn btn-sm btn-outline-secondary">Editar</a>
+                            </div>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if cuentas|length == 0 %}
+            <p class="text-muted small mt-3 mb-0">No hay cuentas con estos filtros.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

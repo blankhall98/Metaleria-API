@@ -65,6 +65,17 @@
                 <strong>{{ "%.2f"|format(nota.total_kg_neto or 0) }} kg</strong>
             </div>
             <div class="note-meta-item">
+                <span class="note-meta-label">Subtotal</span>
+                <strong>${{ "%.2f"|format(subtotal_sin_iva or 0) }}</strong>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">IVA{% if nota.iva_incluido %} ({{ "%.2f"|format(iva_pct or 0) }}%){% endif %}</span>
+                <strong>${{ "%.2f"|format(iva_monto or 0) }}</strong>
+                {% if not nota.iva_incluido %}
+                    <div class="note-meta-sub">No incluye IVA</div>
+                {% endif %}
+            </div>
+            <div class="note-meta-item">
                 <span class="note-meta-label">Total</span>
                 <strong>${{ "%.2f"|format(nota.total_monto or 0) }}</strong>
             </div>

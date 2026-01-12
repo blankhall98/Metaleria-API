@@ -36,6 +36,8 @@ from app.models import (
     Subpesaje,
     NotaPago,
     Cuenta,
+    CuentaScrap360,
+    CuentaScrap360Movimiento,
     Inventario,
     MovimientoContable,
     Material,
@@ -55,6 +57,7 @@ router = APIRouter(prefix="/web/admin", tags=["web-admin"])
 _TRANSFER_RELATED_NOTE_RE = re.compile(r"Nota (?:entrada|salida) #(\d+)")
 _FOLIO_QUERY_RE = re.compile(r"^\s*(\d+)[-_]([CV])[_-](\d+)\s*$", re.IGNORECASE)
 _CUENTA_TIPOS = ("cuenta bancaria", "cuenta cheques")
+_SCRAP360_TIPOS = ("transferencia", "cheques", "efectivo")
 
 
 def _movimiento_tipo_operacion(mov: MovimientoContable) -> str | None:
@@ -612,6 +615,52 @@ def _get_cuentas_for_nota(db: Session, nota: Nota) -> tuple[list[Cuenta], list[C
         )
     return cuentas_sucursal, cuentas_partner
 
+
+def _get_scrap360_cuentas_for_nota(db: Session, nota: Nota) -> list[CuentaScrap360]:
+    if not nota.sucursal_id:
+        return []
+    cuentas = (
+        db.query(CuentaScrap360)
+        .join(CuentaScrap360.sucursales)
+        .filter(
+            Sucursal.id == nota.sucursal_id,
+            CuentaScrap360.activo.is_(True),
+        )
+        .order_by(CuentaScrap360.nombre)
+        .all()
+    )
+    return cuentas
+
+
+def _apply_scrap360_adjustment(
+    db: Session,
+    *,
+    cuenta: CuentaScrap360,
+    monto: Decimal,
+    comentario: str | None,
+    usuario_id: int | None,
+    nota_id: int | None = None,
+    pago_id: int | None = None,
+) -> CuentaScrap360Movimiento:
+    monto_val = Decimal(str(monto or 0))
+    saldo_actual = Decimal(str(cuenta.saldo_actual or 0))
+    nuevo_saldo = saldo_actual + monto_val
+    cuenta.saldo_actual = nuevo_saldo
+    cuenta.updated_at = datetime.utcnow()
+    mov = CuentaScrap360Movimiento(
+        cuenta_id=cuenta.id,
+        nota_id=nota_id,
+        nota_pago_id=pago_id,
+        usuario_id=usuario_id,
+        tipo="ajuste",
+        monto=monto_val,
+        saldo_resultante=nuevo_saldo,
+        comentario=comentario or None,
+    )
+    db.add(cuenta)
+    db.add(mov)
+    return mov
+
 def _aggregate_partner_record_summary(notas: list[Nota]) -> dict:
     summary = {
         "total_notas": len(notas),
@@ -688,6 +737,16 @@ def _ensure_nota_access(
         return
     if nota.sucursal_id not in allowed_ids:
         raise HTTPException(status_code=403, detail="No tienes acceso a esta sucursal.")
+
+
+def _ensure_scrap360_access(cuenta: CuentaScrap360, allowed_ids: list[int] | None) -> None:
+    if allowed_ids is None:
+        return
+    if not cuenta.sucursales:
+        raise HTTPException(status_code=403, detail="No tienes acceso a esta cuenta.")
+    allowed = {s.id for s in cuenta.sucursales}
+    if not allowed.intersection(set(allowed_ids)):
+        raise HTTPException(status_code=403, detail="No tienes acceso a esta cuenta.")
 
 
 def _sync_admin_primary_sucursal(admin: User) -> None:
@@ -3005,6 +3064,410 @@ async def cuenta_detail(
     )
 
 
+# ---------- CUENTAS SCRAP360 ----------
+
+
+@router.get("/cuentas-scrap360")
+async def cuentas_scrap360_list(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    params = request.query_params
+    q = (params.get("q") or "").strip()
+    tipo = (params.get("tipo") or "").strip().lower()
+    activo = (params.get("activo") or "").strip()
+    sucursal_id = None
+    sucursal_error = None
+    if params.get("sucursal_id"):
+        try:
+            sucursal_id = int(params.get("sucursal_id"))
+        except ValueError:
+            sucursal_id = None
+            sucursal_error = "Sucursal invalida."
+
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
+
+    query = db.query(CuentaScrap360)
+    if q:
+        term = f"%{q}%"
+        query = query.filter(CuentaScrap360.nombre.ilike(term))
+    if tipo:
+        if tipo in _SCRAP360_TIPOS:
+            query = query.filter(CuentaScrap360.tipo == tipo)
+        else:
+            tipo = ""
+    if activo in ("1", "0"):
+        query = query.filter(CuentaScrap360.activo.is_(activo == "1"))
+
+    if allowed_suc_ids:
+        query = query.join(CuentaScrap360.sucursales).filter(Sucursal.id.in_(allowed_suc_ids))
+    if sucursal_id:
+        if allowed_suc_ids and sucursal_id not in allowed_suc_ids:
+            sucursal_id = None
+            sucursal_error = "Sucursal no autorizada."
+        else:
+            query = query.join(CuentaScrap360.sucursales).filter(Sucursal.id == sucursal_id)
+
+    cuentas = query.distinct().order_by(CuentaScrap360.nombre).all()
+    cuentas_view = []
+    for cuenta in cuentas:
+        suc_labels = ", ".join([s.nombre for s in cuenta.sucursales]) if cuenta.sucursales else "-"
+        cuentas_view.append(
+            {
+                "cuenta": cuenta,
+                "sucursales_label": suc_labels,
+            }
+        )
+
+    return templates.TemplateResponse(
+        "admin/cuentas_scrap360_list.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "cuentas": cuentas_view,
+            "sucursales": sucursales,
+            "q": q,
+            "tipo": tipo,
+            "activo": activo,
+            "sucursal_id": sucursal_id,
+            "sucursal_error": sucursal_error,
+            "tipos_scrap360": _SCRAP360_TIPOS,
+        },
+    )
+
+
+@router.get("/cuentas-scrap360/nueva")
+async def cuentas_scrap360_new_get(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
+    return templates.TemplateResponse(
+        "admin/cuenta_scrap360_form.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "cuenta": None,
+            "sucursales": sucursales,
+            "selected_sucursales": [],
+            "tipos_scrap360": _SCRAP360_TIPOS,
+            "error": None,
+            "form_nombre": "",
+            "form_tipo": "",
+            "form_saldo": "",
+            "form_activo": True,
+        },
+    )
+
+
+@router.post("/cuentas-scrap360/nueva")
+async def cuentas_scrap360_new_post(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
+    form = await request.form()
+    nombre = (form.get("nombre") or "").strip()
+    tipo = (form.get("tipo") or "").strip().lower()
+    saldo_raw = (form.get("saldo_inicial") or "").strip()
+    activo = bool(form.get("activo"))
+    sucursal_ids_raw = form.getlist("sucursal_ids")
+
+    selected_ids: list[int] = []
+    for raw in sucursal_ids_raw:
+        try:
+            val = int(raw)
+        except (TypeError, ValueError):
+            continue
+        selected_ids.append(val)
+
+    def render_error(msg: str):
+        return templates.TemplateResponse(
+            "admin/cuenta_scrap360_form.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "cuenta": None,
+                "sucursales": sucursales,
+                "selected_sucursales": selected_ids,
+                "tipos_scrap360": _SCRAP360_TIPOS,
+                "error": msg,
+                "form_nombre": nombre,
+                "form_tipo": tipo,
+                "form_saldo": saldo_raw,
+                "form_activo": activo,
+            },
+            status_code=400,
+        )
+
+    if not nombre:
+        return render_error("El nombre es obligatorio.")
+    if tipo not in _SCRAP360_TIPOS:
+        return render_error("Tipo de cuenta invalido.")
+    if not selected_ids:
+        return render_error("Selecciona al menos una sucursal.")
+    if allowed_suc_ids:
+        for sid in selected_ids:
+            if sid not in allowed_suc_ids:
+                return render_error("Sucursal no autorizada.")
+    saldo_inicial = Decimal("0")
+    if saldo_raw:
+        try:
+            saldo_inicial = Decimal(str(saldo_raw))
+        except (InvalidOperation, TypeError):
+            return render_error("El saldo inicial es invalido.")
+
+    sucursales_sel = db.query(Sucursal).filter(Sucursal.id.in_(selected_ids)).all()
+    if len(sucursales_sel) != len(set(selected_ids)):
+        return render_error("Sucursal no encontrada.")
+
+    cuenta = CuentaScrap360(
+        nombre=nombre,
+        tipo=tipo,
+        saldo_inicial=saldo_inicial,
+        saldo_actual=Decimal("0"),
+        activo=activo,
+    )
+    cuenta.sucursales = sucursales_sel
+    db.add(cuenta)
+    db.flush()
+
+    if saldo_inicial != Decimal("0"):
+        _apply_scrap360_adjustment(
+            db,
+            cuenta=cuenta,
+            monto=saldo_inicial,
+            comentario="Saldo inicial",
+            usuario_id=current_user.get("id"),
+        )
+    else:
+        cuenta.saldo_actual = saldo_inicial
+        cuenta.updated_at = datetime.utcnow()
+        db.add(cuenta)
+
+    db.commit()
+    return RedirectResponse(url=f"/web/admin/cuentas-scrap360/{cuenta.id}", status_code=303)
+
+
+@router.get("/cuentas-scrap360/{cuenta_id}")
+async def cuenta_scrap360_detail(
+    cuenta_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    cuenta = db.get(CuentaScrap360, cuenta_id)
+    if not cuenta:
+        raise HTTPException(status_code=404, detail="Cuenta Scrap360 no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_scrap360_access(cuenta, allowed_suc_ids)
+
+    movimientos = (
+        db.query(CuentaScrap360Movimiento)
+        .filter(CuentaScrap360Movimiento.cuenta_id == cuenta_id)
+        .order_by(CuentaScrap360Movimiento.created_at.desc())
+        .limit(200)
+        .all()
+    )
+    suc_labels = ", ".join([s.nombre for s in cuenta.sucursales]) if cuenta.sucursales else "-"
+    ajuste_ok = request.query_params.get("ajuste") == "1"
+
+    return templates.TemplateResponse(
+        "admin/cuenta_scrap360_detail.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "cuenta": cuenta,
+            "sucursales_label": suc_labels,
+            "movimientos": movimientos,
+            "movimientos_total": len(movimientos),
+            "ajuste_ok": ajuste_ok,
+            "error": None,
+        },
+    )
+
+
+@router.get("/cuentas-scrap360/{cuenta_id}/editar")
+async def cuenta_scrap360_edit_get(
+    cuenta_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    cuenta = db.get(CuentaScrap360, cuenta_id)
+    if not cuenta:
+        raise HTTPException(status_code=404, detail="Cuenta Scrap360 no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_scrap360_access(cuenta, allowed_suc_ids)
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
+    selected_ids = [s.id for s in cuenta.sucursales]
+    return templates.TemplateResponse(
+        "admin/cuenta_scrap360_form.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "cuenta": cuenta,
+            "sucursales": sucursales,
+            "selected_sucursales": selected_ids,
+            "tipos_scrap360": _SCRAP360_TIPOS,
+            "error": None,
+            "form_nombre": cuenta.nombre,
+            "form_tipo": cuenta.tipo,
+            "form_saldo": str(cuenta.saldo_inicial or ""),
+            "form_activo": cuenta.activo,
+        },
+    )
+
+
+@router.post("/cuentas-scrap360/{cuenta_id}/editar")
+async def cuenta_scrap360_edit_post(
+    cuenta_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    cuenta = db.get(CuentaScrap360, cuenta_id)
+    if not cuenta:
+        raise HTTPException(status_code=404, detail="Cuenta Scrap360 no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_scrap360_access(cuenta, allowed_suc_ids)
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
+    form = await request.form()
+    nombre = (form.get("nombre") or "").strip()
+    tipo = (form.get("tipo") or "").strip().lower()
+    activo = bool(form.get("activo"))
+    sucursal_ids_raw = form.getlist("sucursal_ids")
+    selected_ids: list[int] = []
+    for raw in sucursal_ids_raw:
+        try:
+            val = int(raw)
+        except (TypeError, ValueError):
+            continue
+        selected_ids.append(val)
+
+    def render_error(msg: str):
+        return templates.TemplateResponse(
+            "admin/cuenta_scrap360_form.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "cuenta": cuenta,
+                "sucursales": sucursales,
+                "selected_sucursales": selected_ids,
+                "tipos_scrap360": _SCRAP360_TIPOS,
+                "error": msg,
+                "form_nombre": nombre,
+                "form_tipo": tipo,
+                "form_saldo": str(cuenta.saldo_inicial or ""),
+                "form_activo": activo,
+            },
+            status_code=400,
+        )
+
+    if not nombre:
+        return render_error("El nombre es obligatorio.")
+    if tipo not in _SCRAP360_TIPOS:
+        return render_error("Tipo de cuenta invalido.")
+    if not selected_ids:
+        return render_error("Selecciona al menos una sucursal.")
+    if allowed_suc_ids:
+        for sid in selected_ids:
+            if sid not in allowed_suc_ids:
+                return render_error("Sucursal no autorizada.")
+
+    sucursales_sel = db.query(Sucursal).filter(Sucursal.id.in_(selected_ids)).all()
+    if len(sucursales_sel) != len(set(selected_ids)):
+        return render_error("Sucursal no encontrada.")
+
+    cuenta.nombre = nombre
+    cuenta.tipo = tipo
+    cuenta.activo = activo
+    cuenta.sucursales = sucursales_sel
+    cuenta.updated_at = datetime.utcnow()
+    db.add(cuenta)
+    db.commit()
+    return RedirectResponse(url=f"/web/admin/cuentas-scrap360/{cuenta.id}", status_code=303)
+
+
+@router.post("/cuentas-scrap360/{cuenta_id}/ajuste")
+async def cuenta_scrap360_ajuste(
+    cuenta_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    cuenta = db.get(CuentaScrap360, cuenta_id)
+    if not cuenta:
+        raise HTTPException(status_code=404, detail="Cuenta Scrap360 no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_scrap360_access(cuenta, allowed_suc_ids)
+
+    movimientos = (
+        db.query(CuentaScrap360Movimiento)
+        .filter(CuentaScrap360Movimiento.cuenta_id == cuenta_id)
+        .order_by(CuentaScrap360Movimiento.created_at.desc())
+        .limit(200)
+        .all()
+    )
+    suc_labels = ", ".join([s.nombre for s in cuenta.sucursales]) if cuenta.sucursales else "-"
+
+    form = await request.form()
+    monto_raw = (form.get("monto") or "").strip()
+    comentario = (form.get("comentario") or "").strip()
+    def render_error(msg: str):
+        return templates.TemplateResponse(
+            "admin/cuenta_scrap360_detail.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "cuenta": cuenta,
+                "sucursales_label": suc_labels,
+                "movimientos": movimientos,
+                "movimientos_total": len(movimientos),
+                "ajuste_ok": False,
+                "error": msg,
+            },
+            status_code=400,
+        )
+
+    if not monto_raw:
+        return render_error("Debes indicar el monto del ajuste.")
+    try:
+        monto_val = Decimal(str(monto_raw))
+    except (InvalidOperation, TypeError):
+        return render_error("El monto del ajuste es invalido.")
+    if monto_val == Decimal("0"):
+        return render_error("El ajuste no puede ser 0.")
+
+    _apply_scrap360_adjustment(
+        db,
+        cuenta=cuenta,
+        monto=monto_val,
+        comentario=comentario or "Ajuste manual",
+        usuario_id=current_user.get("id"),
+    )
+    db.commit()
+    return RedirectResponse(url=f"/web/admin/cuentas-scrap360/{cuenta.id}?ajuste=1", status_code=303)
+
+
 # ---------- NOTAS ----------
 
 
@@ -3521,6 +3984,13 @@ def _render_nota_detail(
     saldo_pendiente = Decimal(str(nota.total_monto or 0)) - Decimal(str(nota.monto_pagado or 0))
     if saldo_pendiente < Decimal("0"):
         saldo_pendiente = Decimal("0")
+    iva_monto = Decimal(str(nota.iva_monto or 0))
+    total_monto = Decimal(str(nota.total_monto or 0))
+    subtotal_sin_iva = total_monto - iva_monto if iva_monto else total_monto
+    if subtotal_sin_iva < Decimal("0"):
+        subtotal_sin_iva = Decimal("0")
+    iva_pct_raw = nota.iva_porcentaje if nota.iva_porcentaje is not None else Decimal("16.00")
+    iva_pct = Decimal(str(iva_pct_raw or 0))
     folio = note_service.format_folio(
         sucursal_id=nota.sucursal_id,
         tipo_operacion=nota.tipo_operacion,
@@ -3536,6 +4006,7 @@ def _render_nota_detail(
             if transfer_related and transfer_related.sucursal_id:
                 transfer_related_sucursal = db.get(Sucursal, transfer_related.sucursal_id)
     cuentas_sucursal, cuentas_partner = _get_cuentas_for_nota(db, nota)
+    cuentas_scrap360 = _get_scrap360_cuentas_for_nota(db, nota)
     cuentas_partner_label = "Proveedor" if nota.tipo_operacion == TipoOperacion.compra else "Cliente"
     base_form_state = {
         "form_metodo": None,
@@ -3543,10 +4014,14 @@ def _render_nota_detail(
         "form_fecha": None,
         "form_comentarios": None,
         "form_pagado": None,
+        "form_cuenta_scrap360": None,
+        "form_iva_incluido": None,
+        "form_iva_porcentaje": None,
         "form_pago_monto": None,
         "form_pago_metodo": None,
         "form_pago_cuenta": None,
         "form_pago_comentario": None,
+        "form_pago_cuenta_scrap360": None,
     }
     context = {
         "request": request,
@@ -3563,6 +4038,9 @@ def _render_nota_detail(
         "price_map_json": price_map_json,
         "price_map_by_material": price_map_by_material,
         "saldo_pendiente": saldo_pendiente,
+        "subtotal_sin_iva": subtotal_sin_iva,
+        "iva_monto": iva_monto,
+        "iva_pct": iva_pct,
         "folio": folio,
         "is_transfer": is_transfer,
         "transfer_related": transfer_related,
@@ -3570,6 +4048,7 @@ def _render_nota_detail(
         "cuentas_sucursal": cuentas_sucursal,
         "cuentas_partner": cuentas_partner,
         "cuentas_partner_label": cuentas_partner_label,
+        "cuentas_scrap360": cuentas_scrap360,
         "pago_updated": pago_updated,
         "precios_updated": precios_updated,
         "edit_updated": edit_updated,
@@ -3603,6 +4082,13 @@ def _render_nota_edit(
     saldo_pendiente = Decimal(str(nota.total_monto or 0)) - Decimal(str(nota.monto_pagado or 0))
     if saldo_pendiente < Decimal("0"):
         saldo_pendiente = Decimal("0")
+    iva_monto = Decimal(str(nota.iva_monto or 0))
+    total_monto = Decimal(str(nota.total_monto or 0))
+    subtotal_sin_iva = total_monto - iva_monto if iva_monto else total_monto
+    if subtotal_sin_iva < Decimal("0"):
+        subtotal_sin_iva = Decimal("0")
+    iva_pct_raw = nota.iva_porcentaje if nota.iva_porcentaje is not None else Decimal("16.00")
+    iva_pct = Decimal(str(iva_pct_raw or 0))
     folio = note_service.format_folio(
         sucursal_id=nota.sucursal_id,
         tipo_operacion=nota.tipo_operacion,
@@ -3631,6 +4117,9 @@ def _render_nota_edit(
             "trabajador": trabajador,
             "tipos_cliente": list(TipoCliente),
             "saldo_pendiente": saldo_pendiente,
+            "subtotal_sin_iva": subtotal_sin_iva,
+            "iva_monto": iva_monto,
+            "iva_pct": iva_pct,
             "folio": folio,
             "is_transfer": is_transfer,
             "transfer_related": transfer_related,
@@ -3979,13 +4468,19 @@ async def notas_aprobar(
     fecha_caducidad_pago_raw = (form.get("fecha_caducidad_pago") or "").strip()
     metodo_pago = (form.get("metodo_pago") or "").strip().lower()
     cuenta_financiera = (form.get("cuenta_financiera") or "").strip()
+    cuenta_scrap360_raw = (form.get("cuenta_scrap360_id") or "").strip()
     monto_pagado_raw = (form.get("monto_pagado") or "").strip()
+    iva_incluido = form.get("iva_incluido") is not None
+    iva_porcentaje_raw = (form.get("iva_porcentaje") or "").strip()
     form_state = {
         "form_metodo": metodo_pago,
         "form_cuenta": cuenta_financiera,
         "form_fecha": fecha_caducidad_pago_raw,
         "form_comentarios": comentarios_admin,
         "form_pagado": monto_pagado_raw,
+        "form_cuenta_scrap360": cuenta_scrap360_raw,
+        "form_iva_incluido": iva_incluido,
+        "form_iva_porcentaje": iva_porcentaje_raw,
     }
 
     fecha_caducidad_pago = None
@@ -4037,6 +4532,34 @@ async def notas_aprobar(
                 form_state=form_state,
             )
 
+    iva_porcentaje = None
+    if iva_porcentaje_raw:
+        try:
+            iva_porcentaje = Decimal(str(iva_porcentaje_raw))
+        except (InvalidOperation, TypeError):
+            return _render_nota_detail(
+                request,
+                db,
+                current_user,
+                nota,
+                error="El porcentaje de IVA es invalido.",
+                form_state=form_state,
+            )
+
+    cuenta_scrap360_id = None
+    if cuenta_scrap360_raw:
+        try:
+            cuenta_scrap360_id = int(cuenta_scrap360_raw)
+        except (TypeError, ValueError):
+            return _render_nota_detail(
+                request,
+                db,
+                current_user,
+                nota,
+                error="La cuenta Scrap360 es invalida.",
+                form_state=form_state,
+            )
+
     try:
         note_service.approve_note(
             db,
@@ -4047,7 +4570,10 @@ async def notas_aprobar(
             fecha_caducidad_pago=fecha_caducidad_pago,
             metodo_pago=metodo_pago,
             cuenta_financiera=cuenta_financiera or None,
+            cuenta_scrap360_id=cuenta_scrap360_id,
             monto_pagado=monto_pagado,
+            iva_incluido=iva_incluido,
+            iva_porcentaje=iva_porcentaje,
         )
     except ValueError as e:
         return _render_nota_detail(
@@ -4100,13 +4626,19 @@ async def notas_actualizar_precios(
     fecha_caducidad_pago_raw = (form.get("fecha_caducidad_pago") or "").strip()
     metodo_pago = (form.get("metodo_pago") or "").strip().lower()
     cuenta_financiera = (form.get("cuenta_financiera") or "").strip()
+    cuenta_scrap360_raw = (form.get("cuenta_scrap360_id") or "").strip()
     monto_pagado_raw = (form.get("monto_pagado") or "").strip()
+    iva_incluido = form.get("iva_incluido") is not None
+    iva_porcentaje_raw = (form.get("iva_porcentaje") or "").strip()
     form_state = {
         "form_metodo": metodo_pago,
         "form_cuenta": cuenta_financiera,
         "form_fecha": fecha_caducidad_pago_raw,
         "form_comentarios": comentarios_admin,
         "form_pagado": monto_pagado_raw,
+        "form_cuenta_scrap360": cuenta_scrap360_raw,
+        "form_iva_incluido": iva_incluido,
+        "form_iva_porcentaje": iva_porcentaje_raw,
     }
 
     tipo_cliente_map: dict[int, TipoCliente] = {}
@@ -4169,12 +4701,14 @@ async def notas_actualizar_pago(
     monto_pagado_raw = (form.get("monto_pagado") or "").strip()
     metodo_pago = (form.get("pago_metodo") or "").strip().lower()
     cuenta_financiera = (form.get("pago_cuenta") or "").strip()
+    cuenta_scrap360_raw = (form.get("pago_cuenta_scrap360_id") or "").strip()
     comentario = (form.get("pago_comentario") or "").strip()
     form_state = {
         "form_pago_monto": monto_pagado_raw,
         "form_pago_metodo": metodo_pago,
         "form_pago_cuenta": cuenta_financiera,
         "form_pago_comentario": comentario,
+        "form_pago_cuenta_scrap360": cuenta_scrap360_raw,
     }
     if not monto_pagado_raw:
         return _render_nota_detail(
@@ -4197,6 +4731,20 @@ async def notas_actualizar_pago(
             form_state=form_state,
         )
 
+    cuenta_scrap360_id = None
+    if cuenta_scrap360_raw:
+        try:
+            cuenta_scrap360_id = int(cuenta_scrap360_raw)
+        except (TypeError, ValueError):
+            return _render_nota_detail(
+                request,
+                db,
+                current_user,
+                nota,
+                error="La cuenta Scrap360 es invalida.",
+                form_state=form_state,
+            )
+
     try:
         note_service.add_payment(
             db,
@@ -4205,6 +4753,7 @@ async def notas_actualizar_pago(
             usuario_id=current_user.get("id"),
             metodo_pago=metodo_pago or None,
             cuenta_financiera=cuenta_financiera or None,
+            cuenta_scrap360_id=cuenta_scrap360_id,
             comentario=comentario or None,
         )
     except ValueError as e:

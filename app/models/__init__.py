@@ -3,7 +3,7 @@ from .user import User, UserRole, UserStatus
 from .branch import Sucursal, SucursalStatus
 from .material import Material
 from .pricing import TablaPrecio, TipoOperacion, TipoCliente, PriceChangeLog
-from .account import Cuenta
+from .account import Cuenta, CuentaScrap360, CuentaScrap360Movimiento, cuentas_scrap360_sucursales
 from .partner import Proveedor, Cliente, ProveedorPlaca, ClientePlaca
 from .note import Nota, NotaEstado, NotaMaterial, Subpesaje, NotaOriginal, NotaEvidenciaExtra, NotaPago
 from .inventory import Inventario, InventarioMovimiento, MovimientoContable
@@ -20,6 +20,9 @@ __all__ = [
     "TipoCliente",
     "PriceChangeLog",
     "Cuenta",
+    "CuentaScrap360",
+    "CuentaScrap360Movimiento",
+    "cuentas_scrap360_sucursales",
     "Proveedor",
     "Cliente",
     "ProveedorPlaca",

@@ -23,6 +23,8 @@ from app.models import (
     NotaOriginal,
     NotaEvidenciaExtra,
     Cuenta,
+    CuentaScrap360,
+    CuentaScrap360Movimiento,
 )
 
 
@@ -58,12 +60,25 @@ def _recalc_totals(nota: Nota) -> None:
     total_bruto = _sum_decimal(m.kg_bruto for m in nota.materiales)
     total_desc = _sum_decimal(m.kg_descuento for m in nota.materiales)
     total_neto = _sum_decimal(m.kg_neto for m in nota.materiales)
-    total_monto = _sum_decimal(m.subtotal for m in nota.materiales if m.subtotal is not None)
+    base_total = _sum_decimal(m.subtotal for m in nota.materiales if m.subtotal is not None)
 
     nota.total_kg_bruto = total_bruto
     nota.total_kg_descuento = total_desc
     nota.total_kg_neto = total_neto
-    nota.total_monto = total_monto
+
+    iva_incluido = bool(nota.iva_incluido)
+    iva_pct_raw = nota.iva_porcentaje if nota.iva_porcentaje is not None else Decimal("16.00")
+    iva_pct = Decimal(str(iva_pct_raw or 0))
+    if iva_pct < 0:
+        iva_pct = Decimal("0")
+    iva_monto = Decimal("0")
+    if iva_incluido and iva_pct > 0 and base_total > 0:
+        iva_monto = (base_total * iva_pct) / Decimal("100")
+
+    nota.iva_incluido = iva_incluido
+    nota.iva_porcentaje = iva_pct
+    nota.iva_monto = iva_monto
+    nota.total_monto = base_total + iva_monto if iva_incluido else base_total
 
 
 def _as_str(value: object) -> str | None:
@@ -125,6 +140,9 @@ def _build_nota_snapshot(nota: Nota) -> dict:
             "kg_descuento": _as_str(nota.total_kg_descuento),
             "kg_neto": _as_str(nota.total_kg_neto),
             "monto": _as_str(nota.total_monto),
+            "iva_incluido": bool(nota.iva_incluido),
+            "iva_porcentaje": _as_str(nota.iva_porcentaje),
+            "iva_monto": _as_str(nota.iva_monto),
         },
         "materiales": materials,
         "evidencias_extra": extra_evidencias,
@@ -219,6 +237,15 @@ def _parse_cuenta_id(raw: str | None) -> int | None:
         return None
 
 
+def _parse_cuenta_scrap360_id(raw: str | None) -> int | None:
+    if not raw:
+        return None
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+
+
 def _resolve_cuenta_id(db: Session, nota: Nota, raw: str | None) -> int | None:
     cuenta_id = _parse_cuenta_id(raw)
     if cuenta_id is not None:
@@ -263,6 +290,73 @@ def _validate_cuenta_for_nota(db: Session, nota: Nota, cuenta_id: int) -> Cuenta
     if nota.tipo_operacion == TipoOperacion.venta and cuenta.cliente_id == nota.cliente_id:
         return cuenta
     raise ValueError("La cuenta seleccionada no esta vinculada a esta nota.")
+
+
+def _validate_cuenta_scrap360_for_nota(
+    db: Session,
+    nota: Nota,
+    cuenta_id: int | None,
+    metodo_pago: str | None,
+) -> CuentaScrap360:
+    if cuenta_id is None:
+        raise ValueError("Selecciona una cuenta Scrap360 para registrar el pago.")
+    cuenta = db.get(CuentaScrap360, cuenta_id)
+    if not cuenta or not cuenta.activo:
+        raise ValueError("La cuenta Scrap360 seleccionada no existe o esta inactiva.")
+    if cuenta.sucursales and nota.sucursal_id:
+        allowed = {s.id for s in cuenta.sucursales}
+        if nota.sucursal_id not in allowed:
+            raise ValueError("La cuenta Scrap360 no esta vinculada a esta sucursal.")
+    if metodo_pago:
+        metodo = metodo_pago.strip().lower()
+        tipo = (cuenta.tipo or "").strip().lower()
+        tipo_map = {
+            "transferencia": "transferencia",
+            "cheque": "cheques",
+            "efectivo": "efectivo",
+        }
+        expected = tipo_map.get(metodo)
+        if expected and tipo and tipo != expected:
+            raise ValueError("La cuenta Scrap360 no coincide con el metodo de pago.")
+    return cuenta
+
+
+def _registrar_movimiento_cuenta_scrap360(
+    db: Session,
+    *,
+    cuenta: CuentaScrap360,
+    nota: Nota | None,
+    pago_id: int | None,
+    usuario_id: int | None,
+    tipo: str,
+    monto: Decimal,
+    comentario: str | None,
+) -> CuentaScrap360Movimiento:
+    monto_abs = abs(Decimal(str(monto or 0)))
+    saldo_actual = Decimal(str(cuenta.saldo_actual or 0))
+    if tipo == "ingreso":
+        nuevo_saldo = saldo_actual + monto_abs
+    elif tipo == "egreso":
+        nuevo_saldo = saldo_actual - monto_abs
+    elif tipo == "ajuste":
+        nuevo_saldo = saldo_actual + Decimal(str(monto or 0))
+    else:
+        raise ValueError("Tipo de movimiento Scrap360 invalido.")
+    cuenta.saldo_actual = nuevo_saldo
+    cuenta.updated_at = datetime.utcnow()
+    mov = CuentaScrap360Movimiento(
+        cuenta_id=cuenta.id,
+        nota_id=nota.id if nota else None,
+        nota_pago_id=pago_id,
+        usuario_id=usuario_id,
+        tipo=tipo,
+        monto=monto_abs if tipo != "ajuste" else Decimal(str(monto or 0)),
+        saldo_resultante=nuevo_saldo,
+        comentario=comentario or None,
+    )
+    db.add(cuenta)
+    db.add(mov)
+    return mov
 
 
 def apply_prices(
@@ -517,6 +611,7 @@ def add_payment(
     usuario_id: int | None = None,
     metodo_pago: str | None = None,
     cuenta_financiera: str | None = None,
+    cuenta_scrap360_id: int | None = None,
     comentario: str | None = None,
     commit: bool = True,
     registrar_contable: bool = True,
@@ -536,10 +631,13 @@ def add_payment(
         cuenta = _validate_cuenta_for_nota(db, nota, cuenta_id)
         cuenta_label = cuenta.display_label
 
+    cuenta_scrap = _validate_cuenta_scrap360_for_nota(db, nota, cuenta_scrap360_id, metodo)
+
     pago = NotaPago(
         nota_id=nota.id,
         usuario_id=usuario_id,
         cuenta_id=cuenta_id,
+        cuenta_scrap360_id=cuenta_scrap.id,
         monto=monto,
         metodo_pago=metodo,
         cuenta_financiera=cuenta_label or (cuenta_financiera or None),
@@ -549,6 +647,7 @@ def add_payment(
     nota.updated_at = datetime.utcnow()
     db.add(pago)
     db.add(nota)
+    db.flush()
     if registrar_contable:
         _registrar_movimiento_contable(
             db,
@@ -560,6 +659,17 @@ def add_payment(
             cuenta_id=cuenta_id,
             monto=monto,
             tipo="pago",
+        )
+        tipo_mov = "egreso" if nota.tipo_operacion == TipoOperacion.compra else "ingreso"
+        _registrar_movimiento_cuenta_scrap360(
+            db,
+            cuenta=cuenta_scrap,
+            nota=nota,
+            pago_id=pago.id,
+            usuario_id=usuario_id,
+            tipo=tipo_mov,
+            monto=monto,
+            comentario=comentario or f"Pago nota #{nota.id}",
         )
     if commit:
         db.commit()
@@ -626,7 +736,10 @@ def approve_note(
     fecha_caducidad_pago: date | None = None,
     metodo_pago: str | None = None,
     cuenta_financiera: str | None = None,
+    cuenta_scrap360_id: int | None = None,
     monto_pagado: Decimal | None = None,
+    iva_incluido: bool | None = None,
+    iva_porcentaje: Decimal | None = None,
 ) -> Nota:
     """
     Aprueba una nota aplicando precios, recalculando totales y registrando inventario/contable.
@@ -637,6 +750,17 @@ def approve_note(
         for nm in nota.materiales:
             if nm.id in tipo_cliente_map:
                 nm.tipo_cliente = tipo_cliente_map[nm.id]
+    if iva_incluido is not None:
+        nota.iva_incluido = bool(iva_incluido)
+    iva_pct = None
+    if iva_porcentaje is not None:
+        iva_pct = Decimal(str(iva_porcentaje))
+    elif nota.iva_porcentaje is None:
+        iva_pct = Decimal("16.00")
+    if iva_pct is not None:
+        if iva_pct < 0 or iva_pct > 100:
+            raise ValueError("El porcentaje de IVA debe estar entre 0 y 100.")
+        nota.iva_porcentaje = iva_pct
     apply_prices(db, nota)
     _validar_stock_para_venta(db, nota)
     metodo_pago_clean = (metodo_pago or "").strip().lower() or None
@@ -691,6 +815,7 @@ def approve_note(
             usuario_id=admin_id,
             metodo_pago=metodo_pago_clean,
             cuenta_financiera=cuenta_label or (str(cuenta_id) if cuenta_id else None),
+            cuenta_scrap360_id=cuenta_scrap360_id,
             comentario="Pago inicial",
             commit=False,
             registrar_contable=True,
@@ -832,6 +957,20 @@ def cancel_approved_note(
             monto=Decimal(str(pago.monto or 0)) * Decimal("-1"),
             tipo="reverso_pago",
         )
+        if pago.cuenta_scrap360_id:
+            cuenta_scrap = db.get(CuentaScrap360, pago.cuenta_scrap360_id)
+            if cuenta_scrap:
+                tipo_mov = "ingreso" if nota.tipo_operacion == TipoOperacion.compra else "egreso"
+                _registrar_movimiento_cuenta_scrap360(
+                    db,
+                    cuenta=cuenta_scrap,
+                    nota=nota,
+                    pago_id=pago.id,
+                    usuario_id=admin_id,
+                    tipo=tipo_mov,
+                    monto=Decimal(str(pago.monto or 0)),
+                    comentario=f"Reverso pago nota #{nota.id}",
+                )
 
     nota.estado = NotaEstado.cancelada
     if comentarios_admin is not None:
@@ -952,10 +1091,7 @@ def edit_note_by_superadmin(
             nm.subtotal = None
         db.add(nm)
 
-    nota.total_kg_bruto = _sum_decimal(m.kg_bruto for m in nota.materiales)
-    nota.total_kg_descuento = _sum_decimal(m.kg_descuento for m in nota.materiales)
-    nota.total_kg_neto = _sum_decimal(m.kg_neto for m in nota.materiales)
-    nota.total_monto = _sum_decimal(m.subtotal for m in nota.materiales if m.subtotal is not None)
+    _recalc_totals(nota)
     nota.updated_at = datetime.utcnow()
 
     new_total = Decimal(str(nota.total_monto or 0))

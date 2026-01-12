@@ -81,6 +81,9 @@ class NotaOut(BaseModel):
     total_kg_neto: float
     total_monto: float
     monto_pagado: float
+    iva_incluido: bool
+    iva_porcentaje: float
+    iva_monto: float
     metodo_pago: str | None
     cuenta_financiera_id: int | None
     fecha_caducidad_pago: date | None
