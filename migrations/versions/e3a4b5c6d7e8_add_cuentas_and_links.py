@@ -37,6 +37,8 @@ def upgrade():
                 return True
         return False
 
+    bool_default = sa.text("1") if dialect == "sqlite" else sa.text("true")
+
     if not has_table("cuentas"):
         op.create_table(
             "cuentas",
@@ -48,7 +50,7 @@ def upgrade():
             sa.Column("clabe", sa.String(length=80), nullable=True),
             sa.Column("titular", sa.String(length=120), nullable=True),
             sa.Column("referencia", sa.String(length=120), nullable=True),
-            sa.Column("activo", sa.Boolean(), nullable=False, server_default=sa.text("1")),
+            sa.Column("activo", sa.Boolean(), nullable=False, server_default=bool_default),
             sa.Column("sucursal_id", sa.Integer(), sa.ForeignKey("sucursales.id"), nullable=True),
             sa.Column("cliente_id", sa.Integer(), sa.ForeignKey("clientes.id"), nullable=True),
             sa.Column("proveedor_id", sa.Integer(), sa.ForeignKey("proveedores.id"), nullable=True),
