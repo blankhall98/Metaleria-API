@@ -215,7 +215,7 @@ def build_invoice_pdf(db: Session, nota: Nota, generated_at: datetime | None = N
         kg_bruto = _format_decimal(nm.kg_bruto, 2)
         kg_desc = _format_decimal(nm.kg_descuento, 2)
         kg_neto = _format_decimal(nm.kg_neto, 2)
-        precio_unit = _format_decimal(nm.precio_unitario, 2)
+        precio_unit = _format_decimal(nm.precio_unitario, 5)
         try:
             subtotal_val = (
                 Decimal(str(nm.subtotal))

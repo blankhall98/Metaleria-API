@@ -66,18 +66,18 @@
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Subtotal</span>
-                <strong>${{ "%.2f"|format(subtotal_sin_iva or 0) }}</strong>
+                <strong id="note-subtotal-value">${{ "%.2f"|format(subtotal_sin_iva or 0) }}</strong>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">IVA{% if nota.iva_incluido %} ({{ "%.2f"|format(iva_pct or 0) }}%){% endif %}</span>
-                <strong>${{ "%.2f"|format(iva_monto or 0) }}</strong>
+                <strong id="note-iva-value">${{ "%.2f"|format(iva_monto or 0) }}</strong>
                 {% if not nota.iva_incluido %}
                     <div class="note-meta-sub">No incluye IVA</div>
                 {% endif %}
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Total</span>
-                <strong>${{ "%.2f"|format(nota.total_monto or 0) }}</strong>
+                <strong id="note-total-value">${{ "%.2f"|format(nota.total_monto or 0) }}</strong>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Monto pagado</span>
@@ -133,11 +133,13 @@
                         <th class="text-end">Kg bruto</th>
                         <th class="text-end">Kg desc</th>
                         <th class="text-end">Kg neto</th>
+                        <th class="text-end">Precio unit</th>
+                        <th class="text-end">Subtotal</th>
                     </tr>
                     </thead>
                     <tbody>
                     {% for m in nota.materiales %}
-                        <tr>
+                        <tr data-kg-neto="{{ "%.3f"|format(m.kg_neto or 0) }}">
                             <td>
                                 <div class="fw-semibold">{{ m.material.nombre if m.material else m.material_id }}</div>
                                 {% if m.subpesajes %}
@@ -178,12 +180,34 @@
                                 </select>
                             </td>
                             <td class="text-end">
-                                <input class="form-control form-control-sm text-end" type="number" step="0.001" min="0" name="kg_bruto_{{ m.id }}" value="{{ "%.3f"|format(m.kg_bruto or 0) }}" {% if m.subpesajes %}disabled{% endif %}>
+                                <input class="form-control form-control-sm text-end kg-bruto-input" type="number" step="0.001" min="0" name="kg_bruto_{{ m.id }}" value="{{ "%.3f"|format(m.kg_bruto or 0) }}" {% if m.subpesajes %}disabled{% endif %}>
                             </td>
                             <td class="text-end">
-                                <input class="form-control form-control-sm text-end" type="number" step="0.001" min="0" name="kg_desc_{{ m.id }}" value="{{ "%.3f"|format(m.kg_descuento or 0) }}" {% if m.subpesajes %}disabled{% endif %}>
+                                <input class="form-control form-control-sm text-end kg-desc-input" type="number" step="0.001" min="0" name="kg_desc_{{ m.id }}" value="{{ "%.3f"|format(m.kg_descuento or 0) }}" {% if m.subpesajes %}disabled{% endif %}>
                             </td>
                             <td class="text-end">{{ "%.3f"|format(m.kg_neto or 0) }}</td>
+                            {% set unit_override = form_precio_unit_map.get(m.id) if form_precio_unit_map is defined else None %}
+                            {% set subtotal_override = form_subtotal_map.get(m.id) if form_subtotal_map is defined else None %}
+                            {% set mode_override = form_precio_mode_map.get(m.id) if form_precio_mode_map is defined else None %}
+                            <td class="text-end">
+                                <input class="form-control form-control-sm text-end note-unit-input"
+                                       type="number"
+                                       step="0.00001"
+                                       min="0"
+                                       name="precio_unitario_{{ m.id }}"
+                                       value="{{ unit_override if unit_override is not none else ('%.5f'|format(m.precio_unitario) if m.precio_unitario is not none else '') }}"
+                                       placeholder="0.00000">
+                                <input type="hidden" name="precio_mode_{{ m.id }}" class="note-precio-mode" value="{{ mode_override if mode_override else 'unit' }}">
+                            </td>
+                            <td class="text-end">
+                                <input class="form-control form-control-sm text-end note-subtotal-input"
+                                       type="number"
+                                       step="0.01"
+                                       min="0"
+                                       name="subtotal_{{ m.id }}"
+                                       value="{{ subtotal_override if subtotal_override is not none else ('%.2f'|format(m.subtotal) if m.subtotal is not none else '') }}"
+                                       placeholder="0.00">
+                            </td>
                         </tr>
                     {% endfor %}
                     </tbody>
@@ -208,4 +232,105 @@
     </div>
 </form>
 </div>
+<script>
+    const ivaIncluido = {{ 'true' if nota.iva_incluido else 'false' }};
+    const ivaPct = {{ "%.2f"|format(iva_pct or 0) }};
+    function formatMoney(value) {
+        return `$${value.toFixed(2)}`;
+    }
+    function parseNumber(value) {
+        const raw = value === null || value === undefined ? '' : String(value);
+        const cleaned = raw.replace(/[^0-9.-]+/g, '');
+        const parsed = parseFloat(cleaned);
+        return Number.isNaN(parsed) ? 0 : parsed;
+    }
+    function getRowKgNeto(row) {
+        if (!row) return 0;
+        const kgBrutoInput = row.querySelector('.kg-bruto-input');
+        const kgDescInput = row.querySelector('.kg-desc-input');
+        if (kgBrutoInput && kgDescInput && !kgBrutoInput.disabled) {
+            return parseNumber(kgBrutoInput.value) - parseNumber(kgDescInput.value);
+        }
+        return parseNumber(row.dataset.kgNeto || '0');
+    }
+    function updateTotals() {
+        const subtotalEl = document.getElementById('note-subtotal-value');
+        const ivaEl = document.getElementById('note-iva-value');
+        const totalEl = document.getElementById('note-total-value');
+        if (!subtotalEl || !ivaEl || !totalEl) return;
+        let baseTotal = 0;
+        const rows = document.querySelectorAll('.note-table tbody tr');
+        rows.forEach((row) => {
+            const subtotalInput = row.querySelector('.note-subtotal-input');
+            if (!subtotalInput) return;
+            baseTotal += parseNumber(subtotalInput.value);
+        });
+        const ivaMonto = ivaIncluido ? (baseTotal * ivaPct) / 100 : 0;
+        const total = ivaIncluido ? baseTotal + ivaMonto : baseTotal;
+        subtotalEl.textContent = formatMoney(baseTotal);
+        ivaEl.textContent = formatMoney(ivaMonto);
+        totalEl.textContent = formatMoney(total);
+    }
+    function syncRowFromUnit(inputEl) {
+        const row = inputEl.closest('tr');
+        if (!row) return;
+        const subtotalInput = row.querySelector('.note-subtotal-input');
+        const modeInput = row.querySelector('.note-precio-mode');
+        const kgNeto = getRowKgNeto(row);
+        const unitVal = parseNumber(inputEl.value);
+        if (subtotalInput) {
+            subtotalInput.value = (unitVal * kgNeto).toFixed(2);
+        }
+        if (modeInput) {
+            modeInput.value = 'unit';
+        }
+        updateTotals();
+    }
+    function syncRowFromSubtotal(inputEl) {
+        const row = inputEl.closest('tr');
+        if (!row) return;
+        const unitInput = row.querySelector('.note-unit-input');
+        const modeInput = row.querySelector('.note-precio-mode');
+        const kgNeto = getRowKgNeto(row);
+        const subtotalVal = parseNumber(inputEl.value);
+        if (unitInput) {
+            const unitVal = kgNeto > 0 ? subtotalVal / kgNeto : 0;
+            unitInput.value = unitVal.toFixed(5);
+        }
+        if (modeInput) {
+            modeInput.value = 'subtotal';
+        }
+        updateTotals();
+    }
+    function syncRowFromKgInput(inputEl) {
+        const row = inputEl.closest('tr');
+        if (!row) return;
+        const modeInput = row.querySelector('.note-precio-mode');
+        const mode = modeInput ? modeInput.value : 'unit';
+        if (mode === 'subtotal') {
+            const subtotalInput = row.querySelector('.note-subtotal-input');
+            if (subtotalInput) {
+                syncRowFromSubtotal(subtotalInput);
+            }
+        } else {
+            const unitInput = row.querySelector('.note-unit-input');
+            if (unitInput) {
+                syncRowFromUnit(unitInput);
+            }
+        }
+    }
+    const unitInputs = document.querySelectorAll('.note-unit-input');
+    unitInputs.forEach((input) => {
+        input.addEventListener('input', () => syncRowFromUnit(input));
+    });
+    const subtotalInputs = document.querySelectorAll('.note-subtotal-input');
+    subtotalInputs.forEach((input) => {
+        input.addEventListener('input', () => syncRowFromSubtotal(input));
+    });
+    const kgInputs = document.querySelectorAll('.kg-bruto-input, .kg-desc-input');
+    kgInputs.forEach((input) => {
+        input.addEventListener('input', () => syncRowFromKgInput(input));
+    });
+    updateTotals();
+</script>
 {% endblock %}

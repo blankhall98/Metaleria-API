@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}Conversion de materiales{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="text-uppercase text-muted small mb-1">Super Admin</p>
+        <h1 class="h4 text-white mb-0">Conversion de materiales</h1>
+    </div>
+</div>
+
+<div class="card hover-lift mb-3">
+    <div class="card-body">
+        {% if error %}
+            <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
+        {% endif %}
+        {% if ok %}
+            <div class="alert alert-success py-2 small mb-3">Conversion registrada correctamente.</div>
+        {% endif %}
+        <form method="post" class="row g-3">
+            <div class="col-lg-4 col-md-6">
+                <label class="form-label">Sucursal</label>
+                {% set suc_val = form_data.sucursal_id if form_data else '' %}
+                <select class="form-select" name="sucursal_id" id="convSucursal" required>
+                    <option value="">Selecciona sucursal</option>
+                    {% for s in sucursales %}
+                        <option value="{{ s.id }}" {% if suc_val|string == s.id|string %}selected{% endif %}>{{ s.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-lg-4 col-md-6">
+                <label class="form-label">Material origen</label>
+                {% set origen_val = form_data.material_origen_id if form_data else '' %}
+                <select class="form-select" name="material_origen_id" id="convOrigen" required>
+                    <option value="">Selecciona material</option>
+                    {% for m in materiales %}
+                        <option value="{{ m.id }}" {% if origen_val|string == m.id|string %}selected{% endif %}>{{ m.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-lg-4 col-md-6">
+                <label class="form-label">Stock origen</label>
+                <div class="form-control-plaintext fw-semibold" id="convStockOrigen">--</div>
+            </div>
+            <div class="col-lg-4 col-md-6">
+                <label class="form-label">Cantidad origen (kg)</label>
+                {% set cantidad_origen_val = form_data.cantidad_origen if form_data else '' %}
+                <input class="form-control" type="number" step="0.001" min="0.001" name="cantidad_origen" value="{{ cantidad_origen_val }}" required>
+            </div>
+            <div class="col-lg-4 col-md-6">
+                <label class="form-label">Material destino</label>
+                {% set destino_val = form_data.material_destino_id if form_data else '' %}
+                <select class="form-select" name="material_destino_id" id="convDestino" required>
+                    <option value="">Selecciona material</option>
+                    {% for m in materiales %}
+                        <option value="{{ m.id }}" {% if destino_val|string == m.id|string %}selected{% endif %}>{{ m.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-lg-4 col-md-6">
+                <label class="form-label">Stock destino</label>
+                <div class="form-control-plaintext fw-semibold" id="convStockDestino">--</div>
+            </div>
+            <div class="col-lg-4 col-md-6">
+                <label class="form-label">Cantidad destino (kg)</label>
+                {% set cantidad_destino_val = form_data.cantidad_destino if form_data else '' %}
+                <input class="form-control" type="number" step="0.001" min="0.001" name="cantidad_destino" value="{{ cantidad_destino_val }}" required>
+            </div>
+            <div class="col-12">
+                <label class="form-label">Comentario</label>
+                {% set comentario_val = form_data.comentario if form_data else '' %}
+                <textarea class="form-control" name="comentario" rows="2" placeholder="Motivo o detalle de la conversion">{{ comentario_val }}</textarea>
+            </div>
+            <div class="col-12 d-grid d-md-flex gap-2">
+                <button class="btn btn-primary">Registrar conversion</button>
+                <a class="btn btn-outline-secondary" href="/web/admin/inventario">Volver</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card hover-lift">
+    <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <h2 class="h6 text-dark mb-0 note-section-title">Historial reciente</h2>
+            <span class="text-muted small">Ultimas {{ conversions|length }} conversiones</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle mb-0">
+                <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Sucursal</th>
+                    <th>Material origen</th>
+                    <th class="text-end">Cantidad</th>
+                    <th>Material destino</th>
+                    <th class="text-end">Cantidad</th>
+                    <th>Usuario</th>
+                    <th>Comentario</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for conv in conversions %}
+                    <tr>
+                        <td>{{ conv.created_at.strftime("%Y-%m-%d %H:%M") if conv.created_at else '-' }}</td>
+                        <td>{{ conv.sucursal.nombre if conv.sucursal else conv.sucursal_id }}</td>
+                        <td>{{ conv.material_origen.nombre if conv.material_origen else conv.material_origen_id }}</td>
+                        <td class="text-end">{{ "%.3f"|format(conv.cantidad_origen or 0) }} kg</td>
+                        <td>{{ conv.material_destino.nombre if conv.material_destino else conv.material_destino_id }}</td>
+                        <td class="text-end">{{ "%.3f"|format(conv.cantidad_destino or 0) }} kg</td>
+                        <td>{{ conv.usuario.username if conv.usuario else (conv.usuario_id or '-') }}</td>
+                        <td class="small text-muted">{{ conv.comentario or '-' }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if conversions|length == 0 %}
+            <p class="text-muted small mt-3 mb-0">Aun no hay conversiones registradas.</p>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    const invMap = {{ inv_map|default({})|tojson }};
+    const sucursalSelect = document.getElementById('convSucursal');
+    const origenSelect = document.getElementById('convOrigen');
+    const destinoSelect = document.getElementById('convDestino');
+    const stockOrigen = document.getElementById('convStockOrigen');
+    const stockDestino = document.getElementById('convStockDestino');
+
+    function readStock(sucursalId, materialId) {
+        if (!sucursalId || !materialId) return 0;
+        const sKey = String(sucursalId);
+        const mKey = String(materialId);
+        const bySucursal = invMap[sKey] || invMap[sucursalId] || {};
+        return bySucursal[mKey] || bySucursal[materialId] || 0;
+    }
+
+    function updateStocks() {
+        const sId = sucursalSelect ? parseInt(sucursalSelect.value || '0', 10) : 0;
+        const oId = origenSelect ? parseInt(origenSelect.value || '0', 10) : 0;
+        const dId = destinoSelect ? parseInt(destinoSelect.value || '0', 10) : 0;
+        const stockO = readStock(sId, oId);
+        const stockD = readStock(sId, dId);
+        if (stockOrigen) stockOrigen.textContent = `${parseFloat(stockO).toFixed(3)} kg`;
+        if (stockDestino) stockDestino.textContent = `${parseFloat(stockD).toFixed(3)} kg`;
+    }
+
+    if (sucursalSelect) sucursalSelect.addEventListener('change', updateStocks);
+    if (origenSelect) origenSelect.addEventListener('change', updateStocks);
+    if (destinoSelect) destinoSelect.addEventListener('change', updateStocks);
+    updateStocks();
+</script>
+{% endblock %}

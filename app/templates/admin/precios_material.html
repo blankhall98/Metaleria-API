@@ -42,7 +42,7 @@
                     <tr>
                         <td>{{ p.tipo_operacion.value }}</td>
                         <td>{{ p.tipo_cliente.value }}</td>
-                        <td>${{ '%.2f'|format(p.precio_por_unidad) }}</td>
+                        <td>${{ '%.5f'|format(p.precio_por_unidad) }}</td>
                         <td><span class="pill">{{ p.version }}</span></td>
                         <td>{{ p.vigente_desde }}</td>
                         <td>{{ p.vigente_hasta or '-' }}</td>

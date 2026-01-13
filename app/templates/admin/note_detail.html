@@ -80,18 +80,18 @@
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Subtotal</span>
-                <strong>${{ "%.2f"|format(subtotal_sin_iva or 0) }}</strong>
+                <strong id="note-subtotal-value">${{ "%.2f"|format(subtotal_sin_iva or 0) }}</strong>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">IVA{% if nota.iva_incluido %} ({{ "%.2f"|format(iva_pct or 0) }}%){% endif %}</span>
-                <strong>${{ "%.2f"|format(iva_monto or 0) }}</strong>
+                <strong id="note-iva-value">${{ "%.2f"|format(iva_monto or 0) }}</strong>
                 {% if not nota.iva_incluido %}
                     <div class="note-meta-sub">No incluye IVA</div>
                 {% endif %}
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Total</span>
-                <strong>${{ "%.2f"|format(nota.total_monto or 0) }}</strong>
+                <strong id="note-total-value">${{ "%.2f"|format(nota.total_monto or 0) }}</strong>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Monto pagado</span>
@@ -212,8 +212,33 @@
                                     {% endfor %}
                                 </select>
                             </td>
-                            <td class="text-end note-unit-price">{{ "%.2f"|format(m.precio_unitario or 0) if m.precio_unitario else '-' }}</td>
-                            <td class="text-end note-subtotal">{{ "%.2f"|format(m.subtotal or 0) if m.subtotal else '-' }}</td>
+                            {% if user.rol == 'super_admin' and nota.estado.value in ['BORRADOR', 'EN_REVISION'] %}
+                                {% set unit_override = form_precio_unit_map.get(m.id) if form_precio_unit_map is defined else None %}
+                                {% set subtotal_override = form_subtotal_map.get(m.id) if form_subtotal_map is defined else None %}
+                                {% set mode_override = form_precio_mode_map.get(m.id) if form_precio_mode_map is defined else None %}
+                                <td class="text-end">
+                                    <input class="form-control form-control-sm text-end note-unit-input"
+                                           type="number"
+                                           step="0.00001"
+                                           min="0"
+                                           name="precio_unitario_{{ m.id }}"
+                                           value="{{ unit_override if unit_override is not none else ('%.5f'|format(m.precio_unitario) if m.precio_unitario is not none else '') }}"
+                                           placeholder="0.00000">
+                                    <input type="hidden" name="precio_mode_{{ m.id }}" class="note-precio-mode" value="{{ mode_override if mode_override else 'unit' }}">
+                                </td>
+                                <td class="text-end">
+                                    <input class="form-control form-control-sm text-end note-subtotal-input"
+                                           type="number"
+                                           step="0.01"
+                                           min="0"
+                                           name="subtotal_{{ m.id }}"
+                                           value="{{ subtotal_override if subtotal_override is not none else ('%.2f'|format(m.subtotal) if m.subtotal is not none else '') }}"
+                                           placeholder="0.00">
+                                </td>
+                            {% else %}
+                                <td class="text-end note-unit-price">{{ "%.5f"|format(m.precio_unitario or 0) if m.precio_unitario else '-' }}</td>
+                                <td class="text-end note-subtotal">{{ "%.2f"|format(m.subtotal or 0) if m.subtotal else '-' }}</td>
+                            {% endif %}
                         </tr>
                         {% if m.subpesajes %}
                             <tr class="note-subpesaje-row">
@@ -614,6 +639,55 @@
     function formatMoney(value) {
         return `$${value.toFixed(2)}`;
     }
+    function formatUnit(value) {
+        return `$${value.toFixed(5)}`;
+    }
+    function parseNumber(value) {
+        const raw = value === null || value === undefined ? '' : String(value);
+        const cleaned = raw.replace(/[^0-9.-]+/g, '');
+        const parsed = parseFloat(cleaned);
+        return Number.isNaN(parsed) ? 0 : parsed;
+    }
+    function parseMoneyText(text) {
+        return parseNumber(text || '');
+    }
+    function getRowKgNeto(row) {
+        if (!row) return 0;
+        return parseNumber(row.dataset.kgNeto || '0');
+    }
+    function getRowSubtotal(row) {
+        if (!row) return 0;
+        const input = row.querySelector('.note-subtotal-input');
+        if (input) {
+            return parseNumber(input.value);
+        }
+        const cell = row.querySelector('.note-subtotal');
+        return cell ? parseMoneyText(cell.textContent) : 0;
+    }
+    function updateTotals() {
+        const subtotalEl = document.getElementById('note-subtotal-value');
+        const ivaEl = document.getElementById('note-iva-value');
+        const totalEl = document.getElementById('note-total-value');
+        if (!subtotalEl || !ivaEl || !totalEl) return;
+
+        let baseTotal = 0;
+        const rows = document.querySelectorAll('.note-table tbody tr');
+        rows.forEach((row) => {
+            if (row.classList.contains('note-subpesaje-row')) return;
+            baseTotal += getRowSubtotal(row);
+        });
+
+        const ivaToggle = document.getElementById('iva_incluido');
+        const ivaPctInput = document.querySelector('input[name="iva_porcentaje"]');
+        const ivaIncluido = !!(ivaToggle && ivaToggle.checked);
+        const ivaPct = parseNumber(ivaPctInput ? ivaPctInput.value : '0');
+        const ivaMonto = ivaIncluido ? (baseTotal * ivaPct) / 100 : 0;
+        const total = ivaIncluido ? baseTotal + ivaMonto : baseTotal;
+
+        subtotalEl.textContent = formatMoney(baseTotal);
+        ivaEl.textContent = formatMoney(ivaMonto);
+        totalEl.textContent = formatMoney(total);
+    }
     function getRowPriceMap(row) {
         if (!row) return null;
         const raw = row.dataset.precios;
@@ -629,26 +703,55 @@
         const row = selectEl.closest('tr');
         if (!row) return;
         const materialId = row.dataset.materialId;
-        const kgNeto = parseFloat(row.dataset.kgNeto || '0');
+        const kgNeto = getRowKgNeto(row);
+        const unitInput = row.querySelector('.note-unit-input');
+        const subtotalInput = row.querySelector('.note-subtotal-input');
+        const modeInput = row.querySelector('.note-precio-mode');
         const unitCell = row.querySelector('.note-unit-price');
         const subtotalCell = row.querySelector('.note-subtotal');
-        if (!materialId || !unitCell || !subtotalCell) return;
-        unitCell.textContent = '...';
-        subtotalCell.textContent = '...';
+        if (!materialId || (!unitCell && !unitInput) || (!subtotalCell && !subtotalInput)) return;
+        if (unitInput) {
+            unitInput.value = '';
+        } else if (unitCell) {
+            unitCell.textContent = '...';
+        }
+        if (subtotalInput) {
+            subtotalInput.value = '';
+        } else if (subtotalCell) {
+            subtotalCell.textContent = '...';
+        }
         const tipoCliente = selectEl.value || '';
         const rowMap = getRowPriceMap(row);
         if (rowMap && Object.prototype.hasOwnProperty.call(rowMap, tipoCliente)) {
             const unitLocal = parseFloat(rowMap[tipoCliente]);
             const subtotalLocal = unitLocal * (Number.isNaN(kgNeto) ? 0 : kgNeto);
-            unitCell.textContent = formatMoney(unitLocal);
-            subtotalCell.textContent = formatMoney(subtotalLocal);
+            if (unitInput && subtotalInput) {
+                unitInput.value = unitLocal.toFixed(5);
+                subtotalInput.value = subtotalLocal.toFixed(2);
+                if (modeInput) {
+                    modeInput.value = 'unit';
+                }
+            } else {
+                if (unitCell) unitCell.textContent = formatUnit(unitLocal);
+                if (subtotalCell) subtotalCell.textContent = formatMoney(subtotalLocal);
+            }
+            updateTotals();
             return;
         }
         if (priceMap[materialId] && Object.prototype.hasOwnProperty.call(priceMap[materialId], tipoCliente)) {
             const unitLocal = parseFloat(priceMap[materialId][tipoCliente]);
             const subtotalLocal = unitLocal * (Number.isNaN(kgNeto) ? 0 : kgNeto);
-            unitCell.textContent = formatMoney(unitLocal);
-            subtotalCell.textContent = formatMoney(subtotalLocal);
+            if (unitInput && subtotalInput) {
+                unitInput.value = unitLocal.toFixed(5);
+                subtotalInput.value = subtotalLocal.toFixed(2);
+                if (modeInput) {
+                    modeInput.value = 'unit';
+                }
+            } else {
+                if (unitCell) unitCell.textContent = formatUnit(unitLocal);
+                if (subtotalCell) subtotalCell.textContent = formatMoney(subtotalLocal);
+            }
+            updateTotals();
             return;
         }
         const params = new URLSearchParams({
@@ -659,32 +762,77 @@
         try {
             const res = await fetch(`${priceEndpoint}?${params.toString()}`, { credentials: 'same-origin' });
             if (!res.ok) {
-                unitCell.textContent = '-';
-                subtotalCell.textContent = '-';
+                if (unitInput) {
+                    unitInput.value = '';
+                } else if (unitCell) {
+                    unitCell.textContent = '-';
+                }
+                if (subtotalInput) {
+                    subtotalInput.value = '';
+                } else if (subtotalCell) {
+                    subtotalCell.textContent = '-';
+                }
+                updateTotals();
                 return;
             }
             const data = await res.json();
             if (data.precio_unitario === null || data.precio_unitario === undefined) {
-                unitCell.textContent = '-';
-                subtotalCell.textContent = '-';
+                if (unitInput) {
+                    unitInput.value = '';
+                } else if (unitCell) {
+                    unitCell.textContent = '-';
+                }
+                if (subtotalInput) {
+                    subtotalInput.value = '';
+                } else if (subtotalCell) {
+                    subtotalCell.textContent = '-';
+                }
+                updateTotals();
                 return;
             }
             const unit = parseFloat(data.precio_unitario);
             if (Number.isNaN(unit)) {
-                unitCell.textContent = '-';
-                subtotalCell.textContent = '-';
+                if (unitInput) {
+                    unitInput.value = '';
+                } else if (unitCell) {
+                    unitCell.textContent = '-';
+                }
+                if (subtotalInput) {
+                    subtotalInput.value = '';
+                } else if (subtotalCell) {
+                    subtotalCell.textContent = '-';
+                }
+                updateTotals();
                 return;
             }
             const subtotal = unit * (Number.isNaN(kgNeto) ? 0 : kgNeto);
-            unitCell.textContent = formatMoney(unit);
-            subtotalCell.textContent = formatMoney(subtotal);
+            if (unitInput && subtotalInput) {
+                unitInput.value = unit.toFixed(5);
+                subtotalInput.value = subtotal.toFixed(2);
+                if (modeInput) {
+                    modeInput.value = 'unit';
+                }
+            } else {
+                if (unitCell) unitCell.textContent = formatUnit(unit);
+                if (subtotalCell) subtotalCell.textContent = formatMoney(subtotal);
+            }
             if (!priceMap[materialId]) {
                 priceMap[materialId] = {};
             }
             priceMap[materialId][tipoCliente] = unit;
+            updateTotals();
         } catch (err) {
-            unitCell.textContent = '-';
-            subtotalCell.textContent = '-';
+            if (unitInput) {
+                unitInput.value = '';
+            } else if (unitCell) {
+                unitCell.textContent = '-';
+            }
+            if (subtotalInput) {
+                subtotalInput.value = '';
+            } else if (subtotalCell) {
+                subtotalCell.textContent = '-';
+            }
+            updateTotals();
         }
     }
     const priceSelects = document.querySelectorAll('.note-tipo-precio');
@@ -698,6 +846,55 @@
             updateRowPrice(target);
         }
     });
+    function syncRowFromUnit(inputEl) {
+        const row = inputEl.closest('tr');
+        if (!row) return;
+        const subtotalInput = row.querySelector('.note-subtotal-input');
+        const modeInput = row.querySelector('.note-precio-mode');
+        const kgNeto = getRowKgNeto(row);
+        const unitVal = parseNumber(inputEl.value);
+        const subtotalVal = unitVal * kgNeto;
+        if (subtotalInput) {
+            subtotalInput.value = subtotalVal.toFixed(2);
+        }
+        if (modeInput) {
+            modeInput.value = 'unit';
+        }
+        updateTotals();
+    }
+    function syncRowFromSubtotal(inputEl) {
+        const row = inputEl.closest('tr');
+        if (!row) return;
+        const unitInput = row.querySelector('.note-unit-input');
+        const modeInput = row.querySelector('.note-precio-mode');
+        const kgNeto = getRowKgNeto(row);
+        const subtotalVal = parseNumber(inputEl.value);
+        if (unitInput) {
+            const unitVal = kgNeto > 0 ? subtotalVal / kgNeto : 0;
+            unitInput.value = unitVal.toFixed(5);
+        }
+        if (modeInput) {
+            modeInput.value = 'subtotal';
+        }
+        updateTotals();
+    }
+    const unitInputs = document.querySelectorAll('.note-unit-input');
+    unitInputs.forEach((input) => {
+        input.addEventListener('input', () => syncRowFromUnit(input));
+    });
+    const subtotalInputs = document.querySelectorAll('.note-subtotal-input');
+    subtotalInputs.forEach((input) => {
+        input.addEventListener('input', () => syncRowFromSubtotal(input));
+    });
+    const ivaToggle = document.getElementById('iva_incluido');
+    const ivaPctInput = document.querySelector('input[name="iva_porcentaje"]');
+    if (ivaToggle) {
+        ivaToggle.addEventListener('change', updateTotals);
+    }
+    if (ivaPctInput) {
+        ivaPctInput.addEventListener('input', updateTotals);
+    }
+    updateTotals();
 </script>
 </div>
 {% endblock %}

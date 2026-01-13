@@ -97,7 +97,7 @@ class NotaMaterial(Base):
     kg_descuento = Column(Numeric(12, 3), nullable=False, default=0)
     kg_neto = Column(Numeric(12, 3), nullable=False, default=0)
 
-    precio_unitario = Column(Numeric(12, 2), nullable=True)
+    precio_unitario = Column(Numeric(12, 5), nullable=True)
     subtotal = Column(Numeric(12, 2), nullable=True)
 
     version_precio_id = Column(Integer, ForeignKey("tablas_precios.id"), nullable=True, index=True)

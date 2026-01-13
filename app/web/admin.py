@@ -35,6 +35,7 @@ from app.models import (
     NotaMaterial,
     Subpesaje,
     NotaPago,
+    ConversionMaterial,
     Cuenta,
     CuentaScrap360,
     CuentaScrap360Movimiento,
@@ -45,7 +46,7 @@ from app.models import (
 )
 
 from app.services.pricing_service import create_price_version
-from app.services import note_service, invoice_service, contabilidad_report_service
+from app.services import note_service, invoice_service, contabilidad_report_service, conversion_service
 from app.services.evidence_service import build_evidence_groups
 from app.services.firebase_storage import upload_image
 
@@ -3907,6 +3908,90 @@ async def nota_precio(
     )
 
 
+def _parse_precio_overrides(
+    form: dict,
+    nota: Nota,
+) -> tuple[
+    dict[int, dict[str, Decimal]],
+    dict[int, str],
+    dict[int, str],
+    dict[int, str],
+    str | None,
+]:
+    precio_override_map: dict[int, dict[str, Decimal]] = {}
+    form_precio_unit_map: dict[int, str] = {}
+    form_subtotal_map: dict[int, str] = {}
+    form_precio_mode_map: dict[int, str] = {}
+
+    for nm in nota.materiales:
+        unit_raw = (form.get(f"precio_unitario_{nm.id}") or "").strip()
+        subtotal_raw = (form.get(f"subtotal_{nm.id}") or "").strip()
+        mode_raw = (form.get(f"precio_mode_{nm.id}") or "").strip().lower()
+
+        if unit_raw != "":
+            form_precio_unit_map[nm.id] = unit_raw
+        if subtotal_raw != "":
+            form_subtotal_map[nm.id] = subtotal_raw
+        if mode_raw:
+            if mode_raw not in ("unit", "subtotal"):
+                mode_raw = "unit"
+            form_precio_mode_map[nm.id] = mode_raw
+
+        if not unit_raw and not subtotal_raw:
+            continue
+
+        selected_mode = None
+        selected_raw = None
+        if mode_raw == "subtotal" and subtotal_raw:
+            selected_mode = "subtotal"
+            selected_raw = subtotal_raw
+        elif mode_raw != "subtotal" and unit_raw:
+            selected_mode = "unit"
+            selected_raw = unit_raw
+        elif subtotal_raw:
+            selected_mode = "subtotal"
+            selected_raw = subtotal_raw
+        elif unit_raw:
+            selected_mode = "unit"
+            selected_raw = unit_raw
+
+        if selected_raw is None:
+            continue
+        try:
+            value = Decimal(str(selected_raw))
+        except (InvalidOperation, TypeError):
+            return (
+                precio_override_map,
+                form_precio_unit_map,
+                form_subtotal_map,
+                form_precio_mode_map,
+                "El precio ingresado es invalido.",
+            )
+        if value < 0:
+            return (
+                precio_override_map,
+                form_precio_unit_map,
+                form_subtotal_map,
+                form_precio_mode_map,
+                "El precio no puede ser negativo.",
+            )
+
+        if selected_mode == "unit":
+            precio_override_map[nm.id] = {"precio_unitario": value}
+            form_precio_mode_map[nm.id] = "unit"
+        else:
+            precio_override_map[nm.id] = {"subtotal": value}
+            form_precio_mode_map[nm.id] = "subtotal"
+
+    return (
+        precio_override_map,
+        form_precio_unit_map,
+        form_subtotal_map,
+        form_precio_mode_map,
+        None,
+    )
+
+
 def _render_nota_detail(
     request: Request,
     db: Session,
@@ -4022,6 +4107,9 @@ def _render_nota_detail(
         "form_pago_cuenta": None,
         "form_pago_comentario": None,
         "form_pago_cuenta_scrap360": None,
+        "form_precio_unit_map": {},
+        "form_subtotal_map": {},
+        "form_precio_mode_map": {},
     }
     context = {
         "request": request,
@@ -4073,6 +4161,9 @@ def _render_nota_edit(
     *,
     error: str | None = None,
     comentario_edicion: str | None = None,
+    form_precio_unit_map: dict[int, str] | None = None,
+    form_subtotal_map: dict[int, str] | None = None,
+    form_precio_mode_map: dict[int, str] | None = None,
     saved: bool = False,
 ):
     sucursal = db.get(Sucursal, nota.sucursal_id) if nota.sucursal_id else None
@@ -4125,6 +4216,9 @@ def _render_nota_edit(
             "transfer_related": transfer_related,
             "transfer_related_sucursal": transfer_related_sucursal,
             "comentario_edicion": comentario_edicion or "",
+            "form_precio_unit_map": form_precio_unit_map or {},
+            "form_subtotal_map": form_subtotal_map or {},
+            "form_precio_mode_map": form_precio_mode_map or {},
             "saved": saved,
             "error": error,
         },
@@ -4317,6 +4411,25 @@ async def notas_edit_post(
 
     form = await request.form()
     comentario_edicion = (form.get("comentario_edicion") or "").strip() or None
+    (
+        precio_override_map,
+        form_precio_unit_map,
+        form_subtotal_map,
+        form_precio_mode_map,
+        precio_error,
+    ) = _parse_precio_overrides(form, nota)
+    if precio_error:
+        return _render_nota_edit(
+            request,
+            db,
+            current_user,
+            nota,
+            error=precio_error,
+            comentario_edicion=comentario_edicion,
+            form_precio_unit_map=form_precio_unit_map,
+            form_subtotal_map=form_subtotal_map,
+            form_precio_mode_map=form_precio_mode_map,
+        )
 
     try:
         tipo_cliente_map: dict[int, TipoCliente] = {}
@@ -4365,6 +4478,7 @@ async def notas_edit_post(
             tipo_cliente_map=tipo_cliente_map,
             kg_override_map=kg_override_map,
             subpesaje_map=subpesaje_map,
+            precio_override_map=precio_override_map or None,
             admin_id=current_user.get("id"),
             comentario=comentario_edicion,
         )
@@ -4377,6 +4491,9 @@ async def notas_edit_post(
             nota,
             error=str(exc),
             comentario_edicion=comentario_edicion,
+            form_precio_unit_map=form_precio_unit_map,
+            form_subtotal_map=form_subtotal_map,
+            form_precio_mode_map=form_precio_mode_map,
         )
 
     return RedirectResponse(url=f"/web/admin/notas/{nota_id}?edit=1", status_code=303)
@@ -4482,6 +4599,33 @@ async def notas_aprobar(
         "form_iva_incluido": iva_incluido,
         "form_iva_porcentaje": iva_porcentaje_raw,
     }
+    precio_override_map = None
+    if current_user.get("rol") == UserRole.super_admin.value:
+        (
+            precio_override_map,
+            form_precio_unit_map,
+            form_subtotal_map,
+            form_precio_mode_map,
+            precio_error,
+        ) = _parse_precio_overrides(form, nota)
+        form_state.update(
+            {
+                "form_precio_unit_map": form_precio_unit_map,
+                "form_subtotal_map": form_subtotal_map,
+                "form_precio_mode_map": form_precio_mode_map,
+            }
+        )
+        if precio_error:
+            return _render_nota_detail(
+                request,
+                db,
+                current_user,
+                nota,
+                error=precio_error,
+                form_state=form_state,
+            )
+        if not precio_override_map:
+            precio_override_map = None
 
     fecha_caducidad_pago = None
     if fecha_caducidad_pago_raw:
@@ -4565,6 +4709,7 @@ async def notas_aprobar(
             db,
             nota,
             tipo_cliente_map=tipo_cliente_map or None,
+            precio_override_map=precio_override_map,
             admin_id=current_user.get("id"),
             comentarios_admin=comentarios_admin,
             fecha_caducidad_pago=fecha_caducidad_pago,
@@ -4640,6 +4785,33 @@ async def notas_actualizar_precios(
         "form_iva_incluido": iva_incluido,
         "form_iva_porcentaje": iva_porcentaje_raw,
     }
+    precio_override_map = None
+    if current_user.get("rol") == UserRole.super_admin.value:
+        (
+            precio_override_map,
+            form_precio_unit_map,
+            form_subtotal_map,
+            form_precio_mode_map,
+            precio_error,
+        ) = _parse_precio_overrides(form, nota)
+        form_state.update(
+            {
+                "form_precio_unit_map": form_precio_unit_map,
+                "form_subtotal_map": form_subtotal_map,
+                "form_precio_mode_map": form_precio_mode_map,
+            }
+        )
+        if precio_error:
+            return _render_nota_detail(
+                request,
+                db,
+                current_user,
+                nota,
+                error=precio_error,
+                form_state=form_state,
+            )
+        if not precio_override_map:
+            precio_override_map = None
 
     tipo_cliente_map: dict[int, TipoCliente] = {}
     for key, value in form.items():
@@ -4662,7 +4834,7 @@ async def notas_actualizar_precios(
                     error="Tipo de cliente invA­lido para un material.",
                     form_state=form_state,
                 )
-    if not tipo_cliente_map:
+    if not tipo_cliente_map and not precio_override_map:
         return _render_nota_detail(
             request,
             db,
@@ -4672,7 +4844,23 @@ async def notas_actualizar_precios(
             form_state=form_state,
         )
 
-    note_service.set_tipo_cliente_and_prices(db, nota, tipo_cliente_map)
+    try:
+        note_service.set_tipo_cliente_and_prices(
+            db,
+            nota,
+            tipo_cliente_map,
+            precio_override_map=precio_override_map,
+        )
+    except ValueError as exc:
+        db.rollback()
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error=str(exc),
+            form_state=form_state,
+        )
     return RedirectResponse(url=f"/web/admin/notas/{nota_id}?precios=1", status_code=303)
 
 
@@ -4971,6 +5159,129 @@ async def inventario_ajuste_post(
         usuario_id=current_user.get("id"),
     )
     return RedirectResponse(url="/web/admin/inventario?ajuste=1", status_code=303)
+
+
+def _render_conversiones_materiales(
+    request: Request,
+    db: Session,
+    current_user: dict,
+    *,
+    error: str | None = None,
+    ok: bool = False,
+    form_data: dict | None = None,
+):
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
+    conversions = (
+        db.query(ConversionMaterial)
+        .order_by(ConversionMaterial.created_at.desc())
+        .limit(200)
+        .all()
+    )
+    suc_ids = [s.id for s in sucursales]
+    inv_rows = db.query(Inventario).filter(Inventario.sucursal_id.in_(suc_ids)).all() if suc_ids else []
+    inv_map: dict[int, dict[int, float]] = {}
+    for inv in inv_rows:
+        inv_map.setdefault(inv.sucursal_id, {})[inv.material_id] = float(inv.stock_actual or 0)
+
+    return templates.TemplateResponse(
+        "admin/conversiones_materiales.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "sucursales": sucursales,
+            "materiales": materiales,
+            "conversions": conversions,
+            "inv_map": inv_map,
+            "error": error,
+            "ok": ok,
+            "form_data": form_data or {},
+        },
+        status_code=400 if error else 200,
+    )
+
+
+@router.get("/conversiones-materiales")
+async def conversiones_materiales_get(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    ok = request.query_params.get("ok") == "1"
+    return _render_conversiones_materiales(request, db, current_user, ok=ok)
+
+
+@router.post("/conversiones-materiales")
+async def conversiones_materiales_post(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    form = await request.form()
+    sucursal_raw = (form.get("sucursal_id") or "").strip()
+    origen_raw = (form.get("material_origen_id") or "").strip()
+    destino_raw = (form.get("material_destino_id") or "").strip()
+    cantidad_origen_raw = (form.get("cantidad_origen") or "").strip()
+    cantidad_destino_raw = (form.get("cantidad_destino") or "").strip()
+    comentario = (form.get("comentario") or "").strip()
+
+    form_data = {
+        "sucursal_id": sucursal_raw,
+        "material_origen_id": origen_raw,
+        "material_destino_id": destino_raw,
+        "cantidad_origen": cantidad_origen_raw,
+        "cantidad_destino": cantidad_destino_raw,
+        "comentario": comentario,
+    }
+
+    try:
+        sucursal_id = int(sucursal_raw)
+        material_origen_id = int(origen_raw)
+        material_destino_id = int(destino_raw)
+    except ValueError:
+        return _render_conversiones_materiales(
+            request,
+            db,
+            current_user,
+            error="Sucursal o material invalido.",
+            form_data=form_data,
+        )
+
+    try:
+        cantidad_origen = Decimal(str(cantidad_origen_raw))
+        cantidad_destino = Decimal(str(cantidad_destino_raw))
+    except (InvalidOperation, TypeError):
+        return _render_conversiones_materiales(
+            request,
+            db,
+            current_user,
+            error="Las cantidades son invalidas.",
+            form_data=form_data,
+        )
+
+    try:
+        conversion_service.create_conversion(
+            db,
+            sucursal_id=sucursal_id,
+            material_origen_id=material_origen_id,
+            cantidad_origen=cantidad_origen,
+            material_destino_id=material_destino_id,
+            cantidad_destino=cantidad_destino,
+            usuario_id=current_user.get("id"),
+            comentario=comentario or None,
+        )
+    except ValueError as exc:
+        db.rollback()
+        return _render_conversiones_materiales(
+            request,
+            db,
+            current_user,
+            error=str(exc),
+            form_data=form_data,
+        )
+
+    return RedirectResponse(url="/web/admin/conversiones-materiales?ok=1", status_code=303)
 
 
 @router.get("/inventario")

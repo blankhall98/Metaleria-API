@@ -140,6 +140,17 @@
                                 <p class="text-muted mb-0">Stock por sucursal y movimientos automáticos.</p>
                             </div>
                         </a>
+                        {% if user.rol == 'super_admin' %}
+                            <a href="/web/admin/conversiones-materiales" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
+                                <div class="action-top">
+                                    <div class="action-icon">&#x1F504;</div>
+                                </div>
+                                <div>
+                                    <h3 class="h6 mb-1 text-white">Conversion de materiales</h3>
+                                    <p class="text-muted mb-0">Transforma stock entre materiales con trazabilidad.</p>
+                                </div>
+                            </a>
+                        {% endif %}
                         <a href="/web/admin/transferencias" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
                             <div class="action-top">
                                 <div class="action-icon">&#x1F501;</div>

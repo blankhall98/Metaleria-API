@@ -53,7 +53,7 @@ class TablaPrecio(Base):
         nullable=False,
     )
 
-    precio_por_unidad = Column(Numeric(10, 2), nullable=False)
+    precio_por_unidad = Column(Numeric(10, 5), nullable=False)
 
     # Versionado de la tabla de precios por combinación material + tipo_operacion + tipo_cliente
     version = Column(Integer, nullable=False, default=1)
@@ -80,8 +80,8 @@ class PriceChangeLog(Base):
         nullable=False,
     )
 
-    old_precio_por_unidad = Column(Numeric(10, 2), nullable=True)
-    new_precio_por_unidad = Column(Numeric(10, 2), nullable=False)
+    old_precio_por_unidad = Column(Numeric(10, 5), nullable=True)
+    new_precio_por_unidad = Column(Numeric(10, 5), nullable=False)
 
     old_version = Column(Integer, nullable=True)
     new_version = Column(Integer, nullable=False)

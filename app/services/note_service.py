@@ -392,6 +392,41 @@ def apply_prices(
     _recalc_totals(nota)
 
 
+def _apply_precio_overrides(
+    nota: Nota,
+    precio_override_map: dict[int, dict[str, Decimal]] | None,
+) -> None:
+    if not precio_override_map:
+        return
+    for nm in nota.materiales:
+        payload = precio_override_map.get(nm.id) if nm.id else None
+        if not payload:
+            continue
+        unit_raw = payload.get("precio_unitario")
+        subtotal_raw = payload.get("subtotal")
+        if unit_raw is None and subtotal_raw is None:
+            continue
+        kg_neto = Decimal(str(nm.kg_neto or 0))
+        if unit_raw is not None:
+            unit_val = Decimal(str(unit_raw))
+            if unit_val < 0:
+                raise ValueError("El precio unitario no puede ser negativo.")
+            subtotal_val = unit_val * kg_neto
+        else:
+            subtotal_val = Decimal(str(subtotal_raw))
+            if subtotal_val < 0:
+                raise ValueError("El subtotal no puede ser negativo.")
+            if kg_neto <= 0:
+                if subtotal_val != 0:
+                    raise ValueError("No se puede calcular el precio unitario sin kg neto.")
+                unit_val = Decimal("0")
+            else:
+                unit_val = subtotal_val / kg_neto
+        nm.precio_unitario = unit_val
+        nm.subtotal = subtotal_val
+        nm.version_precio_id = None
+
+
 def create_draft_note(
     db: Session,
     *,
@@ -731,6 +766,7 @@ def approve_note(
     nota: Nota,
     *,
     tipo_cliente_map: dict[int, TipoCliente] | None = None,
+    precio_override_map: dict[int, dict[str, Decimal]] | None = None,
     admin_id: int | None = None,
     comentarios_admin: str | None = None,
     fecha_caducidad_pago: date | None = None,
@@ -762,6 +798,7 @@ def approve_note(
             raise ValueError("El porcentaje de IVA debe estar entre 0 y 100.")
         nota.iva_porcentaje = iva_pct
     apply_prices(db, nota)
+    _apply_precio_overrides(nota, precio_override_map)
     _validar_stock_para_venta(db, nota)
     metodo_pago_clean = (metodo_pago or "").strip().lower() or None
     cuenta_id: int | None = None
@@ -1012,6 +1049,7 @@ def set_tipo_cliente_and_prices(
     db: Session,
     nota: Nota,
     tipo_cliente_map: dict[int, TipoCliente],
+    precio_override_map: dict[int, dict[str, Decimal]] | None = None,
 ) -> Nota:
     """
     Actualiza el tipo_cliente por material y recalcula precios/subtotales.
@@ -1021,6 +1059,9 @@ def set_tipo_cliente_and_prices(
             nm.tipo_cliente = tipo_cliente_map[nm.id]
             db.add(nm)
     apply_prices(db, nota)
+    if precio_override_map:
+        _apply_precio_overrides(nota, precio_override_map)
+        _recalc_totals(nota)
     db.commit()
     db.refresh(nota)
     return nota
@@ -1033,6 +1074,7 @@ def edit_note_by_superadmin(
     tipo_cliente_map: dict[int, TipoCliente] | None = None,
     kg_override_map: dict[int, tuple[Decimal, Decimal]] | None = None,
     subpesaje_map: dict[int, tuple[Decimal, Decimal]] | None = None,
+    precio_override_map: dict[int, dict[str, Decimal]] | None = None,
     admin_id: int | None = None,
     comentario: str | None = None,
 ) -> Nota:
@@ -1091,6 +1133,7 @@ def edit_note_by_superadmin(
             nm.subtotal = None
         db.add(nm)
 
+    _apply_precio_overrides(nota, precio_override_map)
     _recalc_totals(nota)
     nota.updated_at = datetime.utcnow()
 
