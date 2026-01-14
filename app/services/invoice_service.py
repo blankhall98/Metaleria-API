@@ -134,6 +134,7 @@ def build_invoice_pdf(db: Session, nota: Nota, generated_at: datetime | None = N
     partner_email = partner.correo_electronico if partner else None
 
     tipo_label = "Compra" if nota.tipo_operacion == TipoOperacion.compra else "Venta"
+    header_title = "NOTA DE COMPRA" if nota.tipo_operacion == TipoOperacion.compra else "NOTA DE VENTA"
     sucursal_name = sucursal.nombre if sucursal else "-"
     sucursal_address = sucursal.direccion if sucursal and sucursal.direccion else "-"
     folio_label = folio or f"nota-{nota.id}"
@@ -149,7 +150,7 @@ def build_invoice_pdf(db: Session, nota: Nota, generated_at: datetime | None = N
     pdf.text(left, top - 30, f"Direccion: {sucursal_address}", size=9)
     pdf.text(left, top - 42, f"Operacion: {tipo_label}", size=9)
 
-    pdf.text(380, top, "FACTURA", size=16, font="F2")
+    pdf.text(380, top, header_title, size=14, font="F2")
     pdf.text(380, top - 18, f"Folio: {folio_label}", size=9)
     pdf.text(380, top - 30, f"Fecha: {issue_date}", size=9)
     pdf.text(380, top - 42, f"Nota ID: {nota.id}", size=9)

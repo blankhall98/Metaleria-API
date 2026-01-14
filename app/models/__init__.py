@@ -6,6 +6,14 @@ from .pricing import TablaPrecio, TipoOperacion, TipoCliente, PriceChangeLog
 from .account import Cuenta, CuentaScrap360, CuentaScrap360Movimiento, cuentas_scrap360_sucursales
 from .partner import Proveedor, Cliente, ProveedorPlaca, ClientePlaca
 from .conversion import ConversionMaterial
+from .cash import (
+    CorteCaja,
+    CorteCajaEstado,
+    CorteCajaGasto,
+    CorteCajaMovimiento,
+    CorteCajaMovimientoTipo,
+    CorteCajaDenominacion,
+)
 from .note import Nota, NotaEstado, NotaMaterial, Subpesaje, NotaOriginal, NotaEvidenciaExtra, NotaPago
 from .inventory import Inventario, InventarioMovimiento, MovimientoContable
 
@@ -29,6 +37,12 @@ __all__ = [
     "ProveedorPlaca",
     "ClientePlaca",
     "ConversionMaterial",
+    "CorteCaja",
+    "CorteCajaEstado",
+    "CorteCajaGasto",
+    "CorteCajaMovimiento",
+    "CorteCajaMovimientoTipo",
+    "CorteCajaDenominacion",
     "Nota",
     "NotaEstado",
     "NotaMaterial",

@@ -39,6 +39,12 @@ from app.models import (
     Cuenta,
     CuentaScrap360,
     CuentaScrap360Movimiento,
+    CorteCaja,
+    CorteCajaEstado,
+    CorteCajaGasto,
+    CorteCajaMovimiento,
+    CorteCajaMovimientoTipo,
+    CorteCajaDenominacion,
     Inventario,
     MovimientoContable,
     Material,
@@ -46,7 +52,13 @@ from app.models import (
 )
 
 from app.services.pricing_service import create_price_version
-from app.services import note_service, invoice_service, contabilidad_report_service, conversion_service
+from app.services import (
+    note_service,
+    invoice_service,
+    contabilidad_report_service,
+    conversion_service,
+    corte_caja_report_service,
+)
 from app.services.evidence_service import build_evidence_groups
 from app.services.firebase_storage import upload_image
 
@@ -59,6 +71,25 @@ _TRANSFER_RELATED_NOTE_RE = re.compile(r"Nota (?:entrada|salida) #(\d+)")
 _FOLIO_QUERY_RE = re.compile(r"^\s*(\d+)[-_]([CVM])[_-](\d+)\s*$", re.IGNORECASE)
 _CUENTA_TIPOS = ("cuenta bancaria", "cuenta cheques")
 _SCRAP360_TIPOS = ("transferencia", "cheques", "efectivo")
+_CORTE_MOV_TIPOS = (
+    ("INGRESO", "Ingreso"),
+    ("EGRESO", "Egreso"),
+    ("RETIRO", "Retiro"),
+    ("DEPOSITO", "Deposito"),
+)
+_CORTE_DENOMINACIONES = [
+    {"label": "$1,000", "value": Decimal("1000"), "key": "denom_1000"},
+    {"label": "$500", "value": Decimal("500"), "key": "denom_500"},
+    {"label": "$200", "value": Decimal("200"), "key": "denom_200"},
+    {"label": "$100", "value": Decimal("100"), "key": "denom_100"},
+    {"label": "$50", "value": Decimal("50"), "key": "denom_50"},
+    {"label": "$20", "value": Decimal("20"), "key": "denom_20"},
+    {"label": "$10", "value": Decimal("10"), "key": "denom_10"},
+    {"label": "$5", "value": Decimal("5"), "key": "denom_5"},
+    {"label": "$2", "value": Decimal("2"), "key": "denom_2"},
+    {"label": "$1", "value": Decimal("1"), "key": "denom_1"},
+    {"label": "$0.50", "value": Decimal("0.5"), "key": "denom_0_5"},
+]
 
 
 def _movimiento_tipo_operacion(mov: MovimientoContable) -> str | None:
@@ -6086,6 +6117,843 @@ async def contabilidad_reporte(
             headers=headers,
         )
 
+    raise HTTPException(status_code=400, detail="Formato de reporte invalido.")
+
+
+# ---------- CORTE DE CAJA ----------
+
+
+def _parse_corte_fecha(raw: str | None) -> tuple[date, str | None]:
+    if not raw:
+        return date.today(), None
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d").date(), None
+    except ValueError:
+        return date.today(), "Fecha invalida."
+
+
+def _cash_sign_for_nota(nota: Nota | None) -> Decimal:
+    if not nota:
+        return Decimal("0")
+    if nota.tipo_operacion in (TipoOperacion.compra, TipoOperacion.comision):
+        return Decimal("-1")
+    return Decimal("1")
+
+
+def _partner_name_for_nota(
+    nota: Nota | None,
+    proveedores_map: dict[int, str],
+    clientes_map: dict[int, str],
+) -> str:
+    if not nota:
+        return "-"
+    partner_kind, partner_id = _nota_partner_key(nota)
+    if partner_kind == "proveedor":
+        return proveedores_map.get(partner_id, "-")
+    if partner_kind == "cliente":
+        return clientes_map.get(partner_id, "-")
+    return "-"
+
+
+def _build_corte_cash_movimientos(
+    db: Session,
+    *,
+    sucursal_id: int,
+    fecha: date,
+) -> dict:
+    start_dt = datetime(fecha.year, fecha.month, fecha.day)
+    end_dt = start_dt + timedelta(days=1)
+
+    pagos = (
+        db.query(NotaPago)
+        .join(Nota, NotaPago.nota_id == Nota.id)
+        .filter(
+            Nota.sucursal_id == sucursal_id,
+            NotaPago.metodo_pago == "efectivo",
+            NotaPago.created_at >= start_dt,
+            NotaPago.created_at < end_dt,
+        )
+        .order_by(NotaPago.created_at.asc())
+        .all()
+    )
+    reversos = (
+        db.query(MovimientoContable)
+        .filter(
+            MovimientoContable.sucursal_id == sucursal_id,
+            MovimientoContable.tipo == "reverso_pago",
+            MovimientoContable.metodo_pago == "efectivo",
+            MovimientoContable.created_at >= start_dt,
+            MovimientoContable.created_at < end_dt,
+        )
+        .order_by(MovimientoContable.created_at.asc())
+        .all()
+    )
+
+    note_ids = {p.nota_id for p in pagos if p.nota_id}
+    note_ids.update({m.nota_id for m in reversos if m.nota_id})
+    notas = db.query(Nota).filter(Nota.id.in_(note_ids)).all() if note_ids else []
+    nota_map = {n.id: n for n in notas}
+    folio_map = _build_folio_map(notas)
+
+    prov_ids = {n.proveedor_id for n in notas if n.proveedor_id}
+    cli_ids = {n.cliente_id for n in notas if n.cliente_id}
+    proveedores_map = {
+        p.id: p.nombre_completo for p in db.query(Proveedor).filter(Proveedor.id.in_(prov_ids)).all()
+    } if prov_ids else {}
+    clientes_map = {
+        c.id: c.nombre_completo for c in db.query(Cliente).filter(Cliente.id.in_(cli_ids)).all()
+    } if cli_ids else {}
+
+    movimientos: list[dict] = []
+    total_ingresos = Decimal("0")
+    total_egresos = Decimal("0")
+    neto = Decimal("0")
+
+    for pago in pagos:
+        nota = pago.nota or nota_map.get(pago.nota_id)
+        sign = _cash_sign_for_nota(nota)
+        monto = Decimal(str(pago.monto or 0))
+        signed = monto * sign
+        neto += signed
+        if signed >= 0:
+            total_ingresos += signed
+        else:
+            total_egresos += abs(signed)
+        movimientos.append(
+            {
+                "fecha": pago.created_at,
+                "tipo": "Pago",
+                "detalle": nota.tipo_operacion.value if nota else "-",
+                "nota_id": pago.nota_id,
+                "folio": folio_map.get(pago.nota_id) or f"#{pago.nota_id}",
+                "partner": _partner_name_for_nota(nota, proveedores_map, clientes_map),
+                "monto": signed,
+                "comentario": pago.comentario or "",
+            }
+        )
+
+    for mov in reversos:
+        tipo_raw = (mov.tipo or "").lower()
+        tipo_op = _movimiento_tipo_operacion(mov)
+        signed = _movimiento_monto_firmado(mov, tipo_raw, tipo_op)
+        neto += signed
+        if signed >= 0:
+            total_ingresos += signed
+        else:
+            total_egresos += abs(signed)
+        nota = mov.nota or (nota_map.get(mov.nota_id) if mov.nota_id else None)
+        movimientos.append(
+            {
+                "fecha": mov.created_at,
+                "tipo": "Reverso pago",
+                "detalle": tipo_op or "-",
+                "nota_id": mov.nota_id,
+                "folio": folio_map.get(mov.nota_id) or f"#{mov.nota_id}",
+                "partner": _partner_name_for_nota(nota, proveedores_map, clientes_map),
+                "monto": signed,
+                "comentario": mov.comentario or "",
+            }
+        )
+
+    movimientos.sort(key=lambda m: (m["fecha"] or datetime.min, m["tipo"]))
+
+    return {
+        "movimientos": movimientos,
+        "ingresos": total_ingresos,
+        "egresos": total_egresos,
+        "neto": neto,
+        "total": len(movimientos),
+    }
+
+
+def _corte_mov_sign(tipo_raw: CorteCajaMovimientoTipo | str | None) -> Decimal:
+    tipo_val = ""
+    if isinstance(tipo_raw, CorteCajaMovimientoTipo):
+        tipo_val = tipo_raw.value
+    elif hasattr(tipo_raw, "value"):
+        tipo_val = str(tipo_raw.value)
+    else:
+        tipo_val = str(tipo_raw or "")
+    tipo_val = tipo_val.upper()
+    if tipo_val in ("INGRESO", "DEPOSITO"):
+        return Decimal("1")
+    return Decimal("-1")
+
+
+def _build_corte_manual_movimientos(
+    db: Session,
+    *,
+    corte_id: int,
+) -> dict:
+    movimientos_db = (
+        db.query(CorteCajaMovimiento)
+        .filter(CorteCajaMovimiento.corte_id == corte_id)
+        .order_by(CorteCajaMovimiento.created_at.asc())
+        .all()
+    )
+    movimientos: list[dict] = []
+    total_ingresos = Decimal("0")
+    total_egresos = Decimal("0")
+    neto = Decimal("0")
+    totals_by_tipo = {tipo: Decimal("0") for tipo, _ in _CORTE_MOV_TIPOS}
+    tipo_labels = dict(_CORTE_MOV_TIPOS)
+
+    for mov in movimientos_db:
+        tipo_val = mov.tipo.value if isinstance(mov.tipo, CorteCajaMovimientoTipo) else str(mov.tipo or "").upper()
+        monto = Decimal(str(mov.monto or 0))
+        totals_by_tipo[tipo_val] = totals_by_tipo.get(tipo_val, Decimal("0")) + monto
+        signed = monto * _corte_mov_sign(tipo_val)
+        neto += signed
+        if signed >= 0:
+            total_ingresos += signed
+        else:
+            total_egresos += abs(signed)
+        movimientos.append(
+            {
+                "fecha": mov.created_at,
+                "tipo": tipo_val,
+                "tipo_label": tipo_labels.get(tipo_val, tipo_val.title()),
+                "descripcion": mov.descripcion,
+                "usuario": mov.usuario.nombre_completo if mov.usuario else "-",
+                "monto": signed,
+            }
+        )
+
+    return {
+        "movimientos": movimientos,
+        "ingresos": total_ingresos,
+        "egresos": total_egresos,
+        "neto": neto,
+        "total": len(movimientos),
+        "totals_by_tipo": totals_by_tipo,
+    }
+
+
+def _render_corte_caja(
+    request: Request,
+    db: Session,
+    current_user: dict,
+    *,
+    sucursal_id: int | None,
+    fecha: date,
+    allowed_suc_ids: list[int] | None,
+    error: str | None = None,
+    success: str | None = None,
+    form_data: dict | None = None,
+):
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
+    if allowed_suc_ids is not None:
+        if sucursal_id and sucursal_id not in allowed_suc_ids:
+            sucursal_id = None
+        if sucursal_id is None and len(allowed_suc_ids) == 1:
+            sucursal_id = allowed_suc_ids[0]
+    if sucursal_id is None and sucursales:
+        sucursal_id = sucursales[0].id
+
+    corte = None
+    if sucursal_id:
+        corte = (
+            db.query(CorteCaja)
+            .filter(CorteCaja.sucursal_id == sucursal_id, CorteCaja.fecha == fecha)
+            .first()
+        )
+    historial = []
+    if sucursal_id:
+        historial = (
+            db.query(CorteCaja)
+            .filter(CorteCaja.sucursal_id == sucursal_id)
+            .order_by(CorteCaja.fecha.desc())
+            .limit(15)
+            .all()
+        )
+
+    gastos = []
+    gastos_total = Decimal("0")
+    if corte:
+        gastos = (
+            db.query(CorteCajaGasto)
+            .filter(CorteCajaGasto.corte_id == corte.id)
+            .order_by(CorteCajaGasto.created_at.desc())
+            .all()
+        )
+        for gasto in gastos:
+            gastos_total += Decimal(str(gasto.monto or 0))
+
+    cash_data = None
+    if sucursal_id:
+        cash_data = _build_corte_cash_movimientos(db, sucursal_id=sucursal_id, fecha=fecha)
+    else:
+        cash_data = {"movimientos": [], "ingresos": Decimal("0"), "egresos": Decimal("0"), "neto": Decimal("0"), "total": 0}
+
+    manual_data = {"movimientos": [], "ingresos": Decimal("0"), "egresos": Decimal("0"), "neto": Decimal("0"), "total": 0, "totals_by_tipo": {}}
+    if corte:
+        manual_data = _build_corte_manual_movimientos(db, corte_id=corte.id)
+
+    denominaciones = []
+    denom_map: dict[Decimal, int] = {}
+    if corte:
+        denominaciones = (
+            db.query(CorteCajaDenominacion)
+            .filter(CorteCajaDenominacion.corte_id == corte.id)
+            .order_by(CorteCajaDenominacion.valor.desc())
+            .all()
+        )
+        denom_map = {Decimal(str(d.valor or 0)): int(d.cantidad or 0) for d in denominaciones}
+
+    saldo_inicial = Decimal(str(corte.saldo_inicial or 0)) if corte else Decimal("0")
+    saldo_calculado_actual = saldo_inicial + cash_data["neto"] + manual_data["neto"] - gastos_total
+    saldo_calculado = saldo_calculado_actual
+    if corte and corte.estado == CorteCajaEstado.cerrado:
+        saldo_calculado = Decimal(str(corte.saldo_calculado or 0))
+
+    form_data = form_data or {}
+    denom_inputs = []
+    denom_total = Decimal("0")
+    for denom in _CORTE_DENOMINACIONES:
+        key = denom["key"]
+        if key in form_data:
+            raw_val = form_data.get(key)
+            count_val = raw_val if raw_val not in (None, "") else 0
+        else:
+            count_val = denom_map.get(denom["value"], 0)
+        try:
+            count_int = int(str(count_val))
+        except (ValueError, TypeError):
+            count_int = 0
+        subtotal = denom["value"] * Decimal(str(count_int))
+        denom_total += subtotal
+        denom_inputs.append({**denom, "count": count_val, "subtotal": subtotal})
+
+    return templates.TemplateResponse(
+        "admin/corte_caja.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "sucursales": sucursales,
+            "sucursal_id": sucursal_id,
+            "fecha": fecha.strftime("%Y-%m-%d"),
+            "corte": corte,
+            "gastos": gastos,
+            "gastos_total": gastos_total,
+            "cash_movs": cash_data["movimientos"],
+            "cash_ingresos": cash_data["ingresos"],
+            "cash_egresos": cash_data["egresos"],
+            "cash_total": cash_data["total"],
+            "manual_movs": manual_data["movimientos"],
+            "manual_ingresos": manual_data["ingresos"],
+            "manual_egresos": manual_data["egresos"],
+            "manual_neto": manual_data["neto"],
+            "manual_total": manual_data["total"],
+            "manual_totals_by_tipo": manual_data["totals_by_tipo"],
+            "saldo_inicial": saldo_inicial,
+            "saldo_calculado_actual": saldo_calculado_actual,
+            "saldo_calculado": saldo_calculado,
+            "denominaciones": denominaciones,
+            "denom_inputs": denom_inputs,
+            "denom_total": denom_total,
+            "historial": historial,
+            "error": error,
+            "success": success,
+            "corte_mov_tipos": _CORTE_MOV_TIPOS,
+            "form_saldo_inicial": form_data.get("saldo_inicial", ""),
+            "form_gasto_desc": form_data.get("gasto_desc", ""),
+            "form_gasto_monto": form_data.get("gasto_monto", ""),
+            "form_gasto_categoria": form_data.get("gasto_categoria", ""),
+            "form_mov_tipo": form_data.get("mov_tipo", ""),
+            "form_mov_desc": form_data.get("mov_desc", ""),
+            "form_mov_monto": form_data.get("mov_monto", ""),
+            "form_saldo_cierre": form_data.get("saldo_cierre", f"{denom_total:.2f}"),
+            "form_cierre_comentarios": form_data.get("cierre_comentarios", ""),
+            "form_motivo_diferencia": form_data.get("motivo_diferencia", ""),
+        },
+        status_code=400 if error else 200,
+    )
+
+
+@router.get("/corte-caja")
+async def corte_caja_list(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    params = request.query_params
+    sucursal_id = None
+    if params.get("sucursal_id"):
+        try:
+            sucursal_id = int(params.get("sucursal_id"))
+        except ValueError:
+            sucursal_id = None
+    fecha, fecha_error = _parse_corte_fecha(params.get("fecha"))
+    success = params.get("success")
+    return _render_corte_caja(
+        request,
+        db,
+        current_user,
+        sucursal_id=sucursal_id,
+        fecha=fecha,
+        allowed_suc_ids=allowed_suc_ids,
+        error=fecha_error,
+        success=success,
+    )
+
+
+@router.post("/corte-caja/abrir")
+async def corte_caja_abrir(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    form = await request.form()
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    sucursal_raw = (form.get("sucursal_id") or "").strip()
+    fecha_raw = (form.get("fecha") or "").strip()
+    saldo_raw = (form.get("saldo_inicial") or "").strip()
+
+    try:
+        sucursal_id = int(sucursal_raw)
+    except (ValueError, TypeError):
+        sucursal_id = None
+    fecha, fecha_error = _parse_corte_fecha(fecha_raw)
+    if fecha_error:
+        return _render_corte_caja(
+            request,
+            db,
+            current_user,
+            sucursal_id=sucursal_id,
+            fecha=fecha,
+            allowed_suc_ids=allowed_suc_ids,
+            error=fecha_error,
+            form_data={"saldo_inicial": saldo_raw},
+        )
+
+    if not sucursal_id:
+        return _render_corte_caja(
+            request,
+            db,
+            current_user,
+            sucursal_id=None,
+            fecha=fecha,
+            allowed_suc_ids=allowed_suc_ids,
+            error="Selecciona una sucursal valida.",
+            form_data={"saldo_inicial": saldo_raw},
+        )
+    if allowed_suc_ids is not None and sucursal_id not in allowed_suc_ids:
+        raise HTTPException(status_code=403, detail="No tienes acceso a esta sucursal.")
+
+    try:
+        saldo_inicial = Decimal(str(saldo_raw))
+    except (InvalidOperation, TypeError):
+        return _render_corte_caja(
+            request,
+            db,
+            current_user,
+            sucursal_id=sucursal_id,
+            fecha=fecha,
+            allowed_suc_ids=allowed_suc_ids,
+            error="El saldo inicial es invalido.",
+            form_data={"saldo_inicial": saldo_raw},
+        )
+    if saldo_inicial < Decimal("0"):
+        return _render_corte_caja(
+            request,
+            db,
+            current_user,
+            sucursal_id=sucursal_id,
+            fecha=fecha,
+            allowed_suc_ids=allowed_suc_ids,
+            error="El saldo inicial no puede ser negativo.",
+            form_data={"saldo_inicial": saldo_raw},
+        )
+
+    existing = (
+        db.query(CorteCaja)
+        .filter(CorteCaja.sucursal_id == sucursal_id, CorteCaja.fecha == fecha)
+        .first()
+    )
+    if existing:
+        return _render_corte_caja(
+            request,
+            db,
+            current_user,
+            sucursal_id=sucursal_id,
+            fecha=fecha,
+            allowed_suc_ids=allowed_suc_ids,
+            error="Ya existe un corte de caja para esa fecha.",
+            form_data={"saldo_inicial": saldo_raw},
+        )
+
+    corte = CorteCaja(
+        sucursal_id=sucursal_id,
+        fecha=fecha,
+        estado=CorteCajaEstado.abierto,
+        saldo_inicial=saldo_inicial,
+        abierto_por_id=current_user.get("id"),
+        opened_at=datetime.utcnow(),
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    db.add(corte)
+    db.commit()
+
+    return RedirectResponse(
+        url=f"/web/admin/corte-caja?sucursal_id={sucursal_id}&fecha={fecha.isoformat()}&success=open",
+        status_code=303,
+    )
+
+
+@router.post("/corte-caja/{corte_id}/gastos")
+async def corte_caja_add_gasto(
+    corte_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    form = await request.form()
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    corte = db.get(CorteCaja, corte_id)
+    if not corte:
+        raise HTTPException(status_code=404, detail="Corte de caja no encontrado.")
+    if corte.estado != CorteCajaEstado.abierto:
+        return _render_corte_caja(
+            request,
+            db,
+            current_user,
+            sucursal_id=corte.sucursal_id,
+            fecha=corte.fecha,
+            allowed_suc_ids=allowed_suc_ids,
+            error="El corte ya esta cerrado.",
+        )
+    if allowed_suc_ids is not None and corte.sucursal_id not in allowed_suc_ids:
+        raise HTTPException(status_code=403, detail="No tienes acceso a esta sucursal.")
+
+    descripcion = (form.get("descripcion") or "").strip()
+    categoria = (form.get("categoria") or "").strip()
+    monto_raw = (form.get("monto") or "").strip()
+    if not descripcion:
+        return _render_corte_caja(
+            request,
+            db,
+            current_user,
+            sucursal_id=corte.sucursal_id,
+            fecha=corte.fecha,
+            allowed_suc_ids=allowed_suc_ids,
+            error="La descripcion del gasto es obligatoria.",
+            form_data={"gasto_desc": descripcion, "gasto_monto": monto_raw, "gasto_categoria": categoria},
+        )
+    try:
+        monto = Decimal(str(monto_raw))
+    except (InvalidOperation, TypeError):
+        return _render_corte_caja(
+            request,
+            db,
+            current_user,
+            sucursal_id=corte.sucursal_id,
+            fecha=corte.fecha,
+            allowed_suc_ids=allowed_suc_ids,
+            error="El monto del gasto es invalido.",
+            form_data={"gasto_desc": descripcion, "gasto_monto": monto_raw, "gasto_categoria": categoria},
+        )
+    if monto <= Decimal("0"):
+        return _render_corte_caja(
+            request,
+            db,
+            current_user,
+            sucursal_id=corte.sucursal_id,
+            fecha=corte.fecha,
+            allowed_suc_ids=allowed_suc_ids,
+            error="El monto del gasto debe ser mayor a 0.",
+            form_data={"gasto_desc": descripcion, "gasto_monto": monto_raw, "gasto_categoria": categoria},
+        )
+
+    gasto = CorteCajaGasto(
+        corte_id=corte.id,
+        usuario_id=current_user.get("id"),
+        descripcion=descripcion,
+        categoria=categoria or None,
+        monto=monto,
+        created_at=datetime.utcnow(),
+    )
+    db.add(gasto)
+    db.commit()
+
+    return RedirectResponse(
+        url=f"/web/admin/corte-caja?sucursal_id={corte.sucursal_id}&fecha={corte.fecha.isoformat()}&success=gasto",
+        status_code=303,
+    )
+
+
+@router.post("/corte-caja/{corte_id}/movimientos")
+async def corte_caja_add_movimiento(
+    corte_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    form = await request.form()
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    corte = db.get(CorteCaja, corte_id)
+    if not corte:
+        raise HTTPException(status_code=404, detail="Corte de caja no encontrado.")
+    if corte.estado != CorteCajaEstado.abierto:
+        return _render_corte_caja(
+            request,
+            db,
+            current_user,
+            sucursal_id=corte.sucursal_id,
+            fecha=corte.fecha,
+            allowed_suc_ids=allowed_suc_ids,
+            error="El corte ya esta cerrado.",
+        )
+    if allowed_suc_ids is not None and corte.sucursal_id not in allowed_suc_ids:
+        raise HTTPException(status_code=403, detail="No tienes acceso a esta sucursal.")
+
+    tipo_raw = (form.get("tipo") or "").strip().upper()
+    descripcion = (form.get("descripcion") or "").strip()
+    monto_raw = (form.get("monto") or "").strip()
+
+    allowed_types = {t[0] for t in _CORTE_MOV_TIPOS}
+    if tipo_raw not in allowed_types:
+        return _render_corte_caja(
+            request,
+            db,
+            current_user,
+            sucursal_id=corte.sucursal_id,
+            fecha=corte.fecha,
+            allowed_suc_ids=allowed_suc_ids,
+            error="El tipo de movimiento es invalido.",
+            form_data={"mov_tipo": tipo_raw, "mov_desc": descripcion, "mov_monto": monto_raw},
+        )
+    if not descripcion:
+        return _render_corte_caja(
+            request,
+            db,
+            current_user,
+            sucursal_id=corte.sucursal_id,
+            fecha=corte.fecha,
+            allowed_suc_ids=allowed_suc_ids,
+            error="La descripcion del movimiento es obligatoria.",
+            form_data={"mov_tipo": tipo_raw, "mov_desc": descripcion, "mov_monto": monto_raw},
+        )
+    try:
+        monto = Decimal(str(monto_raw))
+    except (InvalidOperation, TypeError):
+        return _render_corte_caja(
+            request,
+            db,
+            current_user,
+            sucursal_id=corte.sucursal_id,
+            fecha=corte.fecha,
+            allowed_suc_ids=allowed_suc_ids,
+            error="El monto del movimiento es invalido.",
+            form_data={"mov_tipo": tipo_raw, "mov_desc": descripcion, "mov_monto": monto_raw},
+        )
+    if monto <= Decimal("0"):
+        return _render_corte_caja(
+            request,
+            db,
+            current_user,
+            sucursal_id=corte.sucursal_id,
+            fecha=corte.fecha,
+            allowed_suc_ids=allowed_suc_ids,
+            error="El monto del movimiento debe ser mayor a 0.",
+            form_data={"mov_tipo": tipo_raw, "mov_desc": descripcion, "mov_monto": monto_raw},
+        )
+
+    movimiento = CorteCajaMovimiento(
+        corte_id=corte.id,
+        usuario_id=current_user.get("id"),
+        tipo=CorteCajaMovimientoTipo(tipo_raw),
+        descripcion=descripcion,
+        monto=monto,
+        created_at=datetime.utcnow(),
+    )
+    db.add(movimiento)
+    db.commit()
+
+    return RedirectResponse(
+        url=f"/web/admin/corte-caja?sucursal_id={corte.sucursal_id}&fecha={corte.fecha.isoformat()}&success=movimiento",
+        status_code=303,
+    )
+
+
+@router.post("/corte-caja/{corte_id}/cerrar")
+async def corte_caja_cerrar(
+    corte_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    form = await request.form()
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    corte = db.get(CorteCaja, corte_id)
+    if not corte:
+        raise HTTPException(status_code=404, detail="Corte de caja no encontrado.")
+    if corte.estado != CorteCajaEstado.abierto:
+        return _render_corte_caja(
+            request,
+            db,
+            current_user,
+            sucursal_id=corte.sucursal_id,
+            fecha=corte.fecha,
+            allowed_suc_ids=allowed_suc_ids,
+            error="El corte ya esta cerrado.",
+        )
+
+    comentarios = (form.get("comentarios_cierre") or "").strip()
+    motivo_diferencia = (form.get("motivo_diferencia") or "").strip()
+    form_data = {
+        "cierre_comentarios": comentarios,
+        "motivo_diferencia": motivo_diferencia,
+    }
+    for denom in _CORTE_DENOMINACIONES:
+        form_data[denom["key"]] = (form.get(denom["key"]) or "").strip()
+
+    denom_entries: list[tuple[Decimal, int]] = []
+    saldo_cierre = Decimal("0")
+    for denom in _CORTE_DENOMINACIONES:
+        raw = (form.get(denom["key"]) or "").strip()
+        if not raw:
+            cantidad = 0
+        else:
+            try:
+                cantidad = int(raw)
+            except (ValueError, TypeError):
+                return _render_corte_caja(
+                    request,
+                    db,
+                    current_user,
+                    sucursal_id=corte.sucursal_id,
+                    fecha=corte.fecha,
+                    allowed_suc_ids=allowed_suc_ids,
+                    error=f"Cantidad invalida para {denom['label']}.",
+                    form_data=form_data,
+                )
+        if cantidad < 0:
+            return _render_corte_caja(
+                request,
+                db,
+                current_user,
+                sucursal_id=corte.sucursal_id,
+                fecha=corte.fecha,
+                allowed_suc_ids=allowed_suc_ids,
+                error="Las cantidades de denominaciones no pueden ser negativas.",
+                form_data=form_data,
+            )
+        if cantidad:
+            denom_entries.append((denom["value"], cantidad))
+        saldo_cierre += denom["value"] * Decimal(str(cantidad))
+    form_data["saldo_cierre"] = f"{saldo_cierre:.2f}"
+
+    cash_data = _build_corte_cash_movimientos(db, sucursal_id=corte.sucursal_id, fecha=corte.fecha)
+    manual_data = _build_corte_manual_movimientos(db, corte_id=corte.id)
+    gastos_total = sum((Decimal(str(g.monto or 0)) for g in corte.gastos), Decimal("0"))
+    saldo_calculado = Decimal(str(corte.saldo_inicial or 0)) + cash_data["neto"] + manual_data["neto"] - gastos_total
+    diferencia = saldo_cierre - saldo_calculado
+    if diferencia != Decimal("0") and not motivo_diferencia:
+        return _render_corte_caja(
+            request,
+            db,
+            current_user,
+            sucursal_id=corte.sucursal_id,
+            fecha=corte.fecha,
+            allowed_suc_ids=allowed_suc_ids,
+            error="El motivo de la diferencia es obligatorio.",
+            form_data=form_data,
+        )
+
+    corte.saldo_calculado = saldo_calculado
+    corte.saldo_cierre = saldo_cierre
+    corte.diferencia = diferencia
+    corte.motivo_diferencia = motivo_diferencia or None
+    corte.comentarios_cierre = comentarios or None
+    corte.estado = CorteCajaEstado.cerrado
+    corte.cerrado_por_id = current_user.get("id")
+    corte.closed_at = datetime.utcnow()
+    corte.updated_at = datetime.utcnow()
+    db.add(corte)
+    db.query(CorteCajaDenominacion).filter(CorteCajaDenominacion.corte_id == corte.id).delete(synchronize_session=False)
+    for valor, cantidad in denom_entries:
+        db.add(
+            CorteCajaDenominacion(
+                corte_id=corte.id,
+                valor=valor,
+                cantidad=cantidad,
+                created_at=datetime.utcnow(),
+            )
+        )
+    db.commit()
+
+    return RedirectResponse(
+        url=f"/web/admin/corte-caja?sucursal_id={corte.sucursal_id}&fecha={corte.fecha.isoformat()}&success=close",
+        status_code=303,
+    )
+
+
+@router.get("/corte-caja/{corte_id}/reporte")
+async def corte_caja_reporte(
+    corte_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    corte = db.get(CorteCaja, corte_id)
+    if not corte:
+        raise HTTPException(status_code=404, detail="Corte de caja no encontrado.")
+    if allowed_suc_ids is not None and corte.sucursal_id not in allowed_suc_ids:
+        raise HTTPException(status_code=403, detail="No tienes acceso a esta sucursal.")
+
+    sucursal = db.get(Sucursal, corte.sucursal_id)
+    cash_data = _build_corte_cash_movimientos(db, sucursal_id=corte.sucursal_id, fecha=corte.fecha)
+    manual_data = _build_corte_manual_movimientos(db, corte_id=corte.id)
+    gastos = (
+        db.query(CorteCajaGasto)
+        .filter(CorteCajaGasto.corte_id == corte.id)
+        .order_by(CorteCajaGasto.created_at.asc())
+        .all()
+    )
+    denominaciones = (
+        db.query(CorteCajaDenominacion)
+        .filter(CorteCajaDenominacion.corte_id == corte.id)
+        .order_by(CorteCajaDenominacion.valor.desc())
+        .all()
+    )
+    gastos_total = sum((Decimal(str(g.monto or 0)) for g in gastos), Decimal("0"))
+    saldo_calculado = (
+        Decimal(str(corte.saldo_calculado or 0))
+        if corte.estado == CorteCajaEstado.cerrado
+        else Decimal(str(corte.saldo_inicial or 0)) + cash_data["neto"] + manual_data["neto"] - gastos_total
+    )
+    report = corte_caja_report_service.build_report(
+        corte=corte,
+        sucursal=sucursal,
+        cash_data=cash_data,
+        manual_data=manual_data,
+        gastos=gastos,
+        denominaciones=denominaciones,
+        saldo_calculado=saldo_calculado,
+    )
+
+    fmt = (request.query_params.get("format") or "pdf").lower()
+    if fmt in ("xlsx", "xls", "excel"):
+        content, filename = corte_caja_report_service.build_report_excel(report)
+        headers = {"Content-Disposition": f"attachment; filename={filename}"}
+        return StreamingResponse(
+            io.BytesIO(content),
+            media_type="application/vnd.ms-excel",
+            headers=headers,
+        )
+    if fmt == "pdf":
+        content, filename = corte_caja_report_service.build_report_pdf(report)
+        headers = {"Content-Disposition": f"attachment; filename={filename}"}
+        return StreamingResponse(
+            io.BytesIO(content),
+            media_type="application/pdf",
+            headers=headers,
+        )
     raise HTTPException(status_code=400, detail="Formato de reporte invalido.")
 
 
