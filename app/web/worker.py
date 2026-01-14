@@ -208,6 +208,22 @@ async def notes_new_post(
             },
             status_code=400,
         )
+    if tipo_op not in (TipoOperacion.compra, TipoOperacion.venta):
+        return templates.TemplateResponse(
+            "worker/notes_form.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "materiales": materiales,
+                "proveedores": proveedores,
+                "clientes": clientes,
+                "error": "Tipo de operacion no permitido.",
+                "price_map": price_map,
+                "max_mb": settings.FIREBASE_MAX_MB,
+            },
+            status_code=400,
+        )
 
     try:
         materiales_payload = _parse_materials_from_form(material_id, kg_bruto, kg_descuento, subpesajes, tipo_cliente)
@@ -394,14 +410,26 @@ async def notes_evidencias(
     sucursal = db.get(Sucursal, nota.sucursal_id) if nota.sucursal_id else None
     partner_name = "-"
     partner_label = "Partner"
-    if nota.tipo_operacion.value == "compra":
+    if nota.tipo_operacion == TipoOperacion.venta:
+        partner_label = "Cliente"
+        cliente = db.get(Cliente, nota.cliente_id) if nota.cliente_id else None
+        partner_name = cliente.nombre_completo if cliente else "-"
+    elif nota.tipo_operacion == TipoOperacion.compra:
         partner_label = "Proveedor"
         proveedor = db.get(Proveedor, nota.proveedor_id) if nota.proveedor_id else None
         partner_name = proveedor.nombre_completo if proveedor else "-"
     else:
-        partner_label = "Cliente"
+        proveedor = db.get(Proveedor, nota.proveedor_id) if nota.proveedor_id else None
         cliente = db.get(Cliente, nota.cliente_id) if nota.cliente_id else None
-        partner_name = cliente.nombre_completo if cliente else "-"
+        if proveedor:
+            partner_label = "Proveedor"
+            partner_name = proveedor.nombre_completo
+        elif cliente:
+            partner_label = "Cliente"
+            partner_name = cliente.nombre_completo
+        else:
+            partner_label = "Partner"
+            partner_name = "-"
 
     evidence_groups = build_evidence_groups(nota)
     total_sub = sum(len(g["subpesajes"]) for g in evidence_groups)

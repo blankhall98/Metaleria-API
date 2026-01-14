@@ -33,17 +33,17 @@
                 <div class="note-meta-sub">Pendiente</div>
             </div>
             <div class="note-meta-item">
-                <span class="note-meta-label">Compras aprobadas (devengado)</span>
+                <span class="note-meta-label">Compras y comisiones aprobadas (devengado)</span>
                 <strong>${{ "%.2f"|format(total_compras_aprobadas or 0) }}</strong>
-                <div class="note-meta-sub">Proveedores</div>
+                <div class="note-meta-sub">Proveedores / Clientes</div>
             </div>
             <div class="note-meta-item">
-                <span class="note-meta-label">Pagado a proveedores</span>
+                <span class="note-meta-label">Pagado por compras/comisiones</span>
                 <strong class="text-danger">${{ "%.2f"|format(total_pagado_proveedores or 0) }}</strong>
                 <div class="note-meta-sub">Pagos registrados</div>
             </div>
             <div class="note-meta-item">
-                <span class="note-meta-label">Por pagar proveedores</span>
+                <span class="note-meta-label">Por pagar compras/comisiones</span>
                 <strong class="text-danger">${{ "%.2f"|format(total_por_pagar or 0) }}</strong>
                 <div class="note-meta-sub">Pendiente</div>
             </div>
@@ -66,7 +66,7 @@
             </div>
         </div>
         <div class="text-muted small mt-2">
-            Devengado = total de notas aprobadas. Pagos = registros de pagos.
+            Devengado = total de notas aprobadas. Pagos = registros de pagos. Incluye comisiones cuando aplican.
             No incluye transferencias internas. Los filtros de fecha aplican solo al log de movimientos.
         </div>
     </div>

@@ -56,14 +56,14 @@ settings = get_settings()
 router = APIRouter(prefix="/web/admin", tags=["web-admin"])
 
 _TRANSFER_RELATED_NOTE_RE = re.compile(r"Nota (?:entrada|salida) #(\d+)")
-_FOLIO_QUERY_RE = re.compile(r"^\s*(\d+)[-_]([CV])[_-](\d+)\s*$", re.IGNORECASE)
+_FOLIO_QUERY_RE = re.compile(r"^\s*(\d+)[-_]([CVM])[_-](\d+)\s*$", re.IGNORECASE)
 _CUENTA_TIPOS = ("cuenta bancaria", "cuenta cheques")
 _SCRAP360_TIPOS = ("transferencia", "cheques", "efectivo")
 
 
 def _movimiento_tipo_operacion(mov: MovimientoContable) -> str | None:
     tipo_raw = (mov.tipo or "").lower()
-    if tipo_raw in ("compra", "venta"):
+    if tipo_raw in ("compra", "venta", "comision"):
         return tipo_raw
     if mov.nota and mov.nota.tipo_operacion:
         return mov.nota.tipo_operacion.value
@@ -79,6 +79,8 @@ def _movimiento_label(tipo_raw: str, tipo_op: str | None) -> str:
         return f"REVERSO {tipo_op.upper()}" if tipo_op else "REVERSO"
     if tipo_raw in ("compra", "venta"):
         return tipo_raw.upper()
+    if tipo_raw == "comision":
+        return "COMISION"
     if tipo_raw == "ajuste":
         return "AJUSTE"
     return tipo_raw.upper() if tipo_raw else "-"
@@ -89,18 +91,26 @@ def _movimiento_naturaleza(tipo_raw: str, tipo_op: str | None) -> str:
         return "EGRESO"
     if tipo_raw == "venta":
         return "INGRESO"
+    if tipo_raw == "comision":
+        return "EGRESO"
     if tipo_raw == "pago":
         if tipo_op == "compra":
+            return "EGRESO"
+        if tipo_op == "comision":
             return "EGRESO"
         if tipo_op == "venta":
             return "INGRESO"
     if tipo_raw == "reverso":
         if tipo_op == "compra":
             return "INGRESO"
+        if tipo_op == "comision":
+            return "INGRESO"
         if tipo_op == "venta":
             return "EGRESO"
     if tipo_raw == "reverso_pago":
         if tipo_op == "compra":
+            return "INGRESO"
+        if tipo_op == "comision":
             return "INGRESO"
         if tipo_op == "venta":
             return "EGRESO"
@@ -116,8 +126,12 @@ def _movimiento_monto_firmado(mov: MovimientoContable, tipo_raw: str, tipo_op: s
         return -abs_val
     if tipo_raw == "venta":
         return abs_val
+    if tipo_raw == "comision":
+        return -abs_val
     if tipo_raw == "pago":
         if tipo_op == "compra":
+            return -abs_val
+        if tipo_op == "comision":
             return -abs_val
         if tipo_op == "venta":
             return abs_val
@@ -125,11 +139,15 @@ def _movimiento_monto_firmado(mov: MovimientoContable, tipo_raw: str, tipo_op: s
     if tipo_raw == "reverso":
         if tipo_op == "compra":
             return abs_val
+        if tipo_op == "comision":
+            return abs_val
         if tipo_op == "venta":
             return -abs_val
         return base
     if tipo_raw == "reverso_pago":
         if tipo_op == "compra":
+            return abs_val
+        if tipo_op == "comision":
             return abs_val
         if tipo_op == "venta":
             return -abs_val
@@ -170,6 +188,34 @@ def _partner_payment_signed(mov: MovimientoContable) -> Decimal:
         return -abs(base)
     return abs(base)
 
+def _nota_partner_key(nota: Nota) -> tuple[str | None, int | None]:
+    if nota.tipo_operacion == TipoOperacion.compra:
+        return "proveedor", nota.proveedor_id
+    if nota.tipo_operacion == TipoOperacion.venta:
+        return "cliente", nota.cliente_id
+    if nota.tipo_operacion == TipoOperacion.comision:
+        if nota.proveedor_id:
+            return "proveedor", nota.proveedor_id
+        if nota.cliente_id:
+            return "cliente", nota.cliente_id
+    return None, None
+
+
+def _partner_note_sign(partner_type: str | None, nota: Nota) -> Decimal:
+    if partner_type == "cliente" and nota.tipo_operacion == TipoOperacion.comision:
+        return Decimal("-1")
+    return Decimal("1")
+
+
+def _signed_partner_amounts(
+    nota: Nota,
+    partner_type: str | None,
+) -> tuple[Decimal, Decimal]:
+    total = Decimal(str(nota.total_monto or 0))
+    pagado = Decimal(str(nota.monto_pagado or 0))
+    sign = _partner_note_sign(partner_type, nota)
+    return total * sign, pagado * sign
+
 
 def _movimiento_display_partner(mov: MovimientoContable) -> dict:
     view = _movimiento_display(mov)
@@ -191,13 +237,16 @@ def _build_partner_ledger(
     allowed_suc_ids: list[int] | None,
 ) -> list[dict]:
     if partner_type == "cliente":
-        tipo_op = TipoOperacion.venta
+        tipo_ops = [TipoOperacion.venta, TipoOperacion.comision]
         notes_query = db.query(Nota).filter(Nota.cliente_id == partner_id)
     else:
-        tipo_op = TipoOperacion.compra
+        tipo_ops = [TipoOperacion.compra, TipoOperacion.comision]
         notes_query = db.query(Nota).filter(Nota.proveedor_id == partner_id)
 
-    notes_query = notes_query.filter(Nota.tipo_operacion == tipo_op, Nota.estado.in_([NotaEstado.aprobada, NotaEstado.cancelada]))
+    notes_query = notes_query.filter(
+        Nota.tipo_operacion.in_(tipo_ops),
+        Nota.estado.in_([NotaEstado.aprobada, NotaEstado.cancelada]),
+    )
     notes_query = _apply_sucursal_filter(notes_query, allowed_suc_ids, None, Nota.sucursal_id)
     notas = notes_query.all()
     if not notas:
@@ -211,7 +260,7 @@ def _build_partner_ledger(
         for mov in db.query(MovimientoContable)
         .filter(
             MovimientoContable.nota_id.in_(note_ids),
-            MovimientoContable.tipo.in_([tipo_op.value]),
+            MovimientoContable.tipo.in_([op.value for op in tipo_ops]),
         )
         .all()
     }
@@ -231,10 +280,18 @@ def _build_partner_ledger(
     )
 
     events: list[dict] = []
+    note_signs = {
+        nota.id: _partner_note_sign(partner_type, nota)
+        for nota in notas
+    }
     for nota in notas:
         base_mov = base_movs.get(nota.id)
         fecha = base_mov.created_at if base_mov and base_mov.created_at else nota.created_at
         total = Decimal(str(nota.total_monto or 0))
+        sign = note_signs.get(nota.id, Decimal("1"))
+        delta = total * sign
+        cargo = delta if delta >= 0 else Decimal("0")
+        abono = Decimal("0") if delta >= 0 else -delta
         events.append(
             {
                 "fecha": fecha,
@@ -242,8 +299,8 @@ def _build_partner_ledger(
                 "tipo": "Nota aprobada",
                 "nota_id": nota.id,
                 "folio": folio_map.get(nota.id) or f"#{nota.id}",
-                "cargo": total,
-                "abono": Decimal("0"),
+                "cargo": cargo,
+                "abono": abono,
                 "metodo": "-",
                 "cuenta": "-",
                 "comentario": nota.comentarios_admin or "",
@@ -252,6 +309,10 @@ def _build_partner_ledger(
 
     for pago in pagos:
         cuenta_label = pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or "-")
+        sign = note_signs.get(pago.nota_id, Decimal("1"))
+        delta = Decimal(str(pago.monto or 0)) * (-sign)
+        cargo = delta if delta >= 0 else Decimal("0")
+        abono = Decimal("0") if delta >= 0 else -delta
         events.append(
             {
                 "fecha": pago.created_at,
@@ -259,8 +320,8 @@ def _build_partner_ledger(
                 "tipo": "Pago",
                 "nota_id": pago.nota_id,
                 "folio": folio_map.get(pago.nota_id) or f"#{pago.nota_id}",
-                "cargo": Decimal("0"),
-                "abono": Decimal(str(pago.monto or 0)),
+                "cargo": cargo,
+                "abono": abono,
                 "metodo": pago.metodo_pago or "-",
                 "cuenta": cuenta_label,
                 "comentario": pago.comentario or "",
@@ -269,7 +330,11 @@ def _build_partner_ledger(
 
     for mov in reversos:
         monto = abs(Decimal(str(mov.monto or 0)))
+        sign = note_signs.get(mov.nota_id, Decimal("1"))
         if mov.tipo == "reverso":
+            delta = monto * (-sign)
+            cargo = delta if delta >= 0 else Decimal("0")
+            abono = Decimal("0") if delta >= 0 else -delta
             events.append(
                 {
                     "fecha": mov.created_at,
@@ -277,14 +342,17 @@ def _build_partner_ledger(
                     "tipo": "Devolucion",
                     "nota_id": mov.nota_id,
                     "folio": folio_map.get(mov.nota_id) or f"#{mov.nota_id}",
-                    "cargo": Decimal("0"),
-                    "abono": monto,
+                    "cargo": cargo,
+                    "abono": abono,
                     "metodo": mov.metodo_pago or "-",
                     "cuenta": mov.cuenta.display_label if mov.cuenta else (mov.cuenta_financiera or "-"),
                     "comentario": mov.comentario or "",
                 }
             )
         elif mov.tipo == "reverso_pago":
+            delta = monto * sign
+            cargo = delta if delta >= 0 else Decimal("0")
+            abono = Decimal("0") if delta >= 0 else -delta
             events.append(
                 {
                     "fecha": mov.created_at,
@@ -292,8 +360,8 @@ def _build_partner_ledger(
                     "tipo": "Reverso pago",
                     "nota_id": mov.nota_id,
                     "folio": folio_map.get(mov.nota_id) or f"#{mov.nota_id}",
-                    "cargo": monto,
-                    "abono": Decimal("0"),
+                    "cargo": cargo,
+                    "abono": abono,
                     "metodo": mov.metodo_pago or "-",
                     "cuenta": mov.cuenta.display_label if mov.cuenta else (mov.cuenta_financiera or "-"),
                     "comentario": mov.comentario or "",
@@ -400,6 +468,8 @@ def _is_transfer_note(
     proveedor: Proveedor | None,
     cliente: Cliente | None,
 ) -> bool:
+    if nota.tipo_operacion == TipoOperacion.comision:
+        return False
     if nota.comentarios_admin and "Transferencia entre sucursales" in nota.comentarios_admin:
         return True
     partner_name = ""
@@ -437,7 +507,12 @@ def _parse_folio_query(
     sucursal_id = int(match.group(1))
     letter = match.group(2).upper()
     seq = int(match.group(3))
-    tipo_op = TipoOperacion.compra if letter == "C" else TipoOperacion.venta
+    if letter == "C":
+        tipo_op = TipoOperacion.compra
+    elif letter == "V":
+        tipo_op = TipoOperacion.venta
+    else:
+        tipo_op = TipoOperacion.comision
     return sucursal_id, tipo_op, seq
 
 
@@ -489,11 +564,14 @@ def _filter_notes_by_query(notas: list[Nota], q: str | None) -> tuple[list[Nota]
     return filtered, folio_map
 
 
-def _build_partner_record_rows(notas: list[Nota], folio_map: dict[int, str]) -> list[dict]:
+def _build_partner_record_rows(
+    notas: list[Nota],
+    folio_map: dict[int, str],
+    partner_type: str | None = None,
+) -> list[dict]:
     rows: list[dict] = []
     for nota in notas:
-        total = Decimal(str(nota.total_monto or 0))
-        pagado = Decimal(str(nota.monto_pagado or 0))
+        total, pagado = _signed_partner_amounts(nota, partner_type)
         saldo_aplicable = nota.estado == NotaEstado.aprobada
         saldo = (total - pagado) if saldo_aplicable else Decimal("0")
         saldo_pendiente = saldo if saldo > Decimal("0") else Decimal("0")
@@ -594,22 +672,23 @@ def _get_cuentas_for_nota(db: Session, nota: Nota) -> tuple[list[Cuenta], list[C
         .all()
     )
     cuentas_partner: list[Cuenta] = []
-    if nota.tipo_operacion == TipoOperacion.compra and nota.proveedor_id:
+    partner_kind, partner_id = _nota_partner_key(nota)
+    if partner_kind == "proveedor" and partner_id:
         cuentas_partner = (
             db.query(Cuenta)
             .filter(
                 Cuenta.activo.is_(True),
-                Cuenta.proveedor_id == nota.proveedor_id,
+                Cuenta.proveedor_id == partner_id,
             )
             .order_by(Cuenta.nombre)
             .all()
         )
-    elif nota.tipo_operacion == TipoOperacion.venta and nota.cliente_id:
+    elif partner_kind == "cliente" and partner_id:
         cuentas_partner = (
             db.query(Cuenta)
             .filter(
                 Cuenta.activo.is_(True),
-                Cuenta.cliente_id == nota.cliente_id,
+                Cuenta.cliente_id == partner_id,
             )
             .order_by(Cuenta.nombre)
             .all()
@@ -662,7 +741,10 @@ def _apply_scrap360_adjustment(
     db.add(mov)
     return mov
 
-def _aggregate_partner_record_summary(notas: list[Nota]) -> dict:
+def _aggregate_partner_record_summary(
+    notas: list[Nota],
+    partner_type: str | None = None,
+) -> dict:
     summary = {
         "total_notas": len(notas),
         "notas_aprobadas": 0,
@@ -677,8 +759,7 @@ def _aggregate_partner_record_summary(notas: list[Nota]) -> dict:
     for nota in notas:
         if nota.estado == NotaEstado.aprobada:
             summary["notas_aprobadas"] += 1
-            total = Decimal(str(nota.total_monto or 0))
-            pagado = Decimal(str(nota.monto_pagado or 0))
+            total, pagado = _signed_partner_amounts(nota, partner_type)
             summary["total_facturado"] += total
             summary["total_pagado"] += pagado
             saldo = total - pagado
@@ -1582,6 +1663,7 @@ async def material_precio_new_get(
     if not material:
         raise HTTPException(status_code=404, detail="Material no encontrado.")
 
+    tipos_operacion = [TipoOperacion.compra, TipoOperacion.venta]
     return templates.TemplateResponse(
         "admin/precio_form.html",
         {
@@ -1590,7 +1672,7 @@ async def material_precio_new_get(
             "user": current_user,
             "material": material,
             "error": None,
-            "tipos_operacion": list(TipoOperacion),
+            "tipos_operacion": tipos_operacion,
             "tipos_cliente": list(TipoCliente),
         },
     )
@@ -1623,7 +1705,7 @@ async def material_precio_new_post(
                 "user": current_user,
                 "material": material,
                 "error": "Tipo de operación o tipo de cliente inválido.",
-                "tipos_operacion": list(TipoOperacion),
+                "tipos_operacion": [TipoOperacion.compra, TipoOperacion.venta],
                 "tipos_cliente": list(TipoCliente),
             },
             status_code=400,
@@ -1643,7 +1725,7 @@ async def material_precio_new_post(
                 "user": current_user,
                 "material": material,
                 "error": "El precio debe ser un número mayor que 0.",
-                "tipos_operacion": list(TipoOperacion),
+                "tipos_operacion": [TipoOperacion.compra, TipoOperacion.venta],
                 "tipos_cliente": list(TipoCliente),
             },
             status_code=400,
@@ -1882,15 +1964,15 @@ async def proveedor_record(
         db.query(Nota)
         .filter(
             Nota.proveedor_id == proveedor_id,
-            Nota.tipo_operacion == TipoOperacion.compra,
+            Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.comision]),
             *([Nota.sucursal_id.in_(allowed_suc_ids)] if allowed_suc_ids else []),
         )
         .order_by(Nota.created_at.desc())
     )
     notas = notas_query.all()
     notas_filtradas, folio_map = _filter_notes_by_query(notas, q)
-    rows = _build_partner_record_rows(notas_filtradas, folio_map)
-    summary = _aggregate_partner_record_summary(notas)
+    rows = _build_partner_record_rows(notas_filtradas, folio_map, partner_type="proveedor")
+    summary = _aggregate_partner_record_summary(notas, partner_type="proveedor")
     ledger_rows = _build_partner_ledger(
         db,
         partner_type="proveedor",
@@ -1906,7 +1988,7 @@ async def proveedor_record(
         .join(Nota, NotaPago.nota_id == Nota.id)
         .filter(
             Nota.proveedor_id == proveedor_id,
-            Nota.tipo_operacion == TipoOperacion.compra,
+            Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.comision]),
             *([Nota.sucursal_id.in_(allowed_suc_ids)] if allowed_suc_ids else []),
         )
         .order_by(NotaPago.created_at.desc())
@@ -1927,7 +2009,7 @@ async def proveedor_record(
             "partner": proveedor,
             "partner_label": "Proveedor",
             "partner_base": "proveedores",
-            "tipo_operacion_label": "Compra",
+            "tipo_operacion_label": "Compras y comisiones",
             "record_rows": rows,
             "record_total_count": len(notas),
             "record_filtered_count": len(notas_filtradas),
@@ -1936,7 +2018,7 @@ async def proveedor_record(
             "ledger_final": ledger_final,
             "ledger_saldo_label": ledger_saldo_label,
             "ledger_saldo_help": ledger_saldo_help,
-            "total_facturado_label": "Total compras aprobadas",
+            "total_facturado_label": "Total compras y comisiones aprobadas",
             "total_pagado_label": "Total pagado",
             "saldo_pendiente_label": "Saldo pendiente (por pagar al proveedor)",
             "saldo_favor_label": "Saldo a favor de la empresa",
@@ -2165,15 +2247,15 @@ async def cliente_record(
         db.query(Nota)
         .filter(
             Nota.cliente_id == cliente_id,
-            Nota.tipo_operacion == TipoOperacion.venta,
+            Nota.tipo_operacion.in_([TipoOperacion.venta, TipoOperacion.comision]),
             *([Nota.sucursal_id.in_(allowed_suc_ids)] if allowed_suc_ids else []),
         )
         .order_by(Nota.created_at.desc())
     )
     notas = notas_query.all()
     notas_filtradas, folio_map = _filter_notes_by_query(notas, q)
-    rows = _build_partner_record_rows(notas_filtradas, folio_map)
-    summary = _aggregate_partner_record_summary(notas)
+    rows = _build_partner_record_rows(notas_filtradas, folio_map, partner_type="cliente")
+    summary = _aggregate_partner_record_summary(notas, partner_type="cliente")
     ledger_rows = _build_partner_ledger(
         db,
         partner_type="cliente",
@@ -2181,7 +2263,7 @@ async def cliente_record(
         allowed_suc_ids=allowed_suc_ids,
     )
     ledger_final = ledger_rows[-1]["saldo"] if ledger_rows else Decimal("0")
-    ledger_saldo_label = "Saldo acumulado (por cobrar al cliente)"
+    ledger_saldo_label = "Saldo acumulado (por cobrar/pagar al cliente)"
     ledger_saldo_help = "Saldo positivo indica pendiente por cobrar. Saldo negativo indica saldo a favor del cliente."
 
     pagos_query = (
@@ -2189,7 +2271,7 @@ async def cliente_record(
         .join(Nota, NotaPago.nota_id == Nota.id)
         .filter(
             Nota.cliente_id == cliente_id,
-            Nota.tipo_operacion == TipoOperacion.venta,
+            Nota.tipo_operacion.in_([TipoOperacion.venta, TipoOperacion.comision]),
             *([Nota.sucursal_id.in_(allowed_suc_ids)] if allowed_suc_ids else []),
         )
         .order_by(NotaPago.created_at.desc())
@@ -2210,7 +2292,7 @@ async def cliente_record(
             "partner": cliente,
             "partner_label": "Cliente",
             "partner_base": "clientes",
-            "tipo_operacion_label": "Venta",
+            "tipo_operacion_label": "Ventas y comisiones",
             "record_rows": rows,
             "record_total_count": len(notas),
             "record_filtered_count": len(notas_filtradas),
@@ -2219,9 +2301,9 @@ async def cliente_record(
             "ledger_final": ledger_final,
             "ledger_saldo_label": ledger_saldo_label,
             "ledger_saldo_help": ledger_saldo_help,
-            "total_facturado_label": "Total ventas aprobadas",
-            "total_pagado_label": "Total cobrado",
-            "saldo_pendiente_label": "Saldo pendiente (por cobrar al cliente)",
+            "total_facturado_label": "Total ventas/comisiones aprobadas (neto)",
+            "total_pagado_label": "Total cobrado/pagado (neto)",
+            "saldo_pendiente_label": "Saldo neto (por cobrar al cliente)",
             "saldo_favor_label": "Saldo a favor del cliente",
             "pagos": pagos,
             "folio_map": folio_map,
@@ -2828,23 +2910,23 @@ async def cuenta_detail(
     for pago in pagos:
         pagos_total += Decimal(str(pago.monto or 0))
 
-    tipo_filter = None
+    tipo_filters: list[TipoOperacion] | None = None
     if owner_kind == "proveedor":
-        tipo_filter = TipoOperacion.compra
+        tipo_filters = [TipoOperacion.compra, TipoOperacion.comision]
     elif owner_kind == "cliente":
-        tipo_filter = TipoOperacion.venta
+        tipo_filters = [TipoOperacion.venta, TipoOperacion.comision]
 
     notas_query = db.query(Nota).filter(Nota.cuenta_financiera_id == cuenta_id)
-    if tipo_filter:
-        notas_query = notas_query.filter(Nota.tipo_operacion == tipo_filter)
+    if tipo_filters:
+        notas_query = notas_query.filter(Nota.tipo_operacion.in_(tipo_filters))
     notas = notas_query.order_by(Nota.created_at.desc()).limit(200).all()
 
     notas_recon_query = db.query(Nota).filter(
         Nota.cuenta_financiera_id == cuenta_id,
         Nota.estado == NotaEstado.aprobada,
     )
-    if tipo_filter:
-        notas_recon_query = notas_recon_query.filter(Nota.tipo_operacion == tipo_filter)
+    if tipo_filters:
+        notas_recon_query = notas_recon_query.filter(Nota.tipo_operacion.in_(tipo_filters))
     notas_recon = notas_recon_query.all()
 
     pagos_match_query = (
@@ -2856,18 +2938,16 @@ async def cuenta_detail(
             Nota.estado == NotaEstado.aprobada,
         )
     )
-    if tipo_filter:
-        pagos_match_query = pagos_match_query.filter(Nota.tipo_operacion == tipo_filter)
+    if tipo_filters:
+        pagos_match_query = pagos_match_query.filter(Nota.tipo_operacion.in_(tipo_filters))
     pagos_matched = pagos_match_query.all()
 
     recon_map: dict[tuple[str, int], dict] = {}
     for nota in notas_recon:
-        if nota.tipo_operacion == TipoOperacion.compra:
-            key = ("proveedor", nota.proveedor_id or 0)
-        else:
-            key = ("cliente", nota.cliente_id or 0)
-        if not key[1]:
+        partner_kind, partner_id = _nota_partner_key(nota)
+        if not partner_kind or not partner_id:
             continue
+        key = (partner_kind, partner_id)
         entry = recon_map.setdefault(
             key,
             {
@@ -2877,19 +2957,18 @@ async def cuenta_detail(
                 "pagos": 0,
             },
         )
-        entry["expected"] += Decimal(str(nota.total_monto or 0))
+        sign = _partner_note_sign(partner_kind, nota)
+        entry["expected"] += Decimal(str(nota.total_monto or 0)) * sign
         entry["notas"] += 1
 
     for pago in pagos_matched:
         nota = pago.nota
         if not nota:
             continue
-        if nota.tipo_operacion == TipoOperacion.compra:
-            key = ("proveedor", nota.proveedor_id or 0)
-        else:
-            key = ("cliente", nota.cliente_id or 0)
-        if not key[1]:
+        partner_kind, partner_id = _nota_partner_key(nota)
+        if not partner_kind or not partner_id:
             continue
+        key = (partner_kind, partner_id)
         entry = recon_map.setdefault(
             key,
             {
@@ -2899,7 +2978,8 @@ async def cuenta_detail(
                 "pagos": 0,
             },
         )
-        entry["paid"] += Decimal(str(pago.monto or 0))
+        sign = _partner_note_sign(partner_kind, nota)
+        entry["paid"] += Decimal(str(pago.monto or 0)) * sign
         entry["pagos"] += 1
 
     pagos_sin_nota_query = (
@@ -2918,8 +2998,8 @@ async def cuenta_detail(
             or_(Nota.cuenta_financiera_id.is_(None), Nota.cuenta_financiera_id != cuenta_id),
         )
     )
-    if tipo_filter:
-        pagos_fuera_cuenta_query = pagos_fuera_cuenta_query.filter(Nota.tipo_operacion == tipo_filter)
+    if tipo_filters:
+        pagos_fuera_cuenta_query = pagos_fuera_cuenta_query.filter(Nota.tipo_operacion.in_(tipo_filters))
     pagos_fuera_cuenta_count = pagos_fuera_cuenta_query.order_by(None).count()
     pagos_fuera_cuenta = pagos_fuera_cuenta_query.order_by(NotaPago.created_at.desc()).limit(50).all()
 
@@ -2932,8 +3012,8 @@ async def cuenta_detail(
             Nota.estado != NotaEstado.aprobada,
         )
     )
-    if tipo_filter:
-        pagos_no_aprobados_query = pagos_no_aprobados_query.filter(Nota.tipo_operacion == tipo_filter)
+    if tipo_filters:
+        pagos_no_aprobados_query = pagos_no_aprobados_query.filter(Nota.tipo_operacion.in_(tipo_filters))
     pagos_no_aprobados_count = pagos_no_aprobados_query.order_by(None).count()
     pagos_no_aprobados = pagos_no_aprobados_query.order_by(NotaPago.created_at.desc()).limit(50).all()
 
@@ -2953,14 +3033,14 @@ async def cuenta_detail(
         notas_extra = db.query(Nota).filter(Nota.id.in_(extra_ids)).all()
         notas_for_folio.extend(notas_extra)
     folio_map = _build_folio_map(notas_for_folio)
-    nota_rows = _build_partner_record_rows(notas, folio_map)
+    partner_type = owner_kind if owner_kind in ("cliente", "proveedor") else None
+    nota_rows = _build_partner_record_rows(notas, folio_map, partner_type=partner_type)
     pendiente_total = Decimal("0")
     saldo_favor_total = Decimal("0")
     for nota in notas:
         if nota.estado != NotaEstado.aprobada:
             continue
-        total = Decimal(str(nota.total_monto or 0))
-        pagado = Decimal(str(nota.monto_pagado or 0))
+        total, pagado = _signed_partner_amounts(nota, partner_type)
         saldo = total - pagado
         if saldo >= 0:
             pendiente_total += saldo
@@ -3584,7 +3664,7 @@ async def notas_list(
     if folio_query:
         parsed = _parse_folio_query(folio_query)
         if not parsed:
-            folio_error = "Formato de folio inv\u00e1lido. Usa 01_C_1."
+            folio_error = "Formato de folio invalido. Usa 01_C_1, 01_V_1 o 01_M_1."
         else:
             sucursal_id, tipo_op, seq = parsed
             folio_result = (
@@ -3992,6 +4072,94 @@ def _parse_precio_overrides(
     )
 
 
+def _extract_comision_form_state(form: dict, nota: Nota) -> dict:
+    aplica = form.get("comision_aplica") is not None
+    form_rates: dict[int, str] = {}
+    for nm in nota.materiales:
+        form_rates[nm.id] = (form.get(f"comision_unit_{nm.id}") or "").strip()
+    return {
+        "form_comision_aplica": aplica,
+        "form_comision_partner_key": (form.get("comision_partner_key") or "").strip(),
+        "form_comision_cuenta": (form.get("comision_cuenta_id") or "").strip(),
+        "form_comision_rates": form_rates,
+    }
+
+
+def _parse_comision_payload(
+    form: dict,
+    *,
+    nota: Nota,
+    db: Session,
+) -> tuple[dict | None, dict, str | None]:
+    form_state = _extract_comision_form_state(form, nota)
+    if not form_state["form_comision_aplica"]:
+        return None, form_state, None
+    if nota.tipo_operacion not in (TipoOperacion.compra, TipoOperacion.venta):
+        return None, form_state, "La comision solo aplica a notas de compra o venta."
+
+    partner_key = form_state["form_comision_partner_key"]
+    if not partner_key or ":" not in partner_key:
+        return None, form_state, "Debes seleccionar la entidad de la comision."
+    partner_kind, raw_id = partner_key.split(":", 1)
+    partner_kind = partner_kind.strip().lower()
+    try:
+        partner_id = int(raw_id)
+    except ValueError:
+        return None, form_state, "Entidad de comision invalida."
+    if partner_kind == "proveedor":
+        if not db.get(Proveedor, partner_id):
+            return None, form_state, "Proveedor de comision no encontrado."
+    elif partner_kind == "cliente":
+        if not db.get(Cliente, partner_id):
+            return None, form_state, "Cliente de comision no encontrado."
+    else:
+        return None, form_state, "Entidad de comision invalida."
+
+    cuenta_id = None
+    cuenta_raw = form_state["form_comision_cuenta"]
+    if cuenta_raw:
+        try:
+            cuenta_id = int(cuenta_raw)
+        except ValueError:
+            return None, form_state, "Cuenta de comision invalida."
+        cuenta = db.get(Cuenta, cuenta_id)
+        if not cuenta or not cuenta.activo:
+            return None, form_state, "La cuenta seleccionada no existe o esta inactiva."
+        if partner_kind == "proveedor" and cuenta.proveedor_id != partner_id:
+            return None, form_state, "La cuenta seleccionada no pertenece al proveedor de comision."
+        if partner_kind == "cliente" and cuenta.cliente_id != partner_id:
+            return None, form_state, "La cuenta seleccionada no pertenece al cliente de comision."
+
+    rates_by_material: dict[int, Decimal] = {}
+    has_positive = False
+    for nm in nota.materiales:
+        raw = form_state["form_comision_rates"].get(nm.id) or ""
+        if not raw:
+            rate = Decimal("0")
+        else:
+            try:
+                rate = Decimal(str(raw))
+            except (InvalidOperation, TypeError):
+                return None, form_state, "La comision por kg es invalida."
+        if rate < 0:
+            return None, form_state, "La comision por kg no puede ser negativa."
+        if rate > 0:
+            has_positive = True
+        rates_by_material[nm.id] = rate
+
+    if not has_positive:
+        return None, form_state, "Debes indicar una comision mayor a 0 para al menos un material."
+
+    payload = {
+        "partner_kind": partner_kind,
+        "partner_id": partner_id,
+        "cuenta_id": cuenta_id,
+        "rates_by_material": rates_by_material,
+        "comentario": f"Comision por nota #{nota.id}",
+    }
+    return payload, form_state, None
+
+
 def _render_nota_detail(
     request: Request,
     db: Session,
@@ -4007,6 +4175,40 @@ def _render_nota_detail(
     proveedor = db.get(Proveedor, nota.proveedor_id) if nota.proveedor_id else None
     cliente = db.get(Cliente, nota.cliente_id) if nota.cliente_id else None
     trabajador = db.get(User, nota.trabajador_id) if nota.trabajador_id else None
+    proveedores = db.query(Proveedor).filter(Proveedor.activo.is_(True)).order_by(Proveedor.nombre_completo).all()
+    clientes = db.query(Cliente).filter(Cliente.activo.is_(True)).order_by(Cliente.nombre_completo).all()
+    comision_cuentas = (
+        db.query(Cuenta)
+        .filter(
+            Cuenta.activo.is_(True),
+            or_(Cuenta.proveedor_id.isnot(None), Cuenta.cliente_id.isnot(None)),
+        )
+        .order_by(Cuenta.nombre)
+        .all()
+    )
+    comision_note = (
+        db.query(Nota)
+        .filter(
+            Nota.nota_origen_id == nota.id,
+            Nota.tipo_operacion == TipoOperacion.comision,
+        )
+        .first()
+    )
+    comision_origen = db.get(Nota, nota.nota_origen_id) if nota.nota_origen_id else None
+    comision_note_folio = None
+    if comision_note:
+        comision_note_folio = note_service.format_folio(
+            sucursal_id=comision_note.sucursal_id,
+            tipo_operacion=comision_note.tipo_operacion,
+            folio_seq=comision_note.folio_seq,
+        )
+    comision_origen_folio = None
+    if comision_origen:
+        comision_origen_folio = note_service.format_folio(
+            sucursal_id=comision_origen.sucursal_id,
+            tipo_operacion=comision_origen.tipo_operacion,
+            folio_seq=comision_origen.folio_seq,
+        )
     inv_movs = db.query(InventarioMovimiento).filter(InventarioMovimiento.nota_id == nota.id).all()
     pagos = (
         db.query(NotaPago)
@@ -4092,7 +4294,13 @@ def _render_nota_detail(
                 transfer_related_sucursal = db.get(Sucursal, transfer_related.sucursal_id)
     cuentas_sucursal, cuentas_partner = _get_cuentas_for_nota(db, nota)
     cuentas_scrap360 = _get_scrap360_cuentas_for_nota(db, nota)
-    cuentas_partner_label = "Proveedor" if nota.tipo_operacion == TipoOperacion.compra else "Cliente"
+    partner_kind, _ = _nota_partner_key(nota)
+    if partner_kind == "cliente":
+        cuentas_partner_label = "Cliente"
+    elif partner_kind == "proveedor":
+        cuentas_partner_label = "Proveedor"
+    else:
+        cuentas_partner_label = "Partner"
     base_form_state = {
         "form_metodo": None,
         "form_cuenta": None,
@@ -4110,6 +4318,10 @@ def _render_nota_detail(
         "form_precio_unit_map": {},
         "form_subtotal_map": {},
         "form_precio_mode_map": {},
+        "form_comision_aplica": None,
+        "form_comision_partner_key": None,
+        "form_comision_cuenta": None,
+        "form_comision_rates": {},
     }
     context = {
         "request": request,
@@ -4142,6 +4354,13 @@ def _render_nota_detail(
         "edit_updated": edit_updated,
         "devolucion_check": devolucion_check,
         "error": error,
+        "proveedores": proveedores,
+        "clientes": clientes,
+        "comision_cuentas": comision_cuentas,
+        "comision_note": comision_note,
+        "comision_origen": comision_origen,
+        "comision_note_folio": comision_note_folio,
+        "comision_origen_folio": comision_origen_folio,
     }
     context.update(base_form_state)
     if form_state:
@@ -4270,12 +4489,16 @@ async def notas_evidencias(
     proveedor = db.get(Proveedor, nota.proveedor_id) if nota.proveedor_id else None
     cliente = db.get(Cliente, nota.cliente_id) if nota.cliente_id else None
     trabajador = db.get(User, nota.trabajador_id) if nota.trabajador_id else None
-    if nota.tipo_operacion.value == "compra":
+    partner_kind, _ = _nota_partner_key(nota)
+    if partner_kind == "proveedor":
         partner_label = "Proveedor"
         partner_name = proveedor.nombre_completo if proveedor else "-"
-    else:
+    elif partner_kind == "cliente":
         partner_label = "Cliente"
         partner_name = cliente.nombre_completo if cliente else "-"
+    else:
+        partner_label = "Partner"
+        partner_name = "-"
 
     evidence_groups = build_evidence_groups(nota)
     total_sub = sum(len(g["subpesajes"]) for g in evidence_groups)
@@ -4331,6 +4554,8 @@ async def notas_factura(
     _ensure_nota_access(nota, allowed_suc_ids)
     if nota.estado != NotaEstado.aprobada:
         raise HTTPException(status_code=400, detail="La nota debe estar aprobada.")
+    if nota.tipo_operacion == TipoOperacion.comision:
+        raise HTTPException(status_code=400, detail="La nota de comision no genera factura.")
     if nota.factura_url and nota.factura_generada_at and nota.updated_at:
         if nota.factura_generada_at >= nota.updated_at:
             return RedirectResponse(url=nota.factura_url, status_code=302)
@@ -4599,6 +4824,23 @@ async def notas_aprobar(
         "form_iva_incluido": iva_incluido,
         "form_iva_porcentaje": iva_porcentaje_raw,
     }
+    form_state.update(_extract_comision_form_state(form, nota))
+    comision_payload = None
+    comision_payload, comision_form_state, comision_error = _parse_comision_payload(
+        form,
+        nota=nota,
+        db=db,
+    )
+    form_state.update(comision_form_state)
+    if comision_error:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error=comision_error,
+            form_state=form_state,
+        )
     precio_override_map = None
     if current_user.get("rol") == UserRole.super_admin.value:
         (
@@ -4710,6 +4952,7 @@ async def notas_aprobar(
             nota,
             tipo_cliente_map=tipo_cliente_map or None,
             precio_override_map=precio_override_map,
+            comision_payload=comision_payload,
             admin_id=current_user.get("id"),
             comentarios_admin=comentarios_admin,
             fecha_caducidad_pago=fecha_caducidad_pago,
@@ -5406,8 +5649,12 @@ async def contabilidad_list(
                 total_por_cobrar += diff
             else:
                 saldo_favor_clientes += -diff
-        elif nota.tipo_operacion == TipoOperacion.compra:
-            nombre = proveedores_map.get(nota.proveedor_id)
+        elif nota.tipo_operacion in (TipoOperacion.compra, TipoOperacion.comision):
+            partner_kind, partner_id = _nota_partner_key(nota)
+            if partner_kind == "cliente":
+                nombre = clientes_map.get(partner_id)
+            else:
+                nombre = proveedores_map.get(partner_id)
             if _is_internal_partner(nombre):
                 continue
             notas_consideradas += 1
@@ -5444,20 +5691,20 @@ async def contabilidad_list(
                         db.query(Nota)
                         .filter(
                             Nota.cliente_id == partner_id,
-                            Nota.tipo_operacion == TipoOperacion.venta,
+                            Nota.tipo_operacion.in_([TipoOperacion.venta, TipoOperacion.comision]),
                         )
                     )
                     notas_p = _apply_sucursal_filter(notas_p, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
                     notas_p = notas_p.order_by(Nota.created_at.desc()).all()
                     folio_map = _build_folio_map(notas_p)
-                    record_rows = _build_partner_record_rows(notas_p, folio_map)
-                    summary = _aggregate_partner_record_summary(notas_p)
+                    record_rows = _build_partner_record_rows(notas_p, folio_map, partner_type="cliente")
+                    summary = _aggregate_partner_record_summary(notas_p, partner_type="cliente")
                     pagos_p = (
                         db.query(NotaPago)
                         .join(Nota, NotaPago.nota_id == Nota.id)
                         .filter(
                             Nota.cliente_id == partner_id,
-                            Nota.tipo_operacion == TipoOperacion.venta,
+                            Nota.tipo_operacion.in_([TipoOperacion.venta, TipoOperacion.comision]),
                         )
                     )
                     pagos_p = _apply_sucursal_filter(pagos_p, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
@@ -5465,16 +5712,16 @@ async def contabilidad_list(
                     partner_context = {
                         "partner": partner,
                         "partner_label": "Cliente",
-                        "tipo_operacion_label": "Venta",
+                        "tipo_operacion_label": "Ventas y comisiones",
                         "record_rows": record_rows,
                         "record_total_count": len(notas_p),
                         "summary": summary,
                         "pagos": pagos_p,
                         "folio_map": folio_map,
                         "record_link": f"/web/admin/clientes/{partner_id}/record",
-                        "total_facturado_label": "Total ventas aprobadas",
-                        "total_pagado_label": "Total cobrado",
-                        "saldo_pendiente_label": "Saldo pendiente (por cobrar al cliente)",
+                        "total_facturado_label": "Total ventas/comisiones aprobadas (neto)",
+                        "total_pagado_label": "Total cobrado/pagado (neto)",
+                        "saldo_pendiente_label": "Saldo neto (por cobrar al cliente)",
                         "saldo_favor_label": "Saldo a favor del cliente",
                     }
             elif partner_type == "proveedor":
@@ -5486,20 +5733,20 @@ async def contabilidad_list(
                         db.query(Nota)
                         .filter(
                             Nota.proveedor_id == partner_id,
-                            Nota.tipo_operacion == TipoOperacion.compra,
+                            Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.comision]),
                         )
                     )
                     notas_p = _apply_sucursal_filter(notas_p, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
                     notas_p = notas_p.order_by(Nota.created_at.desc()).all()
                     folio_map = _build_folio_map(notas_p)
-                    record_rows = _build_partner_record_rows(notas_p, folio_map)
-                    summary = _aggregate_partner_record_summary(notas_p)
+                    record_rows = _build_partner_record_rows(notas_p, folio_map, partner_type="proveedor")
+                    summary = _aggregate_partner_record_summary(notas_p, partner_type="proveedor")
                     pagos_p = (
                         db.query(NotaPago)
                         .join(Nota, NotaPago.nota_id == Nota.id)
                         .filter(
                             Nota.proveedor_id == partner_id,
-                            Nota.tipo_operacion == TipoOperacion.compra,
+                            Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.comision]),
                         )
                     )
                     pagos_p = _apply_sucursal_filter(pagos_p, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
@@ -5507,14 +5754,14 @@ async def contabilidad_list(
                     partner_context = {
                         "partner": partner,
                         "partner_label": "Proveedor",
-                        "tipo_operacion_label": "Compra",
+                        "tipo_operacion_label": "Compras y comisiones",
                         "record_rows": record_rows,
                         "record_total_count": len(notas_p),
                         "summary": summary,
                         "pagos": pagos_p,
                         "folio_map": folio_map,
                         "record_link": f"/web/admin/proveedores/{partner_id}/record",
-                        "total_facturado_label": "Total compras aprobadas",
+                        "total_facturado_label": "Total compras y comisiones aprobadas",
                         "total_pagado_label": "Total pagado",
                         "saldo_pendiente_label": "Saldo pendiente (por pagar al proveedor)",
                         "saldo_favor_label": "Saldo a favor de la empresa",

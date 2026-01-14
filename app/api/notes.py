@@ -100,6 +100,8 @@ class NotaOut(BaseModel):
 def create_note(data: NotaCreate, db: Session = Depends(get_db)):
     if not data.materiales:
         raise HTTPException(status_code=400, detail="Debe incluir al menos un material.")
+    if data.tipo_operacion not in (TipoOperacion.compra, TipoOperacion.venta):
+        raise HTTPException(status_code=400, detail="Tipo de operacion no permitido.")
     try:
         nota = note_service.create_draft_note(
             db,
@@ -200,6 +202,8 @@ def update_note_partner(
     nota = db.query(Nota).get(nota_id)
     if not nota:
         raise HTTPException(status_code=404, detail="Nota no encontrada")
+    if nota.tipo_operacion not in (TipoOperacion.compra, TipoOperacion.venta):
+        raise HTTPException(status_code=400, detail="Tipo de operacion no permitido.")
     if nota.tipo_operacion == TipoOperacion.compra and not data.proveedor_id:
         raise HTTPException(status_code=400, detail="Proveedor requerido para compras.")
     if nota.tipo_operacion == TipoOperacion.venta and not data.cliente_id:

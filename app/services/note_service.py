@@ -13,6 +13,8 @@ from app.models import (
     NotaMaterial,
     Subpesaje,
     Material,
+    Proveedor,
+    Cliente,
     TipoOperacion,
     TablaPrecio,
     TipoCliente,
@@ -33,6 +35,23 @@ def _sum_decimal(values: Iterable[Decimal | float | int]) -> Decimal:
     for v in values:
         total += Decimal(str(v or 0))
     return total
+
+
+def _is_compra_like(tipo_operacion: TipoOperacion | None) -> bool:
+    return tipo_operacion in (TipoOperacion.compra, TipoOperacion.comision)
+
+
+def _nota_partner_key(nota: Nota) -> tuple[str | None, int | None]:
+    if nota.tipo_operacion == TipoOperacion.compra:
+        return "proveedor", nota.proveedor_id
+    if nota.tipo_operacion == TipoOperacion.venta:
+        return "cliente", nota.cliente_id
+    if nota.tipo_operacion == TipoOperacion.comision:
+        if nota.proveedor_id:
+            return "proveedor", nota.proveedor_id
+        if nota.cliente_id:
+            return "cliente", nota.cliente_id
+    return None, None
 
 
 def _recalc_material(nm: NotaMaterial) -> None:
@@ -191,7 +210,14 @@ def format_folio(
     tipo_norm = _normalize_tipo_operacion(tipo_operacion)
     if not sucursal_id or not tipo_norm or not folio_seq:
         return None
-    letra = "C" if tipo_norm == TipoOperacion.compra else "V"
+    if tipo_norm == TipoOperacion.compra:
+        letra = "C"
+    elif tipo_norm == TipoOperacion.venta:
+        letra = "V"
+    elif tipo_norm == TipoOperacion.comision:
+        letra = "M"
+    else:
+        return None
     return f"{str(int(sucursal_id)).zfill(2)}_{letra}_{int(folio_seq)}"
 
 
@@ -258,9 +284,14 @@ def _resolve_cuenta_id(db: Session, nota: Nota, raw: str | None) -> int | None:
     conds = []
     if nota.sucursal_id:
         conds.append(Cuenta.sucursal_id == nota.sucursal_id)
-    if nota.tipo_operacion == TipoOperacion.compra and nota.proveedor_id:
+    if nota.tipo_operacion == TipoOperacion.comision:
+        if nota.proveedor_id:
+            conds.append(Cuenta.proveedor_id == nota.proveedor_id)
+        if nota.cliente_id:
+            conds.append(Cuenta.cliente_id == nota.cliente_id)
+    elif _is_compra_like(nota.tipo_operacion) and nota.proveedor_id:
         conds.append(Cuenta.proveedor_id == nota.proveedor_id)
-    if nota.tipo_operacion == TipoOperacion.venta and nota.cliente_id:
+    elif nota.tipo_operacion == TipoOperacion.venta and nota.cliente_id:
         conds.append(Cuenta.cliente_id == nota.cliente_id)
     if not conds:
         return None
@@ -285,11 +316,33 @@ def _validate_cuenta_for_nota(db: Session, nota: Nota, cuenta_id: int) -> Cuenta
         raise ValueError("La cuenta seleccionada no existe o esta inactiva.")
     if cuenta.sucursal_id and cuenta.sucursal_id == nota.sucursal_id:
         return cuenta
-    if nota.tipo_operacion == TipoOperacion.compra and cuenta.proveedor_id == nota.proveedor_id:
+    if nota.tipo_operacion == TipoOperacion.comision:
+        if cuenta.proveedor_id and cuenta.proveedor_id == nota.proveedor_id:
+            return cuenta
+        if cuenta.cliente_id and cuenta.cliente_id == nota.cliente_id:
+            return cuenta
+    elif _is_compra_like(nota.tipo_operacion) and cuenta.proveedor_id == nota.proveedor_id:
         return cuenta
-    if nota.tipo_operacion == TipoOperacion.venta and cuenta.cliente_id == nota.cliente_id:
+    elif nota.tipo_operacion == TipoOperacion.venta and cuenta.cliente_id == nota.cliente_id:
         return cuenta
     raise ValueError("La cuenta seleccionada no esta vinculada a esta nota.")
+
+
+def _validate_cuenta_for_partner(
+    db: Session,
+    *,
+    partner_kind: str,
+    partner_id: int,
+    cuenta_id: int,
+) -> Cuenta:
+    cuenta = db.get(Cuenta, cuenta_id)
+    if not cuenta or not cuenta.activo:
+        raise ValueError("La cuenta seleccionada no existe o esta inactiva.")
+    if partner_kind == "proveedor" and cuenta.proveedor_id == partner_id:
+        return cuenta
+    if partner_kind == "cliente" and cuenta.cliente_id == partner_id:
+        return cuenta
+    raise ValueError("La cuenta seleccionada no pertenece a la entidad de comision.")
 
 
 def _validate_cuenta_scrap360_for_nota(
@@ -444,6 +497,8 @@ def create_draft_note(
     materiales_payload: lista de dicts con material_id, kg_bruto, kg_descuento, subpesajes=[{peso_kg, foto_url}]
     extra_evidencias_payload: lista de URLs de evidencia extra.
     """
+    if tipo_operacion not in (TipoOperacion.compra, TipoOperacion.venta):
+        raise ValueError("Tipo de operacion invalido.")
     nota = Nota(
         sucursal_id=sucursal_id,
         trabajador_id=trabajador_id,
@@ -576,6 +631,8 @@ def _registrar_movimiento_inventario(
     nm: NotaMaterial,
     usuario_id: int | None,
 ) -> None:
+    if nota.tipo_operacion == TipoOperacion.comision:
+        return
     delta = Decimal(str(nm.kg_neto or 0))
     tipo_mov = "compra" if nota.tipo_operacion == TipoOperacion.compra else "venta"
     if tipo_mov == "venta":
@@ -695,7 +752,7 @@ def add_payment(
             monto=monto,
             tipo="pago",
         )
-        tipo_mov = "egreso" if nota.tipo_operacion == TipoOperacion.compra else "ingreso"
+        tipo_mov = "egreso" if _is_compra_like(nota.tipo_operacion) else "ingreso"
         _registrar_movimiento_cuenta_scrap360(
             db,
             cuenta=cuenta_scrap,
@@ -761,11 +818,110 @@ def ajustar_stock(
     return inv
 
 
+def create_commission_note(
+    db: Session,
+    *,
+    nota_origen: Nota,
+    partner_kind: str,
+    partner_id: int,
+    cuenta_id: int | None,
+    rates_by_material: dict[int, Decimal],
+    admin_id: int | None,
+    comentario: str | None = None,
+) -> Nota:
+    if nota_origen.tipo_operacion == TipoOperacion.comision:
+        raise ValueError("No se puede generar comision desde una nota de comision.")
+    if nota_origen.tipo_operacion not in (TipoOperacion.compra, TipoOperacion.venta):
+        raise ValueError("La nota no tiene un tipo valido para comision.")
+    partner_kind = (partner_kind or "").strip().lower()
+    if partner_kind not in ("proveedor", "cliente"):
+        raise ValueError("Entidad de comision invalida.")
+    if partner_kind == "proveedor":
+        if not db.get(Proveedor, partner_id):
+            raise ValueError("Proveedor de comision no encontrado.")
+    else:
+        if not db.get(Cliente, partner_id):
+            raise ValueError("Cliente de comision no encontrado.")
+    if cuenta_id:
+        _validate_cuenta_for_partner(
+            db,
+            partner_kind=partner_kind,
+            partner_id=partner_id,
+            cuenta_id=cuenta_id,
+        )
+
+    has_positive = False
+    for rate in rates_by_material.values():
+        if Decimal(str(rate or 0)) > 0:
+            has_positive = True
+            break
+    if not has_positive:
+        raise ValueError("Debes indicar una comision mayor a 0 para al menos un material.")
+
+    folio_seq = _next_folio_seq(
+        db,
+        sucursal_id=nota_origen.sucursal_id,
+        tipo_operacion=TipoOperacion.comision,
+    )
+    comision_note = Nota(
+        sucursal_id=nota_origen.sucursal_id,
+        trabajador_id=admin_id or nota_origen.trabajador_id,
+        admin_id=admin_id,
+        proveedor_id=partner_id if partner_kind == "proveedor" else None,
+        cliente_id=partner_id if partner_kind == "cliente" else None,
+        tipo_operacion=TipoOperacion.comision,
+        estado=NotaEstado.en_revision,
+        folio_seq=folio_seq,
+        nota_origen_id=nota_origen.id,
+        metodo_pago=None,
+        cuenta_financiera_id=cuenta_id,
+        monto_pagado=Decimal("0"),
+        iva_incluido=False,
+        iva_porcentaje=Decimal("0"),
+        iva_monto=Decimal("0"),
+        comentarios_admin=comentario or f"Comision generada por nota #{nota_origen.id}",
+    )
+    db.add(comision_note)
+    db.flush()
+
+    for idx, nm in enumerate(nota_origen.materiales):
+        rate = Decimal(str(rates_by_material.get(nm.id, 0)))
+        if rate < 0:
+            raise ValueError("La comision por kg no puede ser negativa.")
+        kg_bruto = Decimal(str(nm.kg_bruto or 0))
+        kg_desc = Decimal(str(nm.kg_descuento or 0))
+        kg_neto = Decimal(str(nm.kg_neto or 0))
+        subtotal = rate * kg_neto
+        com_nm = NotaMaterial(
+            nota_id=comision_note.id,
+            material_id=nm.material_id,
+            kg_bruto=kg_bruto,
+            kg_descuento=kg_desc,
+            kg_neto=kg_neto,
+            precio_unitario=rate,
+            subtotal=subtotal,
+            version_precio_id=None,
+            orden=idx,
+        )
+        db.add(com_nm)
+
+    _recalc_totals(comision_note)
+    comision_note.iva_incluido = False
+    comision_note.iva_porcentaje = Decimal("0")
+    comision_note.iva_monto = Decimal("0")
+    _recalc_totals(comision_note)
+    comision_note.updated_at = datetime.utcnow()
+    db.add(comision_note)
+
+    return comision_note
+
+
 def approve_note(
     db: Session,
     nota: Nota,
     *,
     tipo_cliente_map: dict[int, TipoCliente] | None = None,
+    comision_payload: dict | None = None,
     precio_override_map: dict[int, dict[str, Decimal]] | None = None,
     admin_id: int | None = None,
     comentarios_admin: str | None = None,
@@ -782,7 +938,10 @@ def approve_note(
     """
     if nota.estado not in (NotaEstado.en_revision, NotaEstado.borrador):
         raise ValueError("Solo se puede aprobar desde borrador o en revisión.")
-    if tipo_cliente_map:
+    if nota.tipo_operacion == TipoOperacion.comision:
+        iva_incluido = False
+        iva_porcentaje = Decimal("0")
+    if tipo_cliente_map and nota.tipo_operacion != TipoOperacion.comision:
         for nm in nota.materiales:
             if nm.id in tipo_cliente_map:
                 nm.tipo_cliente = tipo_cliente_map[nm.id]
@@ -797,9 +956,23 @@ def approve_note(
         if iva_pct < 0 or iva_pct > 100:
             raise ValueError("El porcentaje de IVA debe estar entre 0 y 100.")
         nota.iva_porcentaje = iva_pct
-    apply_prices(db, nota)
-    _apply_precio_overrides(nota, precio_override_map)
-    _validar_stock_para_venta(db, nota)
+    if nota.tipo_operacion == TipoOperacion.comision:
+        for nm in nota.materiales:
+            _recalc_material(nm)
+            if nm.precio_unitario is not None:
+                nm.subtotal = Decimal(str(nm.precio_unitario)) * Decimal(str(nm.kg_neto or 0))
+            elif nm.subtotal is None:
+                nm.subtotal = None
+            db.add(nm)
+        _apply_precio_overrides(nota, precio_override_map)
+        nota.iva_incluido = False
+        nota.iva_porcentaje = Decimal("0")
+        nota.iva_monto = Decimal("0")
+        _recalc_totals(nota)
+    else:
+        apply_prices(db, nota)
+        _apply_precio_overrides(nota, precio_override_map)
+        _validar_stock_para_venta(db, nota)
     metodo_pago_clean = (metodo_pago or "").strip().lower() or None
     cuenta_id: int | None = None
     cuenta_label: str | None = None
@@ -826,8 +999,9 @@ def approve_note(
         commit=False,
     )
     # registrar inventario y contabilidad
-    for nm in nota.materiales:
-        _registrar_movimiento_inventario(db, nota=nota, nm=nm, usuario_id=admin_id)
+    if nota.tipo_operacion != TipoOperacion.comision:
+        for nm in nota.materiales:
+            _registrar_movimiento_inventario(db, nota=nota, nm=nm, usuario_id=admin_id)
     if nota.tipo_operacion and not _has_base_contable_movement(db, nota.id, nota.tipo_operacion.value):
         _registrar_movimiento_contable(
             db,
@@ -856,6 +1030,17 @@ def approve_note(
             comentario="Pago inicial",
             commit=False,
             registrar_contable=True,
+        )
+    if comision_payload:
+        create_commission_note(
+            db,
+            nota_origen=nota,
+            partner_kind=comision_payload["partner_kind"],
+            partner_id=comision_payload["partner_id"],
+            cuenta_id=comision_payload.get("cuenta_id"),
+            rates_by_material=comision_payload["rates_by_material"],
+            admin_id=admin_id,
+            comentario=comision_payload.get("comentario"),
         )
     db.commit()
     db.refresh(nota)
@@ -922,6 +1107,8 @@ def cancel_approved_note(
     *,
     admin_id: int | None = None,
     comentarios_admin: str | None = None,
+    cascade_comision: bool = True,
+    commit: bool = True,
 ) -> Nota:
     """
     Cancela una nota aprobada, revierte inventario y registra reversos contables.
@@ -945,31 +1132,32 @@ def cancel_approved_note(
 
     comment_base = comentarios_admin or f"Cancelacion nota #{nota.id}"
 
-    for nm in nota.materiales:
-        delta = Decimal(str(nm.kg_neto or 0))
-        if nota.tipo_operacion == TipoOperacion.compra:
-            signed_delta = -delta
-        else:
-            signed_delta = delta
-        inv = _get_or_create_inventario(db, nota.sucursal_id, nm.material_id)
-        nuevo_saldo = Decimal(str(inv.stock_actual or 0)) + signed_delta
-        if nuevo_saldo < Decimal("0"):
-            nombre_mat = nm.material.nombre if nm.material else f"Material {nm.material_id}"
-            raise ValueError(f"Stock insuficiente para revertir {nombre_mat}.")
-        inv.stock_actual = nuevo_saldo
-        inv.updated_at = datetime.utcnow()
-        mov = InventarioMovimiento(
-            inventario_id=inv.id,
-            nota_id=nota.id,
-            nota_material_id=nm.id,
-            tipo="ajuste",
-            cantidad_kg=signed_delta,
-            saldo_resultante=nuevo_saldo,
-            comentario=comment_base,
-            usuario_id=admin_id,
-        )
-        db.add(inv)
-        db.add(mov)
+    if nota.tipo_operacion != TipoOperacion.comision:
+        for nm in nota.materiales:
+            delta = Decimal(str(nm.kg_neto or 0))
+            if nota.tipo_operacion == TipoOperacion.compra:
+                signed_delta = -delta
+            else:
+                signed_delta = delta
+            inv = _get_or_create_inventario(db, nota.sucursal_id, nm.material_id)
+            nuevo_saldo = Decimal(str(inv.stock_actual or 0)) + signed_delta
+            if nuevo_saldo < Decimal("0"):
+                nombre_mat = nm.material.nombre if nm.material else f"Material {nm.material_id}"
+                raise ValueError(f"Stock insuficiente para revertir {nombre_mat}.")
+            inv.stock_actual = nuevo_saldo
+            inv.updated_at = datetime.utcnow()
+            mov = InventarioMovimiento(
+                inventario_id=inv.id,
+                nota_id=nota.id,
+                nota_material_id=nm.id,
+                tipo="ajuste",
+                cantidad_kg=signed_delta,
+                saldo_resultante=nuevo_saldo,
+                comentario=comment_base,
+                usuario_id=admin_id,
+            )
+            db.add(inv)
+            db.add(mov)
 
     _registrar_movimiento_contable(
         db,
@@ -997,7 +1185,7 @@ def cancel_approved_note(
         if pago.cuenta_scrap360_id:
             cuenta_scrap = db.get(CuentaScrap360, pago.cuenta_scrap360_id)
             if cuenta_scrap:
-                tipo_mov = "ingreso" if nota.tipo_operacion == TipoOperacion.compra else "egreso"
+                tipo_mov = "ingreso" if _is_compra_like(nota.tipo_operacion) else "egreso"
                 _registrar_movimiento_cuenta_scrap360(
                     db,
                     cuenta=cuenta_scrap,
@@ -1018,8 +1206,38 @@ def cancel_approved_note(
     nota.factura_generada_at = None
     nota.updated_at = datetime.utcnow()
     db.add(nota)
-    db.commit()
-    db.refresh(nota)
+    if cascade_comision and nota.tipo_operacion != TipoOperacion.comision:
+        comision_notas = (
+            db.query(Nota)
+            .filter(
+                Nota.nota_origen_id == nota.id,
+                Nota.tipo_operacion == TipoOperacion.comision,
+                Nota.estado != NotaEstado.cancelada,
+            )
+            .all()
+        )
+        for com_nota in comision_notas:
+            if com_nota.estado == NotaEstado.aprobada:
+                cancel_approved_note(
+                    db,
+                    com_nota,
+                    admin_id=admin_id,
+                    comentarios_admin=f"Cancelacion por nota origen #{nota.id}",
+                    cascade_comision=False,
+                    commit=False,
+                )
+            else:
+                update_state(
+                    db,
+                    com_nota,
+                    new_state=NotaEstado.cancelada,
+                    admin_id=admin_id,
+                    comentarios_admin=f"Cancelacion por nota origen #{nota.id}",
+                    commit=False,
+                )
+    if commit:
+        db.commit()
+        db.refresh(nota)
     return nota
 
 
@@ -1033,7 +1251,7 @@ def attach_partner(
     """
     Asigna proveedor o cliente según tipo_operacion. Mantiene consistencia.
     """
-    if nota.tipo_operacion == TipoOperacion.compra:
+    if _is_compra_like(nota.tipo_operacion):
         nota.proveedor_id = proveedor_id
         nota.cliente_id = None
     else:
@@ -1065,6 +1283,78 @@ def set_tipo_cliente_and_prices(
     db.commit()
     db.refresh(nota)
     return nota
+
+
+def _sync_commission_notes_for_origin(
+    db: Session,
+    *,
+    nota: Nota,
+    admin_id: int | None,
+    comentario: str | None,
+) -> None:
+    if nota.tipo_operacion == TipoOperacion.comision:
+        return
+    comision_notas = (
+        db.query(Nota)
+        .filter(
+            Nota.nota_origen_id == nota.id,
+            Nota.tipo_operacion == TipoOperacion.comision,
+            Nota.estado != NotaEstado.cancelada,
+        )
+        .all()
+    )
+    if not comision_notas:
+        return
+
+    comment_base = f"Ajuste comision por edicion nota #{nota.id}"
+    if comentario:
+        comment_base = f"{comment_base}: {comentario}"
+
+    for com_nota in comision_notas:
+        old_total = Decimal(str(com_nota.total_monto or 0))
+        for cm in com_nota.materiales:
+            origen = None
+            if cm.orden is not None:
+                origen = next((m for m in nota.materiales if m.orden == cm.orden), None)
+            if not origen:
+                origen = next((m for m in nota.materiales if m.material_id == cm.material_id), None)
+            if not origen:
+                continue
+            cm.kg_bruto = origen.kg_bruto
+            cm.kg_descuento = origen.kg_descuento
+            cm.kg_neto = origen.kg_neto
+            if cm.precio_unitario is not None:
+                cm.subtotal = Decimal(str(cm.precio_unitario)) * Decimal(str(cm.kg_neto or 0))
+            else:
+                cm.subtotal = None
+            db.add(cm)
+
+        com_nota.iva_incluido = False
+        com_nota.iva_porcentaje = Decimal("0")
+        com_nota.iva_monto = Decimal("0")
+        _recalc_totals(com_nota)
+        com_nota.updated_at = datetime.utcnow()
+
+        new_total = Decimal(str(com_nota.total_monto or 0))
+        pagado_actual = Decimal(str(com_nota.monto_pagado or 0))
+        if new_total < pagado_actual:
+            raise ValueError(f"La comision #{com_nota.id} no puede ser menor al monto pagado.")
+
+        if com_nota.estado == NotaEstado.aprobada:
+            delta_total = new_total - old_total
+            if delta_total != 0:
+                ajuste_monto = -delta_total
+                _registrar_movimiento_contable(
+                    db,
+                    nota=com_nota,
+                    usuario_id=admin_id,
+                    comentario=comment_base,
+                    metodo_pago=com_nota.metodo_pago,
+                    cuenta_financiera=str(com_nota.cuenta_financiera_id) if com_nota.cuenta_financiera_id else None,
+                    monto=ajuste_monto,
+                    tipo="ajuste",
+                )
+        db.add(com_nota)
 
 
 def edit_note_by_superadmin(
@@ -1107,6 +1397,13 @@ def edit_note_by_superadmin(
 
     for nm in nota.materiales:
         _recalc_material(nm)
+        if nota.tipo_operacion == TipoOperacion.comision:
+            if nm.precio_unitario is not None:
+                nm.subtotal = Decimal(str(nm.precio_unitario)) * Decimal(str(nm.kg_neto or 0))
+            else:
+                nm.subtotal = None
+            db.add(nm)
+            continue
         tipo_cli = nm.tipo_cliente or TipoCliente.regular
         needs_reprice = old_tipo_cli_map.get(nm.id) != tipo_cli or nm.precio_unitario is None
         if needs_reprice:
@@ -1147,37 +1444,38 @@ def edit_note_by_superadmin(
         if comentario:
             comment_base = f"{comment_base}: {comentario}"
 
-        for nm in nota.materiales:
-            old_kg = old_kg_map.get(nm.id, Decimal("0"))
-            new_kg = Decimal(str(nm.kg_neto or 0))
-            delta = new_kg - old_kg
-            if delta == 0:
-                continue
-            stock_delta = delta if nota.tipo_operacion == TipoOperacion.compra else -delta
-            inv = _get_or_create_inventario(db, nota.sucursal_id, nm.material_id)
-            new_stock = Decimal(str(inv.stock_actual or 0)) + stock_delta
-            if new_stock < Decimal("0"):
-                nombre_mat = nm.material.nombre if nm.material else f"Material {nm.material_id}"
-                raise ValueError(f"Stock insuficiente para ajustar {nombre_mat}.")
-            inv.stock_actual = new_stock
-            inv.updated_at = datetime.utcnow()
-            mov = InventarioMovimiento(
-                inventario_id=inv.id,
-                nota_id=nota.id,
-                nota_material_id=nm.id,
-                tipo="ajuste",
-                cantidad_kg=stock_delta,
-                saldo_resultante=new_stock,
-                comentario=comment_base,
-                usuario_id=admin_id,
-            )
-            db.add(inv)
-            db.add(mov)
+        if nota.tipo_operacion != TipoOperacion.comision:
+            for nm in nota.materiales:
+                old_kg = old_kg_map.get(nm.id, Decimal("0"))
+                new_kg = Decimal(str(nm.kg_neto or 0))
+                delta = new_kg - old_kg
+                if delta == 0:
+                    continue
+                stock_delta = delta if nota.tipo_operacion == TipoOperacion.compra else -delta
+                inv = _get_or_create_inventario(db, nota.sucursal_id, nm.material_id)
+                new_stock = Decimal(str(inv.stock_actual or 0)) + stock_delta
+                if new_stock < Decimal("0"):
+                    nombre_mat = nm.material.nombre if nm.material else f"Material {nm.material_id}"
+                    raise ValueError(f"Stock insuficiente para ajustar {nombre_mat}.")
+                inv.stock_actual = new_stock
+                inv.updated_at = datetime.utcnow()
+                mov = InventarioMovimiento(
+                    inventario_id=inv.id,
+                    nota_id=nota.id,
+                    nota_material_id=nm.id,
+                    tipo="ajuste",
+                    cantidad_kg=stock_delta,
+                    saldo_resultante=new_stock,
+                    comentario=comment_base,
+                    usuario_id=admin_id,
+                )
+                db.add(inv)
+                db.add(mov)
 
         delta_total = new_total - old_total
         if delta_total != 0:
             ajuste_monto = delta_total
-            if nota.tipo_operacion == TipoOperacion.compra:
+            if _is_compra_like(nota.tipo_operacion):
                 ajuste_monto = -delta_total
             _registrar_movimiento_contable(
                 db,
@@ -1190,6 +1488,12 @@ def edit_note_by_superadmin(
                 tipo="ajuste",
             )
 
+    _sync_commission_notes_for_origin(
+        db,
+        nota=nota,
+        admin_id=admin_id,
+        comentario=comentario,
+    )
     db.commit()
     db.refresh(nota)
     return nota

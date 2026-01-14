@@ -50,6 +50,19 @@ def _safe_filename(value: str) -> str:
     return slug or "reporte"
 
 
+def _nota_partner_key(nota: Nota) -> tuple[str | None, int | None]:
+    if nota.tipo_operacion == TipoOperacion.compra:
+        return "proveedor", nota.proveedor_id
+    if nota.tipo_operacion == TipoOperacion.venta:
+        return "cliente", nota.cliente_id
+    if nota.tipo_operacion == TipoOperacion.comision:
+        if nota.proveedor_id:
+            return "proveedor", nota.proveedor_id
+        if nota.cliente_id:
+            return "cliente", nota.cliente_id
+    return None, None
+
+
 def _movimiento_label(tipo_raw: str, tipo_op: str | None) -> str:
     if tipo_raw == "pago":
         return f"PAGO {tipo_op.upper()}" if tipo_op else "PAGO"
@@ -59,6 +72,8 @@ def _movimiento_label(tipo_raw: str, tipo_op: str | None) -> str:
         return f"REVERSO {tipo_op.upper()}" if tipo_op else "REVERSO"
     if tipo_raw in ("compra", "venta"):
         return tipo_raw.upper()
+    if tipo_raw == "comision":
+        return "COMISION"
     if tipo_raw == "ajuste":
         return "AJUSTE"
     return tipo_raw.upper() if tipo_raw else "-"
@@ -72,10 +87,14 @@ def _movimiento_monto_firmado(
     abs_val = abs(monto)
     if tipo_raw == "compra":
         return -abs_val
+    if tipo_raw == "comision":
+        return -abs_val
     if tipo_raw == "venta":
         return abs_val
     if tipo_raw == "pago":
         if tipo_op == "compra":
+            return -abs_val
+        if tipo_op == "comision":
             return -abs_val
         if tipo_op == "venta":
             return abs_val
@@ -83,11 +102,15 @@ def _movimiento_monto_firmado(
     if tipo_raw == "reverso":
         if tipo_op == "compra":
             return abs_val
+        if tipo_op == "comision":
+            return abs_val
         if tipo_op == "venta":
             return -abs_val
         return monto
     if tipo_raw == "reverso_pago":
         if tipo_op == "compra":
+            return abs_val
+        if tipo_op == "comision":
             return abs_val
         if tipo_op == "venta":
             return -abs_val
@@ -98,20 +121,28 @@ def _movimiento_monto_firmado(
 def _movimiento_naturaleza(tipo_raw: str, tipo_op: str | None) -> str:
     if tipo_raw == "compra":
         return "EGRESO"
+    if tipo_raw == "comision":
+        return "EGRESO"
     if tipo_raw == "venta":
         return "INGRESO"
     if tipo_raw == "pago":
         if tipo_op == "compra":
+            return "EGRESO"
+        if tipo_op == "comision":
             return "EGRESO"
         if tipo_op == "venta":
             return "INGRESO"
     if tipo_raw == "reverso":
         if tipo_op == "compra":
             return "INGRESO"
+        if tipo_op == "comision":
+            return "INGRESO"
         if tipo_op == "venta":
             return "EGRESO"
     if tipo_raw == "reverso_pago":
         if tipo_op == "compra":
+            return "INGRESO"
+        if tipo_op == "comision":
             return "INGRESO"
         if tipo_op == "venta":
             return "EGRESO"
@@ -178,7 +209,7 @@ def build_report_data(
         nota = notas_map.get(mov.nota_id)
         tipo = (mov.tipo or "").lower()
         tipo_op = None
-        if tipo in ("compra", "venta"):
+        if tipo in ("compra", "venta", "comision"):
             tipo_op = tipo
         elif nota and nota.tipo_operacion:
             tipo_op = nota.tipo_operacion.value
@@ -189,10 +220,10 @@ def build_report_data(
         naturaleza = _movimiento_naturaleza(tipo, tipo_op)
         if tipo == "venta":
             total_ventas += monto
-        elif tipo == "compra":
+        elif tipo in ("compra", "comision"):
             total_compras += monto
         elif tipo in ("pago", "reverso_pago"):
-            if nota and nota.tipo_operacion == TipoOperacion.compra:
+            if tipo_op in ("compra", "comision"):
                 total_pagos_compra += monto
             else:
                 total_pagos_venta += monto
@@ -266,10 +297,14 @@ def build_report_data(
         total = _safe_decimal(nota.total_monto)
         pagado = _safe_decimal(nota.monto_pagado)
         saldo = total - pagado
-        if nota.tipo_operacion == TipoOperacion.compra:
+        if nota.tipo_operacion in (TipoOperacion.compra, TipoOperacion.comision):
             total_facturado_compras += total
             total_pagado_compras += pagado
-            partner = prov_map.get(nota.proveedor_id)
+            partner_kind, partner_id = _nota_partner_key(nota)
+            if partner_kind == "cliente":
+                partner = cli_map.get(partner_id)
+            else:
+                partner = prov_map.get(partner_id)
         else:
             total_facturado_ventas += total
             total_pagado_ventas += pagado
@@ -301,9 +336,9 @@ def build_report_data(
     summary_items = [
         {"label": "Movimientos en periodo", "value": len(movimientos_rows), "type": "count"},
         {"label": "Ventas registradas", "value": total_ventas, "type": "money"},
-        {"label": "Compras registradas", "value": total_compras, "type": "money"},
+        {"label": "Compras y comisiones registradas", "value": total_compras, "type": "money"},
         {"label": "Pagos recibidos (venta)", "value": total_pagos_venta, "type": "money"},
-        {"label": "Pagos realizados (compra)", "value": total_pagos_compra, "type": "money"},
+        {"label": "Pagos realizados (compras/comisiones)", "value": total_pagos_compra, "type": "money"},
         {"label": "Ingresos en caja", "value": total_ingresos, "type": "money"},
         {"label": "Egresos en caja", "value": total_egresos, "type": "money"},
         {"label": "Balance neto caja", "value": balance_neto, "type": "money"},
@@ -313,9 +348,9 @@ def build_report_data(
         {"label": "Facturado ventas", "value": total_facturado_ventas, "type": "money"},
         {"label": "Pagado ventas", "value": total_pagado_ventas, "type": "money"},
         {"label": "Saldo pendiente ventas", "value": total_facturado_ventas - total_pagado_ventas, "type": "money"},
-        {"label": "Facturado compras", "value": total_facturado_compras, "type": "money"},
-        {"label": "Pagado compras", "value": total_pagado_compras, "type": "money"},
-        {"label": "Saldo pendiente compras", "value": total_facturado_compras - total_pagado_compras, "type": "money"},
+        {"label": "Facturado compras/comisiones", "value": total_facturado_compras, "type": "money"},
+        {"label": "Pagado compras/comisiones", "value": total_pagado_compras, "type": "money"},
+        {"label": "Saldo pendiente compras/comisiones", "value": total_facturado_compras - total_pagado_compras, "type": "money"},
     ]
 
     return {

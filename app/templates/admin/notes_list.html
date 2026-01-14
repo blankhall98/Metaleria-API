@@ -44,10 +44,12 @@
                             <div class="text-uppercase text-muted small mb-1">Resultado</div>
                             <div class="fw-semibold">Folio {{ folio_map.get(folio_result.id, '-') }}</div>
                             <div class="text-muted small">
-                                {% if folio_result.tipo_operacion.value == 'compra' %}
+                                {% if folio_result.tipo_operacion.value == 'venta' %}
+                                    {{ clientes[folio_result.cliente_id].nombre_completo if folio_result.cliente_id else '-' }}
+                                {% elif folio_result.tipo_operacion.value == 'compra' %}
                                     {{ proveedores[folio_result.proveedor_id].nombre_completo if folio_result.proveedor_id else '-' }}
                                 {% else %}
-                                    {{ clientes[folio_result.cliente_id].nombre_completo if folio_result.cliente_id else '-' }}
+                                    {{ proveedores[folio_result.proveedor_id].nombre_completo if folio_result.proveedor_id else (clientes[folio_result.cliente_id].nombre_completo if folio_result.cliente_id else '-') }}
                                 {% endif %}
                                 &middot;
                                 {{ sucursales[folio_result.sucursal_id].nombre if folio_result.sucursal_id else '-' }}
@@ -129,10 +131,12 @@
                         </td>
                         <td>{{ n.tipo_operacion.value|capitalize }}</td>
                         <td>
-                            {% if n.tipo_operacion.value == 'compra' %}
+                            {% if n.tipo_operacion.value == 'venta' %}
+                                {{ clientes[n.cliente_id].nombre_completo if n.cliente_id else '-' }}
+                            {% elif n.tipo_operacion.value == 'compra' %}
                                 {{ proveedores[n.proveedor_id].nombre_completo if n.proveedor_id else '-' }}
                             {% else %}
-                                {{ clientes[n.cliente_id].nombre_completo if n.cliente_id else '-' }}
+                                {{ proveedores[n.proveedor_id].nombre_completo if n.proveedor_id else (clientes[n.cliente_id].nombre_completo if n.cliente_id else '-') }}
                             {% endif %}
                         </td>
                         <td>{{ sucursales[n.sucursal_id].nombre if n.sucursal_id else '-' }}</td>
@@ -184,10 +188,12 @@
                         </td>
                         <td>{{ n.tipo_operacion.value|capitalize }}</td>
                         <td>
-                            {% if n.tipo_operacion.value == 'compra' %}
+                            {% if n.tipo_operacion.value == 'venta' %}
+                                {{ clientes[n.cliente_id].nombre_completo if n.cliente_id else '-' }}
+                            {% elif n.tipo_operacion.value == 'compra' %}
                                 {{ proveedores[n.proveedor_id].nombre_completo if n.proveedor_id else '-' }}
                             {% else %}
-                                {{ clientes[n.cliente_id].nombre_completo if n.cliente_id else '-' }}
+                                {{ proveedores[n.proveedor_id].nombre_completo if n.proveedor_id else (clientes[n.cliente_id].nombre_completo if n.cliente_id else '-') }}
                             {% endif %}
                         </td>
                         <td>{{ sucursales[n.sucursal_id].nombre if n.sucursal_id else '-' }}</td>
@@ -238,10 +244,12 @@
                         </td>
                         <td>{{ n.tipo_operacion.value|capitalize }}</td>
                         <td>
-                            {% if n.tipo_operacion.value == 'compra' %}
+                            {% if n.tipo_operacion.value == 'venta' %}
+                                {{ clientes[n.cliente_id].nombre_completo if n.cliente_id else '-' }}
+                            {% elif n.tipo_operacion.value == 'compra' %}
                                 {{ proveedores[n.proveedor_id].nombre_completo if n.proveedor_id else '-' }}
                             {% else %}
-                                {{ clientes[n.cliente_id].nombre_completo if n.cliente_id else '-' }}
+                                {{ proveedores[n.proveedor_id].nombre_completo if n.proveedor_id else (clientes[n.cliente_id].nombre_completo if n.cliente_id else '-') }}
                             {% endif %}
                         </td>
                         <td>{{ sucursales[n.sucursal_id].nombre if n.sucursal_id else '-' }}</td>
@@ -325,10 +333,12 @@
                             {% endif %}
                         </td>
                         <td>
-                            {% if n.tipo_operacion.value == 'compra' %}
+                            {% if n.tipo_operacion.value == 'venta' %}
+                                {{ clientes[n.cliente_id].nombre_completo if n.cliente_id else '-' }}
+                            {% elif n.tipo_operacion.value == 'compra' %}
                                 {{ proveedores[n.proveedor_id].nombre_completo if n.proveedor_id else '-' }}
                             {% else %}
-                                {{ clientes[n.cliente_id].nombre_completo if n.cliente_id else '-' }}
+                                {{ proveedores[n.proveedor_id].nombre_completo if n.proveedor_id else (clientes[n.cliente_id].nombre_completo if n.cliente_id else '-') }}
                             {% endif %}
                         </td>
                         <td>{{ sucursales[n.sucursal_id].nombre if n.sucursal_id else '-' }}</td>

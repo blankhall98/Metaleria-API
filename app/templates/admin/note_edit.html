@@ -54,10 +54,12 @@
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Partner</span>
-                {% if nota.tipo_operacion.value == 'compra' %}
+                {% if nota.tipo_operacion.value == 'venta' %}
+                    <strong>{{ cliente.nombre_completo if cliente else '-' }}</strong>
+                {% elif nota.tipo_operacion.value == 'compra' %}
                     <strong>{{ proveedor.nombre_completo if proveedor else '-' }}</strong>
                 {% else %}
-                    <strong>{{ cliente.nombre_completo if cliente else '-' }}</strong>
+                    <strong>{{ proveedor.nombre_completo if proveedor else (cliente.nombre_completo if cliente else '-') }}</strong>
                 {% endif %}
             </div>
             <div class="note-meta-item">

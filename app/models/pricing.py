@@ -21,6 +21,7 @@ from app.db.base import Base
 class TipoOperacion(str, enum.Enum):
     compra = "compra"
     venta = "venta"
+    comision = "comision"
 
 
 class TipoCliente(str, enum.Enum):

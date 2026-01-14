@@ -367,10 +367,14 @@
                             <tbody>
                             {% for pago in pagos_fuera_cuenta %}
                                 {% set nota = pago.nota %}
-                                {% if nota and nota.tipo_operacion.value == 'compra' %}
-                                    {% set partner = proveedores_map.get(nota.proveedor_id) %}
-                                {% else %}
+                                {% if nota and nota.tipo_operacion.value == 'venta' %}
                                     {% set partner = clientes_map.get(nota.cliente_id) %}
+                                {% elif nota and nota.tipo_operacion.value == 'compra' %}
+                                    {% set partner = proveedores_map.get(nota.proveedor_id) %}
+                                {% elif nota %}
+                                    {% set partner = proveedores_map.get(nota.proveedor_id) or clientes_map.get(nota.cliente_id) %}
+                                {% else %}
+                                    {% set partner = None %}
                                 {% endif %}
                                 <tr>
                                     <td>{{ pago.created_at.strftime("%Y-%m-%d %H:%M") if pago.created_at else "-" }}</td>
@@ -571,10 +575,12 @@
                 {% for row in nota_rows %}
                     {% set nota = row.nota %}
                     {% set suc = sucursales_map.get(nota.sucursal_id) %}
-                    {% if nota.tipo_operacion.value == 'compra' %}
+                    {% if nota.tipo_operacion.value == 'venta' %}
+                        {% set partner = clientes_map.get(nota.cliente_id) %}
+                    {% elif nota.tipo_operacion.value == 'compra' %}
                         {% set partner = proveedores_map.get(nota.proveedor_id) %}
                     {% else %}
-                        {% set partner = clientes_map.get(nota.cliente_id) %}
+                        {% set partner = proveedores_map.get(nota.proveedor_id) or clientes_map.get(nota.cliente_id) %}
                     {% endif %}
                     <tr>
                         <td>
@@ -600,6 +606,8 @@
                         <td class="text-end">
                             {% if row.saldo_pendiente > 0 %}
                                 <span class="text-danger fw-semibold">${{ "%.2f"|format(row.saldo_pendiente) }}</span>
+                            {% elif row.saldo_favor > 0 %}
+                                <span class="text-success fw-semibold">-${{ "%.2f"|format(row.saldo_favor) }}</span>
                             {% else %}
                                 <span class="text-muted">$0.00</span>
                             {% endif %}
