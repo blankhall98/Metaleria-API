@@ -14,7 +14,7 @@
             <a href="/web/admin/notas/{{ nota.id }}/editar" class="btn btn-outline-primary btn-sm">Editar</a>
         {% endif %}
         <a href="/web/admin/notas/{{ nota.id }}/evidencias" class="btn btn-primary btn-sm note-evidence-btn">Evidencias</a>
-        {% if nota.estado.value == 'APROBADA' and nota.tipo_operacion.value != 'comision' %}
+        {% if nota.estado.value == 'APROBADA' and nota.tipo_operacion.value in ['compra', 'venta'] %}
             <a href="/web/admin/notas/{{ nota.id }}/factura" class="btn btn-outline-primary btn-sm">Factura PDF</a>
         {% endif %}
         <a href="/web/admin/notas" class="btn btn-outline-secondary btn-sm">Volver</a>
@@ -131,20 +131,6 @@
                     {% endif %}
                 </div>
             {% endif %}
-            {% if comision_note %}
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Comisi&oacute;n vinculada</span>
-                    <a href="/web/admin/notas/{{ comision_note.id }}">Nota {{ comision_note_folio or ('#' ~ comision_note.id) }}</a>
-                    <div class="note-meta-sub">${{ "%.2f"|format(comision_note.total_monto or 0) }}</div>
-                </div>
-            {% endif %}
-            {% if comision_origen %}
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Nota origen</span>
-                    <a href="/web/admin/notas/{{ comision_origen.id }}">Nota {{ comision_origen_folio or ('#' ~ comision_origen.id) }}</a>
-                    <div class="note-meta-sub">{{ comision_origen.tipo_operacion.value|capitalize }}</div>
-                </div>
-            {% endif %}
         </div>
 </div>
 </div>
@@ -207,7 +193,6 @@
                         <th>Tipo precio</th>
                         <th class="text-end">Precio unit</th>
                         <th class="text-end">Subtotal</th>
-                        <th class="text-end">Comisi&oacute;n/kg</th>
                     </tr>
                     </thead>
                     <tbody>
@@ -256,24 +241,10 @@
                                 <td class="text-end note-unit-price">{{ "%.5f"|format(m.precio_unitario or 0) if m.precio_unitario else '-' }}</td>
                                 <td class="text-end note-subtotal">{{ "%.2f"|format(m.subtotal or 0) if m.subtotal else '-' }}</td>
                             {% endif %}
-                            {% set comision_val = form_comision_rates.get(m.id) if form_comision_rates is defined else "" %}
-                            <td class="text-end">
-                                {% if nota.estado.value in ['BORRADOR', 'EN_REVISION'] and nota.tipo_operacion.value in ['compra', 'venta'] %}
-                                    <input class="form-control form-control-sm text-end comision-input"
-                                           type="number"
-                                           step="0.00001"
-                                           min="0"
-                                           name="comision_unit_{{ m.id }}"
-                                           value="{{ comision_val }}"
-                                           placeholder="0.00000">
-                                {% else %}
-                                    <span class="text-muted small">-</span>
-                                {% endif %}
-                            </td>
                         </tr>
                         {% if m.subpesajes %}
                             <tr class="note-subpesaje-row">
-                                <td colspan="8">
+                                <td colspan="7">
                                     <div class="note-subpesajes">
                                         <span class="note-subpesajes-label">Subpesajes</span>
                                         <div class="note-subpesajes-list">
@@ -294,65 +265,6 @@
                     </tbody>
                 </table>
             </div>
-
-            {% if nota.estado.value in ['BORRADOR', 'EN_REVISION'] and nota.tipo_operacion.value in ['compra', 'venta'] %}
-                <div class="border rounded-3 p-3 mt-3 bg-light comision-panel">
-                    <div class="d-flex align-items-center gap-2 mb-2">
-                        {% set comision_aplica_val = form_comision_aplica if form_comision_aplica is not none else False %}
-                        <input class="form-check-input" type="checkbox" id="comision_aplica" name="comision_aplica" value="1" {% if comision_aplica_val %}checked{% endif %}>
-                        <label class="form-check-label" for="comision_aplica">Aplicar comisi&oacute;n</label>
-                    </div>
-                    <div class="row g-3">
-                        <div class="col-lg-4 col-md-6">
-                            <label class="form-label">Entidad comisi&oacute;n</label>
-                            {% set comision_partner_val = form_comision_partner_key if form_comision_partner_key is not none else "" %}
-                            <select class="form-select" name="comision_partner_key" id="comision_partner_select">
-                                <option value="" {% if not comision_partner_val %}selected{% endif %}>Selecciona entidad</option>
-                                <optgroup label="Proveedores">
-                                    {% for p in proveedores %}
-                                        {% set opt_val = 'proveedor:' ~ p.id %}
-                                        <option value="{{ opt_val }}" {% if comision_partner_val == opt_val %}selected{% endif %}>{{ p.nombre_completo }}</option>
-                                    {% endfor %}
-                                </optgroup>
-                                <optgroup label="Clientes">
-                                    {% for c in clientes %}
-                                        {% set opt_val = 'cliente:' ~ c.id %}
-                                        <option value="{{ opt_val }}" {% if comision_partner_val == opt_val %}selected{% endif %}>{{ c.nombre_completo }}</option>
-                                    {% endfor %}
-                                </optgroup>
-                            </select>
-                        </div>
-                        <div class="col-lg-4 col-md-6">
-                            <label class="form-label">Cuenta entidad (opcional)</label>
-                            {% set comision_cuenta_val = form_comision_cuenta if form_comision_cuenta is not none else "" %}
-                            <select class="form-select" name="comision_cuenta_id" id="comision_cuenta_select">
-                                <option value="" {% if not comision_cuenta_val %}selected{% endif %}>Selecciona cuenta</option>
-                                {% for c in comision_cuentas %}
-                                    {% if c.proveedor_id %}
-                                        {% set owner_kind = 'proveedor' %}
-                                        {% set owner_id = c.proveedor_id %}
-                                    {% else %}
-                                        {% set owner_kind = 'cliente' %}
-                                        {% set owner_id = c.cliente_id %}
-                                    {% endif %}
-                                    <option value="{{ c.id }}"
-                                            data-owner-kind="{{ owner_kind }}"
-                                            data-owner-id="{{ owner_id }}"
-                                            {% if comision_cuenta_val|string == c.id|string %}selected{% endif %}>
-                                        {{ c.display_label }}
-                                    </option>
-                                {% endfor %}
-                            </select>
-                            <div class="form-text text-muted">Se puede definir al aprobar la comisi&oacute;n.</div>
-                        </div>
-                        <div class="col-lg-4 col-md-6">
-                            <label class="form-label">Total comisi&oacute;n</label>
-                            <div class="form-control-plaintext fw-semibold" id="comision_total_label">$0.00</div>
-                            <div class="form-text text-muted">Calculado con kg neto.</div>
-                        </div>
-                    </div>
-                </div>
-            {% endif %}
 
             <div class="row g-3 mt-3">
                 <div class="col-lg-2 col-md-4">
@@ -413,7 +325,7 @@
                     {% if cuentas_scrap360|length == 0 %}
                         <div class="form-text text-muted">No hay cuentas Scrap360 para esta sucursal.</div>
                     {% else %}
-                        <div class="form-text text-muted">Requerida si registras un pago.</div>
+                        <div class="form-text text-muted">Opcional. Si registras un pago, se reflejara en la cuenta seleccionada.</div>
                     {% endif %}
                 </div>
                 <div class="col-lg-2 col-md-6">
@@ -533,7 +445,7 @@
                 <div class="col-lg-3 col-md-6">
                     <label class="form-label">Cuenta Scrap360</label>
                     {% set pago_cuenta_scrap_val = form_pago_cuenta_scrap360 if form_pago_cuenta_scrap360 is not none else "" %}
-                    <select class="form-select form-select-sm" name="pago_cuenta_scrap360_id" id="pago_cuenta_scrap360_select" required>
+                    <select class="form-select form-select-sm" name="pago_cuenta_scrap360_id" id="pago_cuenta_scrap360_select">
                         <option value="" {% if not pago_cuenta_scrap_val %}selected{% endif %}>Selecciona cuenta</option>
                         {% for c in cuentas_scrap360 %}
                             <option value="{{ c.id }}" {% if pago_cuenta_scrap_val|string == c.id|string %}selected{% endif %}>
@@ -543,6 +455,8 @@
                     </select>
                     {% if cuentas_scrap360|length == 0 %}
                         <div class="form-text text-muted">No hay cuentas Scrap360 para esta sucursal.</div>
+                    {% else %}
+                        <div class="form-text text-muted">Opcional. Dejalo en blanco si no aplica.</div>
                     {% endif %}
                 </div>
                 <div class="col-lg-2 col-md-6">
@@ -691,9 +605,7 @@
         const metodo = (metodoSelect && metodoSelect.value ? metodoSelect.value : '').toLowerCase();
         const pago = parseFloat(pagoInput && pagoInput.value ? pagoInput.value : '0') || 0;
         const hasMetodo = !!metodo;
-        const requiresAccount = metodo === 'efectivo' || pago > 0;
         cuentaScrapInput.disabled = !hasMetodo && pago <= 0;
-        cuentaScrapInput.required = requiresAccount;
         if (cuentaScrapInput.disabled) {
             cuentaScrapInput.value = '';
         }
@@ -738,90 +650,6 @@
         const cleaned = raw.replace(/[^0-9.-]+/g, '');
         const parsed = parseFloat(cleaned);
         return Number.isNaN(parsed) ? 0 : parsed;
-    }
-    const comisionAplica = document.getElementById('comision_aplica');
-    const comisionPartner = document.getElementById('comision_partner_select');
-    const comisionCuenta = document.getElementById('comision_cuenta_select');
-    const comisionTotalLabel = document.getElementById('comision_total_label');
-    const comisionInputs = document.querySelectorAll('.comision-input');
-    function updateComisionTotal() {
-        if (!comisionTotalLabel) return;
-        if (!comisionAplica || !comisionAplica.checked) {
-            comisionTotalLabel.textContent = formatMoney(0);
-            return;
-        }
-        let total = 0;
-        comisionInputs.forEach((input) => {
-            if (!input || input.disabled) return;
-            const row = input.closest('tr');
-            if (!row) return;
-            const kgNeto = parseNumber(row.dataset.kgNeto || '0');
-            const rate = parseNumber(input.value);
-            if (kgNeto > 0 && rate > 0) {
-                total += kgNeto * rate;
-            }
-        });
-        comisionTotalLabel.textContent = formatMoney(total);
-    }
-    function parsePartnerKey(value) {
-        const raw = value || '';
-        const parts = raw.split(':');
-        if (parts.length !== 2) return null;
-        const kind = (parts[0] || '').trim().toLowerCase();
-        const id = (parts[1] || '').trim();
-        if (!kind || !id) return null;
-        return { kind, id };
-    }
-    function filterComisionCuentas() {
-        if (!comisionCuenta || !comisionPartner) return;
-        const selectedPartner = parsePartnerKey(comisionPartner.value);
-        comisionCuenta.querySelectorAll('option').forEach((opt) => {
-            const ownerKind = opt.dataset.ownerKind || '';
-            const ownerId = opt.dataset.ownerId || '';
-            if (!ownerKind || !ownerId) {
-                opt.hidden = false;
-                opt.disabled = false;
-                return;
-            }
-            const allowed =
-                selectedPartner &&
-                ownerKind === selectedPartner.kind &&
-                ownerId === selectedPartner.id;
-            opt.hidden = !allowed;
-            opt.disabled = !allowed;
-        });
-        if (comisionCuenta.value) {
-            const selected = comisionCuenta.querySelector(`option[value="${comisionCuenta.value}"]`);
-            if (
-                selected &&
-                selected.dataset.ownerKind &&
-                selectedPartner &&
-                (selected.dataset.ownerKind !== selectedPartner.kind ||
-                    selected.dataset.ownerId !== selectedPartner.id)
-            ) {
-                comisionCuenta.value = '';
-            }
-        }
-    }
-    function toggleComisionFields() {
-        if (!comisionAplica) return;
-        const enabled = comisionAplica.checked;
-        if (comisionPartner) {
-            comisionPartner.disabled = !enabled;
-            comisionPartner.required = enabled;
-        }
-        if (comisionCuenta) {
-            comisionCuenta.disabled = !enabled;
-            comisionCuenta.required = false;
-        }
-        comisionInputs.forEach((input) => {
-            if (!input) return;
-            input.disabled = !enabled;
-        });
-        if (enabled) {
-            filterComisionCuentas();
-        }
-        updateComisionTotal();
     }
     function parseMoneyText(text) {
         return parseNumber(text || '');
@@ -1069,22 +897,7 @@
     if (ivaPctInput) {
         ivaPctInput.addEventListener('input', updateTotals);
     }
-    if (comisionAplica) {
-        comisionAplica.addEventListener('change', toggleComisionFields);
-    }
-    if (comisionPartner) {
-        comisionPartner.addEventListener('change', () => {
-            filterComisionCuentas();
-            updateComisionTotal();
-        });
-    }
-    if (comisionInputs.length > 0) {
-        comisionInputs.forEach((input) => {
-            input.addEventListener('input', updateComisionTotal);
-        });
-    }
     updateTotals();
-    toggleComisionFields();
 </script>
 </div>
 {% endblock %}

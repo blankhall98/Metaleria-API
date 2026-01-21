@@ -111,8 +111,8 @@ def _safe_filename(value: str) -> str:
 
 
 def build_invoice_pdf(db: Session, nota: Nota, generated_at: datetime | None = None) -> tuple[bytes, str]:
-    if nota.tipo_operacion == TipoOperacion.comision:
-        raise ValueError("La nota de comision no genera factura.")
+    if nota.tipo_operacion not in (TipoOperacion.compra, TipoOperacion.venta):
+        raise ValueError("Este tipo de nota no genera factura.")
     sucursal = db.get(Sucursal, nota.sucursal_id)
     proveedor = db.get(Proveedor, nota.proveedor_id) if nota.proveedor_id else None
     cliente = db.get(Cliente, nota.cliente_id) if nota.cliente_id else None

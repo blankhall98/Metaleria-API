@@ -23,6 +23,7 @@ class Cuenta(Base):
     sucursal_id = Column(Integer, ForeignKey("sucursales.id"), nullable=True, index=True)
     cliente_id = Column(Integer, ForeignKey("clientes.id"), nullable=True, index=True)
     proveedor_id = Column(Integer, ForeignKey("proveedores.id"), nullable=True, index=True)
+    comisionario_id = Column(Integer, ForeignKey("comisionarios.id"), nullable=True, index=True)
 
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -30,6 +31,7 @@ class Cuenta(Base):
     sucursal = relationship("Sucursal")
     cliente = relationship("Cliente")
     proveedor = relationship("Proveedor")
+    comisionario = relationship("Comisionario", back_populates="cuentas")
 
     @property
     def display_label(self) -> str:

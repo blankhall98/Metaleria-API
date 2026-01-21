@@ -79,7 +79,6 @@ class Nota(Base):
     pagos = relationship("NotaPago", back_populates="nota", cascade="all, delete-orphan")
     original = relationship("NotaOriginal", back_populates="nota", uselist=False, cascade="all, delete-orphan")
     cuenta = relationship("Cuenta", foreign_keys=[cuenta_financiera_id])
-    nota_origen = relationship("Nota", remote_side=[id], backref="notas_comision")
     evidencias_extra = relationship(
         "NotaEvidenciaExtra",
         back_populates="nota",

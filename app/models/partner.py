@@ -1,5 +1,6 @@
-# app/models/partner.py
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey
+from datetime import datetime
+
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Numeric
 from sqlalchemy.orm import relationship
 
 from app.db.base import Base
@@ -60,3 +61,17 @@ class ClientePlaca(Base):
     placa = Column(String(50), nullable=False, unique=True, index=True)
 
     cliente = relationship("Cliente", back_populates="placas_rel")
+
+
+class AjusteSaldoPartner(Base):
+    __tablename__ = "ajustes_saldo_partner"
+
+    id = Column(Integer, primary_key=True, index=True)
+    partner_type = Column(String(20), nullable=False, index=True)  # cliente | proveedor
+    partner_id = Column(Integer, nullable=False, index=True)
+    monto = Column(Numeric(12, 2), nullable=False, default=0)
+    comentario = Column(String(255), nullable=True)
+    usuario_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    usuario = relationship("User")

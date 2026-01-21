@@ -4,7 +4,14 @@ from .branch import Sucursal, SucursalStatus
 from .material import Material
 from .pricing import TablaPrecio, TipoOperacion, TipoCliente, PriceChangeLog
 from .account import Cuenta, CuentaScrap360, CuentaScrap360Movimiento, cuentas_scrap360_sucursales
-from .partner import Proveedor, Cliente, ProveedorPlaca, ClientePlaca
+from .partner import Proveedor, Cliente, ProveedorPlaca, ClientePlaca, AjusteSaldoPartner
+from .comision import (
+    Comisionario,
+    ComisionarioNota,
+    ComisionarioNotaMaterial,
+    ComisionarioNotaEstado,
+    ComisionarioPago,
+)
 from .conversion import ConversionMaterial
 from .cash import (
     CorteCaja,
@@ -36,6 +43,12 @@ __all__ = [
     "Cliente",
     "ProveedorPlaca",
     "ClientePlaca",
+    "AjusteSaldoPartner",
+    "Comisionario",
+    "ComisionarioNota",
+    "ComisionarioNotaMaterial",
+    "ComisionarioNotaEstado",
+    "ComisionarioPago",
     "ConversionMaterial",
     "CorteCaja",
     "CorteCajaEstado",

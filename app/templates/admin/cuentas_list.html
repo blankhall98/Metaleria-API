@@ -48,6 +48,12 @@
                     <option value="{{ key }}" {% if owner_key == key %}selected{% endif %}>{{ p.nombre_completo }}</option>
                 {% endfor %}
             </optgroup>
+            <optgroup label="Comisionarios">
+                {% for c in comisionarios %}
+                    {% set key = "comisionario:" ~ c.id %}
+                    <option value="{{ key }}" {% if owner_key == key %}selected{% endif %}>{{ c.nombre_completo }}</option>
+                {% endfor %}
+            </optgroup>
         </select>
     </div>
     <div class="col-lg-2 col-md-4">

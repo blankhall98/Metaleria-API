@@ -30,6 +30,12 @@ from app.models import (
     ProveedorPlaca,
     Cliente,
     ClientePlaca,
+    AjusteSaldoPartner,
+    Comisionario,
+    ComisionarioNota,
+    ComisionarioNotaMaterial,
+    ComisionarioNotaEstado,
+    ComisionarioPago,
     Nota,
     NotaEstado,
     NotaMaterial,
@@ -58,6 +64,7 @@ from app.services import (
     contabilidad_report_service,
     conversion_service,
     corte_caja_report_service,
+    comision_service,
 )
 from app.services.evidence_service import build_evidence_groups
 from app.services.firebase_storage import upload_image
@@ -68,7 +75,7 @@ settings = get_settings()
 router = APIRouter(prefix="/web/admin", tags=["web-admin"])
 
 _TRANSFER_RELATED_NOTE_RE = re.compile(r"Nota (?:entrada|salida) #(\d+)")
-_FOLIO_QUERY_RE = re.compile(r"^\s*(\d+)[-_]([CVM])[_-](\d+)\s*$", re.IGNORECASE)
+_FOLIO_QUERY_RE = re.compile(r"^\s*(\d+)[-_]([CV])[_-](\d+)\s*$", re.IGNORECASE)
 _CUENTA_TIPOS = ("cuenta bancaria", "cuenta cheques")
 _SCRAP360_TIPOS = ("transferencia", "cheques", "efectivo")
 _CORTE_MOV_TIPOS = (
@@ -94,7 +101,7 @@ _CORTE_DENOMINACIONES = [
 
 def _movimiento_tipo_operacion(mov: MovimientoContable) -> str | None:
     tipo_raw = (mov.tipo or "").lower()
-    if tipo_raw in ("compra", "venta", "comision"):
+    if tipo_raw in ("compra", "venta"):
         return tipo_raw
     if mov.nota and mov.nota.tipo_operacion:
         return mov.nota.tipo_operacion.value
@@ -110,8 +117,6 @@ def _movimiento_label(tipo_raw: str, tipo_op: str | None) -> str:
         return f"REVERSO {tipo_op.upper()}" if tipo_op else "REVERSO"
     if tipo_raw in ("compra", "venta"):
         return tipo_raw.upper()
-    if tipo_raw == "comision":
-        return "COMISION"
     if tipo_raw == "ajuste":
         return "AJUSTE"
     return tipo_raw.upper() if tipo_raw else "-"
@@ -122,26 +127,18 @@ def _movimiento_naturaleza(tipo_raw: str, tipo_op: str | None) -> str:
         return "EGRESO"
     if tipo_raw == "venta":
         return "INGRESO"
-    if tipo_raw == "comision":
-        return "EGRESO"
     if tipo_raw == "pago":
         if tipo_op == "compra":
-            return "EGRESO"
-        if tipo_op == "comision":
             return "EGRESO"
         if tipo_op == "venta":
             return "INGRESO"
     if tipo_raw == "reverso":
         if tipo_op == "compra":
             return "INGRESO"
-        if tipo_op == "comision":
-            return "INGRESO"
         if tipo_op == "venta":
             return "EGRESO"
     if tipo_raw == "reverso_pago":
         if tipo_op == "compra":
-            return "INGRESO"
-        if tipo_op == "comision":
             return "INGRESO"
         if tipo_op == "venta":
             return "EGRESO"
@@ -157,12 +154,8 @@ def _movimiento_monto_firmado(mov: MovimientoContable, tipo_raw: str, tipo_op: s
         return -abs_val
     if tipo_raw == "venta":
         return abs_val
-    if tipo_raw == "comision":
-        return -abs_val
     if tipo_raw == "pago":
         if tipo_op == "compra":
-            return -abs_val
-        if tipo_op == "comision":
             return -abs_val
         if tipo_op == "venta":
             return abs_val
@@ -170,15 +163,11 @@ def _movimiento_monto_firmado(mov: MovimientoContable, tipo_raw: str, tipo_op: s
     if tipo_raw == "reverso":
         if tipo_op == "compra":
             return abs_val
-        if tipo_op == "comision":
-            return abs_val
         if tipo_op == "venta":
             return -abs_val
         return base
     if tipo_raw == "reverso_pago":
         if tipo_op == "compra":
-            return abs_val
-        if tipo_op == "comision":
             return abs_val
         if tipo_op == "venta":
             return -abs_val
@@ -224,17 +213,10 @@ def _nota_partner_key(nota: Nota) -> tuple[str | None, int | None]:
         return "proveedor", nota.proveedor_id
     if nota.tipo_operacion == TipoOperacion.venta:
         return "cliente", nota.cliente_id
-    if nota.tipo_operacion == TipoOperacion.comision:
-        if nota.proveedor_id:
-            return "proveedor", nota.proveedor_id
-        if nota.cliente_id:
-            return "cliente", nota.cliente_id
     return None, None
 
 
 def _partner_note_sign(partner_type: str | None, nota: Nota) -> Decimal:
-    if partner_type == "cliente" and nota.tipo_operacion == TipoOperacion.comision:
-        return Decimal("-1")
     return Decimal("1")
 
 
@@ -260,6 +242,42 @@ def _movimiento_display_partner(mov: MovimientoContable) -> dict:
     return view
 
 
+def _get_partner_adjustments(
+    db: Session,
+    *,
+    partner_type: str,
+    partner_id: int,
+) -> list[AjusteSaldoPartner]:
+    return (
+        db.query(AjusteSaldoPartner)
+        .filter(
+            AjusteSaldoPartner.partner_type == partner_type,
+            AjusteSaldoPartner.partner_id == partner_id,
+        )
+        .order_by(AjusteSaldoPartner.created_at.asc())
+        .all()
+    )
+
+
+def _sum_partner_adjustments(
+    ajustes: Iterable[AjusteSaldoPartner],
+) -> Decimal:
+    total = Decimal("0")
+    for ajuste in ajustes:
+        total += Decimal(str(ajuste.monto or 0))
+    return total
+
+
+def _get_partner_adjustments_total(
+    db: Session,
+    *,
+    partner_type: str,
+    partner_id: int,
+) -> Decimal:
+    ajustes = _get_partner_adjustments(db, partner_type=partner_type, partner_id=partner_id)
+    return _sum_partner_adjustments(ajustes)
+
+
 def _build_partner_ledger(
     db: Session,
     *,
@@ -268,10 +286,10 @@ def _build_partner_ledger(
     allowed_suc_ids: list[int] | None,
 ) -> list[dict]:
     if partner_type == "cliente":
-        tipo_ops = [TipoOperacion.venta, TipoOperacion.comision]
+        tipo_ops = [TipoOperacion.venta]
         notes_query = db.query(Nota).filter(Nota.cliente_id == partner_id)
     else:
-        tipo_ops = [TipoOperacion.compra, TipoOperacion.comision]
+        tipo_ops = [TipoOperacion.compra]
         notes_query = db.query(Nota).filter(Nota.proveedor_id == partner_id)
 
     notes_query = notes_query.filter(
@@ -280,35 +298,40 @@ def _build_partner_ledger(
     )
     notes_query = _apply_sucursal_filter(notes_query, allowed_suc_ids, None, Nota.sucursal_id)
     notas = notes_query.all()
-    if not notas:
+    ajustes = _get_partner_adjustments(db, partner_type=partner_type, partner_id=partner_id)
+    if not notas and not ajustes:
         return []
 
     note_ids = [n.id for n in notas]
-    folio_map = _build_folio_map(notas)
+    folio_map = _build_folio_map(notas) if notas else {}
 
-    base_movs = {
-        mov.nota_id: mov
-        for mov in db.query(MovimientoContable)
-        .filter(
-            MovimientoContable.nota_id.in_(note_ids),
-            MovimientoContable.tipo.in_([op.value for op in tipo_ops]),
+    base_movs = {}
+    reversos = []
+    pagos = []
+    if note_ids:
+        base_movs = {
+            mov.nota_id: mov
+            for mov in db.query(MovimientoContable)
+            .filter(
+                MovimientoContable.nota_id.in_(note_ids),
+                MovimientoContable.tipo.in_([op.value for op in tipo_ops]),
+            )
+            .all()
+        }
+        reversos = (
+            db.query(MovimientoContable)
+            .filter(
+                MovimientoContable.nota_id.in_(note_ids),
+                MovimientoContable.tipo.in_(["reverso", "reverso_pago"]),
+            )
+            .all()
         )
-        .all()
-    }
-    reversos = (
-        db.query(MovimientoContable)
-        .filter(
-            MovimientoContable.nota_id.in_(note_ids),
-            MovimientoContable.tipo.in_(["reverso", "reverso_pago"]),
+        pagos = (
+            db.query(NotaPago)
+            .filter(NotaPago.nota_id.in_(note_ids))
+            .order_by(NotaPago.created_at.asc())
+            .all()
         )
-        .all()
-    )
-    pagos = (
-        db.query(NotaPago)
-        .filter(NotaPago.nota_id.in_(note_ids))
-        .order_by(NotaPago.created_at.asc())
-        .all()
-    )
 
     events: list[dict] = []
     note_signs = {
@@ -398,6 +421,25 @@ def _build_partner_ledger(
                     "comentario": mov.comentario or "",
                 }
             )
+
+    for ajuste in ajustes:
+        delta = Decimal(str(ajuste.monto or 0))
+        cargo = delta if delta >= 0 else Decimal("0")
+        abono = Decimal("0") if delta >= 0 else -delta
+        events.append(
+            {
+                "fecha": ajuste.created_at,
+                "orden": 4,
+                "tipo": "Ajuste manual",
+                "nota_id": None,
+                "folio": "-",
+                "cargo": cargo,
+                "abono": abono,
+                "metodo": "-",
+                "cuenta": "-",
+                "comentario": ajuste.comentario or "",
+            }
+        )
 
     events = [e for e in events if e["fecha"] is not None]
     events.sort(key=lambda e: (e["fecha"], e["orden"]))
@@ -499,8 +541,6 @@ def _is_transfer_note(
     proveedor: Proveedor | None,
     cliente: Cliente | None,
 ) -> bool:
-    if nota.tipo_operacion == TipoOperacion.comision:
-        return False
     if nota.comentarios_admin and "Transferencia entre sucursales" in nota.comentarios_admin:
         return True
     partner_name = ""
@@ -543,7 +583,7 @@ def _parse_folio_query(
     elif letter == "V":
         tipo_op = TipoOperacion.venta
     else:
-        tipo_op = TipoOperacion.comision
+        return None
     return sucursal_id, tipo_op, seq
 
 
@@ -621,6 +661,95 @@ def _build_partner_record_rows(
         )
     return rows
 
+
+def _filter_comisionario_notas(
+    notas: list[ComisionarioNota],
+    term: str | None,
+) -> list[ComisionarioNota]:
+    if not term:
+        return notas
+    term_clean = term.strip()
+    if not term_clean:
+        return notas
+    filtered: list[ComisionarioNota] = []
+    for nota in notas:
+        if term_clean in str(nota.id):
+            filtered.append(nota)
+    return filtered
+
+
+def _build_comisionario_summary(notas: list[ComisionarioNota]) -> dict:
+    summary = {
+        "total_notas": len(notas),
+        "notas_aprobadas": 0,
+        "notas_canceladas": 0,
+        "total_facturado": Decimal("0"),
+        "total_pagado": Decimal("0"),
+        "saldo_pendiente": Decimal("0"),
+        "saldo_favor": Decimal("0"),
+    }
+    for nota in notas:
+        if nota.estado == ComisionarioNotaEstado.aprobada:
+            summary["notas_aprobadas"] += 1
+            total = Decimal(str(nota.total_monto or 0))
+            pagado = Decimal(str(nota.monto_pagado or 0))
+            summary["total_facturado"] += total
+            summary["total_pagado"] += pagado
+            saldo = total - pagado
+            if saldo > Decimal("0"):
+                summary["saldo_pendiente"] += saldo
+            elif saldo < Decimal("0"):
+                summary["saldo_favor"] += -saldo
+        elif nota.estado == ComisionarioNotaEstado.cancelada:
+            summary["notas_canceladas"] += 1
+    return summary
+
+
+def _build_comisionario_ledger(
+    notas: list[ComisionarioNota],
+    pagos: list[ComisionarioPago],
+) -> list[dict]:
+    events: list[dict] = []
+    for nota in notas:
+        if nota.estado != ComisionarioNotaEstado.aprobada:
+            continue
+        total = Decimal(str(nota.total_monto or 0))
+        events.append(
+            {
+                "fecha": nota.created_at,
+                "orden": 0,
+                "tipo": "Nota comision",
+                "nota_id": nota.id,
+                "cargo": total,
+                "abono": Decimal("0"),
+                "metodo": "-",
+                "cuenta": "-",
+                "comentario": nota.comentarios_admin or "",
+            }
+        )
+    for pago in pagos:
+        cuenta_label = pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or "-")
+        events.append(
+            {
+                "fecha": pago.created_at,
+                "orden": 1,
+                "tipo": "Pago",
+                "nota_id": pago.nota_id,
+                "cargo": Decimal("0"),
+                "abono": Decimal(str(pago.monto or 0)),
+                "metodo": pago.metodo_pago or "-",
+                "cuenta": cuenta_label,
+                "comentario": pago.comentario or "",
+            }
+        )
+    events = [e for e in events if e["fecha"] is not None]
+    events.sort(key=lambda e: (e["fecha"], e["orden"]))
+    saldo = Decimal("0")
+    for event in events:
+        saldo += event["cargo"] - event["abono"]
+        event["saldo"] = saldo
+    return events
+
 def _parse_owner_key(owner_key: str | None) -> tuple[str | None, int | None]:
     if not owner_key:
         return None, None
@@ -629,7 +758,7 @@ def _parse_owner_key(owner_key: str | None) -> tuple[str | None, int | None]:
         owner_id = int(raw_id)
     except (ValueError, AttributeError):
         return None, None
-    if owner_type not in ("sucursal", "cliente", "proveedor"):
+    if owner_type not in ("sucursal", "cliente", "proveedor", "comisionario"):
         return None, None
     return owner_type, owner_id
 
@@ -643,6 +772,8 @@ def _build_owner_key_from_cuenta(cuenta: Cuenta | None) -> str:
         return f"cliente:{cuenta.cliente_id}"
     if cuenta.proveedor_id:
         return f"proveedor:{cuenta.proveedor_id}"
+    if cuenta.comisionario_id:
+        return f"comisionario:{cuenta.comisionario_id}"
     return ""
 
 
@@ -651,6 +782,7 @@ def _build_cuenta_owner_label(
     sucursales_map: dict[int, str],
     clientes_map: dict[int, str],
     proveedores_map: dict[int, str],
+    comisionarios_map: dict[int, str],
 ) -> str:
     if cuenta.sucursal_id:
         return f"Sucursal: {sucursales_map.get(cuenta.sucursal_id, cuenta.sucursal_id)}"
@@ -658,6 +790,8 @@ def _build_cuenta_owner_label(
         return f"Cliente: {clientes_map.get(cuenta.cliente_id, cuenta.cliente_id)}"
     if cuenta.proveedor_id:
         return f"Proveedor: {proveedores_map.get(cuenta.proveedor_id, cuenta.proveedor_id)}"
+    if cuenta.comisionario_id:
+        return f"Comisionario: {comisionarios_map.get(cuenta.comisionario_id, cuenta.comisionario_id)}"
     return "Sin vinculo"
 
 
@@ -674,6 +808,7 @@ def _render_cuenta_form(
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
     clientes = db.query(Cliente).order_by(Cliente.nombre_completo).all()
     proveedores = db.query(Proveedor).order_by(Proveedor.nombre_completo).all()
+    comisionarios = db.query(Comisionario).order_by(Comisionario.nombre_completo).all()
     return templates.TemplateResponse(
         "admin/cuenta_form.html",
         {
@@ -684,6 +819,7 @@ def _render_cuenta_form(
             "sucursales": sucursales,
             "clientes": clientes,
             "proveedores": proveedores,
+            "comisionarios": comisionarios,
             "owner_key": owner_key or "",
             "error": error,
             "form_data": form_data,
@@ -775,6 +911,7 @@ def _apply_scrap360_adjustment(
 def _aggregate_partner_record_summary(
     notas: list[Nota],
     partner_type: str | None = None,
+    ajustes_delta: Decimal | None = None,
 ) -> dict:
     summary = {
         "total_notas": len(notas),
@@ -804,7 +941,28 @@ def _aggregate_partner_record_summary(
             summary["notas_borrador"] += 1
         elif nota.estado == NotaEstado.cancelada:
             summary["notas_canceladas"] += 1
+    delta = ajustes_delta if ajustes_delta is not None else Decimal("0")
+    summary["ajustes_delta"] = delta
+    if delta > Decimal("0"):
+        summary["saldo_pendiente"] += delta
+    elif delta < Decimal("0"):
+        summary["saldo_favor"] += -delta
     return summary
+
+
+def _compute_partner_adjustment_delta(
+    *,
+    partner_type: str,
+    direction: str,
+    monto: Decimal,
+) -> Decimal:
+    if direction not in ("favor", "contra"):
+        raise ValueError("Tipo de ajuste invalido.")
+    if monto <= Decimal("0"):
+        raise ValueError("El monto del ajuste debe ser mayor a 0.")
+    if partner_type == "proveedor":
+        return monto if direction == "favor" else -monto
+    return -monto if direction == "favor" else monto
 
 def _get_allowed_sucursal_ids(
     db: Session,
@@ -840,6 +998,125 @@ def _apply_sucursal_filter(query, allowed_ids: list[int] | None, sucursal_id: in
     elif sucursal_id:
         query = query.filter(field == sucursal_id)
     return query
+
+
+def _build_partner_record_context(
+    request: Request,
+    db: Session,
+    current_user: dict,
+    *,
+    partner_type: str,
+    partner: Cliente | Proveedor,
+    q: str | None,
+    ajuste_ok: bool = False,
+    ajuste_error: str | None = None,
+    form_state: dict | None = None,
+) -> dict:
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    form_state = form_state or {}
+    if partner_type == "proveedor":
+        tipo_operacion = TipoOperacion.compra
+        partner_label = "Proveedor"
+        partner_base = "proveedores"
+        tipo_operacion_label = "Compras"
+        total_facturado_label = "Total compras aprobadas"
+        total_pagado_label = "Total pagado"
+        saldo_pendiente_label = "Saldo pendiente (por pagar al proveedor)"
+        saldo_favor_label = "Saldo a favor de la empresa"
+        ledger_saldo_label = "Saldo acumulado (por pagar al proveedor)"
+        ledger_saldo_help = "Saldo positivo indica pendiente por pagar. Saldo negativo indica saldo a favor de la empresa."
+        ajuste_favor_label = "Saldo a favor del proveedor (la empresa debe pagar)"
+        ajuste_contra_label = "Saldo en contra del proveedor (el proveedor debe pagar)"
+    else:
+        tipo_operacion = TipoOperacion.venta
+        partner_label = "Cliente"
+        partner_base = "clientes"
+        tipo_operacion_label = "Ventas"
+        total_facturado_label = "Total ventas aprobadas (neto)"
+        total_pagado_label = "Total cobrado/pagado (neto)"
+        saldo_pendiente_label = "Saldo neto (por cobrar al cliente)"
+        saldo_favor_label = "Saldo a favor del cliente"
+        ledger_saldo_label = "Saldo acumulado (por cobrar/pagar al cliente)"
+        ledger_saldo_help = "Saldo positivo indica pendiente por cobrar. Saldo negativo indica saldo a favor del cliente."
+        ajuste_favor_label = "Saldo a favor del cliente (la empresa debe pagar)"
+        ajuste_contra_label = "Saldo en contra del cliente (el cliente debe pagar)"
+
+    notas_query = db.query(Nota).filter(
+        (Nota.proveedor_id if partner_type == "proveedor" else Nota.cliente_id) == partner.id,
+        Nota.tipo_operacion == tipo_operacion,
+    )
+    if allowed_suc_ids:
+        notas_query = notas_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
+    notas = notas_query.order_by(Nota.created_at.desc()).all()
+    notas_filtradas, folio_map = _filter_notes_by_query(notas, q)
+    rows = _build_partner_record_rows(notas_filtradas, folio_map, partner_type=partner_type)
+    ajustes_delta = _get_partner_adjustments_total(
+        db,
+        partner_type=partner_type,
+        partner_id=partner.id,
+    )
+    summary = _aggregate_partner_record_summary(
+        notas,
+        partner_type=partner_type,
+        ajustes_delta=ajustes_delta,
+    )
+    ledger_rows = _build_partner_ledger(
+        db,
+        partner_type=partner_type,
+        partner_id=partner.id,
+        allowed_suc_ids=allowed_suc_ids,
+    )
+    ledger_final = ledger_rows[-1]["saldo"] if ledger_rows else Decimal("0")
+
+    pagos_query = (
+        db.query(NotaPago)
+        .join(Nota, NotaPago.nota_id == Nota.id)
+        .filter(
+            (Nota.proveedor_id if partner_type == "proveedor" else Nota.cliente_id) == partner.id,
+            Nota.tipo_operacion == tipo_operacion,
+        )
+    )
+    if allowed_suc_ids:
+        pagos_query = pagos_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
+    pagos = pagos_query.order_by(NotaPago.created_at.desc()).all()
+
+    suc_query = db.query(Sucursal)
+    if allowed_suc_ids:
+        suc_query = suc_query.filter(Sucursal.id.in_(allowed_suc_ids))
+    sucursales = {s.id: s for s in suc_query.all()}
+
+    return {
+        "request": request,
+        "env": settings.ENV,
+        "user": current_user,
+        "partner": partner,
+        "partner_label": partner_label,
+        "partner_base": partner_base,
+        "tipo_operacion_label": tipo_operacion_label,
+        "record_rows": rows,
+        "record_total_count": len(notas),
+        "record_filtered_count": len(notas_filtradas),
+        "summary": summary,
+        "ledger_rows": ledger_rows,
+        "ledger_final": ledger_final,
+        "ledger_saldo_label": ledger_saldo_label,
+        "ledger_saldo_help": ledger_saldo_help,
+        "total_facturado_label": total_facturado_label,
+        "total_pagado_label": total_pagado_label,
+        "saldo_pendiente_label": saldo_pendiente_label,
+        "saldo_favor_label": saldo_favor_label,
+        "pagos": pagos,
+        "folio_map": folio_map,
+        "sucursales": sucursales,
+        "q": q or "",
+        "ajuste_ok": ajuste_ok,
+        "ajuste_error": ajuste_error,
+        "ajuste_favor_label": ajuste_favor_label,
+        "ajuste_contra_label": ajuste_contra_label,
+        "form_ajuste_direccion": form_state.get("ajuste_direccion", ""),
+        "form_ajuste_monto": form_state.get("ajuste_monto", ""),
+        "form_ajuste_comentario": form_state.get("ajuste_comentario", ""),
+    }
 
 
 def _ensure_nota_access(
@@ -1989,75 +2266,83 @@ async def proveedor_record(
     proveedor = db.get(Proveedor, proveedor_id)
     if not proveedor:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado.")
-
-    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
-    notas_query = (
-        db.query(Nota)
-        .filter(
-            Nota.proveedor_id == proveedor_id,
-            Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.comision]),
-            *([Nota.sucursal_id.in_(allowed_suc_ids)] if allowed_suc_ids else []),
-        )
-        .order_by(Nota.created_at.desc())
-    )
-    notas = notas_query.all()
-    notas_filtradas, folio_map = _filter_notes_by_query(notas, q)
-    rows = _build_partner_record_rows(notas_filtradas, folio_map, partner_type="proveedor")
-    summary = _aggregate_partner_record_summary(notas, partner_type="proveedor")
-    ledger_rows = _build_partner_ledger(
+    ajuste_ok = request.query_params.get("ajuste") == "1"
+    context = _build_partner_record_context(
+        request,
         db,
+        current_user,
+        partner_type="proveedor",
+        partner=proveedor,
+        q=q,
+        ajuste_ok=ajuste_ok,
+    )
+    return templates.TemplateResponse("admin/partner_record.html", context)
+
+
+@router.post("/proveedores/{proveedor_id}/ajuste-saldo")
+async def proveedor_ajuste_saldo(
+    proveedor_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    proveedor = db.get(Proveedor, proveedor_id)
+    if not proveedor:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado.")
+
+    form = await request.form()
+    direction = (form.get("ajuste_direccion") or "").strip().lower()
+    monto_raw = (form.get("ajuste_monto") or "").strip()
+    comentario = (form.get("ajuste_comentario") or "").strip()
+    form_state = {
+        "ajuste_direccion": direction,
+        "ajuste_monto": monto_raw,
+        "ajuste_comentario": comentario,
+    }
+
+    def render_error(msg: str):
+        context = _build_partner_record_context(
+            request,
+            db,
+            current_user,
+            partner_type="proveedor",
+            partner=proveedor,
+            q=None,
+            ajuste_error=msg,
+            form_state=form_state,
+        )
+        return templates.TemplateResponse("admin/partner_record.html", context, status_code=400)
+
+    if not monto_raw:
+        return render_error("Debes indicar el monto del ajuste.")
+    try:
+        monto_val = Decimal(str(monto_raw))
+    except (InvalidOperation, TypeError):
+        return render_error("El monto del ajuste es invalido.")
+    if not comentario:
+        return render_error("Debes indicar un comentario para el ajuste.")
+    try:
+        delta = _compute_partner_adjustment_delta(
+            partner_type="proveedor",
+            direction=direction,
+            monto=monto_val,
+        )
+    except ValueError as exc:
+        return render_error(str(exc))
+
+    ajuste = AjusteSaldoPartner(
         partner_type="proveedor",
         partner_id=proveedor_id,
-        allowed_suc_ids=allowed_suc_ids,
+        monto=delta,
+        comentario=comentario,
+        usuario_id=current_user.get("id"),
     )
-    ledger_final = ledger_rows[-1]["saldo"] if ledger_rows else Decimal("0")
-    ledger_saldo_label = "Saldo acumulado (por pagar al proveedor)"
-    ledger_saldo_help = "Saldo positivo indica pendiente por pagar. Saldo negativo indica saldo a favor de la empresa."
+    db.add(ajuste)
+    db.commit()
 
-    pagos_query = (
-        db.query(NotaPago)
-        .join(Nota, NotaPago.nota_id == Nota.id)
-        .filter(
-            Nota.proveedor_id == proveedor_id,
-            Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.comision]),
-            *([Nota.sucursal_id.in_(allowed_suc_ids)] if allowed_suc_ids else []),
-        )
-        .order_by(NotaPago.created_at.desc())
-    )
-    pagos = pagos_query.all()
-
-    suc_query = db.query(Sucursal)
-    if allowed_suc_ids:
-        suc_query = suc_query.filter(Sucursal.id.in_(allowed_suc_ids))
-    sucursales = {s.id: s for s in suc_query.all()}
-
-    return templates.TemplateResponse(
-        "admin/partner_record.html",
-        {
-            "request": request,
-            "env": settings.ENV,
-            "user": current_user,
-            "partner": proveedor,
-            "partner_label": "Proveedor",
-            "partner_base": "proveedores",
-            "tipo_operacion_label": "Compras y comisiones",
-            "record_rows": rows,
-            "record_total_count": len(notas),
-            "record_filtered_count": len(notas_filtradas),
-            "summary": summary,
-            "ledger_rows": ledger_rows,
-            "ledger_final": ledger_final,
-            "ledger_saldo_label": ledger_saldo_label,
-            "ledger_saldo_help": ledger_saldo_help,
-            "total_facturado_label": "Total compras y comisiones aprobadas",
-            "total_pagado_label": "Total pagado",
-            "saldo_pendiente_label": "Saldo pendiente (por pagar al proveedor)",
-            "saldo_favor_label": "Saldo a favor de la empresa",
-            "pagos": pagos,
-            "folio_map": folio_map,
-            "sucursales": sucursales,
-            "q": q or "",
-        },
+    return RedirectResponse(
+        url=f"/web/admin/proveedores/{proveedor_id}/record?ajuste=1",
+        status_code=303,
     )
 
 # ---------- CLIENTES ----------
@@ -2272,42 +2557,276 @@ async def cliente_record(
     cliente = db.get(Cliente, cliente_id)
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado.")
-
-    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
-    notas_query = (
-        db.query(Nota)
-        .filter(
-            Nota.cliente_id == cliente_id,
-            Nota.tipo_operacion.in_([TipoOperacion.venta, TipoOperacion.comision]),
-            *([Nota.sucursal_id.in_(allowed_suc_ids)] if allowed_suc_ids else []),
-        )
-        .order_by(Nota.created_at.desc())
-    )
-    notas = notas_query.all()
-    notas_filtradas, folio_map = _filter_notes_by_query(notas, q)
-    rows = _build_partner_record_rows(notas_filtradas, folio_map, partner_type="cliente")
-    summary = _aggregate_partner_record_summary(notas, partner_type="cliente")
-    ledger_rows = _build_partner_ledger(
+    ajuste_ok = request.query_params.get("ajuste") == "1"
+    context = _build_partner_record_context(
+        request,
         db,
+        current_user,
+        partner_type="cliente",
+        partner=cliente,
+        q=q,
+        ajuste_ok=ajuste_ok,
+    )
+    return templates.TemplateResponse("admin/partner_record.html", context)
+
+
+@router.post("/clientes/{cliente_id}/ajuste-saldo")
+async def cliente_ajuste_saldo(
+    cliente_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    cliente = db.get(Cliente, cliente_id)
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado.")
+
+    form = await request.form()
+    direction = (form.get("ajuste_direccion") or "").strip().lower()
+    monto_raw = (form.get("ajuste_monto") or "").strip()
+    comentario = (form.get("ajuste_comentario") or "").strip()
+    form_state = {
+        "ajuste_direccion": direction,
+        "ajuste_monto": monto_raw,
+        "ajuste_comentario": comentario,
+    }
+
+    def render_error(msg: str):
+        context = _build_partner_record_context(
+            request,
+            db,
+            current_user,
+            partner_type="cliente",
+            partner=cliente,
+            q=None,
+            ajuste_error=msg,
+            form_state=form_state,
+        )
+        return templates.TemplateResponse("admin/partner_record.html", context, status_code=400)
+
+    if not monto_raw:
+        return render_error("Debes indicar el monto del ajuste.")
+    try:
+        monto_val = Decimal(str(monto_raw))
+    except (InvalidOperation, TypeError):
+        return render_error("El monto del ajuste es invalido.")
+    if not comentario:
+        return render_error("Debes indicar un comentario para el ajuste.")
+    try:
+        delta = _compute_partner_adjustment_delta(
+            partner_type="cliente",
+            direction=direction,
+            monto=monto_val,
+        )
+    except ValueError as exc:
+        return render_error(str(exc))
+
+    ajuste = AjusteSaldoPartner(
         partner_type="cliente",
         partner_id=cliente_id,
-        allowed_suc_ids=allowed_suc_ids,
+        monto=delta,
+        comentario=comentario,
+        usuario_id=current_user.get("id"),
     )
-    ledger_final = ledger_rows[-1]["saldo"] if ledger_rows else Decimal("0")
-    ledger_saldo_label = "Saldo acumulado (por cobrar/pagar al cliente)"
-    ledger_saldo_help = "Saldo positivo indica pendiente por cobrar. Saldo negativo indica saldo a favor del cliente."
+    db.add(ajuste)
+    db.commit()
+
+    return RedirectResponse(
+        url=f"/web/admin/clientes/{cliente_id}/record?ajuste=1",
+        status_code=303,
+    )
+
+
+# ---------- COMISIONARIOS ----------
+
+
+@router.get("/comisionarios")
+async def comisionarios_list(
+    request: Request,
+    q: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    query = db.query(Comisionario)
+    if q:
+        term = f"%{q.strip()}%"
+        query = query.filter(
+            or_(
+                Comisionario.nombre_completo.ilike(term),
+                Comisionario.telefono.ilike(term),
+                Comisionario.correo_electronico.ilike(term),
+            )
+        )
+    comisionarios = query.order_by(Comisionario.nombre_completo).all()
+    return templates.TemplateResponse(
+        "admin/comisionarios_list.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "comisionarios": comisionarios,
+            "q": q or "",
+        },
+    )
+
+
+@router.get("/comisionarios/nuevo")
+async def comisionario_new_get(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    return templates.TemplateResponse(
+        "admin/comisionario_form.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "comisionario": None,
+            "error": None,
+        },
+    )
+
+
+@router.post("/comisionarios/nuevo")
+async def comisionario_new_post(
+    request: Request,
+    nombre_completo: str = Form(...),
+    telefono: str = Form(""),
+    correo_electronico: str = Form(""),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    nombre_completo = nombre_completo.strip()
+    telefono = telefono.strip()
+    correo_electronico = correo_electronico.strip()
+    if not nombre_completo:
+        return templates.TemplateResponse(
+            "admin/comisionario_form.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "comisionario": None,
+                "error": "El nombre del comisionario es obligatorio.",
+            },
+            status_code=400,
+        )
+
+    comisionario = Comisionario(
+        nombre_completo=nombre_completo,
+        telefono=telefono or None,
+        correo_electronico=correo_electronico or None,
+        activo=True,
+    )
+    db.add(comisionario)
+    db.commit()
+    return RedirectResponse(url="/web/admin/comisionarios", status_code=303)
+
+
+@router.get("/comisionarios/{comisionario_id}/editar")
+async def comisionario_edit_get(
+    comisionario_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    comisionario = db.get(Comisionario, comisionario_id)
+    if not comisionario:
+        raise HTTPException(status_code=404, detail="Comisionario no encontrado.")
+    return templates.TemplateResponse(
+        "admin/comisionario_form.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "comisionario": comisionario,
+            "error": None,
+        },
+    )
+
+
+@router.post("/comisionarios/{comisionario_id}/editar")
+async def comisionario_edit_post(
+    comisionario_id: int,
+    request: Request,
+    nombre_completo: str = Form(...),
+    telefono: str = Form(""),
+    correo_electronico: str = Form(""),
+    activo: str = Form(""),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    comisionario = db.get(Comisionario, comisionario_id)
+    if not comisionario:
+        raise HTTPException(status_code=404, detail="Comisionario no encontrado.")
+    nombre_completo = nombre_completo.strip()
+    telefono = telefono.strip()
+    correo_electronico = correo_electronico.strip()
+    if not nombre_completo:
+        return templates.TemplateResponse(
+            "admin/comisionario_form.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "comisionario": comisionario,
+                "error": "El nombre del comisionario es obligatorio.",
+            },
+            status_code=400,
+        )
+
+    comisionario.nombre_completo = nombre_completo
+    comisionario.telefono = telefono or None
+    comisionario.correo_electronico = correo_electronico or None
+    comisionario.activo = bool(activo)
+    comisionario.updated_at = datetime.utcnow()
+    db.add(comisionario)
+    db.commit()
+    return RedirectResponse(url="/web/admin/comisionarios", status_code=303)
+
+
+@router.get("/comisionarios/{comisionario_id}/record")
+async def comisionario_record(
+    comisionario_id: int,
+    request: Request,
+    q: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    comisionario = db.get(Comisionario, comisionario_id)
+    if not comisionario:
+        raise HTTPException(status_code=404, detail="Comisionario no encontrado.")
+
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    notas_query = db.query(ComisionarioNota).filter(ComisionarioNota.comisionario_id == comisionario_id)
+    if allowed_suc_ids:
+        notas_query = notas_query.filter(
+            or_(
+                ComisionarioNota.sucursal_id.in_(allowed_suc_ids),
+                ComisionarioNota.sucursal_id.is_(None),
+            )
+        )
+    notas = notas_query.order_by(ComisionarioNota.created_at.desc()).all()
+    notas_filtradas = _filter_comisionario_notas(notas, q)
 
     pagos_query = (
-        db.query(NotaPago)
-        .join(Nota, NotaPago.nota_id == Nota.id)
-        .filter(
-            Nota.cliente_id == cliente_id,
-            Nota.tipo_operacion.in_([TipoOperacion.venta, TipoOperacion.comision]),
-            *([Nota.sucursal_id.in_(allowed_suc_ids)] if allowed_suc_ids else []),
-        )
-        .order_by(NotaPago.created_at.desc())
+        db.query(ComisionarioPago)
+        .join(ComisionarioNota, ComisionarioPago.nota_id == ComisionarioNota.id)
+        .filter(ComisionarioNota.comisionario_id == comisionario_id)
     )
-    pagos = pagos_query.all()
+    if allowed_suc_ids:
+        pagos_query = pagos_query.filter(
+            or_(
+                ComisionarioNota.sucursal_id.in_(allowed_suc_ids),
+                ComisionarioNota.sucursal_id.is_(None),
+            )
+        )
+    pagos = pagos_query.order_by(ComisionarioPago.created_at.desc()).all()
+
+    summary = _build_comisionario_summary(notas)
+    ledger_rows = _build_comisionario_ledger(notas, pagos)
+    ledger_final = ledger_rows[-1]["saldo"] if ledger_rows else Decimal("0")
 
     suc_query = db.query(Sucursal)
     if allowed_suc_ids:
@@ -2315,33 +2834,390 @@ async def cliente_record(
     sucursales = {s.id: s for s in suc_query.all()}
 
     return templates.TemplateResponse(
-        "admin/partner_record.html",
+        "admin/comisionario_record.html",
         {
             "request": request,
             "env": settings.ENV,
             "user": current_user,
-            "partner": cliente,
-            "partner_label": "Cliente",
-            "partner_base": "clientes",
-            "tipo_operacion_label": "Ventas y comisiones",
-            "record_rows": rows,
+            "comisionario": comisionario,
+            "record_rows": notas_filtradas,
             "record_total_count": len(notas),
             "record_filtered_count": len(notas_filtradas),
             "summary": summary,
             "ledger_rows": ledger_rows,
             "ledger_final": ledger_final,
-            "ledger_saldo_label": ledger_saldo_label,
-            "ledger_saldo_help": ledger_saldo_help,
-            "total_facturado_label": "Total ventas/comisiones aprobadas (neto)",
-            "total_pagado_label": "Total cobrado/pagado (neto)",
-            "saldo_pendiente_label": "Saldo neto (por cobrar al cliente)",
-            "saldo_favor_label": "Saldo a favor del cliente",
             "pagos": pagos,
-            "folio_map": folio_map,
             "sucursales": sucursales,
             "q": q or "",
         },
     )
+
+
+@router.get("/comisionarios/notas")
+async def comisionario_notas_list(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    params = request.query_params
+    q = (params.get("q") or "").strip()
+    comisionario_id = None
+    if params.get("comisionario_id"):
+        try:
+            comisionario_id = int(params.get("comisionario_id"))
+        except ValueError:
+            comisionario_id = None
+
+    query = db.query(ComisionarioNota)
+    if comisionario_id:
+        query = query.filter(ComisionarioNota.comisionario_id == comisionario_id)
+
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    if allowed_suc_ids:
+        query = query.filter(
+            or_(
+                ComisionarioNota.sucursal_id.in_(allowed_suc_ids),
+                ComisionarioNota.sucursal_id.is_(None),
+            )
+        )
+
+    notas = query.order_by(ComisionarioNota.created_at.desc()).all()
+    if q:
+        notas = _filter_comisionario_notas(notas, q)
+
+    comisionarios = db.query(Comisionario).order_by(Comisionario.nombre_completo).all()
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
+    comisionarios_map = {c.id: c.nombre_completo for c in comisionarios}
+    sucursales_map = {s.id: s.nombre for s in sucursales}
+
+    return templates.TemplateResponse(
+        "admin/comisionario_notas_list.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "notas": notas,
+            "comisionarios": comisionarios,
+            "comisionarios_map": comisionarios_map,
+            "sucursales_map": sucursales_map,
+            "comisionario_id": comisionario_id,
+            "q": q,
+        },
+    )
+
+
+def _parse_comisionario_materiales(form) -> tuple[list[dict], str | None]:
+    material_ids = form.getlist("material_id")
+    kg_list = form.getlist("kg_neto")
+    precio_list = form.getlist("precio_kg")
+    rows: list[dict] = []
+    for idx in range(max(len(material_ids), len(kg_list), len(precio_list))):
+        material_raw = material_ids[idx] if idx < len(material_ids) else ""
+        kg_raw = kg_list[idx] if idx < len(kg_list) else ""
+        precio_raw = precio_list[idx] if idx < len(precio_list) else ""
+        if not material_raw and not kg_raw and not precio_raw:
+            continue
+        try:
+            material_id = int(material_raw)
+        except (TypeError, ValueError):
+            return [], "Selecciona un material valido."
+        try:
+            kg_neto = Decimal(str(kg_raw))
+        except (InvalidOperation, TypeError):
+            return [], "El kg neto es invalido."
+        try:
+            precio_kg = Decimal(str(precio_raw))
+        except (InvalidOperation, TypeError):
+            return [], "El precio por kg es invalido."
+        rows.append(
+            {
+                "material_id": material_id,
+                "kg_neto": kg_neto,
+                "precio_por_kg": precio_kg,
+            }
+        )
+    if not rows:
+        return [], "Debes agregar al menos un material."
+    return rows, None
+
+
+@router.get("/comisionarios/notas/nueva")
+async def comisionario_nota_new_get(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
+    comisionarios = db.query(Comisionario).order_by(Comisionario.nombre_completo).all()
+    materiales = db.query(Material).order_by(Material.nombre).all()
+    preselect_id = None
+    if request.query_params.get("comisionario_id"):
+        try:
+            preselect_id = int(request.query_params.get("comisionario_id"))
+        except ValueError:
+            preselect_id = None
+    return templates.TemplateResponse(
+        "admin/comisionario_nota_form.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "comisionarios": comisionarios,
+            "sucursales": sucursales,
+            "materiales": materiales,
+            "form_rows": [{}],
+            "form_comisionario_id": preselect_id or "",
+            "form_sucursal_id": "",
+            "form_comentario": "",
+            "error": None,
+        },
+    )
+
+
+@router.post("/comisionarios/notas/nueva")
+async def comisionario_nota_new_post(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    form = await request.form()
+    comisionario_raw = (form.get("comisionario_id") or "").strip()
+    sucursal_raw = (form.get("sucursal_id") or "").strip()
+    comentario = (form.get("comentario") or "").strip()
+
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
+    comisionarios = db.query(Comisionario).order_by(Comisionario.nombre_completo).all()
+    materiales = db.query(Material).order_by(Material.nombre).all()
+
+    def render_error(msg: str, rows: list[dict]):
+        return templates.TemplateResponse(
+            "admin/comisionario_nota_form.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "comisionarios": comisionarios,
+                "sucursales": sucursales,
+                "materiales": materiales,
+                "form_rows": rows or [{}],
+                "form_comisionario_id": comisionario_raw,
+                "form_sucursal_id": sucursal_raw,
+                "form_comentario": comentario,
+                "error": msg,
+            },
+            status_code=400,
+        )
+
+    if not comisionario_raw:
+        return render_error("Selecciona un comisionario.", [])
+    try:
+        comisionario_id = int(comisionario_raw)
+    except ValueError:
+        return render_error("Comisionario invalido.", [])
+
+    sucursal_id = None
+    if sucursal_raw:
+        try:
+            sucursal_id = int(sucursal_raw)
+        except ValueError:
+            return render_error("Sucursal invalida.", [])
+        if allowed_suc_ids and sucursal_id not in allowed_suc_ids:
+            return render_error("Sucursal no autorizada.", [])
+
+    materiales_rows, err = _parse_comisionario_materiales(form)
+    if err:
+        return render_error(err, materiales_rows)
+
+    try:
+        nota = comision_service.create_comisionario_nota(
+            db,
+            comisionario_id=comisionario_id,
+            sucursal_id=sucursal_id,
+            admin_id=current_user.get("id"),
+            comentario=comentario,
+            materiales_payload=materiales_rows,
+        )
+    except ValueError as exc:
+        return render_error(str(exc), materiales_rows)
+
+    return RedirectResponse(url=f"/web/admin/comisionarios/notas/{nota.id}", status_code=303)
+
+
+def _render_comisionario_nota_detail(
+    request: Request,
+    db: Session,
+    current_user: dict,
+    nota: ComisionarioNota,
+    *,
+    error: str | None = None,
+    form_state: dict | None = None,
+    pago_ok: bool = False,
+):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    if allowed_suc_ids and nota.sucursal_id and nota.sucursal_id not in allowed_suc_ids:
+        raise HTTPException(status_code=403, detail="Sucursal no autorizada.")
+
+    comisionario = db.get(Comisionario, nota.comisionario_id)
+    materiales = (
+        db.query(ComisionarioNotaMaterial)
+        .filter(ComisionarioNotaMaterial.nota_id == nota.id)
+        .all()
+    )
+    pagos = (
+        db.query(ComisionarioPago)
+        .filter(ComisionarioPago.nota_id == nota.id)
+        .order_by(ComisionarioPago.created_at.desc())
+        .all()
+    )
+    cuentas = (
+        db.query(Cuenta)
+        .filter(
+            Cuenta.activo.is_(True),
+            Cuenta.comisionario_id == nota.comisionario_id,
+        )
+        .order_by(Cuenta.nombre)
+        .all()
+    )
+    cuentas_scrap360 = db.query(CuentaScrap360).filter(CuentaScrap360.activo.is_(True)).all()
+    if nota.sucursal_id:
+        cuentas_scrap360 = [
+            c for c in cuentas_scrap360
+            if not c.sucursales or nota.sucursal_id in {s.id for s in c.sucursales}
+        ]
+
+    total = Decimal(str(nota.total_monto or 0))
+    pagado = Decimal(str(nota.monto_pagado or 0))
+    saldo = total - pagado
+
+    form_state = form_state or {}
+
+    return templates.TemplateResponse(
+        "admin/comisionario_nota_detail.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "nota": nota,
+            "comisionario": comisionario,
+            "materiales": materiales,
+            "pagos": pagos,
+            "cuentas": cuentas,
+            "cuentas_scrap360": cuentas_scrap360,
+            "total": total,
+            "pagado": pagado,
+            "saldo": saldo,
+            "error": error,
+            "form_monto": form_state.get("monto", ""),
+            "form_metodo": form_state.get("metodo", ""),
+            "form_cuenta": form_state.get("cuenta", ""),
+            "form_cuenta_scrap360": form_state.get("cuenta_scrap360", ""),
+            "form_comentario": form_state.get("comentario", ""),
+            "pago_ok": pago_ok,
+        },
+        status_code=400 if error else 200,
+    )
+
+
+@router.get("/comisionarios/notas/{nota_id}")
+async def comisionario_nota_detail(
+    nota_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    nota = db.get(ComisionarioNota, nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota de comisionario no encontrada.")
+    pago_ok = request.query_params.get("pago") == "1"
+    return _render_comisionario_nota_detail(request, db, current_user, nota, pago_ok=pago_ok)
+
+
+@router.post("/comisionarios/notas/{nota_id}/pago")
+async def comisionario_nota_add_pago(
+    nota_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    nota = db.get(ComisionarioNota, nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota de comisionario no encontrada.")
+
+    form = await request.form()
+    monto_raw = (form.get("monto") or "").strip()
+    metodo = (form.get("metodo_pago") or "").strip().lower()
+    cuenta_financiera = (form.get("cuenta_financiera") or "").strip()
+    cuenta_scrap360_raw = (form.get("cuenta_scrap360_id") or "").strip()
+    comentario = (form.get("comentario") or "").strip()
+    form_state = {
+        "monto": monto_raw,
+        "metodo": metodo,
+        "cuenta": cuenta_financiera,
+        "cuenta_scrap360": cuenta_scrap360_raw,
+        "comentario": comentario,
+    }
+    if not monto_raw:
+        return _render_comisionario_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="Debes indicar el monto pagado.",
+            form_state=form_state,
+        )
+    try:
+        monto_val = Decimal(str(monto_raw))
+    except (InvalidOperation, TypeError):
+        return _render_comisionario_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="El monto pagado es invalido.",
+            form_state=form_state,
+        )
+
+    cuenta_scrap360_id = None
+    if cuenta_scrap360_raw:
+        try:
+            cuenta_scrap360_id = int(cuenta_scrap360_raw)
+        except (TypeError, ValueError):
+            return _render_comisionario_nota_detail(
+                request,
+                db,
+                current_user,
+                nota,
+                error="La cuenta Scrap360 es invalida.",
+                form_state=form_state,
+            )
+
+    try:
+        comision_service.add_comisionario_pago(
+            db,
+            nota=nota,
+            monto=monto_val,
+            usuario_id=current_user.get("id"),
+            metodo_pago=metodo or None,
+            cuenta_financiera=cuenta_financiera or None,
+            cuenta_scrap360_id=cuenta_scrap360_id,
+            comentario=comentario or None,
+        )
+    except ValueError as exc:
+        return _render_comisionario_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error=str(exc),
+            form_state=form_state,
+        )
+
+    return RedirectResponse(url=f"/web/admin/comisionarios/notas/{nota_id}?pago=1", status_code=303)
 
 
 # ---------- CUENTAS ----------
@@ -2383,6 +3259,8 @@ async def cuentas_list(
         query = query.filter(Cuenta.cliente_id == owner_id)
     elif owner_type == "proveedor":
         query = query.filter(Cuenta.proveedor_id == owner_id)
+    elif owner_type == "comisionario":
+        query = query.filter(Cuenta.comisionario_id == owner_id)
 
     if activo in ("1", "0"):
         query = query.filter(Cuenta.activo.is_(activo == "1"))
@@ -2391,14 +3269,22 @@ async def cuentas_list(
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
     clientes = db.query(Cliente).order_by(Cliente.nombre_completo).all()
     proveedores = db.query(Proveedor).order_by(Proveedor.nombre_completo).all()
+    comisionarios = db.query(Comisionario).order_by(Comisionario.nombre_completo).all()
     sucursales_map = {s.id: s.nombre for s in sucursales}
     clientes_map = {c.id: c.nombre_completo for c in clientes}
     proveedores_map = {p.id: p.nombre_completo for p in proveedores}
+    comisionarios_map = {c.id: c.nombre_completo for c in comisionarios}
 
     cuentas_view = [
         {
             "cuenta": cuenta,
-            "owner_label": _build_cuenta_owner_label(cuenta, sucursales_map, clientes_map, proveedores_map),
+            "owner_label": _build_cuenta_owner_label(
+                cuenta,
+                sucursales_map,
+                clientes_map,
+                proveedores_map,
+                comisionarios_map,
+            ),
         }
         for cuenta in cuentas
     ]
@@ -2413,6 +3299,7 @@ async def cuentas_list(
             "sucursales": sucursales,
             "clientes": clientes,
             "proveedores": proveedores,
+            "comisionarios": comisionarios,
             "owner_key": owner_key or "",
             "owner_error": owner_error,
             "activo": activo or "",
@@ -2532,6 +3419,7 @@ async def cuenta_new_post(
     sucursal_id = None
     cliente_id = None
     proveedor_id = None
+    comisionario_id = None
     if owner_type == "sucursal":
         if not db.get(Sucursal, owner_id):
             return _render_cuenta_form(
@@ -2595,6 +3483,27 @@ async def cuenta_new_post(
                 },
             )
         proveedor_id = owner_id
+    elif owner_type == "comisionario":
+        if not db.get(Comisionario, owner_id):
+            return _render_cuenta_form(
+                request,
+                db,
+                current_user,
+                cuenta=None,
+                owner_key="",
+                error="Comisionario invalido.",
+                form_data={
+                    "nombre": nombre,
+                    "tipo": tipo,
+                    "banco": banco,
+                    "numero": numero,
+                    "clabe": clabe,
+                    "titular": titular,
+                    "referencia": referencia,
+                    "activo": bool(activo),
+                },
+            )
+        comisionario_id = owner_id
 
     cuenta = Cuenta(
         nombre=nombre,
@@ -2608,6 +3517,7 @@ async def cuenta_new_post(
         sucursal_id=sucursal_id,
         cliente_id=cliente_id,
         proveedor_id=proveedor_id,
+        comisionario_id=comisionario_id,
     )
     db.add(cuenta)
     db.commit()
@@ -2733,6 +3643,7 @@ async def cuenta_edit_post(
     sucursal_id = None
     cliente_id = None
     proveedor_id = None
+    comisionario_id = None
     if owner_type == "sucursal":
         if not db.get(Sucursal, owner_id):
             return _render_cuenta_form(
@@ -2796,6 +3707,27 @@ async def cuenta_edit_post(
                 },
             )
         proveedor_id = owner_id
+    elif owner_type == "comisionario":
+        if not db.get(Comisionario, owner_id):
+            return _render_cuenta_form(
+                request,
+                db,
+                current_user,
+                cuenta=cuenta,
+                owner_key="",
+                error="Comisionario invalido.",
+                form_data={
+                    "nombre": nombre,
+                    "tipo": tipo,
+                    "banco": banco,
+                    "numero": numero,
+                    "clabe": clabe,
+                    "titular": titular,
+                    "referencia": referencia,
+                    "activo": bool(activo),
+                },
+            )
+        comisionario_id = owner_id
 
     cuenta.nombre = nombre
     cuenta.tipo = tipo or None
@@ -2808,6 +3740,7 @@ async def cuenta_edit_post(
     cuenta.sucursal_id = sucursal_id
     cuenta.cliente_id = cliente_id
     cuenta.proveedor_id = proveedor_id
+    cuenta.comisionario_id = comisionario_id
     cuenta.updated_at = datetime.utcnow()
     db.add(cuenta)
     db.commit()
@@ -2840,6 +3773,10 @@ async def cuenta_detail(
         prov = db.get(Proveedor, cuenta.proveedor_id)
         owner_label = f"Proveedor: {prov.nombre_completo if prov else cuenta.proveedor_id}"
         owner_kind = "proveedor"
+    elif cuenta.comisionario_id:
+        com = db.get(Comisionario, cuenta.comisionario_id)
+        owner_label = f"Comisionario: {com.nombre_completo if com else cuenta.comisionario_id}"
+        owner_kind = "comisionario"
 
     movimientos_query = db.query(MovimientoContable).filter(MovimientoContable.cuenta_id == cuenta_id)
     if owner_kind in ("proveedor", "cliente"):
@@ -2943,9 +3880,9 @@ async def cuenta_detail(
 
     tipo_filters: list[TipoOperacion] | None = None
     if owner_kind == "proveedor":
-        tipo_filters = [TipoOperacion.compra, TipoOperacion.comision]
+        tipo_filters = [TipoOperacion.compra]
     elif owner_kind == "cliente":
-        tipo_filters = [TipoOperacion.venta, TipoOperacion.comision]
+        tipo_filters = [TipoOperacion.venta]
 
     notas_query = db.query(Nota).filter(Nota.cuenta_financiera_id == cuenta_id)
     if tipo_filters:
@@ -3619,6 +4556,7 @@ async def notas_list(
         db.query(Nota)
         .filter(
             Nota.estado == NotaEstado.en_revision,
+            Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]),
             *([Nota.sucursal_id.in_(allowed_suc_ids)] if allowed_suc_ids else []),
         )
         .order_by(Nota.id.desc())
@@ -3626,7 +4564,10 @@ async def notas_list(
     )
     notas_recientes = (
         db.query(Nota)
-        .filter(*([Nota.sucursal_id.in_(allowed_suc_ids)] if allowed_suc_ids else []))
+        .filter(
+            Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]),
+            *([Nota.sucursal_id.in_(allowed_suc_ids)] if allowed_suc_ids else []),
+        )
         .order_by(Nota.id.desc())
         .limit(10)
         .all()
@@ -3639,6 +4580,7 @@ async def notas_list(
         .filter(
             Nota.estado == NotaEstado.aprobada,
             Nota.fecha_caducidad_pago.isnot(None),
+            Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]),
             *([Nota.sucursal_id.in_(allowed_suc_ids)] if allowed_suc_ids else []),
         )
         .order_by(Nota.fecha_caducidad_pago.asc())
@@ -3648,6 +4590,7 @@ async def notas_list(
     counts_query = db.query(Nota.estado, func.count(Nota.id))
     if allowed_suc_ids:
         counts_query = counts_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
+    counts_query = counts_query.filter(Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]))
     counts_query = counts_query.group_by(Nota.estado).all()
     for estado, cantidad in counts_query:
         if estado and estado.value in estado_counts:
@@ -3656,6 +4599,7 @@ async def notas_list(
     notas_estado_query = db.query(Nota)
     if allowed_suc_ids:
         notas_estado_query = notas_estado_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
+    notas_estado_query = notas_estado_query.filter(Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]))
     if estado_filter:
         notas_estado_query = notas_estado_query.filter(Nota.estado == estado_filter)
     notas_estado = notas_estado_query.order_by(Nota.created_at.desc()).limit(200).all()
@@ -3695,7 +4639,7 @@ async def notas_list(
     if folio_query:
         parsed = _parse_folio_query(folio_query)
         if not parsed:
-            folio_error = "Formato de folio invalido. Usa 01_C_1, 01_V_1 o 01_M_1."
+            folio_error = "Formato de folio invalido. Usa 01_C_1 o 01_V_1."
         else:
             sucursal_id, tipo_op, seq = parsed
             folio_result = (
@@ -4103,93 +5047,6 @@ def _parse_precio_overrides(
     )
 
 
-def _extract_comision_form_state(form: dict, nota: Nota) -> dict:
-    aplica = form.get("comision_aplica") is not None
-    form_rates: dict[int, str] = {}
-    for nm in nota.materiales:
-        form_rates[nm.id] = (form.get(f"comision_unit_{nm.id}") or "").strip()
-    return {
-        "form_comision_aplica": aplica,
-        "form_comision_partner_key": (form.get("comision_partner_key") or "").strip(),
-        "form_comision_cuenta": (form.get("comision_cuenta_id") or "").strip(),
-        "form_comision_rates": form_rates,
-    }
-
-
-def _parse_comision_payload(
-    form: dict,
-    *,
-    nota: Nota,
-    db: Session,
-) -> tuple[dict | None, dict, str | None]:
-    form_state = _extract_comision_form_state(form, nota)
-    if not form_state["form_comision_aplica"]:
-        return None, form_state, None
-    if nota.tipo_operacion not in (TipoOperacion.compra, TipoOperacion.venta):
-        return None, form_state, "La comision solo aplica a notas de compra o venta."
-
-    partner_key = form_state["form_comision_partner_key"]
-    if not partner_key or ":" not in partner_key:
-        return None, form_state, "Debes seleccionar la entidad de la comision."
-    partner_kind, raw_id = partner_key.split(":", 1)
-    partner_kind = partner_kind.strip().lower()
-    try:
-        partner_id = int(raw_id)
-    except ValueError:
-        return None, form_state, "Entidad de comision invalida."
-    if partner_kind == "proveedor":
-        if not db.get(Proveedor, partner_id):
-            return None, form_state, "Proveedor de comision no encontrado."
-    elif partner_kind == "cliente":
-        if not db.get(Cliente, partner_id):
-            return None, form_state, "Cliente de comision no encontrado."
-    else:
-        return None, form_state, "Entidad de comision invalida."
-
-    cuenta_id = None
-    cuenta_raw = form_state["form_comision_cuenta"]
-    if cuenta_raw:
-        try:
-            cuenta_id = int(cuenta_raw)
-        except ValueError:
-            return None, form_state, "Cuenta de comision invalida."
-        cuenta = db.get(Cuenta, cuenta_id)
-        if not cuenta or not cuenta.activo:
-            return None, form_state, "La cuenta seleccionada no existe o esta inactiva."
-        if partner_kind == "proveedor" and cuenta.proveedor_id != partner_id:
-            return None, form_state, "La cuenta seleccionada no pertenece al proveedor de comision."
-        if partner_kind == "cliente" and cuenta.cliente_id != partner_id:
-            return None, form_state, "La cuenta seleccionada no pertenece al cliente de comision."
-
-    rates_by_material: dict[int, Decimal] = {}
-    has_positive = False
-    for nm in nota.materiales:
-        raw = form_state["form_comision_rates"].get(nm.id) or ""
-        if not raw:
-            rate = Decimal("0")
-        else:
-            try:
-                rate = Decimal(str(raw))
-            except (InvalidOperation, TypeError):
-                return None, form_state, "La comision por kg es invalida."
-        if rate < 0:
-            return None, form_state, "La comision por kg no puede ser negativa."
-        if rate > 0:
-            has_positive = True
-        rates_by_material[nm.id] = rate
-
-    if not has_positive:
-        return None, form_state, "Debes indicar una comision mayor a 0 para al menos un material."
-
-    payload = {
-        "partner_kind": partner_kind,
-        "partner_id": partner_id,
-        "cuenta_id": cuenta_id,
-        "rates_by_material": rates_by_material,
-        "comentario": f"Comision por nota #{nota.id}",
-    }
-    return payload, form_state, None
-
 
 def _render_nota_detail(
     request: Request,
@@ -4208,38 +5065,6 @@ def _render_nota_detail(
     trabajador = db.get(User, nota.trabajador_id) if nota.trabajador_id else None
     proveedores = db.query(Proveedor).filter(Proveedor.activo.is_(True)).order_by(Proveedor.nombre_completo).all()
     clientes = db.query(Cliente).filter(Cliente.activo.is_(True)).order_by(Cliente.nombre_completo).all()
-    comision_cuentas = (
-        db.query(Cuenta)
-        .filter(
-            Cuenta.activo.is_(True),
-            or_(Cuenta.proveedor_id.isnot(None), Cuenta.cliente_id.isnot(None)),
-        )
-        .order_by(Cuenta.nombre)
-        .all()
-    )
-    comision_note = (
-        db.query(Nota)
-        .filter(
-            Nota.nota_origen_id == nota.id,
-            Nota.tipo_operacion == TipoOperacion.comision,
-        )
-        .first()
-    )
-    comision_origen = db.get(Nota, nota.nota_origen_id) if nota.nota_origen_id else None
-    comision_note_folio = None
-    if comision_note:
-        comision_note_folio = note_service.format_folio(
-            sucursal_id=comision_note.sucursal_id,
-            tipo_operacion=comision_note.tipo_operacion,
-            folio_seq=comision_note.folio_seq,
-        )
-    comision_origen_folio = None
-    if comision_origen:
-        comision_origen_folio = note_service.format_folio(
-            sucursal_id=comision_origen.sucursal_id,
-            tipo_operacion=comision_origen.tipo_operacion,
-            folio_seq=comision_origen.folio_seq,
-        )
     inv_movs = db.query(InventarioMovimiento).filter(InventarioMovimiento.nota_id == nota.id).all()
     pagos = (
         db.query(NotaPago)
@@ -4349,10 +5174,6 @@ def _render_nota_detail(
         "form_precio_unit_map": {},
         "form_subtotal_map": {},
         "form_precio_mode_map": {},
-        "form_comision_aplica": None,
-        "form_comision_partner_key": None,
-        "form_comision_cuenta": None,
-        "form_comision_rates": {},
     }
     context = {
         "request": request,
@@ -4387,11 +5208,6 @@ def _render_nota_detail(
         "error": error,
         "proveedores": proveedores,
         "clientes": clientes,
-        "comision_cuentas": comision_cuentas,
-        "comision_note": comision_note,
-        "comision_origen": comision_origen,
-        "comision_note_folio": comision_note_folio,
-        "comision_origen_folio": comision_origen_folio,
     }
     context.update(base_form_state)
     if form_state:
@@ -4585,8 +5401,8 @@ async def notas_factura(
     _ensure_nota_access(nota, allowed_suc_ids)
     if nota.estado != NotaEstado.aprobada:
         raise HTTPException(status_code=400, detail="La nota debe estar aprobada.")
-    if nota.tipo_operacion == TipoOperacion.comision:
-        raise HTTPException(status_code=400, detail="La nota de comision no genera factura.")
+    if nota.tipo_operacion not in (TipoOperacion.compra, TipoOperacion.venta):
+        raise HTTPException(status_code=400, detail="La nota no genera factura.")
     if nota.factura_url and nota.factura_generada_at and nota.updated_at:
         if nota.factura_generada_at >= nota.updated_at:
             return RedirectResponse(url=nota.factura_url, status_code=302)
@@ -4855,23 +5671,6 @@ async def notas_aprobar(
         "form_iva_incluido": iva_incluido,
         "form_iva_porcentaje": iva_porcentaje_raw,
     }
-    form_state.update(_extract_comision_form_state(form, nota))
-    comision_payload = None
-    comision_payload, comision_form_state, comision_error = _parse_comision_payload(
-        form,
-        nota=nota,
-        db=db,
-    )
-    form_state.update(comision_form_state)
-    if comision_error:
-        return _render_nota_detail(
-            request,
-            db,
-            current_user,
-            nota,
-            error=comision_error,
-            form_state=form_state,
-        )
     precio_override_map = None
     if current_user.get("rol") == UserRole.super_admin.value:
         (
@@ -4983,7 +5782,6 @@ async def notas_aprobar(
             nota,
             tipo_cliente_map=tipo_cliente_map or None,
             precio_override_map=precio_override_map,
-            comision_payload=comision_payload,
             admin_id=current_user.get("id"),
             comentarios_admin=comentarios_admin,
             fecha_caducidad_pago=fecha_caducidad_pago,
@@ -5680,7 +6478,7 @@ async def contabilidad_list(
                 total_por_cobrar += diff
             else:
                 saldo_favor_clientes += -diff
-        elif nota.tipo_operacion in (TipoOperacion.compra, TipoOperacion.comision):
+        elif nota.tipo_operacion == TipoOperacion.compra:
             partner_kind, partner_id = _nota_partner_key(nota)
             if partner_kind == "cliente":
                 nombre = clientes_map.get(partner_id)
@@ -5695,6 +6493,36 @@ async def contabilidad_list(
                 total_por_pagar += diff
             else:
                 saldo_favor_empresa += -diff
+
+    ajustes_clientes = (
+        db.query(AjusteSaldoPartner)
+        .filter(AjusteSaldoPartner.partner_type == "cliente")
+        .all()
+    )
+    for ajuste in ajustes_clientes:
+        nombre = clientes_map.get(ajuste.partner_id)
+        if _is_internal_partner(nombre):
+            continue
+        delta = Decimal(str(ajuste.monto or 0))
+        if delta >= Decimal("0"):
+            total_por_cobrar += delta
+        else:
+            saldo_favor_clientes += -delta
+
+    ajustes_proveedores = (
+        db.query(AjusteSaldoPartner)
+        .filter(AjusteSaldoPartner.partner_type == "proveedor")
+        .all()
+    )
+    for ajuste in ajustes_proveedores:
+        nombre = proveedores_map.get(ajuste.partner_id)
+        if _is_internal_partner(nombre):
+            continue
+        delta = Decimal(str(ajuste.monto or 0))
+        if delta >= Decimal("0"):
+            total_por_pagar += delta
+        else:
+            saldo_favor_empresa += -delta
 
     saldo_neto = total_por_cobrar - total_por_pagar
     saldo_scope = "Todas las sucursales"
@@ -5722,20 +6550,29 @@ async def contabilidad_list(
                         db.query(Nota)
                         .filter(
                             Nota.cliente_id == partner_id,
-                            Nota.tipo_operacion.in_([TipoOperacion.venta, TipoOperacion.comision]),
+                            Nota.tipo_operacion == TipoOperacion.venta,
                         )
                     )
                     notas_p = _apply_sucursal_filter(notas_p, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
                     notas_p = notas_p.order_by(Nota.created_at.desc()).all()
                     folio_map = _build_folio_map(notas_p)
                     record_rows = _build_partner_record_rows(notas_p, folio_map, partner_type="cliente")
-                    summary = _aggregate_partner_record_summary(notas_p, partner_type="cliente")
+                    ajustes_delta = _get_partner_adjustments_total(
+                        db,
+                        partner_type="cliente",
+                        partner_id=partner_id,
+                    )
+                    summary = _aggregate_partner_record_summary(
+                        notas_p,
+                        partner_type="cliente",
+                        ajustes_delta=ajustes_delta,
+                    )
                     pagos_p = (
                         db.query(NotaPago)
                         .join(Nota, NotaPago.nota_id == Nota.id)
                         .filter(
                             Nota.cliente_id == partner_id,
-                            Nota.tipo_operacion.in_([TipoOperacion.venta, TipoOperacion.comision]),
+                            Nota.tipo_operacion == TipoOperacion.venta,
                         )
                     )
                     pagos_p = _apply_sucursal_filter(pagos_p, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
@@ -5743,14 +6580,14 @@ async def contabilidad_list(
                     partner_context = {
                         "partner": partner,
                         "partner_label": "Cliente",
-                        "tipo_operacion_label": "Ventas y comisiones",
+                        "tipo_operacion_label": "Ventas",
                         "record_rows": record_rows,
                         "record_total_count": len(notas_p),
                         "summary": summary,
                         "pagos": pagos_p,
                         "folio_map": folio_map,
                         "record_link": f"/web/admin/clientes/{partner_id}/record",
-                        "total_facturado_label": "Total ventas/comisiones aprobadas (neto)",
+                        "total_facturado_label": "Total ventas aprobadas (neto)",
                         "total_pagado_label": "Total cobrado/pagado (neto)",
                         "saldo_pendiente_label": "Saldo neto (por cobrar al cliente)",
                         "saldo_favor_label": "Saldo a favor del cliente",
@@ -5764,20 +6601,29 @@ async def contabilidad_list(
                         db.query(Nota)
                         .filter(
                             Nota.proveedor_id == partner_id,
-                            Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.comision]),
+                            Nota.tipo_operacion == TipoOperacion.compra,
                         )
                     )
                     notas_p = _apply_sucursal_filter(notas_p, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
                     notas_p = notas_p.order_by(Nota.created_at.desc()).all()
                     folio_map = _build_folio_map(notas_p)
                     record_rows = _build_partner_record_rows(notas_p, folio_map, partner_type="proveedor")
-                    summary = _aggregate_partner_record_summary(notas_p, partner_type="proveedor")
+                    ajustes_delta = _get_partner_adjustments_total(
+                        db,
+                        partner_type="proveedor",
+                        partner_id=partner_id,
+                    )
+                    summary = _aggregate_partner_record_summary(
+                        notas_p,
+                        partner_type="proveedor",
+                        ajustes_delta=ajustes_delta,
+                    )
                     pagos_p = (
                         db.query(NotaPago)
                         .join(Nota, NotaPago.nota_id == Nota.id)
                         .filter(
                             Nota.proveedor_id == partner_id,
-                            Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.comision]),
+                            Nota.tipo_operacion == TipoOperacion.compra,
                         )
                     )
                     pagos_p = _apply_sucursal_filter(pagos_p, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
@@ -5785,14 +6631,14 @@ async def contabilidad_list(
                     partner_context = {
                         "partner": partner,
                         "partner_label": "Proveedor",
-                        "tipo_operacion_label": "Compras y comisiones",
+                        "tipo_operacion_label": "Compras",
                         "record_rows": record_rows,
                         "record_total_count": len(notas_p),
                         "summary": summary,
                         "pagos": pagos_p,
                         "folio_map": folio_map,
                         "record_link": f"/web/admin/proveedores/{partner_id}/record",
-                        "total_facturado_label": "Total compras y comisiones aprobadas",
+                        "total_facturado_label": "Total compras aprobadas",
                         "total_pagado_label": "Total pagado",
                         "saldo_pendiente_label": "Saldo pendiente (por pagar al proveedor)",
                         "saldo_favor_label": "Saldo a favor de la empresa",
@@ -6135,7 +6981,7 @@ def _parse_corte_fecha(raw: str | None) -> tuple[date, str | None]:
 def _cash_sign_for_nota(nota: Nota | None) -> Decimal:
     if not nota:
         return Decimal("0")
-    if nota.tipo_operacion in (TipoOperacion.compra, TipoOperacion.comision):
+    if nota.tipo_operacion == TipoOperacion.compra:
         return Decimal("-1")
     return Decimal("1")
 

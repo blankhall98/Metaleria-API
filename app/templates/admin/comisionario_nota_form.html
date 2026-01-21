@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}Nueva nota de comision &middot; Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="text-uppercase text-muted small mb-1">Comisiones</p>
+        <h1 class="h4 text-white mb-0">Nueva nota de comision</h1>
+    </div>
+    <a href="/web/admin/comisionarios/notas" class="btn btn-outline-secondary btn-sm">Volver</a>
+</div>
+
+{% if error %}
+    <div class="alert alert-danger py-2 small">{{ error }}</div>
+{% endif %}
+
+<div class="card hover-lift">
+    <div class="card-body">
+        <form method="post" action="/web/admin/comisionarios/notas/nueva" class="d-grid gap-3">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Comisionario</label>
+                    <select class="form-select" name="comisionario_id" required>
+                        <option value="">Selecciona comisionario</option>
+                        {% for c in comisionarios %}
+                            <option value="{{ c.id }}" {% if form_comisionario_id|string == c.id|string %}selected{% endif %}>
+                                {{ c.nombre_completo }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Sucursal (opcional)</label>
+                    <select class="form-select" name="sucursal_id">
+                        <option value="">Sin sucursal</option>
+                        {% for s in sucursales %}
+                            <option value="{{ s.id }}" {% if form_sucursal_id|string == s.id|string %}selected{% endif %}>{{ s.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-12">
+                    <label class="form-label">Comentario</label>
+                    <input class="form-control" name="comentario" value="{{ form_comentario or '' }}" placeholder="Opcional">
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead>
+                    <tr>
+                        <th>Material</th>
+                        <th class="text-end">Kg neto</th>
+                        <th class="text-end">Precio/kg</th>
+                        <th class="text-end">Subtotal</th>
+                        <th></th>
+                    </tr>
+                    </thead>
+                    <tbody id="materialRows">
+                    {% for row in form_rows %}
+                        <tr>
+                            <td>
+                                <select class="form-select form-select-sm material-select" name="material_id">
+                                    <option value="">Selecciona material</option>
+                                    {% for m in materiales %}
+                                        <option value="{{ m.id }}" {% if row.material_id|string == m.id|string %}selected{% endif %}>
+                                            {{ m.nombre }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td>
+                                <input class="form-control form-control-sm text-end kg-input" type="number" step="0.001" min="0" name="kg_neto" value="{{ row.kg_neto or '' }}">
+                            </td>
+                            <td>
+                                <input class="form-control form-control-sm text-end precio-input" type="number" step="0.00001" min="0" name="precio_kg" value="{{ row.precio_por_kg or '' }}">
+                            </td>
+                            <td class="text-end subtotal-cell">$0.00</td>
+                            <td class="text-end">
+                                <button type="button" class="btn btn-sm btn-outline-danger remove-row">Quitar</button>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="d-flex flex-wrap gap-3 align-items-center justify-content-between">
+                <button type="button" class="btn btn-outline-primary btn-sm" id="addRowBtn">Agregar material</button>
+                <div class="text-muted small">
+                    Total kg: <strong id="totalKg">0.00</strong> &middot;
+                    Total $: <strong id="totalMonto">0.00</strong>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">Guardar nota</button>
+                <a href="/web/admin/comisionarios/notas" class="btn btn-outline-secondary">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<template id="materialRowTemplate">
+    <tr>
+        <td>
+            <select class="form-select form-select-sm material-select" name="material_id">
+                <option value="">Selecciona material</option>
+                {% for m in materiales %}
+                    <option value="{{ m.id }}">{{ m.nombre }}</option>
+                {% endfor %}
+            </select>
+        </td>
+        <td>
+            <input class="form-control form-control-sm text-end kg-input" type="number" step="0.001" min="0" name="kg_neto">
+        </td>
+        <td>
+            <input class="form-control form-control-sm text-end precio-input" type="number" step="0.00001" min="0" name="precio_kg">
+        </td>
+        <td class="text-end subtotal-cell">$0.00</td>
+        <td class="text-end">
+            <button type="button" class="btn btn-sm btn-outline-danger remove-row">Quitar</button>
+        </td>
+    </tr>
+</template>
+
+<script>
+    (function() {
+        const rowsContainer = document.getElementById('materialRows');
+        const template = document.getElementById('materialRowTemplate');
+        const addBtn = document.getElementById('addRowBtn');
+        const totalKgEl = document.getElementById('totalKg');
+        const totalMontoEl = document.getElementById('totalMonto');
+
+        function parseNumber(val) {
+            const num = parseFloat(val);
+            return Number.isFinite(num) ? num : 0;
+        }
+
+        function updateTotals() {
+            let totalKg = 0;
+            let totalMonto = 0;
+            rowsContainer.querySelectorAll('tr').forEach((row) => {
+                const kg = parseNumber(row.querySelector('.kg-input')?.value);
+                const precio = parseNumber(row.querySelector('.precio-input')?.value);
+                const subtotal = kg * precio;
+                const subtotalCell = row.querySelector('.subtotal-cell');
+                if (subtotalCell) {
+                    subtotalCell.textContent = `$${subtotal.toFixed(2)}`;
+                }
+                totalKg += kg;
+                totalMonto += subtotal;
+            });
+            totalKgEl.textContent = totalKg.toFixed(2);
+            totalMontoEl.textContent = totalMonto.toFixed(2);
+        }
+
+        function attachRowListeners(row) {
+            const inputs = row.querySelectorAll('.kg-input, .precio-input');
+            inputs.forEach((input) => {
+                input.addEventListener('input', updateTotals);
+            });
+            const removeBtn = row.querySelector('.remove-row');
+            if (removeBtn) {
+                removeBtn.addEventListener('click', () => {
+                    row.remove();
+                    updateTotals();
+                });
+            }
+        }
+
+        if (addBtn && template) {
+            addBtn.addEventListener('click', () => {
+                const clone = template.content.firstElementChild.cloneNode(true);
+                rowsContainer.appendChild(clone);
+                attachRowListeners(clone);
+                updateTotals();
+            });
+        }
+
+        rowsContainer.querySelectorAll('tr').forEach((row) => attachRowListeners(row));
+        updateTotals();
+    })();
+</script>
+{% endblock %}
