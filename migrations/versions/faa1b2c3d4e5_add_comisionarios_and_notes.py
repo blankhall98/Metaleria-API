@@ -36,7 +36,7 @@ def upgrade():
             sa.Column("nombre_completo", sa.String(length=200), nullable=False),
             sa.Column("telefono", sa.String(length=50), nullable=True),
             sa.Column("correo_electronico", sa.String(length=200), nullable=True),
-            sa.Column("activo", sa.Boolean(), nullable=False, server_default=sa.text("1")),
+            sa.Column("activo", sa.Boolean(), nullable=False, server_default=sa.text("true")),
             sa.Column("created_at", sa.DateTime(), nullable=False),
             sa.Column("updated_at", sa.DateTime(), nullable=False),
         )
