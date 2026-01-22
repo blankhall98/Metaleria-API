@@ -6524,7 +6524,9 @@ async def contabilidad_list(
         else:
             saldo_favor_empresa += -delta
 
-    saldo_neto = total_por_cobrar - total_por_pagar
+    neto_por_cobrar = total_por_cobrar - saldo_favor_clientes
+    neto_por_pagar = total_por_pagar - saldo_favor_empresa
+    saldo_neto = neto_por_cobrar - neto_por_pagar
     saldo_scope = "Todas las sucursales"
     if sucursal_id:
         suc = sucursales_map.get(sucursal_id)
@@ -6698,6 +6700,8 @@ async def contabilidad_list(
             "total_por_pagar": total_por_pagar,
             "saldo_favor_clientes": saldo_favor_clientes,
             "saldo_favor_empresa": saldo_favor_empresa,
+            "neto_por_cobrar": neto_por_cobrar,
+            "neto_por_pagar": neto_por_pagar,
             "saldo_neto": saldo_neto,
             "saldo_scope": saldo_scope,
             "total_ventas_aprobadas": total_ventas_aprobadas,

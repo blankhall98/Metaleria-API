@@ -33,6 +33,15 @@
                 <div class="note-meta-sub">Pendiente</div>
             </div>
             <div class="note-meta-item">
+                <span class="note-meta-label">Por cobrar neto clientes</span>
+                {% if neto_por_cobrar >= 0 %}
+                    <strong class="text-success">${{ "%.2f"|format(neto_por_cobrar) }}</strong>
+                {% else %}
+                    <strong class="text-warning">-${{ "%.2f"|format(-neto_por_cobrar) }}</strong>
+                {% endif %}
+                <div class="note-meta-sub">Por cobrar - saldo a favor</div>
+            </div>
+            <div class="note-meta-item">
                 <span class="note-meta-label">Compras aprobadas (devengado)</span>
                 <strong>${{ "%.2f"|format(total_compras_aprobadas or 0) }}</strong>
                 <div class="note-meta-sub">Proveedores</div>
@@ -48,6 +57,15 @@
                 <div class="note-meta-sub">Pendiente</div>
             </div>
             <div class="note-meta-item">
+                <span class="note-meta-label">Por pagar neto proveedores</span>
+                {% if neto_por_pagar >= 0 %}
+                    <strong class="text-danger">${{ "%.2f"|format(neto_por_pagar) }}</strong>
+                {% else %}
+                    <strong class="text-warning">-${{ "%.2f"|format(-neto_por_pagar) }}</strong>
+                {% endif %}
+                <div class="note-meta-sub">Por pagar - saldo a favor</div>
+            </div>
+            <div class="note-meta-item">
                 <span class="note-meta-label">Saldo a favor clientes</span>
                 <strong class="text-warning">${{ "%.2f"|format(saldo_favor_clientes or 0) }}</strong>
             </div>
@@ -56,18 +74,20 @@
                 <strong class="text-warning">${{ "%.2f"|format(saldo_favor_empresa or 0) }}</strong>
             </div>
             <div class="note-meta-item">
-                <span class="note-meta-label">Saldo neto (cobrar - pagar)</span>
+                <span class="note-meta-label">Saldo neto ajustado</span>
                 {% if saldo_neto >= 0 %}
                     <strong class="text-success">+${{ "%.2f"|format(saldo_neto) }}</strong>
                 {% else %}
                     <strong class="text-danger">-${{ "%.2f"|format(-saldo_neto) }}</strong>
                 {% endif %}
+                <div class="note-meta-sub">Por cobrar neto - por pagar neto</div>
                 <div class="note-meta-sub">Notas consideradas: {{ notas_consideradas }}</div>
             </div>
         </div>
         <div class="text-muted small mt-2">
             Devengado = total de notas aprobadas. Pagos = registros de pagos.
-            No incluye transferencias internas. Los filtros de fecha aplican solo al log de movimientos.
+            Neto = pendiente menos saldos a favor. No incluye transferencias internas.
+            Los filtros de fecha aplican solo al log de movimientos.
         </div>
     </div>
 </div>
