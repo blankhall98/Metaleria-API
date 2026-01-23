@@ -19,66 +19,66 @@
         <div class="note-meta-grid">
             <div class="note-meta-item">
                 <span class="note-meta-label">Ventas aprobadas (devengado)</span>
-                <strong>${{ "{:,.2f}"|format(total_ventas_aprobadas or 0) }}</strong>
+                <strong>${{ "{:,.2f}".format(total_ventas_aprobadas or 0) }}</strong>
                 <div class="note-meta-sub">Clientes</div>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Cobrado a clientes</span>
-                <strong class="text-success">${{ "{:,.2f}"|format(total_cobrado_clientes or 0) }}</strong>
+                <strong class="text-success">${{ "{:,.2f}".format(total_cobrado_clientes or 0) }}</strong>
                 <div class="note-meta-sub">Pagos registrados</div>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Por cobrar clientes</span>
-                <strong class="text-success">${{ "{:,.2f}"|format(total_por_cobrar or 0) }}</strong>
+                <strong class="text-success">${{ "{:,.2f}".format(total_por_cobrar or 0) }}</strong>
                 <div class="note-meta-sub">Pendiente</div>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Por cobrar neto clientes</span>
                 {% if neto_por_cobrar >= 0 %}
-                    <strong class="text-success">${{ "{:,.2f}"|format(neto_por_cobrar) }}</strong>
+                    <strong class="text-success">${{ "{:,.2f}".format(neto_por_cobrar) }}</strong>
                 {% else %}
-                    <strong class="text-warning">-${{ "{:,.2f}"|format(-neto_por_cobrar) }}</strong>
+                    <strong class="text-warning">-${{ "{:,.2f}".format(-neto_por_cobrar) }}</strong>
                 {% endif %}
                 <div class="note-meta-sub">Por cobrar - saldo a favor</div>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Compras aprobadas (devengado)</span>
-                <strong>${{ "{:,.2f}"|format(total_compras_aprobadas or 0) }}</strong>
+                <strong>${{ "{:,.2f}".format(total_compras_aprobadas or 0) }}</strong>
                 <div class="note-meta-sub">Proveedores</div>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Pagado por compras</span>
-                <strong class="text-danger">${{ "{:,.2f}"|format(total_pagado_proveedores or 0) }}</strong>
+                <strong class="text-danger">${{ "{:,.2f}".format(total_pagado_proveedores or 0) }}</strong>
                 <div class="note-meta-sub">Pagos registrados</div>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Por pagar compras</span>
-                <strong class="text-danger">${{ "{:,.2f}"|format(total_por_pagar or 0) }}</strong>
+                <strong class="text-danger">${{ "{:,.2f}".format(total_por_pagar or 0) }}</strong>
                 <div class="note-meta-sub">Pendiente</div>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Por pagar neto proveedores</span>
                 {% if neto_por_pagar >= 0 %}
-                    <strong class="text-danger">${{ "{:,.2f}"|format(neto_por_pagar) }}</strong>
+                    <strong class="text-danger">${{ "{:,.2f}".format(neto_por_pagar) }}</strong>
                 {% else %}
-                    <strong class="text-warning">-${{ "{:,.2f}"|format(-neto_por_pagar) }}</strong>
+                    <strong class="text-warning">-${{ "{:,.2f}".format(-neto_por_pagar) }}</strong>
                 {% endif %}
                 <div class="note-meta-sub">Por pagar - saldo a favor</div>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Saldo a favor clientes</span>
-                <strong class="text-warning">${{ "{:,.2f}"|format(saldo_favor_clientes or 0) }}</strong>
+                <strong class="text-warning">${{ "{:,.2f}".format(saldo_favor_clientes or 0) }}</strong>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Saldo a favor empresa</span>
-                <strong class="text-warning">${{ "{:,.2f}"|format(saldo_favor_empresa or 0) }}</strong>
+                <strong class="text-warning">${{ "{:,.2f}".format(saldo_favor_empresa or 0) }}</strong>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Saldo neto ajustado</span>
                 {% if saldo_neto >= 0 %}
-                    <strong class="text-success">+${{ "{:,.2f}"|format(saldo_neto) }}</strong>
+                    <strong class="text-success">+${{ "{:,.2f}".format(saldo_neto) }}</strong>
                 {% else %}
-                    <strong class="text-danger">-${{ "{:,.2f}"|format(-saldo_neto) }}</strong>
+                    <strong class="text-danger">-${{ "{:,.2f}".format(-saldo_neto) }}</strong>
                 {% endif %}
                 <div class="note-meta-sub">Por cobrar neto - por pagar neto</div>
                 <div class="note-meta-sub">Notas consideradas: {{ notas_consideradas }}</div>
@@ -153,27 +153,27 @@
                 <div class="note-meta-grid mt-3">
                     <div class="note-meta-item">
                         <span class="note-meta-label">{{ partner_context.total_facturado_label }}</span>
-                        <strong>${{ "{:,.2f}"|format(partner_context.summary.total_facturado or 0) }}</strong>
+                        <strong>${{ "{:,.2f}".format(partner_context.summary.total_facturado or 0) }}</strong>
                     </div>
                     <div class="note-meta-item">
                         <span class="note-meta-label">{{ partner_context.total_pagado_label }}</span>
-                        <strong>${{ "{:,.2f}"|format(partner_context.summary.total_pagado or 0) }}</strong>
+                        <strong>${{ "{:,.2f}".format(partner_context.summary.total_pagado or 0) }}</strong>
                     </div>
                     <div class="note-meta-item">
                         <span class="note-meta-label">{{ partner_context.saldo_pendiente_label }}</span>
-                        <strong class="text-danger">${{ "{:,.2f}"|format(partner_context.summary.saldo_pendiente or 0) }}</strong>
+                        <strong class="text-danger">${{ "{:,.2f}".format(partner_context.summary.saldo_pendiente or 0) }}</strong>
                     </div>
                     <div class="note-meta-item">
                         <span class="note-meta-label">{{ partner_context.saldo_favor_label }}</span>
-                        <strong class="text-success">${{ "{:,.2f}"|format(partner_context.summary.saldo_favor or 0) }}</strong>
+                        <strong class="text-success">${{ "{:,.2f}".format(partner_context.summary.saldo_favor or 0) }}</strong>
                     </div>
                     <div class="note-meta-item">
                         <span class="note-meta-label">Ajustes manuales</span>
                         {% set ajustes_delta = partner_context.summary.ajustes_delta or 0 %}
                         {% if ajustes_delta > 0 %}
-                            <strong class="text-danger">+${{ "{:,.2f}"|format(ajustes_delta) }}</strong>
+                            <strong class="text-danger">+${{ "{:,.2f}".format(ajustes_delta) }}</strong>
                         {% elif ajustes_delta < 0 %}
-                            <strong class="text-success">-${{ "{:,.2f}"|format(-ajustes_delta) }}</strong>
+                            <strong class="text-success">-${{ "{:,.2f}".format(-ajustes_delta) }}</strong>
                         {% else %}
                             <strong>$0.00</strong>
                         {% endif %}
@@ -222,12 +222,12 @@
                                 </td>
                                 <td>{{ nota.created_at.strftime("%Y-%m-%d %H:%M") if nota.created_at else "-" }}</td>
                                 <td>{{ suc.nombre if suc else "-" }}</td>
-                                <td class="text-end">${{ "{:,.2f}"|format(row.total or 0) }}</td>
-                                <td class="text-end">${{ "{:,.2f}"|format(row.pagado or 0) }}</td>
+                                <td class="text-end">${{ "{:,.2f}".format(row.total or 0) }}</td>
+                                <td class="text-end">${{ "{:,.2f}".format(row.pagado or 0) }}</td>
                                 <td class="text-end">
                                     {% if row.saldo_aplicable %}
                                         {% if row.saldo_pendiente > 0 %}
-                                            <span class="text-danger fw-semibold">${{ "{:,.2f}"|format(row.saldo_pendiente) }}</span>
+                                            <span class="text-danger fw-semibold">${{ "{:,.2f}".format(row.saldo_pendiente) }}</span>
                                         {% else %}
                                             <span class="text-muted">$0.00</span>
                                         {% endif %}
@@ -238,7 +238,7 @@
                                 <td class="text-end">
                                     {% if row.saldo_aplicable %}
                                         {% if row.saldo_favor > 0 %}
-                                            <span class="text-success fw-semibold">${{ "{:,.2f}"|format(row.saldo_favor) }}</span>
+                                            <span class="text-success fw-semibold">${{ "{:,.2f}".format(row.saldo_favor) }}</span>
                                         {% else %}
                                             <span class="text-muted">$0.00</span>
                                         {% endif %}
@@ -288,7 +288,7 @@
                                         <span class="text-muted">-</span>
                                     {% endif %}
                                 </td>
-                                <td class="text-end">${{ "{:,.2f}"|format(pago.monto or 0) }}</td>
+                                <td class="text-end">${{ "{:,.2f}".format(pago.monto or 0) }}</td>
                                 <td>{{ pago.metodo_pago or "-" }}</td>
                                 <td>{{ pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or "-") }}</td>
                                 <td>
@@ -382,7 +382,7 @@
             <div class="alert alert-danger py-2 small mt-2 mb-0">{{ cuenta_error }}</div>
         {% endif %}
         <div class="d-flex justify-content-end text-muted small mb-2">
-            Total firmado: <strong class="ms-1">${{ "{:,.2f}"|format(total_filtrado or 0) }}</strong>
+            Total firmado: <strong class="ms-1">${{ "{:,.2f}".format(total_filtrado or 0) }}</strong>
         </div>
         <div class="table-responsive">
             <table class="table table-hover table-sm align-middle mb-0">
@@ -405,7 +405,7 @@
                         <td>{{ m.id }}</td>
                         <td>{{ m.tipo }}</td>
                         <td>{{ m.naturaleza }}</td>
-                        <td>${{ "{:,.2f}"|format(m.monto_firmado or 0) }}</td>
+                        <td>${{ "{:,.2f}".format(m.monto_firmado or 0) }}</td>
                         <td>
                             {% if m.nota_id %}
                                 <a href="/web/admin/notas/{{ m.nota_id }}">#{{ m.nota_id }}</a>
