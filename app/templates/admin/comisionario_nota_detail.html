@@ -13,6 +13,9 @@
         {% if comisionario %}
             <a href="/web/admin/comisionarios/{{ comisionario.id }}/record" class="btn btn-outline-primary btn-sm">Record</a>
         {% endif %}
+        {% if nota.estado.value == 'APROBADA' %}
+            <a href="/web/admin/comisionarios/notas/{{ nota.id }}/pdf" class="btn btn-outline-primary btn-sm">Nota PDF</a>
+        {% endif %}
     </div>
 </div>
 

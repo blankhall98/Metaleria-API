@@ -14,6 +14,8 @@ from app.models import (
     User,
     TipoOperacion,
     Cuenta,
+    ComisionarioNota,
+    Comisionario,
 )
 from app.services import note_service
 from app.services.firebase_storage import upload_file
@@ -299,3 +301,141 @@ def upload_invoice_pdf(pdf_bytes: bytes, filename: str, nota_id: int) -> str:
         content_type="application/pdf",
         folder=f"facturas/nota_{nota_id}",
     )
+
+
+def build_comisionario_nota_pdf(
+    db: Session,
+    nota: ComisionarioNota,
+    generated_at: datetime | None = None,
+) -> tuple[bytes, str]:
+    sucursal = db.get(Sucursal, nota.sucursal_id) if nota.sucursal_id else None
+    comisionario = db.get(Comisionario, nota.comisionario_id)
+    admin = db.get(User, nota.admin_id) if nota.admin_id else None
+
+    generated_at = generated_at or datetime.utcnow()
+    issue_date = generated_at.strftime("%Y-%m-%d %H:%M")
+
+    header_title = "NOTA DE COMISION"
+    sucursal_name = sucursal.nombre if sucursal else "-"
+    sucursal_address = sucursal.direccion if sucursal and sucursal.direccion else "-"
+    folio_label = f"COM-{nota.id}"
+
+    pdf = _PdfBuilder()
+
+    left = 50
+    right = 562
+    top = 760
+
+    pdf.text(left, top, "SCRAP360", size=18, font="F2")
+    pdf.text(left, top - 18, f"Sucursal: {sucursal_name}", size=9)
+    pdf.text(left, top - 30, f"Direccion: {sucursal_address}", size=9)
+    pdf.text(left, top - 42, "Operacion: Comision", size=9)
+
+    pdf.text(380, top, header_title, size=14, font="F2")
+    pdf.text(380, top - 18, f"Folio: {folio_label}", size=9)
+    pdf.text(380, top - 30, f"Fecha: {issue_date}", size=9)
+    pdf.text(380, top - 42, f"Nota ID: {nota.id}", size=9)
+
+    pdf.line(left, top - 52, right, top - 52)
+
+    y = top - 70
+    pdf.text(left, y, "Comisionario:", size=10, font="F2")
+    comisionario_name = comisionario.nombre_completo if comisionario else "-"
+    pdf.text(left + 90, y, comisionario_name, size=10)
+    y -= 14
+    if comisionario and comisionario.telefono:
+        pdf.text(left + 90, y, f"Tel: {comisionario.telefono}", size=9)
+        y -= 12
+    if comisionario and comisionario.correo_electronico:
+        pdf.text(left + 90, y, f"Email: {comisionario.correo_electronico}", size=9)
+        y -= 12
+    if admin:
+        pdf.text(left, y, f"Admin: {admin.nombre_completo}", size=9)
+        y -= 12
+
+    total_kg = _format_decimal(nota.total_kg, 2)
+    total_val = Decimal(str(nota.total_monto or 0))
+    pagado_val = Decimal(str(nota.monto_pagado or 0))
+    saldo_val = total_val - pagado_val
+    pdf.text(380, top - 70, f"Estado: {nota.estado.value.title()}", size=9)
+    pdf.text(380, top - 82, f"Total kg: {total_kg} kg", size=9)
+    pdf.text(380, top - 94, f"Saldo: ${_format_decimal(saldo_val, 2)}", size=9)
+
+    table_width = right - left
+    header_height = 18
+    row_height = 16
+    table_top = y - 12
+    header_bottom = table_top - header_height
+    pdf.rect(left, header_bottom, table_width, header_height, fill_gray=0.93, stroke_gray=0.85)
+
+    columns = [
+        ("Material", left, 250, "left"),
+        ("Kg neto", left + 250, 70, "right"),
+        ("Precio/kg", left + 320, 80, "right"),
+        ("Subtotal", left + 400, 112, "right"),
+    ]
+
+    header_text_y = header_bottom + 5
+    for title, x, width, align in columns:
+        draw_x = x + 2
+        if align == "right":
+            draw_x = x + width - _text_width(title, 9) - 2
+        pdf.text(draw_x, header_text_y, title, size=9, font="F2")
+
+    row_y = header_bottom - 12
+    materiales = sorted(nota.materiales or [], key=lambda m: (m.id or 0))
+    for nm in materiales:
+        material_name = nm.material.nombre if nm.material else str(nm.material_id or "")
+        material_name = _truncate_text(material_name, 240, 9)
+        kg_neto = _format_decimal(nm.kg_neto, 2)
+        precio_kg = _format_decimal(nm.precio_por_kg, 5)
+        try:
+            subtotal_val = (
+                Decimal(str(nm.subtotal))
+                if nm.subtotal is not None
+                else Decimal(str(nm.kg_neto or 0)) * Decimal(str(nm.precio_por_kg or 0))
+            )
+        except (InvalidOperation, ValueError):
+            subtotal_val = Decimal("0")
+        subtotal = _format_decimal(subtotal_val, 2)
+
+        values = [
+            material_name,
+            kg_neto,
+            precio_kg,
+            subtotal,
+        ]
+        for (title, x, width, align), value in zip(columns, values):
+            draw_x = x + 2
+            if align == "right":
+                draw_x = x + width - _text_width(value, 9) - 2
+            pdf.text(draw_x, row_y, value, size=9)
+        row_y -= row_height
+
+    summary_lines = [
+        ("Total kg neto", f"{total_kg} kg"),
+        ("Total", f"${_format_decimal(total_val, 2)}"),
+        ("Pagado", f"${_format_decimal(pagado_val, 2)}"),
+        ("Saldo", f"${_format_decimal(saldo_val, 2)}"),
+    ]
+
+    summary_top = max(row_y - 8, 160)
+    box_width = 220
+    box_height = 20 + (12 * len(summary_lines))
+    box_x = right - box_width
+    box_y = summary_top - box_height
+    pdf.rect(box_x, box_y, box_width, box_height, stroke_gray=0.8)
+    pdf.text(box_x + 10, summary_top - 16, "Resumen", size=10, font="F2")
+    summary_y = summary_top - 30
+    for label, value in summary_lines:
+        pdf.text(box_x + 10, summary_y, label, size=9)
+        pdf.text(box_x + box_width - _text_width(value, 9) - 10, summary_y, value, size=9, font="F2")
+        summary_y -= 12
+
+    footer_y = box_y - 20
+    pdf.line(left, footer_y, right, footer_y)
+    pdf.text(left, footer_y - 14, "Documento generado por sistema. Este PDF es un comprobante interno.", size=8)
+
+    pdf_bytes = pdf.render()
+    filename = f"nota_comision_{_safe_filename(folio_label)}.pdf"
+    return pdf_bytes, filename

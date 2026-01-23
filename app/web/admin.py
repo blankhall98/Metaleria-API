@@ -3137,6 +3137,23 @@ async def comisionario_nota_detail(
     return _render_comisionario_nota_detail(request, db, current_user, nota, pago_ok=pago_ok)
 
 
+@router.get("/comisionarios/notas/{nota_id}/pdf")
+async def comisionario_nota_pdf(
+    nota_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    nota = db.get(ComisionarioNota, nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota de comisionario no encontrada.")
+    if nota.estado != ComisionarioNotaEstado.aprobada:
+        raise HTTPException(status_code=400, detail="La nota debe estar aprobada.")
+    pdf_bytes, filename = invoice_service.build_comisionario_nota_pdf(db, nota)
+    headers = {"Content-Disposition": f"attachment; filename={filename}"}
+    return StreamingResponse(io.BytesIO(pdf_bytes), media_type="application/pdf", headers=headers)
+
+
 @router.post("/comisionarios/notas/{nota_id}/pago")
 async def comisionario_nota_add_pago(
     nota_id: int,
