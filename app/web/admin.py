@@ -6156,6 +6156,140 @@ async def inventario_ajuste_get(
     )
 
 
+def _render_inventario_aumentar(
+    request: Request,
+    db: Session,
+    current_user: dict,
+    *,
+    error: str | None = None,
+    form_data: dict | None = None,
+):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
+    suc_ids = [s.id for s in sucursales]
+    inv_rows = db.query(Inventario).filter(Inventario.sucursal_id.in_(suc_ids)).all() if suc_ids else []
+    inv_map: dict[int, dict[int, float]] = {}
+    for inv in inv_rows:
+        inv_map.setdefault(inv.sucursal_id, {})[inv.material_id] = float(inv.stock_actual or 0)
+    form_data = form_data or {}
+    return templates.TemplateResponse(
+        "admin/inventario_aumentar.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "materiales": materiales,
+            "sucursales": sucursales,
+            "inv_map": inv_map,
+            "error": error,
+            "form_sucursal_id": form_data.get("sucursal_id", ""),
+            "form_material_id": form_data.get("material_id", ""),
+            "form_operacion": form_data.get("operacion", ""),
+            "form_cantidad": form_data.get("cantidad_kg", ""),
+            "form_comentario": form_data.get("comentario", ""),
+        },
+        status_code=400 if error else 200,
+    )
+
+
+@router.get("/inventario/aumentar")
+async def inventario_aumentar_get(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    return _render_inventario_aumentar(request, db, current_user)
+
+
+@router.post("/inventario/aumentar")
+async def inventario_aumentar_post(
+    request: Request,
+    sucursal_id: str = Form(...),
+    material_id: str = Form(...),
+    operacion: str = Form(""),
+    cantidad_kg: str = Form(""),
+    comentario: str = Form(""),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    form_data = {
+        "sucursal_id": sucursal_id,
+        "material_id": material_id,
+        "operacion": operacion,
+        "cantidad_kg": cantidad_kg,
+        "comentario": comentario,
+    }
+
+    if allowed_suc_ids:
+        if not sucursal_id:
+            if len(allowed_suc_ids) == 1:
+                sucursal_id = str(allowed_suc_ids[0])
+                form_data["sucursal_id"] = sucursal_id
+            else:
+                return _render_inventario_aumentar(request, db, current_user, error="Selecciona una sucursal valida.", form_data=form_data)
+
+    try:
+        suc_id = int(sucursal_id)
+        mat_id = int(material_id)
+    except ValueError:
+        return _render_inventario_aumentar(request, db, current_user, error="Sucursal o material invalido.", form_data=form_data)
+
+    if allowed_suc_ids and suc_id not in allowed_suc_ids:
+        return _render_inventario_aumentar(request, db, current_user, error="Sucursal no autorizada.", form_data=form_data)
+
+    operacion = (operacion or "").strip().lower()
+    if operacion not in ("aumentar", "disminuir"):
+        return _render_inventario_aumentar(request, db, current_user, error="Selecciona una operacion valida.", form_data=form_data)
+
+    cantidad_raw = (cantidad_kg or "").strip()
+    if not cantidad_raw:
+        return _render_inventario_aumentar(request, db, current_user, error="Debes indicar la cantidad.", form_data=form_data)
+    try:
+        cantidad_val = Decimal(str(cantidad_raw))
+    except (InvalidOperation, TypeError):
+        return _render_inventario_aumentar(request, db, current_user, error="Cantidad invalida.", form_data=form_data)
+    if cantidad_val <= 0:
+        return _render_inventario_aumentar(request, db, current_user, error="La cantidad debe ser mayor a cero.", form_data=form_data)
+
+    suc = db.get(Sucursal, suc_id)
+    if not suc:
+        return _render_inventario_aumentar(request, db, current_user, error="Sucursal no encontrada.", form_data=form_data)
+    mat = db.get(Material, mat_id)
+    if not mat:
+        return _render_inventario_aumentar(request, db, current_user, error="Material no encontrado.", form_data=form_data)
+
+    inv_actual = db.query(Inventario).filter(
+        Inventario.sucursal_id == suc_id, Inventario.material_id == mat_id
+    ).first()
+    stock_actual = Decimal(str(inv_actual.stock_actual or 0)) if inv_actual else Decimal("0")
+    if operacion == "disminuir" and cantidad_val > stock_actual:
+        return _render_inventario_aumentar(
+            request,
+            db,
+            current_user,
+            error="La disminucion supera el stock actual. Usa Actualizar Stock si necesitas fijar un valor absoluto.",
+            form_data=form_data,
+        )
+
+    delta = cantidad_val if operacion == "aumentar" else -cantidad_val
+    comentario = (comentario or "").strip()
+    if not comentario:
+        comentario = "Aumento manual" if operacion == "aumentar" else "Disminucion manual"
+
+    note_service.ajustar_stock(
+        db,
+        sucursal_id=suc.id,
+        material_id=mat.id,
+        cantidad_kg=delta,
+        comentario=comentario,
+        usuario_id=current_user.get("id"),
+    )
+    return RedirectResponse(url="/web/admin/inventario", status_code=303)
+
+
 @router.post("/inventario/ajuste")
 async def inventario_ajuste_post(
     request: Request,

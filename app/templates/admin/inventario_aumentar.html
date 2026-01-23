@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}Aumentar Materiales{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="text-uppercase text-muted small mb-1">Inventario</p>
+        <h1 class="h4 text-white mb-0">Aumentar Materiales</h1>
+    </div>
+    <a href="/web/admin/inventario" class="btn btn-outline-secondary btn-sm">Volver</a>
+</div>
+
+<div class="card hover-lift">
+    <div class="card-body">
+        {% if error %}
+            <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
+        {% endif %}
+        <form method="post" class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Sucursal</label>
+                {% if user.rol == 'super_admin' or (user.rol == 'admin' and sucursales|length > 1) %}
+                    <select class="form-select" name="sucursal_id" required>
+                        <option value="">Selecciona sucursal</option>
+                        {% for s in sucursales %}
+                            <option value="{{ s.id }}" {% if form_sucursal_id|string == s.id|string %}selected{% endif %}>{{ s.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                {% else %}
+                    {% set suc = sucursales|first %}
+                    <input type="hidden" name="sucursal_id" value="{{ suc.id if suc else '' }}">
+                    <div class="form-control-plaintext fw-semibold">{{ suc.nombre if suc else '-' }}</div>
+                {% endif %}
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Material</label>
+                <select class="form-select" name="material_id" required>
+                    <option value="">Selecciona material</option>
+                    {% for m in materiales %}
+                        <option value="{{ m.id }}" {% if form_material_id|string == m.id|string %}selected{% endif %}>{{ m.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Stock actual</label>
+                <div class="form-control-plaintext fw-semibold" id="stock_actual_display">--</div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Operacion</label>
+                <select class="form-select" name="operacion" required>
+                    <option value="aumentar" {% if form_operacion == 'aumentar' or not form_operacion %}selected{% endif %}>Aumentar</option>
+                    <option value="disminuir" {% if form_operacion == 'disminuir' %}selected{% endif %}>Disminuir</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Cantidad (kg)</label>
+                <input class="form-control" type="number" step="0.01" min="0.01" name="cantidad_kg" value="{{ form_cantidad }}" placeholder="0.00" required>
+                <div class="form-text">Ingresa el ajuste en kilogramos.</div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Stock resultante</label>
+                <div class="form-control-plaintext fw-semibold" id="stock_resultante_display">--</div>
+            </div>
+            <div class="col-12">
+                <label class="form-label">Comentario</label>
+                <textarea class="form-control" name="comentario" rows="2" placeholder="Motivo del ajuste (recomendado)">{{ form_comentario }}</textarea>
+            </div>
+            <div class="col-12 d-grid d-md-flex gap-2">
+                <button class="btn btn-primary">Aplicar ajuste</button>
+                <a class="btn btn-outline-secondary" href="/web/admin/inventario">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    const invMap = {{ inv_map|default({})|tojson }};
+    const sucursalSelect = document.querySelector('select[name="sucursal_id"]');
+    const sucursalHidden = document.querySelector('input[name="sucursal_id"]');
+    const materialSelect = document.querySelector('select[name="material_id"]');
+    const operacionSelect = document.querySelector('select[name="operacion"]');
+    const cantidadInput = document.querySelector('input[name="cantidad_kg"]');
+    const stockDisplay = document.getElementById('stock_actual_display');
+    const stockResultante = document.getElementById('stock_resultante_display');
+
+    function formatNumber(value, decimals) {
+        const safe = Number(value || 0);
+        return safe.toLocaleString('en-US', {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+        });
+    }
+
+    function getSucursalId() {
+        if (sucursalSelect) return parseInt(sucursalSelect.value || '0', 10) || 0;
+        if (sucursalHidden) return parseInt(sucursalHidden.value || '0', 10) || 0;
+        return 0;
+    }
+
+    function getMaterialId() {
+        return parseInt(materialSelect?.value || '0', 10) || 0;
+    }
+
+    function readStock(sId, mId) {
+        return (invMap[String(sId)] && invMap[String(sId)][String(mId)]) || (invMap[sId] && invMap[sId][mId]) || 0;
+    }
+
+    function updateStockDisplays() {
+        const sId = getSucursalId();
+        const mId = getMaterialId();
+        const stock = readStock(sId, mId);
+        const operacion = (operacionSelect?.value || 'aumentar').toLowerCase();
+        const cantidad = parseFloat(cantidadInput?.value || '0') || 0;
+        const delta = operacion === 'disminuir' ? -cantidad : cantidad;
+        const result = Math.max(0, Number(stock) + delta);
+        if (stockDisplay) {
+            stockDisplay.textContent = `${formatNumber(parseFloat(stock), 2)} kg`;
+        }
+        if (stockResultante) {
+            stockResultante.textContent = `${formatNumber(result, 2)} kg`;
+        }
+    }
+
+    if (sucursalSelect) sucursalSelect.addEventListener('change', updateStockDisplays);
+    if (materialSelect) materialSelect.addEventListener('change', updateStockDisplays);
+    if (operacionSelect) operacionSelect.addEventListener('change', updateStockDisplays);
+    if (cantidadInput) cantidadInput.addEventListener('input', updateStockDisplays);
+    updateStockDisplays();
+</script>
+{% endblock %}
