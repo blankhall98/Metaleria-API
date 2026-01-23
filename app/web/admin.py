@@ -6675,8 +6675,24 @@ async def contabilidad_list(
         else:
             saldo_favor_empresa += -delta
 
+    comisiones_pendientes = Decimal("0")
+    comisiones_query = db.query(ComisionarioNota).filter(ComisionarioNota.estado == ComisionarioNotaEstado.aprobada)
+    if allowed_suc_ids is not None:
+        if sucursal_id:
+            comisiones_query = comisiones_query.filter(ComisionarioNota.sucursal_id == sucursal_id)
+        else:
+            comisiones_query = comisiones_query.filter(ComisionarioNota.sucursal_id.in_(allowed_suc_ids))
+    elif sucursal_id:
+        comisiones_query = comisiones_query.filter(ComisionarioNota.sucursal_id == sucursal_id)
+    for nota in comisiones_query.all():
+        total = Decimal(str(nota.total_monto or 0))
+        pagado = Decimal(str(nota.monto_pagado or 0))
+        pendiente = total - pagado
+        if pendiente > Decimal("0"):
+            comisiones_pendientes += pendiente
+
     neto_por_cobrar = total_por_cobrar - saldo_favor_clientes
-    neto_por_pagar = total_por_pagar - saldo_favor_empresa
+    neto_por_pagar = (total_por_pagar - saldo_favor_empresa) + comisiones_pendientes
     saldo_neto = neto_por_cobrar - neto_por_pagar
     saldo_scope = "Todas las sucursales"
     if sucursal_id:
@@ -6853,6 +6869,7 @@ async def contabilidad_list(
             "saldo_favor_empresa": saldo_favor_empresa,
             "neto_por_cobrar": neto_por_cobrar,
             "neto_por_pagar": neto_por_pagar,
+            "comisiones_pendientes": comisiones_pendientes,
             "saldo_neto": saldo_neto,
             "saldo_scope": saldo_scope,
             "total_ventas_aprobadas": total_ventas_aprobadas,

@@ -18,21 +18,6 @@
         </div>
         <div class="note-meta-grid">
             <div class="note-meta-item">
-                <span class="note-meta-label">Ventas aprobadas (devengado)</span>
-                <strong>${{ "{:,.2f}".format(total_ventas_aprobadas or 0) }}</strong>
-                <div class="note-meta-sub">Clientes</div>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Cobrado a clientes</span>
-                <strong class="text-success">${{ "{:,.2f}".format(total_cobrado_clientes or 0) }}</strong>
-                <div class="note-meta-sub">Pagos registrados</div>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Por cobrar clientes</span>
-                <strong class="text-success">${{ "{:,.2f}".format(total_por_cobrar or 0) }}</strong>
-                <div class="note-meta-sub">Pendiente</div>
-            </div>
-            <div class="note-meta-item">
                 <span class="note-meta-label">Por cobrar neto clientes</span>
                 {% if neto_por_cobrar >= 0 %}
                     <strong class="text-success">${{ "{:,.2f}".format(neto_por_cobrar) }}</strong>
@@ -42,36 +27,13 @@
                 <div class="note-meta-sub">Por cobrar - saldo a favor</div>
             </div>
             <div class="note-meta-item">
-                <span class="note-meta-label">Compras aprobadas (devengado)</span>
-                <strong>${{ "{:,.2f}".format(total_compras_aprobadas or 0) }}</strong>
-                <div class="note-meta-sub">Proveedores</div>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Pagado por compras</span>
-                <strong class="text-danger">${{ "{:,.2f}".format(total_pagado_proveedores or 0) }}</strong>
-                <div class="note-meta-sub">Pagos registrados</div>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Por pagar compras</span>
-                <strong class="text-danger">${{ "{:,.2f}".format(total_por_pagar or 0) }}</strong>
-                <div class="note-meta-sub">Pendiente</div>
-            </div>
-            <div class="note-meta-item">
                 <span class="note-meta-label">Por pagar neto proveedores</span>
                 {% if neto_por_pagar >= 0 %}
                     <strong class="text-danger">${{ "{:,.2f}".format(neto_por_pagar) }}</strong>
                 {% else %}
                     <strong class="text-warning">-${{ "{:,.2f}".format(-neto_por_pagar) }}</strong>
                 {% endif %}
-                <div class="note-meta-sub">Por pagar - saldo a favor</div>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Saldo a favor clientes</span>
-                <strong class="text-warning">${{ "{:,.2f}".format(saldo_favor_clientes or 0) }}</strong>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Saldo a favor empresa</span>
-                <strong class="text-warning">${{ "{:,.2f}".format(saldo_favor_empresa or 0) }}</strong>
+                <div class="note-meta-sub">Incluye comisiones por pagar</div>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Saldo neto ajustado</span>
@@ -85,8 +47,8 @@
             </div>
         </div>
         <div class="text-muted small mt-2">
-            Devengado = total de notas aprobadas. Pagos = registros de pagos.
-            Neto = pendiente menos saldos a favor. No incluye transferencias internas.
+            Neto = pendiente menos saldos a favor. Por pagar neto incluye comisiones pendientes.
+            No incluye transferencias internas.
             Los filtros de fecha aplican solo al log de movimientos.
         </div>
     </div>
