@@ -81,8 +81,8 @@
                         <td class="fw-semibold">{{ cuenta.nombre }}</td>
                         <td>{{ cuenta.tipo|capitalize }}</td>
                         <td>{{ row.sucursales_label }}</td>
-                        <td class="text-end">${{ "%.2f"|format(cuenta.saldo_inicial or 0) }}</td>
-                        <td class="text-end">${{ "%.2f"|format(cuenta.saldo_actual or 0) }}</td>
+                        <td class="text-end">${{ "{:,.2f}".format(cuenta.saldo_inicial or 0) }}</td>
+                        <td class="text-end">${{ "{:,.2f}".format(cuenta.saldo_actual or 0) }}</td>
                         <td>
                             <span class="badge {{ 'bg-success' if cuenta.activo else 'bg-secondary' }}">
                                 {{ 'Activa' if cuenta.activo else 'Inactiva' }}

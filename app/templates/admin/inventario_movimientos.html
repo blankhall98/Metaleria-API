@@ -69,7 +69,7 @@
 <div class="card hover-lift">
     <div class="card-body">
         <div class="d-flex justify-content-end text-muted small mb-2">
-            Total (firmado): <strong class="ms-1">{{ "%.2f"|format(total_firmado or 0) }} kg</strong>
+            Total (firmado): <strong class="ms-1">{{ "{:,.2f}".format(total_firmado or 0) }} kg</strong>
         </div>
         <div class="table-responsive">
             <table class="table table-hover table-sm align-middle mb-0">
@@ -95,8 +95,8 @@
                         <td>{{ mov.inventario.sucursal.nombre if mov.inventario and mov.inventario.sucursal else '-' }}</td>
                         <td>{{ mov.inventario.material.nombre if mov.inventario and mov.inventario.material else '-' }}</td>
                         <td class="text-uppercase">{{ mov.tipo }}</td>
-                        <td>{{ "%.2f"|format(qty) }} kg</td>
-                        <td>{{ "%.2f"|format(mov.saldo_resultante or 0) }} kg</td>
+                        <td>{{ "{:,.2f}".format(qty) }} kg</td>
+                        <td>{{ "{:,.2f}".format(mov.saldo_resultante or 0) }} kg</td>
                         <td>
                             {% if mov.nota_id %}
                                 <a href="/web/admin/notas/{{ mov.nota_id }}">#{{ mov.nota_id }}</a>

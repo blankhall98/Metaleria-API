@@ -88,18 +88,18 @@
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">{{ 'Pagos' if is_partner else 'Ingresos' }}</span>
-                <strong class="text-success">${{ "%.2f"|format(total_ingresos or 0) }}</strong>
+                <strong class="text-success">${{ "{:,.2f}".format(total_ingresos or 0) }}</strong>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">{{ 'Reversos' if is_partner else 'Egresos' }}</span>
-                <strong class="text-danger">${{ "%.2f"|format(total_egresos or 0) }}</strong>
+                <strong class="text-danger">${{ "{:,.2f}".format(total_egresos or 0) }}</strong>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">{{ 'Pagos netos' if is_partner else 'Saldo neto' }}</span>
                 {% if saldo_neto >= 0 %}
-                    <strong class="text-success">+${{ "%.2f"|format(saldo_neto) }}</strong>
+                    <strong class="text-success">+${{ "{:,.2f}".format(saldo_neto) }}</strong>
                 {% else %}
-                    <strong class="text-danger">-${{ "%.2f"|format(-saldo_neto) }}</strong>
+                    <strong class="text-danger">-${{ "{:,.2f}".format(-saldo_neto) }}</strong>
                 {% endif %}
             </div>
             <div class="note-meta-item">
@@ -108,7 +108,7 @@
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">{{ 'Total pagado' if is_partner else 'Total pagos' }}</span>
-                <strong>${{ "%.2f"|format(pagos_total or 0) }}</strong>
+                <strong>${{ "{:,.2f}".format(pagos_total or 0) }}</strong>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Notas vinculadas</span>
@@ -119,14 +119,14 @@
                     <span class="note-meta-label">
                         {{ 'Pendiente por pagar' if owner_kind == 'proveedor' else 'Pendiente por cobrar' }}
                     </span>
-                    <strong class="text-danger">${{ "%.2f"|format(pendiente_total or 0) }}</strong>
+                    <strong class="text-danger">${{ "{:,.2f}".format(pendiente_total or 0) }}</strong>
                 </div>
                 {% if saldo_favor_total and saldo_favor_total > 0 %}
                     <div class="note-meta-item">
                         <span class="note-meta-label">
                             {{ 'Saldo a favor proveedor' if owner_kind == 'proveedor' else 'Saldo a favor cliente' }}
                         </span>
-                        <strong class="text-success">${{ "%.2f"|format(saldo_favor_total) }}</strong>
+                        <strong class="text-success">${{ "{:,.2f}".format(saldo_favor_total) }}</strong>
                     </div>
                 {% endif %}
             {% endif %}
@@ -150,9 +150,9 @@
                 <span class="note-meta-label">Mes actual</span>
                 {% if kpi_current %}
                     {% if kpi_current.saldo >= 0 %}
-                        <strong class="text-success">+${{ "%.2f"|format(kpi_current.saldo) }}</strong>
+                        <strong class="text-success">+${{ "{:,.2f}".format(kpi_current.saldo) }}</strong>
                     {% else %}
-                        <strong class="text-danger">-${{ "%.2f"|format(-kpi_current.saldo) }}</strong>
+                        <strong class="text-danger">-${{ "{:,.2f}".format(-kpi_current.saldo) }}</strong>
                     {% endif %}
                     <div class="note-meta-sub">{{ kpi_current.label }}</div>
                 {% else %}
@@ -163,9 +163,9 @@
                 <span class="note-meta-label">Promedio mensual</span>
                 {% if kpi_promedio is not none %}
                     {% if kpi_promedio >= 0 %}
-                        <strong class="text-success">+${{ "%.2f"|format(kpi_promedio) }}</strong>
+                        <strong class="text-success">+${{ "{:,.2f}".format(kpi_promedio) }}</strong>
                     {% else %}
-                        <strong class="text-danger">-${{ "%.2f"|format(-kpi_promedio) }}</strong>
+                        <strong class="text-danger">-${{ "{:,.2f}".format(-kpi_promedio) }}</strong>
                     {% endif %}
                 {% else %}
                     <strong>$0.00</strong>
@@ -174,7 +174,7 @@
             <div class="note-meta-item">
                 <span class="note-meta-label">Mejor mes</span>
                 {% if kpi_best %}
-                    <strong class="text-success">+${{ "%.2f"|format(kpi_best.saldo) }}</strong>
+                    <strong class="text-success">+${{ "{:,.2f}".format(kpi_best.saldo) }}</strong>
                     <div class="note-meta-sub">{{ kpi_best.label }}</div>
                 {% else %}
                     <strong>$0.00</strong>
@@ -184,9 +184,9 @@
                 <span class="note-meta-label">Peor mes</span>
                 {% if kpi_worst %}
                     {% if kpi_worst.saldo >= 0 %}
-                        <strong class="text-success">+${{ "%.2f"|format(kpi_worst.saldo) }}</strong>
+                        <strong class="text-success">+${{ "{:,.2f}".format(kpi_worst.saldo) }}</strong>
                     {% else %}
-                        <strong class="text-danger">-${{ "%.2f"|format(-kpi_worst.saldo) }}</strong>
+                        <strong class="text-danger">-${{ "{:,.2f}".format(-kpi_worst.saldo) }}</strong>
                     {% endif %}
                     <div class="note-meta-sub">{{ kpi_worst.label }}</div>
                 {% else %}
@@ -210,13 +210,13 @@
                     <tr>
                         <td>{{ row.label }}</td>
                         <td class="text-end">{{ row.movs }}</td>
-                        <td class="text-end">${{ "%.2f"|format(row.ingresos or 0) }}</td>
-                        <td class="text-end">${{ "%.2f"|format(row.egresos or 0) }}</td>
+                        <td class="text-end">${{ "{:,.2f}".format(row.ingresos or 0) }}</td>
+                        <td class="text-end">${{ "{:,.2f}".format(row.egresos or 0) }}</td>
                         <td class="text-end">
                             {% if row.saldo >= 0 %}
-                                <span class="text-success">+${{ "%.2f"|format(row.saldo) }}</span>
+                                <span class="text-success">+${{ "{:,.2f}".format(row.saldo) }}</span>
                             {% else %}
-                                <span class="text-danger">-${{ "%.2f"|format(-row.saldo) }}</span>
+                                <span class="text-danger">-${{ "{:,.2f}".format(-row.saldo) }}</span>
                             {% endif %}
                         </td>
                     </tr>
@@ -243,18 +243,18 @@
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Esperado</span>
-                <strong>${{ "%.2f"|format(recon_totals.expected or 0) }}</strong>
+                <strong>${{ "{:,.2f}".format(recon_totals.expected or 0) }}</strong>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Pagado</span>
-                <strong class="text-success">${{ "%.2f"|format(recon_totals.paid or 0) }}</strong>
+                <strong class="text-success">${{ "{:,.2f}".format(recon_totals.paid or 0) }}</strong>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Pendiente</span>
                 {% if recon_totals.pending >= 0 %}
-                    <strong class="text-danger">${{ "%.2f"|format(recon_totals.pending) }}</strong>
+                    <strong class="text-danger">${{ "{:,.2f}".format(recon_totals.pending) }}</strong>
                 {% else %}
-                    <strong class="text-success">-${{ "%.2f"|format(-recon_totals.pending) }}</strong>
+                    <strong class="text-success">-${{ "{:,.2f}".format(-recon_totals.pending) }}</strong>
                 {% endif %}
             </div>
             <div class="note-meta-item">
@@ -287,13 +287,13 @@
                         </td>
                         <td>{{ 'Proveedor' if row.partner_kind == 'proveedor' else 'Cliente' }}</td>
                         <td class="text-end">{{ row.notas }}</td>
-                        <td class="text-end">${{ "%.2f"|format(row.expected or 0) }}</td>
-                        <td class="text-end">${{ "%.2f"|format(row.paid or 0) }}</td>
+                        <td class="text-end">${{ "{:,.2f}".format(row.expected or 0) }}</td>
+                        <td class="text-end">${{ "{:,.2f}".format(row.paid or 0) }}</td>
                         <td class="text-end">
                             {% if row.pending >= 0 %}
-                                <span class="text-danger fw-semibold">${{ "%.2f"|format(row.pending) }}</span>
+                                <span class="text-danger fw-semibold">${{ "{:,.2f}".format(row.pending) }}</span>
                             {% else %}
-                                <span class="text-success fw-semibold">-${{ "%.2f"|format(-row.pending) }}</span>
+                                <span class="text-success fw-semibold">-${{ "{:,.2f}".format(-row.pending) }}</span>
                             {% endif %}
                         </td>
                         <td class="text-end">{{ row.pagos }}</td>
@@ -342,7 +342,7 @@
                             {% for pago in pagos_sin_nota %}
                                 <tr>
                                     <td>{{ pago.created_at.strftime("%Y-%m-%d %H:%M") if pago.created_at else "-" }}</td>
-                                    <td class="text-end">${{ "%.2f"|format(pago.monto or 0) }}</td>
+                                    <td class="text-end">${{ "{:,.2f}".format(pago.monto or 0) }}</td>
                                     <td>{{ pago.metodo_pago or "-" }}</td>
                                     <td class="text-muted small">{{ pago.comentario or "-" }}</td>
                                 </tr>
@@ -387,7 +387,7 @@
                                         {% endif %}
                                     </td>
                                     <td>{{ partner.nombre_completo if partner else "-" }}</td>
-                                    <td class="text-end">${{ "%.2f"|format(pago.monto or 0) }}</td>
+                                    <td class="text-end">${{ "{:,.2f}".format(pago.monto or 0) }}</td>
                                     <td>{{ nota.cuenta.display_label if nota and nota.cuenta else '-' }}</td>
                                 </tr>
                             {% endfor %}
@@ -435,7 +435,7 @@
                                             <span class="text-muted">-</span>
                                         {% endif %}
                                     </td>
-                                    <td class="text-end">${{ "%.2f"|format(pago.monto or 0) }}</td>
+                                    <td class="text-end">${{ "{:,.2f}".format(pago.monto or 0) }}</td>
                                 </tr>
                             {% endfor %}
                             </tbody>
@@ -474,7 +474,7 @@
                         <td>{{ m.id }}</td>
                         <td>{{ m.tipo }}</td>
                         <td>{{ m.naturaleza }}</td>
-                        <td>${{ "%.2f"|format(m.monto_firmado or 0) }}</td>
+                        <td>${{ "{:,.2f}".format(m.monto_firmado or 0) }}</td>
                         <td>
                             {% if m.nota_id %}
                                 <a href="/web/admin/notas/{{ m.nota_id }}">#{{ m.nota_id }}</a>
@@ -528,7 +528,7 @@
                                 <span class="text-muted">-</span>
                             {% endif %}
                         </td>
-                        <td class="text-end">${{ "%.2f"|format(pago.monto or 0) }}</td>
+                        <td class="text-end">${{ "{:,.2f}".format(pago.monto or 0) }}</td>
                         <td>{{ pago.metodo_pago or "-" }}</td>
                         <td>
                             {% if pago.usuario %}
@@ -601,13 +601,13 @@
                             {% endif %}
                         </td>
                         <td>{{ suc.nombre if suc else '-' }}</td>
-                        <td class="text-end">${{ "%.2f"|format(row.total or 0) }}</td>
-                        <td class="text-end">${{ "%.2f"|format(row.pagado or 0) }}</td>
+                        <td class="text-end">${{ "{:,.2f}".format(row.total or 0) }}</td>
+                        <td class="text-end">${{ "{:,.2f}".format(row.pagado or 0) }}</td>
                         <td class="text-end">
                             {% if row.saldo_pendiente > 0 %}
-                                <span class="text-danger fw-semibold">${{ "%.2f"|format(row.saldo_pendiente) }}</span>
+                                <span class="text-danger fw-semibold">${{ "{:,.2f}".format(row.saldo_pendiente) }}</span>
                             {% elif row.saldo_favor > 0 %}
-                                <span class="text-success fw-semibold">-${{ "%.2f"|format(row.saldo_favor) }}</span>
+                                <span class="text-success fw-semibold">-${{ "{:,.2f}".format(row.saldo_favor) }}</span>
                             {% else %}
                                 <span class="text-muted">$0.00</span>
                             {% endif %}

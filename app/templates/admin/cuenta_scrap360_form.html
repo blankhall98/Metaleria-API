@@ -64,7 +64,7 @@
             <div class="col-lg-3 col-md-6">
                 <label class="form-label">Saldo inicial</label>
                 {% if cuenta %}
-                    <input class="form-control" value="{{ "%.2f"|format(cuenta.saldo_inicial or 0) }}" disabled>
+                    <input class="form-control" value="{{ "{:,.2f}".format(cuenta.saldo_inicial or 0) }}" disabled>
                     <div class="form-text text-muted">Se define solo al crear la cuenta.</div>
                 {% else %}
                     <input class="form-control" name="saldo_inicial" value="{{ form_saldo }}" placeholder="0.00">
@@ -73,7 +73,7 @@
             <div class="col-lg-3 col-md-6">
                 <label class="form-label">Saldo actual</label>
                 {% if cuenta %}
-                    <input class="form-control" value="{{ "%.2f"|format(cuenta.saldo_actual or 0) }}" disabled>
+                    <input class="form-control" value="{{ "{:,.2f}".format(cuenta.saldo_actual or 0) }}" disabled>
                 {% else %}
                     <input class="form-control" value="0.00" disabled>
                 {% endif %}

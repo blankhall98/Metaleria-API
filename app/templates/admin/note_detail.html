@@ -78,42 +78,42 @@
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Kg neto</span>
-                <strong>{{ "%.2f"|format(nota.total_kg_neto or 0) }} kg</strong>
+                <strong>{{ "{:,.2f}".format(nota.total_kg_neto or 0) }} kg</strong>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Subtotal</span>
-                <strong id="note-subtotal-value">${{ "%.2f"|format(subtotal_sin_iva or 0) }}</strong>
+                <strong id="note-subtotal-value">${{ "{:,.2f}".format(subtotal_sin_iva or 0) }}</strong>
             </div>
             <div class="note-meta-item">
-                <span class="note-meta-label">IVA{% if nota.iva_incluido %} ({{ "%.2f"|format(iva_pct or 0) }}%){% endif %}</span>
-                <strong id="note-iva-value">${{ "%.2f"|format(iva_monto or 0) }}</strong>
+                <span class="note-meta-label">IVA{% if nota.iva_incluido %} ({{ "{:,.2f}".format(iva_pct or 0) }}%){% endif %}</span>
+                <strong id="note-iva-value">${{ "{:,.2f}".format(iva_monto or 0) }}</strong>
                 {% if not nota.iva_incluido %}
                     <div class="note-meta-sub">No incluye IVA</div>
                 {% endif %}
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Total</span>
-                <strong id="note-total-value">${{ "%.2f"|format(nota.total_monto or 0) }}</strong>
+                <strong id="note-total-value">${{ "{:,.2f}".format(nota.total_monto or 0) }}</strong>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Monto pagado</span>
-                <strong>${{ "%.2f"|format(nota.monto_pagado or 0) }}</strong>
+                <strong>${{ "{:,.2f}".format(nota.monto_pagado or 0) }}</strong>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Saldo pendiente</span>
                 {% if is_transfer %}
                     {% if saldo_pendiente > 0 %}
                         {% if nota.tipo_operacion.value == 'venta' %}
-                            <strong class="text-success">+${{ "%.2f"|format(saldo_pendiente) }}</strong>
+                            <strong class="text-success">+${{ "{:,.2f}".format(saldo_pendiente) }}</strong>
                         {% else %}
-                            <strong class="text-danger">-${{ "%.2f"|format(saldo_pendiente) }}</strong>
+                            <strong class="text-danger">-${{ "{:,.2f}".format(saldo_pendiente) }}</strong>
                         {% endif %}
                     {% else %}
                         <strong class="text-muted">$0.00</strong>
                     {% endif %}
                 {% else %}
                     {% if saldo_pendiente > 0 %}
-                        <strong class="text-danger">${{ "%.2f"|format(saldo_pendiente) }}</strong>
+                        <strong class="text-danger">${{ "{:,.2f}".format(saldo_pendiente) }}</strong>
                     {% else %}
                         <strong class="text-success">$0.00</strong>
                     {% endif %}
@@ -147,7 +147,7 @@
                 <div class="note-meta-item">
                     <span class="note-meta-label">Contabilidad neta</span>
                     <strong class="{{ 'text-success' if devolucion_check.contabilidad_ok else 'text-danger' }}">
-                        {{ '+' if devolucion_check.contabilidad_saldo > 0 else '' }}${{ "%.2f"|format(devolucion_check.contabilidad_saldo or 0) }}
+                        {{ '+' if devolucion_check.contabilidad_saldo > 0 else '' }}${{ "{:,.2f}".format(devolucion_check.contabilidad_saldo or 0) }}
                     </strong>
                     <div class="note-meta-sub">Movimientos: {{ devolucion_check.contabilidad_movs }}</div>
                     {% if devolucion_check.contabilidad_ok %}
@@ -159,7 +159,7 @@
                 <div class="note-meta-item">
                     <span class="note-meta-label">Inventario neto</span>
                     <strong class="{{ 'text-success' if devolucion_check.inventario_ok else 'text-danger' }}">
-                        {{ '+' if devolucion_check.inventario_saldo > 0 else '' }}{{ "%.3f"|format(devolucion_check.inventario_saldo or 0) }} kg
+                        {{ '+' if devolucion_check.inventario_saldo > 0 else '' }}{{ "{:,.3f}".format(devolucion_check.inventario_saldo or 0) }} kg
                     </strong>
                     <div class="note-meta-sub">Movimientos: {{ devolucion_check.inventario_movs }}</div>
                     {% if devolucion_check.inventario_ok %}
@@ -201,9 +201,9 @@
                             data-kg-neto="{{ "%.3f"|format(m.kg_neto or 0) }}"
                             data-precios='{{ price_map_by_material.get(m.material_id, "{}")|e }}'>
                             <td>{{ m.material.nombre if m.material else m.material_id }}</td>
-                            <td class="text-end">{{ "%.2f"|format(m.kg_bruto or 0) }}</td>
-                            <td class="text-end">{{ "%.2f"|format(m.kg_descuento or 0) }}</td>
-                            <td class="text-end">{{ "%.2f"|format(m.kg_neto or 0) }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(m.kg_bruto or 0) }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(m.kg_descuento or 0) }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(m.kg_neto or 0) }}</td>
                             <td>
                                 <select class="form-select form-select-sm note-tipo-precio" name="tipo_cliente_{{ m.id }}">
                                     {% for tc in tipos_cliente %}
@@ -238,8 +238,8 @@
                                            placeholder="0.00">
                                 </td>
                             {% else %}
-                                <td class="text-end note-unit-price">{{ "%.5f"|format(m.precio_unitario or 0) if m.precio_unitario else '-' }}</td>
-                                <td class="text-end note-subtotal">{{ "%.2f"|format(m.subtotal or 0) if m.subtotal else '-' }}</td>
+                                <td class="text-end note-unit-price">{{ "{:,.5f}".format(m.precio_unitario or 0) if m.precio_unitario else '-' }}</td>
+                                <td class="text-end note-subtotal">{{ "{:,.2f}".format(m.subtotal or 0) if m.subtotal else '-' }}</td>
                             {% endif %}
                         </tr>
                         {% if m.subpesajes %}
@@ -250,7 +250,7 @@
                                         <div class="note-subpesajes-list">
                                             {% for sp in m.subpesajes %}
                                                 <div class="note-subpesaje-item">
-                                                    <span class="pill">{{ "%.2f"|format(sp.peso_kg) }} kg</span>
+                                                    <span class="pill">{{ "{:,.2f}".format(sp.peso_kg) }} kg</span>
                                                     {% if sp.foto_url %}
                                                         <a href="{{ sp.foto_url }}" target="_blank" rel="noopener" class="note-subpesaje-link">Ver evidencia</a>
                                                     {% endif %}
@@ -394,10 +394,10 @@
         <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
             <h2 class="h6 text-dark mb-0 note-section-title">Pagos registrados</h2>
             <div class="note-payment-summary">
-                <span>Subtotal: <strong>${{ "%.2f"|format(subtotal_sin_iva or 0) }}</strong></span>
-                <span>IVA: <strong>${{ "%.2f"|format(iva_monto or 0) }}</strong></span>
-                <span>Total: <strong>${{ "%.2f"|format(nota.total_monto or 0) }}</strong></span>
-                <span>Saldo: <strong class="{{ 'text-danger' if saldo_pendiente > 0 else 'text-success' }}">${{ "%.2f"|format(saldo_pendiente) }}</strong></span>
+                <span>Subtotal: <strong>${{ "{:,.2f}".format(subtotal_sin_iva or 0) }}</strong></span>
+                <span>IVA: <strong>${{ "{:,.2f}".format(iva_monto or 0) }}</strong></span>
+                <span>Total: <strong>${{ "{:,.2f}".format(nota.total_monto or 0) }}</strong></span>
+                <span>Saldo: <strong class="{{ 'text-danger' if saldo_pendiente > 0 else 'text-success' }}">${{ "{:,.2f}".format(saldo_pendiente) }}</strong></span>
             </div>
         </div>
         <form method="post" action="/web/admin/notas/{{ nota.id }}/pago" class="note-payment-form">
@@ -491,7 +491,7 @@
                 {% for pago in pagos %}
                     <tr>
                         <td>{{ pago.created_at.strftime("%Y-%m-%d %H:%M") if pago.created_at else '-' }}</td>
-                        <td class="fw-semibold">${{ "%.2f"|format(pago.monto or 0) }}</td>
+                        <td class="fw-semibold">${{ "{:,.2f}".format(pago.monto or 0) }}</td>
                         <td>{{ pago.metodo_pago|capitalize if pago.metodo_pago else '-' }}</td>
                         <td>{{ pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or '-') }}</td>
                         <td>{{ pago.cuenta_scrap360.nombre if pago.cuenta_scrap360 else '-' }}</td>
@@ -535,8 +535,8 @@
                         <td>{{ mov.inventario.sucursal.nombre if mov.inventario and mov.inventario.sucursal else '-' }}</td>
                         <td>{{ mov.inventario.material.nombre if mov.inventario and mov.inventario.material else '-' }}</td>
                         <td class="text-uppercase">{{ mov.tipo }}</td>
-                        <td class="text-end">{{ "%.2f"|format(qty) }} kg</td>
-                        <td class="text-end">{{ "%.2f"|format(mov.saldo_resultante or 0) }} kg</td>
+                        <td class="text-end">{{ "{:,.2f}".format(qty) }} kg</td>
+                        <td class="text-end">{{ "{:,.2f}".format(mov.saldo_resultante or 0) }} kg</td>
                         <td>{{ mov.created_at.strftime("%Y-%m-%d %H:%M") if mov.created_at else '-' }}</td>
                     </tr>
                 {% endfor %}
@@ -639,11 +639,18 @@
     const noteTable = document.querySelector('.note-table');
     const priceEndpoint = noteTable ? noteTable.dataset.precioEndpoint : '';
     const tipoOperacion = noteTable ? noteTable.dataset.tipoOperacion : '';
+    function formatNumber(value, decimals) {
+        const safe = Number(value || 0);
+        return safe.toLocaleString('en-US', {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+        });
+    }
     function formatMoney(value) {
-        return `$${value.toFixed(2)}`;
+        return `$${formatNumber(value, 2)}`;
     }
     function formatUnit(value) {
-        return `$${value.toFixed(5)}`;
+        return `$${formatNumber(value, 5)}`;
     }
     function parseNumber(value) {
         const raw = value === null || value === undefined ? '' : String(value);

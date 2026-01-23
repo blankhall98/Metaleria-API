@@ -72,13 +72,13 @@
                         </td>
                         <td>{{ nota.created_at.strftime("%Y-%m-%d %H:%M") if nota.created_at else '-' }}</td>
                         <td>{{ sucursales_map.get(nota.sucursal_id, '-') }}</td>
-                        <td class="text-end">${{ "%.2f"|format(nota.total_monto or 0) }}</td>
-                        <td class="text-end">${{ "%.2f"|format(nota.monto_pagado or 0) }}</td>
+                        <td class="text-end">${{ "{:,.2f}".format(nota.total_monto or 0) }}</td>
+                        <td class="text-end">${{ "{:,.2f}".format(nota.monto_pagado or 0) }}</td>
                         <td class="text-end">
                             {% if saldo > 0 %}
-                                <span class="text-danger fw-semibold">${{ "%.2f"|format(saldo) }}</span>
+                                <span class="text-danger fw-semibold">${{ "{:,.2f}".format(saldo) }}</span>
                             {% elif saldo < 0 %}
-                                <span class="text-success fw-semibold">-${{ "%.2f"|format(-saldo) }}</span>
+                                <span class="text-success fw-semibold">-${{ "{:,.2f}".format(-saldo) }}</span>
                             {% else %}
                                 <span class="text-muted">$0.00</span>
                             {% endif %}

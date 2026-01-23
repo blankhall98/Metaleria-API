@@ -86,35 +86,35 @@
             <div class="note-meta-grid">
                 <div class="note-meta-item">
                     <span class="note-meta-label">Saldo inicial</span>
-                    <strong>${{ "%.2f"|format(saldo_inicial or 0) }}</strong>
+                    <strong>${{ "{:,.2f}".format(saldo_inicial or 0) }}</strong>
                 </div>
                 <div class="note-meta-item">
                     <span class="note-meta-label">Ingresos efectivo</span>
-                    <strong class="text-success">${{ "%.2f"|format(cash_ingresos or 0) }}</strong>
+                    <strong class="text-success">${{ "{:,.2f}".format(cash_ingresos or 0) }}</strong>
                     <div class="note-meta-sub">Pagos en efectivo</div>
                 </div>
                 <div class="note-meta-item">
                     <span class="note-meta-label">Egresos efectivo</span>
-                    <strong class="text-danger">${{ "%.2f"|format(cash_egresos or 0) }}</strong>
+                    <strong class="text-danger">${{ "{:,.2f}".format(cash_egresos or 0) }}</strong>
                     <div class="note-meta-sub">Pagos y reversos</div>
                 </div>
                 <div class="note-meta-item">
                     <span class="note-meta-label">Ingresos manuales</span>
-                    <strong class="text-success">${{ "%.2f"|format(manual_ingresos or 0) }}</strong>
+                    <strong class="text-success">${{ "{:,.2f}".format(manual_ingresos or 0) }}</strong>
                     <div class="note-meta-sub">Ingresos y depositos</div>
                 </div>
                 <div class="note-meta-item">
                     <span class="note-meta-label">Egresos manuales</span>
-                    <strong class="text-danger">${{ "%.2f"|format(manual_egresos or 0) }}</strong>
+                    <strong class="text-danger">${{ "{:,.2f}".format(manual_egresos or 0) }}</strong>
                     <div class="note-meta-sub">Egresos y retiros</div>
                 </div>
                 <div class="note-meta-item">
                     <span class="note-meta-label">Gastos caja chica</span>
-                    <strong class="text-danger">${{ "%.2f"|format(gastos_total or 0) }}</strong>
+                    <strong class="text-danger">${{ "{:,.2f}".format(gastos_total or 0) }}</strong>
                 </div>
                 <div class="note-meta-item">
                     <span class="note-meta-label">Saldo esperado</span>
-                    <strong>${{ "%.2f"|format(saldo_calculado or 0) }}</strong>
+                    <strong>${{ "{:,.2f}".format(saldo_calculado or 0) }}</strong>
                     {% if corte.estado.value == 'ABIERTO' %}
                         <div class="note-meta-sub">Calculado con movimientos del d&iacute;a</div>
                     {% endif %}
@@ -122,14 +122,14 @@
                 {% if corte.estado.value == 'CERRADO' %}
                     <div class="note-meta-item">
                         <span class="note-meta-label">Saldo contado</span>
-                        <strong>${{ "%.2f"|format(corte.saldo_cierre or 0) }}</strong>
+                        <strong>${{ "{:,.2f}".format(corte.saldo_cierre or 0) }}</strong>
                     </div>
                     <div class="note-meta-item">
                         <span class="note-meta-label">Diferencia</span>
                     {% if corte.diferencia is not none and corte.diferencia >= 0 %}
-                            <strong class="text-success">+${{ "%.2f"|format(corte.diferencia) }}</strong>
+                            <strong class="text-success">+${{ "{:,.2f}".format(corte.diferencia) }}</strong>
                         {% else %}
-                            <strong class="text-danger">-${{ "%.2f"|format((corte.diferencia or 0) | abs) }}</strong>
+                            <strong class="text-danger">-${{ "{:,.2f}".format((corte.diferencia or 0) | abs) }}</strong>
                         {% endif %}
                         <div class="note-meta-sub">
                             {% if corte.diferencia is not none and corte.diferencia >= 0 %}
@@ -181,7 +181,7 @@
         <div class="card-body">
             <div class="d-flex align-items-center justify-content-between mb-2">
                 <h2 class="h6 text-dark mb-0">Gastos registrados</h2>
-                <div class="text-muted small">Total: ${{ "%.2f"|format(gastos_total or 0) }}</div>
+                <div class="text-muted small">Total: ${{ "{:,.2f}".format(gastos_total or 0) }}</div>
             </div>
             <div class="table-responsive">
                 <table class="table table-hover table-sm align-middle mb-0">
@@ -201,7 +201,7 @@
                             <td>{{ gasto.descripcion }}</td>
                             <td>{{ gasto.categoria or '-' }}</td>
                             <td>{{ gasto.usuario.nombre_completo if gasto.usuario else '-' }}</td>
-                            <td class="text-end">${{ "%.2f"|format(gasto.monto or 0) }}</td>
+                            <td class="text-end">${{ "{:,.2f}".format(gasto.monto or 0) }}</td>
                         </tr>
                     {% endfor %}
                     </tbody>
@@ -255,10 +255,10 @@
                 <div class="text-muted small">Total: {{ manual_total }}</div>
             </div>
             <div class="text-muted small mb-2">
-                Ingresos: ${{ "%.2f"|format(manual_ingresos or 0) }} |
-                Depositos: ${{ "%.2f"|format(manual_totals_by_tipo.get('DEPOSITO', 0) or 0) }} |
-                Egresos: ${{ "%.2f"|format(manual_egresos or 0) }} |
-                Retiros: ${{ "%.2f"|format(manual_totals_by_tipo.get('RETIRO', 0) or 0) }}
+                Ingresos: ${{ "{:,.2f}".format(manual_ingresos or 0) }} |
+                Depositos: ${{ "{:,.2f}".format(manual_totals_by_tipo.get('DEPOSITO', 0) or 0) }} |
+                Egresos: ${{ "{:,.2f}".format(manual_egresos or 0) }} |
+                Retiros: ${{ "{:,.2f}".format(manual_totals_by_tipo.get('RETIRO', 0) or 0) }}
             </div>
             <div class="table-responsive">
                 <table class="table table-hover table-sm align-middle mb-0">
@@ -280,9 +280,9 @@
                             <td>{{ mov.usuario }}</td>
                             <td class="text-end">
                                 {% if mov.monto >= 0 %}
-                                    <span class="text-success">+${{ "%.2f"|format(mov.monto) }}</span>
+                                    <span class="text-success">+${{ "{:,.2f}".format(mov.monto) }}</span>
                                 {% else %}
-                                    <span class="text-danger">-${{ "%.2f"|format(-mov.monto) }}</span>
+                                    <span class="text-danger">-${{ "{:,.2f}".format(-mov.monto) }}</span>
                                 {% endif %}
                             </td>
                         </tr>
@@ -326,9 +326,9 @@
                             <td>{{ mov.partner }}</td>
                             <td class="text-end">
                                 {% if mov.monto >= 0 %}
-                                    <span class="text-success">+${{ "%.2f"|format(mov.monto) }}</span>
+                                    <span class="text-success">+${{ "{:,.2f}".format(mov.monto) }}</span>
                                 {% else %}
-                                    <span class="text-danger">-${{ "%.2f"|format(-mov.monto) }}</span>
+                                    <span class="text-danger">-${{ "{:,.2f}".format(-mov.monto) }}</span>
                                 {% endif %}
                             </td>
                             <td class="text-muted small">{{ mov.comentario or '-' }}</td>
@@ -372,7 +372,7 @@
                                                        name="{{ denom.key }}" type="number" step="1" min="0"
                                                        value="{{ denom.count }}" data-denom-value="{{ denom.value }}">
                                             </td>
-                                            <td class="text-end denom-subtotal">${{ "%.2f"|format(denom.subtotal or 0) }}</td>
+                                            <td class="text-end denom-subtotal">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td>
                                         </tr>
                                     {% endfor %}
                                     </tbody>
@@ -400,7 +400,7 @@
                             <button class="btn btn-primary" type="submit">Cerrar corte</button>
                         </div>
                     </form>
-                    <div class="text-muted small mt-2">Saldo esperado actual: ${{ "%.2f"|format(saldo_calculado_actual or 0) }}</div>
+                    <div class="text-muted small mt-2">Saldo esperado actual: ${{ "{:,.2f}".format(saldo_calculado_actual or 0) }}</div>
                 {% else %}
                     <p class="text-muted small mb-0">Solo el superadmin puede cerrar el corte de caja.</p>
                 {% endif %}
@@ -433,9 +433,9 @@
                             <tbody>
                             {% for denom in denominaciones %}
                                 <tr>
-                                    <td>${{ "%.2f"|format(denom.valor or 0) }}</td>
+                                    <td>${{ "{:,.2f}".format(denom.valor or 0) }}</td>
                                     <td class="text-end">{{ denom.cantidad or 0 }}</td>
-                                    <td class="text-end">${{ "%.2f"|format((denom.valor or 0) * (denom.cantidad or 0)) }}</td>
+                                    <td class="text-end">${{ "{:,.2f}".format((denom.valor or 0) * (denom.cantidad or 0)) }}</td>
                                 </tr>
                             {% endfor %}
                             </tbody>
@@ -480,14 +480,14 @@
                                 <span class="badge bg-success">Cerrado</span>
                             {% endif %}
                         </td>
-                        <td class="text-end">${{ "%.2f"|format(h.saldo_inicial or 0) }}</td>
-                        <td class="text-end">${{ "%.2f"|format(h.saldo_calculado or 0) }}</td>
-                        <td class="text-end">${{ "%.2f"|format(h.saldo_cierre or 0) }}</td>
+                        <td class="text-end">${{ "{:,.2f}".format(h.saldo_inicial or 0) }}</td>
+                        <td class="text-end">${{ "{:,.2f}".format(h.saldo_calculado or 0) }}</td>
+                        <td class="text-end">${{ "{:,.2f}".format(h.saldo_cierre or 0) }}</td>
                         <td class="text-end">
                             {% if h.diferencia is not none and h.diferencia >= 0 %}
-                                <span class="text-success">+${{ "%.2f"|format(h.diferencia) }}</span>
+                                <span class="text-success">+${{ "{:,.2f}".format(h.diferencia) }}</span>
                             {% else %}
-                                <span class="text-danger">-${{ "%.2f"|format((h.diferencia or 0) | abs) }}</span>
+                                <span class="text-danger">-${{ "{:,.2f}".format((h.diferencia or 0) | abs) }}</span>
                             {% endif %}
                         </td>
                         <td class="text-end">
@@ -511,8 +511,15 @@
         if (!inputs.length || !saldoInput) {
             return;
         }
+        function formatNumber(value, decimals) {
+            const safe = Number(value || 0);
+            return safe.toLocaleString('en-US', {
+                minimumFractionDigits: decimals,
+                maximumFractionDigits: decimals,
+            });
+        }
         function formatMoney(value) {
-            return '$' + value.toFixed(2);
+            return '$' + formatNumber(value, 2);
         }
         function updateTotals() {
             let total = 0;

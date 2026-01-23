@@ -205,6 +205,16 @@
 </template>
 
 <script>
+    function formatNumber(value, decimals) {
+        const safe = Number(value || 0);
+        return safe.toLocaleString('en-US', {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+        });
+    }
+    function formatMoney(value) {
+        return `$${formatNumber(value, 2)}`;
+    }
     function parseNumber(value) {
         const num = parseFloat(value || '0');
         return Number.isFinite(num) ? num : 0;
@@ -223,7 +233,7 @@
             const hasKg = kg > 0;
             const subtotal = hasKg ? kg * price : 0;
             if (subtotalEl) {
-                subtotalEl.textContent = hasKg ? `$${subtotal.toFixed(2)}` : '-';
+                subtotalEl.textContent = hasKg ? formatMoney(subtotal) : '-';
             }
             if (hasKg) {
                 hasAny = true;
@@ -232,7 +242,7 @@
         });
         const totalEl = document.getElementById('transferTotal');
         if (totalEl) {
-            totalEl.textContent = hasAny ? `$${total.toFixed(2)}` : '-';
+            totalEl.textContent = hasAny ? formatMoney(total) : '-';
         }
     }
 

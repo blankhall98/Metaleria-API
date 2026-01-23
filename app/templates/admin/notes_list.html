@@ -140,8 +140,8 @@
                             {% endif %}
                         </td>
                         <td>{{ sucursales[n.sucursal_id].nombre if n.sucursal_id else '-' }}</td>
-                        <td>{{ "%.2f"|format(n.total_kg_neto or 0) }} kg</td>
-                        <td>${{ "%.2f"|format(n.total_monto or 0) }}</td>
+                        <td>{{ "{:,.2f}".format(n.total_kg_neto or 0) }} kg</td>
+                        <td>${{ "{:,.2f}".format(n.total_monto or 0) }}</td>
                         <td>{{ n.created_at.strftime("%Y-%m-%d %H:%M") if n.created_at else '-' }}</td>
                         <td class="text-end">
                             <div class="d-flex gap-2 justify-content-end flex-wrap">
@@ -197,8 +197,8 @@
                             {% endif %}
                         </td>
                         <td>{{ sucursales[n.sucursal_id].nombre if n.sucursal_id else '-' }}</td>
-                        <td>${{ "%.2f"|format(n.total_monto or 0) }}</td>
-                        <td class="text-danger fw-semibold">${{ "%.2f"|format(item.saldo_pendiente or 0) }}</td>
+                        <td>${{ "{:,.2f}".format(n.total_monto or 0) }}</td>
+                        <td class="text-danger fw-semibold">${{ "{:,.2f}".format(item.saldo_pendiente or 0) }}</td>
                         <td>{{ n.fecha_caducidad_pago.strftime("%Y-%m-%d") if n.fecha_caducidad_pago else '-' }}</td>
                         <td><span class="badge bg-danger">{{ item.dias }} d&iacute;as</span></td>
                         <td class="text-end">
@@ -253,8 +253,8 @@
                             {% endif %}
                         </td>
                         <td>{{ sucursales[n.sucursal_id].nombre if n.sucursal_id else '-' }}</td>
-                        <td>${{ "%.2f"|format(n.total_monto or 0) }}</td>
-                        <td class="text-warning fw-semibold">${{ "%.2f"|format(item.saldo_pendiente or 0) }}</td>
+                        <td>${{ "{:,.2f}".format(n.total_monto or 0) }}</td>
+                        <td class="text-warning fw-semibold">${{ "{:,.2f}".format(item.saldo_pendiente or 0) }}</td>
                         <td>{{ n.fecha_caducidad_pago.strftime("%Y-%m-%d") if n.fecha_caducidad_pago else '-' }}</td>
                         <td><span class="badge bg-warning text-dark">{{ item.dias }} d&iacute;as</span></td>
                         <td class="text-end">
@@ -342,12 +342,12 @@
                             {% endif %}
                         </td>
                         <td>{{ sucursales[n.sucursal_id].nombre if n.sucursal_id else '-' }}</td>
-                        <td>{{ "%.2f"|format(n.total_kg_neto or 0) }} kg</td>
-                        <td>${{ "%.2f"|format(n.total_monto or 0) }}</td>
+                        <td>{{ "{:,.2f}".format(n.total_kg_neto or 0) }} kg</td>
+                        <td>${{ "{:,.2f}".format(n.total_monto or 0) }}</td>
                         <td>
                             {% if n.estado.value == 'APROBADA' %}
                                 <span class="{{ 'text-danger' if saldo > 0 else 'text-success' }}">
-                                    ${{ "%.2f"|format(saldo) }}
+                                    ${{ "{:,.2f}".format(saldo) }}
                                 </span>
                             {% else %}
                                 <span class="text-muted">-</span>

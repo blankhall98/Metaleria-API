@@ -64,42 +64,42 @@
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Kg neto</span>
-                <strong>{{ "%.2f"|format(nota.total_kg_neto or 0) }} kg</strong>
+                <strong>{{ "{:,.2f}".format(nota.total_kg_neto or 0) }} kg</strong>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Subtotal</span>
-                <strong id="note-subtotal-value">${{ "%.2f"|format(subtotal_sin_iva or 0) }}</strong>
+                <strong id="note-subtotal-value">${{ "{:,.2f}".format(subtotal_sin_iva or 0) }}</strong>
             </div>
             <div class="note-meta-item">
-                <span class="note-meta-label">IVA{% if nota.iva_incluido %} ({{ "%.2f"|format(iva_pct or 0) }}%){% endif %}</span>
-                <strong id="note-iva-value">${{ "%.2f"|format(iva_monto or 0) }}</strong>
+                <span class="note-meta-label">IVA{% if nota.iva_incluido %} ({{ "{:,.2f}".format(iva_pct or 0) }}%){% endif %}</span>
+                <strong id="note-iva-value">${{ "{:,.2f}".format(iva_monto or 0) }}</strong>
                 {% if not nota.iva_incluido %}
                     <div class="note-meta-sub">No incluye IVA</div>
                 {% endif %}
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Total</span>
-                <strong id="note-total-value">${{ "%.2f"|format(nota.total_monto or 0) }}</strong>
+                <strong id="note-total-value">${{ "{:,.2f}".format(nota.total_monto or 0) }}</strong>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Monto pagado</span>
-                <strong>${{ "%.2f"|format(nota.monto_pagado or 0) }}</strong>
+                <strong>${{ "{:,.2f}".format(nota.monto_pagado or 0) }}</strong>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Saldo pendiente</span>
                 {% if is_transfer %}
                     {% if saldo_pendiente > 0 %}
                         {% if nota.tipo_operacion.value == 'venta' %}
-                            <strong class="text-success">+${{ "%.2f"|format(saldo_pendiente) }}</strong>
+                            <strong class="text-success">+${{ "{:,.2f}".format(saldo_pendiente) }}</strong>
                         {% else %}
-                            <strong class="text-danger">-${{ "%.2f"|format(saldo_pendiente) }}</strong>
+                            <strong class="text-danger">-${{ "{:,.2f}".format(saldo_pendiente) }}</strong>
                         {% endif %}
                     {% else %}
                         <strong class="text-muted">$0.00</strong>
                     {% endif %}
                 {% else %}
                     {% if saldo_pendiente > 0 %}
-                        <strong class="text-danger">${{ "%.2f"|format(saldo_pendiente) }}</strong>
+                        <strong class="text-danger">${{ "{:,.2f}".format(saldo_pendiente) }}</strong>
                     {% else %}
                         <strong class="text-success">$0.00</strong>
                     {% endif %}
@@ -187,7 +187,7 @@
                             <td class="text-end">
                                 <input class="form-control form-control-sm text-end kg-desc-input" type="number" step="0.001" min="0" name="kg_desc_{{ m.id }}" value="{{ "%.3f"|format(m.kg_descuento or 0) }}" {% if m.subpesajes %}disabled{% endif %}>
                             </td>
-                            <td class="text-end">{{ "%.3f"|format(m.kg_neto or 0) }}</td>
+                            <td class="text-end">{{ "{:,.3f}".format(m.kg_neto or 0) }}</td>
                             {% set unit_override = form_precio_unit_map.get(m.id) if form_precio_unit_map is defined else None %}
                             {% set subtotal_override = form_subtotal_map.get(m.id) if form_subtotal_map is defined else None %}
                             {% set mode_override = form_precio_mode_map.get(m.id) if form_precio_mode_map is defined else None %}
@@ -237,8 +237,15 @@
 <script>
     const ivaIncluido = {{ 'true' if nota.iva_incluido else 'false' }};
     const ivaPct = {{ "%.2f"|format(iva_pct or 0) }};
+    function formatNumber(value, decimals) {
+        const safe = Number(value || 0);
+        return safe.toLocaleString('en-US', {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+        });
+    }
     function formatMoney(value) {
-        return `$${value.toFixed(2)}`;
+        return `$${formatNumber(value, 2)}`;
     }
     function parseNumber(value) {
         const raw = value === null || value === undefined ? '' : String(value);

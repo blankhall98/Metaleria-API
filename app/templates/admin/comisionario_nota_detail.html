@@ -51,23 +51,23 @@
             <div class="note-meta-grid">
                 <div class="note-meta-item">
                     <span class="note-meta-label">Total kg</span>
-                    <strong>{{ "%.2f"|format(nota.total_kg or 0) }} kg</strong>
+                    <strong>{{ "{:,.2f}".format(nota.total_kg or 0) }} kg</strong>
                 </div>
                 <div class="note-meta-item">
                     <span class="note-meta-label">Total</span>
-                    <strong>${{ "%.2f"|format(total or 0) }}</strong>
+                    <strong>${{ "{:,.2f}".format(total or 0) }}</strong>
                 </div>
                 <div class="note-meta-item">
                     <span class="note-meta-label">Pagado</span>
-                    <strong>${{ "%.2f"|format(pagado or 0) }}</strong>
+                    <strong>${{ "{:,.2f}".format(pagado or 0) }}</strong>
                 </div>
                 <div class="note-meta-item">
                     <span class="note-meta-label">Saldo</span>
                     <strong class="{{ 'text-danger' if saldo > 0 else 'text-success' }}">
                         {% if saldo >= 0 %}
-                            ${{ "%.2f"|format(saldo or 0) }}
+                            ${{ "{:,.2f}".format(saldo or 0) }}
                         {% else %}
-                            -${{ "%.2f"|format(-saldo) }}
+                            -${{ "{:,.2f}".format(-saldo) }}
                         {% endif %}
                     </strong>
                 </div>
@@ -96,9 +96,9 @@
                 {% for nm in materiales %}
                     <tr>
                         <td>{{ nm.material.nombre if nm.material else nm.material_id }}</td>
-                        <td class="text-end">{{ "%.2f"|format(nm.kg_neto or 0) }}</td>
-                        <td class="text-end">{{ "%.5f"|format(nm.precio_por_kg or 0) }}</td>
-                        <td class="text-end">${{ "%.2f"|format(nm.subtotal or 0) }}</td>
+                        <td class="text-end">{{ "{:,.2f}".format(nm.kg_neto or 0) }}</td>
+                        <td class="text-end">{{ "{:,.5f}".format(nm.precio_por_kg or 0) }}</td>
+                        <td class="text-end">${{ "{:,.2f}".format(nm.subtotal or 0) }}</td>
                     </tr>
                 {% endfor %}
                 </tbody>
@@ -115,13 +115,13 @@
         <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
             <h2 class="h6 text-dark mb-0">Pagos registrados</h2>
             <div class="text-muted small">
-                Total: <strong>${{ "%.2f"|format(total or 0) }}</strong> &middot;
-                Pagado: <strong>${{ "%.2f"|format(pagado or 0) }}</strong> &middot;
+                Total: <strong>${{ "{:,.2f}".format(total or 0) }}</strong> &middot;
+                Pagado: <strong>${{ "{:,.2f}".format(pagado or 0) }}</strong> &middot;
                 Saldo: <strong class="{{ 'text-danger' if saldo > 0 else 'text-success' }}">
                     {% if saldo >= 0 %}
-                        ${{ "%.2f"|format(saldo or 0) }}
+                        ${{ "{:,.2f}".format(saldo or 0) }}
                     {% else %}
-                        -${{ "%.2f"|format(-saldo) }}
+                        -${{ "{:,.2f}".format(-saldo) }}
                     {% endif %}
                 </strong>
             </div>
@@ -199,7 +199,7 @@
                 {% for pago in pagos %}
                     <tr>
                         <td>{{ pago.created_at.strftime("%Y-%m-%d %H:%M") if pago.created_at else '-' }}</td>
-                        <td class="fw-semibold">${{ "%.2f"|format(pago.monto or 0) }}</td>
+                        <td class="fw-semibold">${{ "{:,.2f}".format(pago.monto or 0) }}</td>
                         <td>{{ pago.metodo_pago|capitalize if pago.metodo_pago else '-' }}</td>
                         <td>{{ pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or '-') }}</td>
                         <td>{{ pago.cuenta_scrap360.nombre if pago.cuenta_scrap360 else '-' }}</td>

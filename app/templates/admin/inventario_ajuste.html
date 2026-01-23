@@ -63,12 +63,19 @@
     const sucursalSelect = document.querySelector('select[name="sucursal_id"]');
     const materialSelect = document.querySelector('select[name="material_id"]');
     const stockDisplay = document.getElementById('stock_actual_display');
+    function formatNumber(value, decimals) {
+        const safe = Number(value || 0);
+        return safe.toLocaleString('en-US', {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+        });
+    }
     function updateStock() {
         const sId = sucursalSelect ? parseInt(sucursalSelect.value || '0', 10) : 0;
         const mId = materialSelect ? parseInt(materialSelect.value || '0', 10) : 0;
         const stock = (invMap[String(sId)] && invMap[String(sId)][String(mId)]) || (invMap[sId] && invMap[sId][mId]) || 0;
         if (stockDisplay) {
-            stockDisplay.textContent = `${parseFloat(stock).toFixed(2)} kg`;
+            stockDisplay.textContent = `${formatNumber(parseFloat(stock), 2)} kg`;
         }
     }
     if (sucursalSelect) sucursalSelect.addEventListener('change', updateStock);

@@ -106,9 +106,9 @@
                         <td>{{ conv.created_at.strftime("%Y-%m-%d %H:%M") if conv.created_at else '-' }}</td>
                         <td>{{ conv.sucursal.nombre if conv.sucursal else conv.sucursal_id }}</td>
                         <td>{{ conv.material_origen.nombre if conv.material_origen else conv.material_origen_id }}</td>
-                        <td class="text-end">{{ "%.3f"|format(conv.cantidad_origen or 0) }} kg</td>
+                        <td class="text-end">{{ "{:,.3f}".format(conv.cantidad_origen or 0) }} kg</td>
                         <td>{{ conv.material_destino.nombre if conv.material_destino else conv.material_destino_id }}</td>
-                        <td class="text-end">{{ "%.3f"|format(conv.cantidad_destino or 0) }} kg</td>
+                        <td class="text-end">{{ "{:,.3f}".format(conv.cantidad_destino or 0) }} kg</td>
                         <td>{{ conv.usuario.username if conv.usuario else (conv.usuario_id or '-') }}</td>
                         <td class="small text-muted">{{ conv.comentario or '-' }}</td>
                     </tr>
@@ -130,6 +130,14 @@
     const stockOrigen = document.getElementById('convStockOrigen');
     const stockDestino = document.getElementById('convStockDestino');
 
+    function formatNumber(value, decimals) {
+        const safe = Number(value || 0);
+        return safe.toLocaleString('en-US', {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+        });
+    }
+
     function readStock(sucursalId, materialId) {
         if (!sucursalId || !materialId) return 0;
         const sKey = String(sucursalId);
@@ -144,8 +152,8 @@
         const dId = destinoSelect ? parseInt(destinoSelect.value || '0', 10) : 0;
         const stockO = readStock(sId, oId);
         const stockD = readStock(sId, dId);
-        if (stockOrigen) stockOrigen.textContent = `${parseFloat(stockO).toFixed(3)} kg`;
-        if (stockDestino) stockDestino.textContent = `${parseFloat(stockD).toFixed(3)} kg`;
+        if (stockOrigen) stockOrigen.textContent = `${formatNumber(parseFloat(stockO), 3)} kg`;
+        if (stockDestino) stockDestino.textContent = `${formatNumber(parseFloat(stockD), 3)} kg`;
     }
 
     if (sucursalSelect) sucursalSelect.addEventListener('change', updateStocks);

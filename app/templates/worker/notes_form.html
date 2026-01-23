@@ -253,6 +253,18 @@
     const extraEvidenceCount = document.getElementById('extra-evidence-count');
     let extraEvidenceUrls = [];
 
+    function formatNumber(value, decimals) {
+        const safe = Number(value || 0);
+        return safe.toLocaleString('en-US', {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+        });
+    }
+
+    function formatMoney(value) {
+        return `$${formatNumber(value, 2)}`;
+    }
+
     function openEvidenceModal(inputEl) {
         if (!evidenceModal || !inputEl) return;
         activeEvidenceInput = inputEl;
@@ -580,7 +592,7 @@
             const groupEl = evidInput.closest('.input-group');
             const netoLabel = groupEl?.querySelector('.subpesaje-neto');
             const evidLabel = groupEl?.querySelector('.evid-label');
-            if (netoLabel) netoLabel.textContent = netoPesaje.toFixed(2);
+            if (netoLabel) netoLabel.textContent = formatNumber(netoPesaje, 2);
             if (evidLabel) {
                 evidLabel.classList.remove('is-uploading', 'is-error', 'is-ready');
                 if (isUploading) {
@@ -610,7 +622,7 @@
         kgDescInput.value = totalDesc > 0 ? totalDesc.toFixed(2) : '0';
         materialRow.querySelector('.kg-bruto').textContent = kgBrutoInput.value || '0.00';
         materialRow.querySelector('.kg-desc').textContent = kgDescInput.value || '0.00';
-        materialRow.querySelector('.kg-neto').textContent = totalNeto > 0 ? totalNeto.toFixed(2) : '0.00';
+        materialRow.querySelector('.kg-neto').textContent = totalNeto > 0 ? formatNumber(totalNeto, 2) : '0.00';
         // precio por material
         const tipoOp = document.getElementById('tipo_operacion').value;
         const tipoCli = materialRow.querySelector('select[name=\"tipo_cliente\"]').value || 'regular';
@@ -621,7 +633,7 @@
             const price = priceMap[tipoCli] ?? priceMap['regular'];
             if (price !== undefined && price !== null) {
                 const subtotal = totalNeto * parseFloat(price);
-                subtotalText = `$${subtotal.toFixed(2)}`;
+                subtotalText = formatMoney(subtotal);
             }
         }
         materialRow.querySelector('.total-material').textContent = subtotalText;
@@ -747,10 +759,10 @@
                 }
             }
         });
-        document.getElementById('nota-kg-bruto').textContent = totBruto.toFixed(2);
-        document.getElementById('nota-kg-desc').textContent = totDesc.toFixed(2);
-        document.getElementById('nota-kg-neto').textContent = totNeto.toFixed(2);
-        document.getElementById('nota-total').textContent = tienePrecio ? `$${totMonto.toFixed(2)}` : '-';
+        document.getElementById('nota-kg-bruto').textContent = formatNumber(totBruto, 2);
+        document.getElementById('nota-kg-desc').textContent = formatNumber(totDesc, 2);
+        document.getElementById('nota-kg-neto').textContent = formatNumber(totNeto, 2);
+        document.getElementById('nota-total').textContent = tienePrecio ? formatMoney(totMonto) : '-';
 
         const submitBtn = document.getElementById('submitBtn');
         if (submitBtn) {

@@ -140,6 +140,18 @@
             return Number.isFinite(num) ? num : 0;
         }
 
+        function formatNumber(value, decimals) {
+            const safe = Number(value || 0);
+            return safe.toLocaleString('en-US', {
+                minimumFractionDigits: decimals,
+                maximumFractionDigits: decimals,
+            });
+        }
+
+        function formatMoney(value) {
+            return `$${formatNumber(value, 2)}`;
+        }
+
         function updateTotals() {
             let totalKg = 0;
             let totalMonto = 0;
@@ -149,13 +161,13 @@
                 const subtotal = kg * precio;
                 const subtotalCell = row.querySelector('.subtotal-cell');
                 if (subtotalCell) {
-                    subtotalCell.textContent = `$${subtotal.toFixed(2)}`;
+                    subtotalCell.textContent = formatMoney(subtotal);
                 }
                 totalKg += kg;
                 totalMonto += subtotal;
             });
-            totalKgEl.textContent = totalKg.toFixed(2);
-            totalMontoEl.textContent = totalMonto.toFixed(2);
+            totalKgEl.textContent = formatNumber(totalKg, 2);
+            totalMontoEl.textContent = formatNumber(totalMonto, 2);
         }
 
         function attachRowListeners(row) {

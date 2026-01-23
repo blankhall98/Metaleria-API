@@ -67,19 +67,19 @@
                         </div>
                         <div class="note-meta-item">
                             <span class="note-meta-label">Total comisiones</span>
-                            <strong>${{ "%.2f"|format(summary.total_facturado or 0) }}</strong>
+                            <strong>${{ "{:,.2f}".format(summary.total_facturado or 0) }}</strong>
                         </div>
                         <div class="note-meta-item">
                             <span class="note-meta-label">Total pagado</span>
-                            <strong>${{ "%.2f"|format(summary.total_pagado or 0) }}</strong>
+                            <strong>${{ "{:,.2f}".format(summary.total_pagado or 0) }}</strong>
                         </div>
                         <div class="note-meta-item">
                             <span class="note-meta-label">Saldo pendiente</span>
-                            <strong class="text-danger">${{ "%.2f"|format(summary.saldo_pendiente or 0) }}</strong>
+                            <strong class="text-danger">${{ "{:,.2f}".format(summary.saldo_pendiente or 0) }}</strong>
                         </div>
                         <div class="note-meta-item">
                             <span class="note-meta-label">Saldo a favor empresa</span>
-                            <strong class="text-success">${{ "%.2f"|format(summary.saldo_favor or 0) }}</strong>
+                            <strong class="text-success">${{ "{:,.2f}".format(summary.saldo_favor or 0) }}</strong>
                         </div>
                     </div>
                     <div class="text-muted small mt-2">Saldos calculados con notas aprobadas.</div>
@@ -98,9 +98,9 @@
                 <div class="text-muted small">
                     Saldo acumulado:
                     {% if ledger_final >= 0 %}
-                        <span class="text-danger fw-semibold">${{ "%.2f"|format(ledger_final) }}</span>
+                        <span class="text-danger fw-semibold">${{ "{:,.2f}".format(ledger_final) }}</span>
                     {% else %}
-                        <span class="text-success fw-semibold">-${{ "%.2f"|format(-ledger_final) }}</span>
+                        <span class="text-success fw-semibold">-${{ "{:,.2f}".format(-ledger_final) }}</span>
                     {% endif %}
                 </div>
             </div>
@@ -134,13 +134,13 @@
                             </td>
                             <td>{{ row.metodo or "-" }}</td>
                             <td>{{ row.cuenta or "-" }}</td>
-                            <td class="text-end">${{ "%.2f"|format(row.cargo or 0) }}</td>
-                            <td class="text-end">${{ "%.2f"|format(row.abono or 0) }}</td>
+                            <td class="text-end">${{ "{:,.2f}".format(row.cargo or 0) }}</td>
+                            <td class="text-end">${{ "{:,.2f}".format(row.abono or 0) }}</td>
                             <td class="text-end">
                                 {% if row.saldo >= 0 %}
-                                    <span class="text-danger fw-semibold">${{ "%.2f"|format(row.saldo) }}</span>
+                                    <span class="text-danger fw-semibold">${{ "{:,.2f}".format(row.saldo) }}</span>
                                 {% else %}
-                                    <span class="text-success fw-semibold">-${{ "%.2f"|format(-row.saldo) }}</span>
+                                    <span class="text-success fw-semibold">-${{ "{:,.2f}".format(-row.saldo) }}</span>
                                 {% endif %}
                             </td>
                             <td class="text-muted small">{{ row.comentario or "-" }}</td>
@@ -217,13 +217,13 @@
                             </td>
                             <td>{{ nota.created_at.strftime("%Y-%m-%d %H:%M") if nota.created_at else '-' }}</td>
                             <td>{{ suc.nombre if suc else '-' }}</td>
-                            <td class="text-end">${{ "%.2f"|format(nota.total_monto or 0) }}</td>
-                            <td class="text-end">${{ "%.2f"|format(nota.monto_pagado or 0) }}</td>
+                            <td class="text-end">${{ "{:,.2f}".format(nota.total_monto or 0) }}</td>
+                            <td class="text-end">${{ "{:,.2f}".format(nota.monto_pagado or 0) }}</td>
                             <td class="text-end">
                                 {% if saldo > 0 %}
-                                    <span class="text-danger fw-semibold">${{ "%.2f"|format(saldo) }}</span>
+                                    <span class="text-danger fw-semibold">${{ "{:,.2f}".format(saldo) }}</span>
                                 {% elif saldo < 0 %}
-                                    <span class="text-success fw-semibold">-${{ "%.2f"|format(-saldo) }}</span>
+                                    <span class="text-success fw-semibold">-${{ "{:,.2f}".format(-saldo) }}</span>
                                 {% else %}
                                     <span class="text-muted">$0.00</span>
                                 {% endif %}
@@ -286,7 +286,7 @@
                                     <span class="text-muted">-</span>
                                 {% endif %}
                             </td>
-                            <td class="text-end">${{ "%.2f"|format(pago.monto or 0) }}</td>
+                            <td class="text-end">${{ "{:,.2f}".format(pago.monto or 0) }}</td>
                             <td>{{ pago.metodo_pago or '-' }}</td>
                             <td>{{ pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or '-') }}</td>
                             <td>

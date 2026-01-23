@@ -123,7 +123,7 @@
                                 <div class="evidence-item-head">
                                     <div>
                                         <div class="text-muted small">Pesaje {{ sp.order }}</div>
-                                        <div class="small text-muted">Neto {{ "%.2f"|format(sp.neto_kg or 0) }} {{ group.unit }}</div>
+                                        <div class="small text-muted">Neto {{ "{:,.2f}".format(sp.neto_kg or 0) }} {{ group.unit }}</div>
                                     </div>
                                     {% if sp.foto_url %}
                                         <span class="badge bg-success">Con evidencia</span>
@@ -146,11 +146,11 @@
                                 <div class="evidence-metrics">
                                     <div>
                                         <span class="text-muted small">Bruto</span>
-                                        <strong>{{ "%.2f"|format(sp.peso_kg or 0) }} {{ group.unit }}</strong>
+                                        <strong>{{ "{:,.2f}".format(sp.peso_kg or 0) }} {{ group.unit }}</strong>
                                     </div>
                                     <div>
                                         <span class="text-muted small">Descuento</span>
-                                        <strong>{{ "%.2f"|format(sp.descuento_kg or 0) }} {{ group.unit }}</strong>
+                                        <strong>{{ "{:,.2f}".format(sp.descuento_kg or 0) }} {{ group.unit }}</strong>
                                     </div>
                                     {% if sp.created_at %}
                                         <div>

@@ -31,12 +31,12 @@
         <div class="note-meta-grid">
             <div class="note-meta-item">
                 <span class="note-meta-label">Saldo inicial</span>
-                <strong>${{ "%.2f"|format(cuenta.saldo_inicial or 0) }}</strong>
+                <strong>${{ "{:,.2f}".format(cuenta.saldo_inicial or 0) }}</strong>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Saldo actual</span>
                 <strong class="{{ 'text-success' if cuenta.saldo_actual >= 0 else 'text-danger' }}">
-                    {{ '+' if cuenta.saldo_actual >= 0 else '-' }}${{ "%.2f"|format(cuenta.saldo_actual|abs) }}
+                    {{ '+' if cuenta.saldo_actual >= 0 else '-' }}${{ "{:,.2f}".format(cuenta.saldo_actual|abs) }}
                 </strong>
             </div>
             <div class="note-meta-item">
@@ -105,18 +105,18 @@
                         <td>{{ mov.tipo|upper }}</td>
                         <td class="text-end">
                             {% if mov.tipo == 'ingreso' %}
-                                <span class="text-success">+${{ "%.2f"|format(mov.monto or 0) }}</span>
+                                <span class="text-success">+${{ "{:,.2f}".format(mov.monto or 0) }}</span>
                             {% elif mov.tipo == 'egreso' %}
-                                <span class="text-danger">-${{ "%.2f"|format(mov.monto or 0) }}</span>
+                                <span class="text-danger">-${{ "{:,.2f}".format(mov.monto or 0) }}</span>
                             {% else %}
                                 {% if mov.monto >= 0 %}
-                                    <span class="text-success">+${{ "%.2f"|format(mov.monto or 0) }}</span>
+                                    <span class="text-success">+${{ "{:,.2f}".format(mov.monto or 0) }}</span>
                                 {% else %}
-                                    <span class="text-danger">-${{ "%.2f"|format(-mov.monto) }}</span>
+                                    <span class="text-danger">-${{ "{:,.2f}".format(-mov.monto) }}</span>
                                 {% endif %}
                             {% endif %}
                         </td>
-                        <td class="text-end">${{ "%.2f"|format(mov.saldo_resultante or 0) }}</td>
+                        <td class="text-end">${{ "{:,.2f}".format(mov.saldo_resultante or 0) }}</td>
                         <td>
                             {% if mov.nota_id %}
                                 <a href="/web/admin/notas/{{ mov.nota_id }}">#{{ mov.nota_id }}</a>
