@@ -169,6 +169,12 @@ a:hover {
     background: #ffffff;
     box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
 }
+.table-responsive.scroll-x {
+    overflow-x: auto;
+}
+.table-responsive.scroll-x table {
+    min-width: 980px;
+}
 
 .btn-primary {
     background: linear-gradient(135deg, var(--blue), var(--blue-soft));

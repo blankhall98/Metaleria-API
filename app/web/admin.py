@@ -201,7 +201,13 @@ def _movimiento_display(
     sucursal_label = "-"
     if sucursal_id and sucursales_map:
         suc = sucursales_map.get(sucursal_id)
-        sucursal_label = suc.nombre if suc else str(sucursal_id)
+        nombre = getattr(suc, "nombre", None) if suc is not None else None
+        if nombre:
+            sucursal_label = nombre
+        elif suc is not None:
+            sucursal_label = str(suc)
+        else:
+            sucursal_label = str(sucursal_id)
     elif mov.sucursal and mov.sucursal.nombre:
         sucursal_label = mov.sucursal.nombre
     elif sucursal_id:
