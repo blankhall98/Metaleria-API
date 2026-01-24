@@ -2064,6 +2064,9 @@ async def proveedores_list(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
+    params = request.query_params
+    delete_ok = params.get("deleted") == "1"
+    delete_error = (params.get("delete_error") or "").strip()
     query = db.query(Proveedor)
 
     if q:
@@ -2087,8 +2090,47 @@ async def proveedores_list(
             "user": current_user,
             "proveedores": proveedores,
             "q": q or "",
+            "delete_ok": delete_ok,
+            "delete_error": delete_error,
         },
     )
+
+
+@router.post("/proveedores/{proveedor_id}/eliminar")
+async def proveedor_delete(
+    proveedor_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    proveedor = db.get(Proveedor, proveedor_id)
+    if not proveedor:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado.")
+
+    tiene_notas = db.query(Nota.id).filter(Nota.proveedor_id == proveedor_id).first()
+    tiene_cuentas = db.query(Cuenta.id).filter(Cuenta.proveedor_id == proveedor_id).first()
+    tiene_ajustes = (
+        db.query(AjusteSaldoPartner.id)
+        .filter(
+            AjusteSaldoPartner.partner_type == "proveedor",
+            AjusteSaldoPartner.partner_id == proveedor_id,
+        )
+        .first()
+    )
+    if tiene_notas or tiene_cuentas or tiene_ajustes:
+        reasons = []
+        if tiene_notas:
+            reasons.append("notas")
+        if tiene_cuentas:
+            reasons.append("cuentas")
+        if tiene_ajustes:
+            reasons.append("ajustes")
+        msg = f"No se puede eliminar: tiene {', '.join(reasons)} asociados."
+        return RedirectResponse(url=f"/web/admin/proveedores?{urlencode({'delete_error': msg})}", status_code=303)
+
+    db.delete(proveedor)
+    db.commit()
+    return RedirectResponse(url="/web/admin/proveedores?deleted=1", status_code=303)
 
 
 @router.get("/proveedores/nuevo")
@@ -2355,6 +2397,9 @@ async def clientes_list(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
+    params = request.query_params
+    delete_ok = params.get("deleted") == "1"
+    delete_error = (params.get("delete_error") or "").strip()
     query = db.query(Cliente)
 
     if q:
@@ -2378,8 +2423,47 @@ async def clientes_list(
             "user": current_user,
             "clientes": clientes,
             "q": q or "",
+            "delete_ok": delete_ok,
+            "delete_error": delete_error,
         },
     )
+
+
+@router.post("/clientes/{cliente_id}/eliminar")
+async def cliente_delete(
+    cliente_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    cliente = db.get(Cliente, cliente_id)
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado.")
+
+    tiene_notas = db.query(Nota.id).filter(Nota.cliente_id == cliente_id).first()
+    tiene_cuentas = db.query(Cuenta.id).filter(Cuenta.cliente_id == cliente_id).first()
+    tiene_ajustes = (
+        db.query(AjusteSaldoPartner.id)
+        .filter(
+            AjusteSaldoPartner.partner_type == "cliente",
+            AjusteSaldoPartner.partner_id == cliente_id,
+        )
+        .first()
+    )
+    if tiene_notas or tiene_cuentas or tiene_ajustes:
+        reasons = []
+        if tiene_notas:
+            reasons.append("notas")
+        if tiene_cuentas:
+            reasons.append("cuentas")
+        if tiene_ajustes:
+            reasons.append("ajustes")
+        msg = f"No se puede eliminar: tiene {', '.join(reasons)} asociados."
+        return RedirectResponse(url=f"/web/admin/clientes?{urlencode({'delete_error': msg})}", status_code=303)
+
+    db.delete(cliente)
+    db.commit()
+    return RedirectResponse(url="/web/admin/clientes?deleted=1", status_code=303)
 
 
 @router.get("/clientes/nuevo")
@@ -2647,6 +2731,9 @@ async def comisionarios_list(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
+    params = request.query_params
+    delete_ok = params.get("deleted") == "1"
+    delete_error = (params.get("delete_error") or "").strip()
     query = db.query(Comisionario)
     if q:
         term = f"%{q.strip()}%"
@@ -2666,8 +2753,37 @@ async def comisionarios_list(
             "user": current_user,
             "comisionarios": comisionarios,
             "q": q or "",
+            "delete_ok": delete_ok,
+            "delete_error": delete_error,
         },
     )
+
+
+@router.post("/comisionarios/{comisionario_id}/eliminar")
+async def comisionario_delete(
+    comisionario_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    comisionario = db.get(Comisionario, comisionario_id)
+    if not comisionario:
+        raise HTTPException(status_code=404, detail="Comisionario no encontrado.")
+
+    tiene_notas = db.query(ComisionarioNota.id).filter(ComisionarioNota.comisionario_id == comisionario_id).first()
+    tiene_cuentas = db.query(Cuenta.id).filter(Cuenta.comisionario_id == comisionario_id).first()
+    if tiene_notas or tiene_cuentas:
+        reasons = []
+        if tiene_notas:
+            reasons.append("notas")
+        if tiene_cuentas:
+            reasons.append("cuentas")
+        msg = f"No se puede eliminar: tiene {', '.join(reasons)} asociados."
+        return RedirectResponse(url=f"/web/admin/comisionarios?{urlencode({'delete_error': msg})}", status_code=303)
+
+    db.delete(comisionario)
+    db.commit()
+    return RedirectResponse(url="/web/admin/comisionarios?deleted=1", status_code=303)
 
 
 @router.get("/comisionarios/nuevo")
