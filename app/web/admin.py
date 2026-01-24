@@ -1069,6 +1069,32 @@ def _apply_sucursal_filter(query, allowed_ids: list[int] | None, sucursal_id: in
     return query
 
 
+def _build_inventario_movimientos_query(
+    db: Session,
+    *,
+    allowed_suc_ids: list[int] | None,
+    sucursal_id: int | None,
+    material_id: int | None,
+    tipo: str | None,
+):
+    query = (
+        db.query(InventarioMovimiento)
+        .join(Inventario, Inventario.id == InventarioMovimiento.inventario_id)
+    )
+    if allowed_suc_ids is not None:
+        if sucursal_id:
+            query = query.filter(Inventario.sucursal_id == sucursal_id)
+        else:
+            query = query.filter(Inventario.sucursal_id.in_(allowed_suc_ids))
+    elif sucursal_id:
+        query = query.filter(Inventario.sucursal_id == sucursal_id)
+    if material_id:
+        query = query.filter(Inventario.material_id == material_id)
+    if tipo:
+        query = query.filter(InventarioMovimiento.tipo == tipo)
+    return query
+
+
 def _build_partner_record_context(
     request: Request,
     db: Session,
@@ -8189,26 +8215,13 @@ async def inventario_movimientos(
             material_id = None
     tipo = params.get("tipo") or None
 
-    query = db.query(InventarioMovimiento)
-    if allowed_suc_ids is not None:
-        if sucursal_id:
-            query = query.join(Inventario, Inventario.id == InventarioMovimiento.inventario_id).filter(
-                Inventario.sucursal_id == sucursal_id
-            )
-        else:
-            query = query.join(Inventario, Inventario.id == InventarioMovimiento.inventario_id).filter(
-                Inventario.sucursal_id.in_(allowed_suc_ids)
-            )
-    elif sucursal_id:
-        query = query.join(Inventario, Inventario.id == InventarioMovimiento.inventario_id).filter(
-            Inventario.sucursal_id == sucursal_id
-        )
-    if material_id:
-        query = query.join(Inventario, Inventario.id == InventarioMovimiento.inventario_id).filter(
-            Inventario.material_id == material_id
-        )
-    if tipo:
-        query = query.filter(InventarioMovimiento.tipo == tipo)
+    query = _build_inventario_movimientos_query(
+        db,
+        allowed_suc_ids=allowed_suc_ids,
+        sucursal_id=sucursal_id,
+        material_id=material_id,
+        tipo=tipo,
+    )
     movimientos = query.order_by(InventarioMovimiento.created_at.desc()).limit(200).all()
     total_firmado = 0
     for mov in movimientos:
@@ -8263,26 +8276,13 @@ async def inventario_movimientos_export(
     tipo = params.get("tipo") or None
     fmt = params.get("format") or "csv"
 
-    query = db.query(InventarioMovimiento)
-    if allowed_suc_ids is not None:
-        if sucursal_id:
-            query = query.join(Inventario, Inventario.id == InventarioMovimiento.inventario_id).filter(
-                Inventario.sucursal_id == sucursal_id
-            )
-        else:
-            query = query.join(Inventario, Inventario.id == InventarioMovimiento.inventario_id).filter(
-                Inventario.sucursal_id.in_(allowed_suc_ids)
-            )
-    elif sucursal_id:
-        query = query.join(Inventario, Inventario.id == InventarioMovimiento.inventario_id).filter(
-            Inventario.sucursal_id == sucursal_id
-        )
-    if material_id:
-        query = query.join(Inventario, Inventario.id == InventarioMovimiento.inventario_id).filter(
-            Inventario.material_id == material_id
-        )
-    if tipo:
-        query = query.filter(InventarioMovimiento.tipo == tipo)
+    query = _build_inventario_movimientos_query(
+        db,
+        allowed_suc_ids=allowed_suc_ids,
+        sucursal_id=sucursal_id,
+        material_id=material_id,
+        tipo=tipo,
+    )
     movimientos = query.order_by(InventarioMovimiento.created_at.desc()).limit(1000).all()
 
     headers_xml = ["sucursal", "material", "tipo", "cantidad_kg", "saldo_resultante", "nota_id", "comentario", "fecha"]
