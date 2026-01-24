@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Form, UploadFile
 from fastapi.responses import RedirectResponse, StreamingResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, func
+from sqlalchemy import or_, func, and_
 from urllib.parse import urlencode
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, timedelta
@@ -175,7 +175,18 @@ def _movimiento_monto_firmado(mov: MovimientoContable, tipo_raw: str, tipo_op: s
     return base
 
 
-def _movimiento_display(mov: MovimientoContable) -> dict:
+def _movimiento_sucursal_id(mov: MovimientoContable) -> int | None:
+    if mov.sucursal_id:
+        return mov.sucursal_id
+    if mov.nota and mov.nota.sucursal_id:
+        return mov.nota.sucursal_id
+    return None
+
+
+def _movimiento_display(
+    mov: MovimientoContable,
+    sucursales_map: dict[int, Sucursal] | None = None,
+) -> dict:
     tipo_raw = (mov.tipo or "").lower()
     tipo_op = _movimiento_tipo_operacion(mov)
     label = _movimiento_label(tipo_raw, tipo_op)
@@ -186,13 +197,22 @@ def _movimiento_display(mov: MovimientoContable) -> dict:
         cuenta_label = mov.cuenta.display_label
     else:
         cuenta_label = mov.cuenta_financiera or ""
+    sucursal_id = _movimiento_sucursal_id(mov)
+    sucursal_label = "-"
+    if sucursal_id and sucursales_map:
+        suc = sucursales_map.get(sucursal_id)
+        sucursal_label = suc.nombre if suc else str(sucursal_id)
+    elif mov.sucursal and mov.sucursal.nombre:
+        sucursal_label = mov.sucursal.nombre
+    elif sucursal_id:
+        sucursal_label = str(sucursal_id)
     return {
         "id": mov.id,
         "tipo": label,
         "naturaleza": naturaleza,
         "monto_firmado": monto_firmado,
         "nota_id": mov.nota_id,
-        "sucursal": mov.sucursal.nombre if mov.sucursal else mov.sucursal_id or "-",
+        "sucursal": sucursal_label,
         "usuario_id": mov.usuario_id or "-",
         "metodo_pago": mov.metodo_pago or "",
         "cuenta_financiera": cuenta_label,
@@ -230,8 +250,11 @@ def _signed_partner_amounts(
     return total * sign, pagado * sign
 
 
-def _movimiento_display_partner(mov: MovimientoContable) -> dict:
-    view = _movimiento_display(mov)
+def _movimiento_display_partner(
+    mov: MovimientoContable,
+    sucursales_map: dict[int, Sucursal] | None = None,
+) -> dict:
+    view = _movimiento_display(mov, sucursales_map)
     tipo_raw = (mov.tipo or "").lower()
     signed = _partner_payment_signed(mov)
     view["monto_firmado"] = signed
@@ -257,6 +280,46 @@ def _get_partner_adjustments(
         .order_by(AjusteSaldoPartner.created_at.asc())
         .all()
     )
+
+
+def _apply_movimiento_sucursal_filter(
+    query,
+    *,
+    allowed_suc_ids: list[int] | None,
+    sucursal_id: int | None,
+):
+    query = query.outerjoin(Nota, MovimientoContable.nota_id == Nota.id)
+    if allowed_suc_ids is not None:
+        if sucursal_id:
+            return query.filter(
+                or_(
+                    MovimientoContable.sucursal_id == sucursal_id,
+                    and_(
+                        MovimientoContable.sucursal_id.is_(None),
+                        Nota.sucursal_id == sucursal_id,
+                    ),
+                )
+            )
+        return query.filter(
+            or_(
+                MovimientoContable.sucursal_id.in_(allowed_suc_ids),
+                and_(
+                    MovimientoContable.sucursal_id.is_(None),
+                    Nota.sucursal_id.in_(allowed_suc_ids),
+                ),
+            )
+        )
+    if sucursal_id:
+        return query.filter(
+            or_(
+                MovimientoContable.sucursal_id == sucursal_id,
+                and_(
+                    MovimientoContable.sucursal_id.is_(None),
+                    Nota.sucursal_id == sucursal_id,
+                ),
+            )
+        )
+    return query
 
 
 def _sum_partner_adjustments(
@@ -6937,13 +7000,11 @@ async def contabilidad_list(
     export_query = request.url.query
     fmt = params.get("format") or "csv"
     query = db.query(MovimientoContable)
-    if allowed_suc_ids is not None:
-        if sucursal_id:
-            query = query.filter(MovimientoContable.sucursal_id == sucursal_id)
-        else:
-            query = query.filter(MovimientoContable.sucursal_id.in_(allowed_suc_ids))
-    elif sucursal_id:
-        query = query.filter(MovimientoContable.sucursal_id == sucursal_id)
+    query = _apply_movimiento_sucursal_filter(
+        query,
+        allowed_suc_ids=allowed_suc_ids,
+        sucursal_id=sucursal_id,
+    )
     if date_from:
         try:
             dt_from = datetime.strptime(date_from, "%Y-%m-%d")
@@ -6959,7 +7020,7 @@ async def contabilidad_list(
     if cuenta_id:
         query = query.filter(MovimientoContable.cuenta_id == cuenta_id)
     movimientos = query.order_by(MovimientoContable.created_at.desc()).limit(200).all()
-    movimientos_view = [_movimiento_display(m) for m in movimientos]
+    movimientos_view = [_movimiento_display(m, sucursales_map) for m in movimientos]
     total_filtrado = sum((m["monto_firmado"] for m in movimientos_view), Decimal("0"))
     return templates.TemplateResponse(
         "admin/contabilidad_list.html",
@@ -7030,13 +7091,11 @@ async def contabilidad_export(
     date_to = params.get("to")
     fmt = params.get("format") or "csv"
     query = db.query(MovimientoContable)
-    if allowed_suc_ids is not None:
-        if sucursal_id:
-            query = query.filter(MovimientoContable.sucursal_id == sucursal_id)
-        else:
-            query = query.filter(MovimientoContable.sucursal_id.in_(allowed_suc_ids))
-    elif sucursal_id:
-        query = query.filter(MovimientoContable.sucursal_id == sucursal_id)
+    query = _apply_movimiento_sucursal_filter(
+        query,
+        allowed_suc_ids=allowed_suc_ids,
+        sucursal_id=sucursal_id,
+    )
     if date_from:
         try:
             dt_from = datetime.strptime(date_from, "%Y-%m-%d")
@@ -7053,7 +7112,9 @@ async def contabilidad_export(
         query = query.filter(MovimientoContable.cuenta_id == cuenta_id)
     movimientos = query.order_by(MovimientoContable.created_at.desc()).limit(1000).all()
 
-    movimientos_view = [_movimiento_display(m) for m in movimientos]
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales_map = {s.id: s for s in sucursales}
+    movimientos_view = [_movimiento_display(m, sucursales_map) for m in movimientos]
 
     if fmt == "csv":
         import csv

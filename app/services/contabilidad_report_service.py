@@ -7,6 +7,7 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
 from sqlalchemy.orm import Session
+from sqlalchemy import and_, or_
 
 from app.models import (
     MovimientoContable,
@@ -103,6 +104,46 @@ def _movimiento_monto_firmado(
     return monto
 
 
+def _apply_movimiento_sucursal_filter(
+    query,
+    *,
+    allowed_suc_ids: list[int] | None,
+    sucursal_id: int | None,
+):
+    query = query.outerjoin(Nota, MovimientoContable.nota_id == Nota.id)
+    if allowed_suc_ids is not None:
+        if sucursal_id:
+            return query.filter(
+                or_(
+                    MovimientoContable.sucursal_id == sucursal_id,
+                    and_(
+                        MovimientoContable.sucursal_id.is_(None),
+                        Nota.sucursal_id == sucursal_id,
+                    ),
+                )
+            )
+        return query.filter(
+            or_(
+                MovimientoContable.sucursal_id.in_(allowed_suc_ids),
+                and_(
+                    MovimientoContable.sucursal_id.is_(None),
+                    Nota.sucursal_id.in_(allowed_suc_ids),
+                ),
+            )
+        )
+    if sucursal_id:
+        return query.filter(
+            or_(
+                MovimientoContable.sucursal_id == sucursal_id,
+                and_(
+                    MovimientoContable.sucursal_id.is_(None),
+                    Nota.sucursal_id == sucursal_id,
+                ),
+            )
+        )
+    return query
+
+
 def _movimiento_naturaleza(tipo_raw: str, tipo_op: str | None) -> str:
     if tipo_raw == "compra":
         return "EGRESO"
@@ -143,13 +184,11 @@ def build_report_data(
     cuenta_label = cuenta.display_label if cuenta else "Todas"
 
     query = db.query(MovimientoContable)
-    if allowed_suc_ids is not None:
-        if sucursal_id:
-            query = query.filter(MovimientoContable.sucursal_id == sucursal_id)
-        else:
-            query = query.filter(MovimientoContable.sucursal_id.in_(allowed_suc_ids))
-    elif sucursal_id:
-        query = query.filter(MovimientoContable.sucursal_id == sucursal_id)
+    query = _apply_movimiento_sucursal_filter(
+        query,
+        allowed_suc_ids=allowed_suc_ids,
+        sucursal_id=sucursal_id,
+    )
 
     if date_from:
         dt_from = datetime.strptime(date_from.isoformat(), "%Y-%m-%d")
@@ -167,6 +206,15 @@ def build_report_data(
         notas_map = {n.id: n for n in db.query(Nota).filter(Nota.id.in_(nota_ids)).all()}
 
     sucursal_ids = {m.sucursal_id for m in movimientos if m.sucursal_id}
+    nota_sucursal_ids = {
+        notas_map[m.nota_id].sucursal_id
+        for m in movimientos
+        if m.nota_id
+        and notas_map.get(m.nota_id)
+        and not m.sucursal_id
+        and notas_map[m.nota_id].sucursal_id
+    }
+    sucursal_ids.update(nota_sucursal_ids)
     sucursal_map = {}
     if sucursal_ids:
         sucursal_map = {
@@ -227,7 +275,12 @@ def build_report_data(
                 "nota_id": mov.nota_id,
                 "folio": folio or (f"#{mov.nota_id}" if mov.nota_id else "-"),
                 "sucursal": (
-                    mov.sucursal.nombre if mov.sucursal else sucursal_map.get(mov.sucursal_id, "-")
+                    mov.sucursal.nombre
+                    if mov.sucursal and mov.sucursal.nombre
+                    else sucursal_map.get(
+                        mov.sucursal_id or (nota.sucursal_id if nota else None),
+                        "-",
+                    )
                 ),
                 "metodo": mov.metodo_pago or "-",
                 "cuenta": mov.cuenta.display_label if mov.cuenta else (mov.cuenta_financiera or "-"),
