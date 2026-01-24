@@ -15,8 +15,35 @@
             {% set owner_key = 'cliente:' ~ partner.id if partner_base == 'clientes' else 'proveedor:' ~ partner.id %}
             <a href="/web/admin/cuentas?owner_key={{ owner_key }}" class="btn btn-outline-primary btn-sm">Cuentas</a>
             <a href="/web/admin/{{ partner_base }}/{{ partner.id }}/editar" class="btn btn-outline-primary btn-sm">Editar</a>
+            {% if not partner_is_internal %}
+                {% if partner_base == 'proveedores' %}
+                    <form method="post" action="/web/admin/proveedores/{{ partner.id }}/crear-cliente" class="d-inline">
+                        <button class="btn btn-outline-success btn-sm" type="submit">Agregar como cliente</button>
+                    </form>
+                {% else %}
+                    <form method="post" action="/web/admin/clientes/{{ partner.id }}/crear-proveedor" class="d-inline">
+                        <button class="btn btn-outline-success btn-sm" type="submit">Agregar como proveedor</button>
+                    </form>
+                {% endif %}
+            {% endif %}
         </div>
     </div>
+
+    {% if link_ok %}
+        <div class="alert alert-success py-2 small mb-3">
+            {{ link_msg or "Entidad creada correctamente." }}
+        </div>
+    {% endif %}
+    {% if link_warn %}
+        <div class="alert alert-warning py-2 small mb-3">
+            {{ link_warn }}
+        </div>
+    {% endif %}
+    {% if link_error %}
+        <div class="alert alert-danger py-2 small mb-3">
+            {{ link_error }}
+        </div>
+    {% endif %}
 
     <div class="card hover-lift mb-3">
         <div class="card-body">

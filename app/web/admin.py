@@ -8,6 +8,7 @@ from fastapi.responses import RedirectResponse, StreamingResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func, and_
+from sqlalchemy.exc import IntegrityError
 from urllib.parse import urlencode
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, date, timedelta
@@ -582,6 +583,39 @@ def _set_cliente_placas(db: Session, cliente: Cliente, placas_list: list[str]):
     db.add(cliente)
 
 
+def _extract_partner_placas(partner: Cliente | Proveedor) -> list[str]:
+    placas = []
+    if getattr(partner, "placas_rel", None):
+        placas = [pl.placa for pl in partner.placas_rel if pl.placa]
+    if not placas and getattr(partner, "placas", None):
+        placas = [partner.placas]
+    return _parse_placas("\n".join(placas))
+
+
+def _filter_placas_for_cliente(db: Session, placas_list: list[str]) -> tuple[list[str], list[str]]:
+    if not placas_list:
+        return [], []
+    existing_rel = db.query(ClientePlaca.placa).filter(ClientePlaca.placa.in_(placas_list)).all()
+    existing_main = db.query(Cliente.placas).filter(Cliente.placas.in_(placas_list)).all()
+    taken = {row[0] for row in existing_rel if row and row[0]}
+    taken.update({row[0] for row in existing_main if row and row[0]})
+    allowed = [pl for pl in placas_list if pl not in taken]
+    skipped = [pl for pl in placas_list if pl in taken]
+    return allowed, skipped
+
+
+def _filter_placas_for_proveedor(db: Session, placas_list: list[str]) -> tuple[list[str], list[str]]:
+    if not placas_list:
+        return [], []
+    existing_rel = db.query(ProveedorPlaca.placa).filter(ProveedorPlaca.placa.in_(placas_list)).all()
+    existing_main = db.query(Proveedor.placas).filter(Proveedor.placas.in_(placas_list)).all()
+    taken = {row[0] for row in existing_rel if row and row[0]}
+    taken.update({row[0] for row in existing_main if row and row[0]})
+    allowed = [pl for pl in placas_list if pl not in taken]
+    skipped = [pl for pl in placas_list if pl in taken]
+    return allowed, skipped
+
+
 def _get_or_create_branch_cliente(db: Session, sucursal: Sucursal) -> Cliente:
     nombre = f"Sucursal {sucursal.nombre}"
     cliente = db.query(Cliente).filter(Cliente.nombre_completo == nombre).first()
@@ -602,6 +636,115 @@ def _get_or_create_branch_proveedor(db: Session, sucursal: Sucursal) -> Proveedo
     db.add(proveedor)
     db.flush()
     return proveedor
+
+
+def _is_internal_partner_name(db: Session, nombre: str | None) -> bool:
+    if not nombre or not nombre.startswith("Sucursal "):
+        return False
+    suc_name = nombre.replace("Sucursal ", "", 1).strip()
+    if not suc_name:
+        return False
+    return db.query(Sucursal.id).filter(Sucursal.nombre == suc_name).first() is not None
+
+
+def _find_existing_cliente_from_proveedor(
+    db: Session,
+    *,
+    placas_list: list[str],
+    correo: str | None,
+    telefono: str | None,
+) -> Cliente | None:
+    if placas_list:
+        existing = (
+            db.query(Cliente)
+            .join(ClientePlaca, Cliente.id == ClientePlaca.cliente_id)
+            .filter(ClientePlaca.placa.in_(placas_list))
+            .first()
+        )
+        if existing:
+            return existing
+        existing = db.query(Cliente).filter(Cliente.placas.in_(placas_list)).first()
+        if existing:
+            return existing
+    if correo:
+        existing = db.query(Cliente).filter(Cliente.correo_electronico == correo).first()
+        if existing:
+            return existing
+    if telefono:
+        existing = db.query(Cliente).filter(Cliente.telefono == telefono).first()
+        if existing:
+            return existing
+    return None
+
+
+def _find_existing_proveedor_from_cliente(
+    db: Session,
+    *,
+    placas_list: list[str],
+    correo: str | None,
+    telefono: str | None,
+) -> Proveedor | None:
+    if placas_list:
+        existing = (
+            db.query(Proveedor)
+            .join(ProveedorPlaca, Proveedor.id == ProveedorPlaca.proveedor_id)
+            .filter(ProveedorPlaca.placa.in_(placas_list))
+            .first()
+        )
+        if existing:
+            return existing
+        existing = db.query(Proveedor).filter(Proveedor.placas.in_(placas_list)).first()
+        if existing:
+            return existing
+    if correo:
+        existing = db.query(Proveedor).filter(Proveedor.correo_electronico == correo).first()
+        if existing:
+            return existing
+    if telefono:
+        existing = db.query(Proveedor).filter(Proveedor.telefono == telefono).first()
+        if existing:
+            return existing
+    return None
+
+
+def _create_cliente_from_proveedor(
+    db: Session,
+    *,
+    proveedor: Proveedor,
+) -> tuple[Cliente, list[str]]:
+    placas_list = _extract_partner_placas(proveedor)
+    placas_ok, placas_skipped = _filter_placas_for_cliente(db, placas_list)
+    cliente = Cliente(
+        nombre_completo=proveedor.nombre_completo,
+        telefono=proveedor.telefono,
+        correo_electronico=proveedor.correo_electronico,
+        placas=placas_ok[0] if placas_ok else None,
+        activo=proveedor.activo,
+    )
+    db.add(cliente)
+    db.flush()
+    _set_cliente_placas(db, cliente, placas_ok)
+    return cliente, placas_skipped
+
+
+def _create_proveedor_from_cliente(
+    db: Session,
+    *,
+    cliente: Cliente,
+) -> tuple[Proveedor, list[str]]:
+    placas_list = _extract_partner_placas(cliente)
+    placas_ok, placas_skipped = _filter_placas_for_proveedor(db, placas_list)
+    proveedor = Proveedor(
+        nombre_completo=cliente.nombre_completo,
+        telefono=cliente.telefono,
+        correo_electronico=cliente.correo_electronico,
+        placas=placas_ok[0] if placas_ok else None,
+        activo=cliente.activo,
+    )
+    db.add(proveedor)
+    db.flush()
+    _set_proveedor_placas(db, proveedor, placas_ok)
+    return proveedor, placas_skipped
 
 
 def _is_transfer_note(
@@ -1106,9 +1249,14 @@ def _build_partner_record_context(
     ajuste_ok: bool = False,
     ajuste_error: str | None = None,
     form_state: dict | None = None,
+    link_ok: bool = False,
+    link_msg: str | None = None,
+    link_warn: str | None = None,
+    link_error: str | None = None,
 ) -> dict:
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     form_state = form_state or {}
+    partner_is_internal = _is_internal_partner_name(db, partner.nombre_completo)
     if partner_type == "proveedor":
         tipo_operacion = TipoOperacion.compra
         partner_label = "Proveedor"
@@ -1211,6 +1359,11 @@ def _build_partner_record_context(
         "form_ajuste_direccion": form_state.get("ajuste_direccion", ""),
         "form_ajuste_monto": form_state.get("ajuste_monto", ""),
         "form_ajuste_comentario": form_state.get("ajuste_comentario", ""),
+        "link_ok": link_ok,
+        "link_msg": link_msg,
+        "link_warn": link_warn,
+        "link_error": link_error,
+        "partner_is_internal": partner_is_internal,
     }
 
 
@@ -2404,6 +2557,10 @@ async def proveedor_record(
     if not proveedor:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado.")
     ajuste_ok = request.query_params.get("ajuste") == "1"
+    link_ok = request.query_params.get("link_ok") == "1"
+    link_msg = (request.query_params.get("link_msg") or "").strip() or None
+    link_warn = (request.query_params.get("link_warn") or "").strip() or None
+    link_error = (request.query_params.get("link_error") or "").strip() or None
     context = _build_partner_record_context(
         request,
         db,
@@ -2412,8 +2569,64 @@ async def proveedor_record(
         partner=proveedor,
         q=q,
         ajuste_ok=ajuste_ok,
+        link_ok=link_ok,
+        link_msg=link_msg,
+        link_warn=link_warn,
+        link_error=link_error,
     )
     return templates.TemplateResponse("admin/partner_record.html", context)
+
+
+@router.post("/proveedores/{proveedor_id}/crear-cliente")
+async def proveedor_crear_cliente(
+    proveedor_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    proveedor = db.get(Proveedor, proveedor_id)
+    if not proveedor:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado.")
+    if _is_internal_partner_name(db, proveedor.nombre_completo):
+        msg = "No se puede crear como cliente porque es una sucursal interna."
+        return RedirectResponse(
+            url=f"/web/admin/proveedores/{proveedor_id}/record?{urlencode({'link_error': msg})}",
+            status_code=303,
+        )
+
+    placas_list = _extract_partner_placas(proveedor)
+    existing = _find_existing_cliente_from_proveedor(
+        db,
+        placas_list=placas_list,
+        correo=proveedor.correo_electronico,
+        telefono=proveedor.telefono,
+    )
+    if existing:
+        warn = "Ya existe un cliente con datos similares; se mostró su record."
+        return RedirectResponse(
+            url=f"/web/admin/clientes/{existing.id}/record?{urlencode({'link_warn': warn})}",
+            status_code=303,
+        )
+
+    try:
+        cliente, placas_skipped = _create_cliente_from_proveedor(db, proveedor=proveedor)
+        db.commit()
+        db.refresh(cliente)
+    except IntegrityError:
+        db.rollback()
+        msg = "No se pudo crear el cliente. Revisa placas o datos duplicados."
+        return RedirectResponse(
+            url=f"/web/admin/proveedores/{proveedor_id}/record?{urlencode({'link_error': msg})}",
+            status_code=303,
+        )
+
+    params = {"link_ok": "1", "link_msg": "Cliente creado desde proveedor."}
+    if placas_skipped:
+        params["link_warn"] = f"Placas omitidas por duplicado: {', '.join(placas_skipped)}."
+    return RedirectResponse(
+        url=f"/web/admin/clientes/{cliente.id}/record?{urlencode(params)}",
+        status_code=303,
+    )
 
 
 @router.post("/proveedores/{proveedor_id}/ajuste-saldo")
@@ -2737,6 +2950,10 @@ async def cliente_record(
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado.")
     ajuste_ok = request.query_params.get("ajuste") == "1"
+    link_ok = request.query_params.get("link_ok") == "1"
+    link_msg = (request.query_params.get("link_msg") or "").strip() or None
+    link_warn = (request.query_params.get("link_warn") or "").strip() or None
+    link_error = (request.query_params.get("link_error") or "").strip() or None
     context = _build_partner_record_context(
         request,
         db,
@@ -2745,8 +2962,64 @@ async def cliente_record(
         partner=cliente,
         q=q,
         ajuste_ok=ajuste_ok,
+        link_ok=link_ok,
+        link_msg=link_msg,
+        link_warn=link_warn,
+        link_error=link_error,
     )
     return templates.TemplateResponse("admin/partner_record.html", context)
+
+
+@router.post("/clientes/{cliente_id}/crear-proveedor")
+async def cliente_crear_proveedor(
+    cliente_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    cliente = db.get(Cliente, cliente_id)
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado.")
+    if _is_internal_partner_name(db, cliente.nombre_completo):
+        msg = "No se puede crear como proveedor porque es una sucursal interna."
+        return RedirectResponse(
+            url=f"/web/admin/clientes/{cliente_id}/record?{urlencode({'link_error': msg})}",
+            status_code=303,
+        )
+
+    placas_list = _extract_partner_placas(cliente)
+    existing = _find_existing_proveedor_from_cliente(
+        db,
+        placas_list=placas_list,
+        correo=cliente.correo_electronico,
+        telefono=cliente.telefono,
+    )
+    if existing:
+        warn = "Ya existe un proveedor con datos similares; se mostró su record."
+        return RedirectResponse(
+            url=f"/web/admin/proveedores/{existing.id}/record?{urlencode({'link_warn': warn})}",
+            status_code=303,
+        )
+
+    try:
+        proveedor, placas_skipped = _create_proveedor_from_cliente(db, cliente=cliente)
+        db.commit()
+        db.refresh(proveedor)
+    except IntegrityError:
+        db.rollback()
+        msg = "No se pudo crear el proveedor. Revisa placas o datos duplicados."
+        return RedirectResponse(
+            url=f"/web/admin/clientes/{cliente_id}/record?{urlencode({'link_error': msg})}",
+            status_code=303,
+        )
+
+    params = {"link_ok": "1", "link_msg": "Proveedor creado desde cliente."}
+    if placas_skipped:
+        params["link_warn"] = f"Placas omitidas por duplicado: {', '.join(placas_skipped)}."
+    return RedirectResponse(
+        url=f"/web/admin/proveedores/{proveedor.id}/record?{urlencode(params)}",
+        status_code=303,
+    )
 
 
 @router.post("/clientes/{cliente_id}/ajuste-saldo")
