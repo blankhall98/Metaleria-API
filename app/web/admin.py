@@ -7046,6 +7046,7 @@ async def contabilidad_list(
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     params = request.query_params
+    sucursal_filter_active = bool(params.get("sucursal_id"))
     sucursal_id = None
     if params.get("sucursal_id"):
         try:
@@ -7129,35 +7130,36 @@ async def contabilidad_list(
             else:
                 saldo_favor_empresa += -diff
 
-    ajustes_clientes = (
-        db.query(AjusteSaldoPartner)
-        .filter(AjusteSaldoPartner.partner_type == "cliente")
-        .all()
-    )
-    for ajuste in ajustes_clientes:
-        nombre = clientes_map.get(ajuste.partner_id)
-        if _is_internal_partner(nombre):
-            continue
-        delta = Decimal(str(ajuste.monto or 0))
-        if delta >= Decimal("0"):
-            total_por_cobrar += delta
-        else:
-            saldo_favor_clientes += -delta
+    if not sucursal_filter_active:
+        ajustes_clientes = (
+            db.query(AjusteSaldoPartner)
+            .filter(AjusteSaldoPartner.partner_type == "cliente")
+            .all()
+        )
+        for ajuste in ajustes_clientes:
+            nombre = clientes_map.get(ajuste.partner_id)
+            if _is_internal_partner(nombre):
+                continue
+            delta = Decimal(str(ajuste.monto or 0))
+            if delta >= Decimal("0"):
+                total_por_cobrar += delta
+            else:
+                saldo_favor_clientes += -delta
 
-    ajustes_proveedores = (
-        db.query(AjusteSaldoPartner)
-        .filter(AjusteSaldoPartner.partner_type == "proveedor")
-        .all()
-    )
-    for ajuste in ajustes_proveedores:
-        nombre = proveedores_map.get(ajuste.partner_id)
-        if _is_internal_partner(nombre):
-            continue
-        delta = Decimal(str(ajuste.monto or 0))
-        if delta >= Decimal("0"):
-            total_por_pagar += delta
-        else:
-            saldo_favor_empresa += -delta
+        ajustes_proveedores = (
+            db.query(AjusteSaldoPartner)
+            .filter(AjusteSaldoPartner.partner_type == "proveedor")
+            .all()
+        )
+        for ajuste in ajustes_proveedores:
+            nombre = proveedores_map.get(ajuste.partner_id)
+            if _is_internal_partner(nombre):
+                continue
+            delta = Decimal(str(ajuste.monto or 0))
+            if delta >= Decimal("0"):
+                total_por_pagar += delta
+            else:
+                saldo_favor_empresa += -delta
 
     comisiones_pendientes = Decimal("0")
     comisiones_query = db.query(ComisionarioNota).filter(ComisionarioNota.estado == ComisionarioNotaEstado.aprobada)
