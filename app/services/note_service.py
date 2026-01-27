@@ -25,6 +25,8 @@ from app.models import (
     Cuenta,
     CuentaScrap360,
     CuentaScrap360Movimiento,
+    User,
+    UserRole,
 )
 
 
@@ -296,6 +298,28 @@ def _resolve_cuenta_id(db: Session, nota: Nota, raw: str | None) -> int | None:
     return None
 
 
+def _resolve_nota_sucursal(
+    db: Session,
+    *,
+    sucursal_id: int | None,
+    trabajador_id: int,
+) -> int:
+    if not trabajador_id:
+        raise ValueError("Trabajador invalido.")
+    usuario = db.get(User, trabajador_id)
+    if not usuario:
+        raise ValueError("Trabajador no encontrado.")
+    if usuario.rol == UserRole.trabajador:
+        if not usuario.sucursal_id:
+            raise ValueError("El trabajador no tiene una sucursal asignada.")
+        if sucursal_id and int(sucursal_id) != usuario.sucursal_id:
+            raise ValueError("La sucursal no coincide con la asignada al trabajador.")
+        return int(usuario.sucursal_id)
+    if not sucursal_id:
+        raise ValueError("Debes indicar la sucursal de la nota.")
+    return int(sucursal_id)
+
+
 def _validate_cuenta_for_nota(db: Session, nota: Nota, cuenta_id: int) -> Cuenta:
     cuenta = db.get(Cuenta, cuenta_id)
     if not cuenta or not cuenta.activo:
@@ -448,7 +472,7 @@ def _apply_precio_overrides(
 def create_draft_note(
     db: Session,
     *,
-    sucursal_id: int,
+    sucursal_id: int | None,
     trabajador_id: int,
     tipo_operacion: TipoOperacion,
     materiales_payload: Sequence[dict],
@@ -464,6 +488,11 @@ def create_draft_note(
     """
     if tipo_operacion not in (TipoOperacion.compra, TipoOperacion.venta):
         raise ValueError("Tipo de operacion invalido.")
+    sucursal_id = _resolve_nota_sucursal(
+        db,
+        sucursal_id=sucursal_id,
+        trabajador_id=trabajador_id,
+    )
     nota = Nota(
         sucursal_id=sucursal_id,
         trabajador_id=trabajador_id,
