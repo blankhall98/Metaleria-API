@@ -56,6 +56,12 @@
 {% if sucursal_error %}
     <div class="alert alert-danger py-2 small mb-3">{{ sucursal_error }}</div>
 {% endif %}
+{% if delete_ok %}
+    <div class="alert alert-success py-2 small mb-3">Cuenta eliminada correctamente.</div>
+{% endif %}
+{% if delete_error %}
+    <div class="alert alert-danger py-2 small mb-3">{{ delete_error }}</div>
+{% endif %}
 
 <div class="card hover-lift">
     <div class="card-body">
@@ -92,6 +98,11 @@
                             <div class="d-flex gap-2 justify-content-end flex-wrap">
                                 <a href="/web/admin/cuentas-scrap360/{{ cuenta.id }}" class="btn btn-sm btn-outline-primary">Detalle</a>
                                 <a href="/web/admin/cuentas-scrap360/{{ cuenta.id }}/editar" class="btn btn-sm btn-outline-secondary">Editar</a>
+                                {% if user.rol == 'super_admin' %}
+                                    <form method="post" action="/web/admin/cuentas-scrap360/{{ cuenta.id }}/eliminar" onsubmit="return confirm('¿Eliminar esta cuenta? Esta acción no se puede deshacer.');">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+                                    </form>
+                                {% endif %}
                             </div>
                         </td>
                     </tr>

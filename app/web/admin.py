@@ -2005,6 +2005,9 @@ async def materiales_list(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_superadmin),
 ):
+    params = request.query_params
+    delete_ok = params.get("deleted") == "1"
+    delete_error = (params.get("delete_error") or "").strip() or None
     materiales = db.query(Material).order_by(Material.nombre).all()
     return templates.TemplateResponse(
         "admin/materiales_list.html",
@@ -2013,6 +2016,8 @@ async def materiales_list(
             "env": settings.ENV,
             "user": current_user,
             "materiales": materiales,
+            "delete_ok": delete_ok,
+            "delete_error": delete_error,
         },
     )
 
@@ -2169,6 +2174,59 @@ async def material_edit_post(
     db.commit()
 
     return RedirectResponse(url="/web/admin/materiales", status_code=303)
+
+
+@router.post("/materiales/{material_id}/eliminar")
+async def material_delete(
+    material_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    material = db.get(Material, material_id)
+    if not material:
+        raise HTTPException(status_code=404, detail="Material no encontrado.")
+
+    tiene_notas = db.query(NotaMaterial.id).filter(NotaMaterial.material_id == material_id).first()
+    tiene_inventario = db.query(Inventario.id).filter(Inventario.material_id == material_id).first()
+    tiene_precios = db.query(TablaPrecio.id).filter(TablaPrecio.material_id == material_id).first()
+    tiene_conversion = (
+        db.query(ConversionMaterial.id)
+        .filter(
+            or_(
+                ConversionMaterial.material_origen_id == material_id,
+                ConversionMaterial.material_destino_id == material_id,
+            )
+        )
+        .first()
+    )
+    tiene_comision = (
+        db.query(ComisionarioNotaMaterial.id)
+        .filter(ComisionarioNotaMaterial.material_id == material_id)
+        .first()
+    )
+
+    if tiene_notas or tiene_inventario or tiene_precios or tiene_conversion or tiene_comision:
+        reasons = []
+        if tiene_notas:
+            reasons.append("notas")
+        if tiene_inventario:
+            reasons.append("inventario")
+        if tiene_precios:
+            reasons.append("precios")
+        if tiene_conversion:
+            reasons.append("conversiones")
+        if tiene_comision:
+            reasons.append("comisiones")
+        msg = f"No se puede eliminar: tiene {', '.join(reasons)} asociados."
+        return RedirectResponse(
+            url=f"/web/admin/materiales?{urlencode({'delete_error': msg})}",
+            status_code=303,
+        )
+
+    db.delete(material)
+    db.commit()
+    return RedirectResponse(url="/web/admin/materiales?deleted=1", status_code=303)
 
 
 # ---------- PRECIOS POR MATERIAL ----------
@@ -3734,6 +3792,8 @@ async def cuentas_list(
     q = (params.get("q") or "").strip()
     owner_key = (params.get("owner_key") or "").strip()
     activo = (params.get("activo") or "").strip()
+    delete_ok = params.get("deleted") == "1"
+    delete_error = (params.get("delete_error") or "").strip() or None
 
     query = db.query(Cuenta)
     if q:
@@ -3805,6 +3865,8 @@ async def cuentas_list(
             "owner_error": owner_error,
             "activo": activo or "",
             "q": q or "",
+            "delete_ok": delete_ok,
+            "delete_error": delete_error,
         },
     )
 
@@ -4249,6 +4311,47 @@ async def cuenta_edit_post(
     return RedirectResponse(url=f"/web/admin/cuentas/{cuenta.id}", status_code=303)
 
 
+@router.post("/cuentas/{cuenta_id}/eliminar")
+async def cuenta_delete(
+    cuenta_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    cuenta = db.get(Cuenta, cuenta_id)
+    if not cuenta:
+        raise HTTPException(status_code=404, detail="Cuenta no encontrada.")
+
+    tiene_notas = db.query(Nota.id).filter(Nota.cuenta_financiera_id == cuenta_id).first()
+    tiene_pagos = db.query(NotaPago.id).filter(NotaPago.cuenta_id == cuenta_id).first()
+    tiene_comision_pagos = (
+        db.query(ComisionarioPago.id).filter(ComisionarioPago.cuenta_id == cuenta_id).first()
+    )
+    tiene_movimientos = (
+        db.query(MovimientoContable.id).filter(MovimientoContable.cuenta_id == cuenta_id).first()
+    )
+
+    if tiene_notas or tiene_pagos or tiene_comision_pagos or tiene_movimientos:
+        reasons = []
+        if tiene_notas:
+            reasons.append("notas")
+        if tiene_pagos:
+            reasons.append("pagos")
+        if tiene_comision_pagos:
+            reasons.append("pagos comisionarios")
+        if tiene_movimientos:
+            reasons.append("movimientos contables")
+        msg = f"No se puede eliminar: tiene {', '.join(reasons)} asociados."
+        return RedirectResponse(
+            url=f"/web/admin/cuentas?{urlencode({'delete_error': msg})}",
+            status_code=303,
+        )
+
+    db.delete(cuenta)
+    db.commit()
+    return RedirectResponse(url="/web/admin/cuentas?deleted=1", status_code=303)
+
+
 @router.get("/cuentas/{cuenta_id}")
 async def cuenta_detail(
     cuenta_id: int,
@@ -4628,6 +4731,8 @@ async def cuentas_scrap360_list(
     q = (params.get("q") or "").strip()
     tipo = (params.get("tipo") or "").strip().lower()
     activo = (params.get("activo") or "").strip()
+    delete_ok = params.get("deleted") == "1"
+    delete_error = (params.get("delete_error") or "").strip() or None
     sucursal_id = None
     sucursal_error = None
     if params.get("sucursal_id"):
@@ -4686,6 +4791,8 @@ async def cuentas_scrap360_list(
             "sucursal_id": sucursal_id,
             "sucursal_error": sucursal_error,
             "tipos_scrap360": _SCRAP360_TIPOS,
+            "delete_ok": delete_ok,
+            "delete_error": delete_error,
         },
     )
 
@@ -4954,6 +5061,50 @@ async def cuenta_scrap360_edit_post(
     db.add(cuenta)
     db.commit()
     return RedirectResponse(url=f"/web/admin/cuentas-scrap360/{cuenta.id}", status_code=303)
+
+
+@router.post("/cuentas-scrap360/{cuenta_id}/eliminar")
+async def cuenta_scrap360_delete(
+    cuenta_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    cuenta = db.get(CuentaScrap360, cuenta_id)
+    if not cuenta:
+        raise HTTPException(status_code=404, detail="Cuenta Scrap360 no encontrada.")
+
+    tiene_pagos = db.query(NotaPago.id).filter(NotaPago.cuenta_scrap360_id == cuenta_id).first()
+    tiene_comision_pagos = (
+        db.query(ComisionarioPago.id)
+        .filter(ComisionarioPago.cuenta_scrap360_id == cuenta_id)
+        .first()
+    )
+    tiene_movimientos = (
+        db.query(CuentaScrap360Movimiento.id)
+        .filter(CuentaScrap360Movimiento.cuenta_id == cuenta_id)
+        .first()
+    )
+
+    if tiene_pagos or tiene_comision_pagos or tiene_movimientos:
+        reasons = []
+        if tiene_pagos:
+            reasons.append("pagos")
+        if tiene_comision_pagos:
+            reasons.append("pagos comisionarios")
+        if tiene_movimientos:
+            reasons.append("movimientos")
+        msg = f"No se puede eliminar: tiene {', '.join(reasons)} asociados."
+        return RedirectResponse(
+            url=f"/web/admin/cuentas-scrap360?{urlencode({'delete_error': msg})}",
+            status_code=303,
+        )
+
+    cuenta.sucursales = []
+    db.flush()
+    db.delete(cuenta)
+    db.commit()
+    return RedirectResponse(url="/web/admin/cuentas-scrap360?deleted=1", status_code=303)
 
 
 @router.post("/cuentas-scrap360/{cuenta_id}/ajuste")
