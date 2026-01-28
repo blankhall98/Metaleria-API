@@ -7231,6 +7231,8 @@ async def contabilidad_list(
     proveedores_map = {p.id: p.nombre_completo for p in proveedores}
     clientes_map = {c.id: c.nombre_completo for c in clientes}
 
+    solo_sucursal_en_uso = False
+
     notas_query = db.query(Nota).filter(Nota.estado == NotaEstado.aprobada)
     notas_query = _apply_sucursal_filter(notas_query, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
     notas_aprobadas = notas_query.all()
@@ -7249,6 +7251,50 @@ async def contabilidad_list(
             return False
         suc_name = nombre.replace("Sucursal ", "", 1).strip()
         return suc_name in sucursal_names
+
+    if sucursal_filter_active and sucursal_id:
+        notas_scope_query = db.query(Nota).filter(Nota.estado == NotaEstado.aprobada)
+        notas_scope_query = _apply_sucursal_filter(
+            notas_scope_query,
+            allowed_suc_ids,
+            None,
+            Nota.sucursal_id,
+        )
+        notas_scope = notas_scope_query.all()
+        otras_sucursales = set()
+        for nota in notas_scope:
+            nombre = None
+            if nota.tipo_operacion == TipoOperacion.venta:
+                nombre = clientes_map.get(nota.cliente_id)
+            elif nota.tipo_operacion == TipoOperacion.compra:
+                partner_kind, partner_id = _nota_partner_key(nota)
+                if partner_kind == "cliente":
+                    nombre = clientes_map.get(partner_id)
+                else:
+                    nombre = proveedores_map.get(partner_id)
+            if _is_internal_partner(nombre):
+                continue
+            if nota.sucursal_id and nota.sucursal_id != sucursal_id:
+                otras_sucursales.add(nota.sucursal_id)
+                break
+
+        solo_sucursal_en_uso = len(otras_sucursales) == 0
+        if solo_sucursal_en_uso:
+            comisiones_scope = (
+                db.query(ComisionarioNota)
+                .filter(ComisionarioNota.estado == ComisionarioNotaEstado.aprobada)
+            )
+            if allowed_suc_ids is not None:
+                comisiones_scope = comisiones_scope.filter(
+                    or_(
+                        ComisionarioNota.sucursal_id.in_(allowed_suc_ids),
+                        ComisionarioNota.sucursal_id.is_(None),
+                    )
+                )
+            for nota in comisiones_scope.all():
+                if nota.sucursal_id and nota.sucursal_id != sucursal_id:
+                    solo_sucursal_en_uso = False
+                    break
 
     for nota in notas_aprobadas:
         total = Decimal(str(nota.total_monto or 0))
@@ -7281,7 +7327,8 @@ async def contabilidad_list(
             else:
                 saldo_favor_empresa += -diff
 
-    if not sucursal_filter_active:
+    include_global_ajustes = (not sucursal_filter_active) or solo_sucursal_en_uso
+    if include_global_ajustes:
         ajustes_clientes = (
             db.query(AjusteSaldoPartner)
             .filter(AjusteSaldoPartner.partner_type == "cliente")
@@ -7316,11 +7363,27 @@ async def contabilidad_list(
     comisiones_query = db.query(ComisionarioNota).filter(ComisionarioNota.estado == ComisionarioNotaEstado.aprobada)
     if allowed_suc_ids is not None:
         if sucursal_id:
-            comisiones_query = comisiones_query.filter(ComisionarioNota.sucursal_id == sucursal_id)
+            if solo_sucursal_en_uso:
+                comisiones_query = comisiones_query.filter(
+                    or_(
+                        ComisionarioNota.sucursal_id == sucursal_id,
+                        ComisionarioNota.sucursal_id.is_(None),
+                    )
+                )
+            else:
+                comisiones_query = comisiones_query.filter(ComisionarioNota.sucursal_id == sucursal_id)
         else:
             comisiones_query = comisiones_query.filter(ComisionarioNota.sucursal_id.in_(allowed_suc_ids))
     elif sucursal_id:
-        comisiones_query = comisiones_query.filter(ComisionarioNota.sucursal_id == sucursal_id)
+        if solo_sucursal_en_uso:
+            comisiones_query = comisiones_query.filter(
+                or_(
+                    ComisionarioNota.sucursal_id == sucursal_id,
+                    ComisionarioNota.sucursal_id.is_(None),
+                )
+            )
+        else:
+            comisiones_query = comisiones_query.filter(ComisionarioNota.sucursal_id == sucursal_id)
     for nota in comisiones_query.all():
         total = Decimal(str(nota.total_monto or 0))
         pagado = Decimal(str(nota.monto_pagado or 0))
