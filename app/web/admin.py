@@ -521,6 +521,271 @@ def _build_partner_ledger(
 
     return events
 
+def _build_unified_partner_ledger(
+    db: Session,
+    *,
+    proveedor_id: int | None,
+    cliente_id: int | None,
+    allowed_suc_ids: list[int] | None,
+) -> list[dict]:
+    notas: list[Nota] = []
+    if proveedor_id:
+        notes_query = db.query(Nota).filter(
+            Nota.proveedor_id == proveedor_id,
+            Nota.tipo_operacion == TipoOperacion.compra,
+        )
+        notes_query = notes_query.filter(
+            Nota.estado.in_([NotaEstado.aprobada, NotaEstado.cancelada]),
+        )
+        notes_query = _apply_sucursal_filter(notes_query, allowed_suc_ids, None, Nota.sucursal_id)
+        notas.extend(notes_query.all())
+    if cliente_id:
+        notes_query = db.query(Nota).filter(
+            Nota.cliente_id == cliente_id,
+            Nota.tipo_operacion == TipoOperacion.venta,
+        )
+        notes_query = notes_query.filter(
+            Nota.estado.in_([NotaEstado.aprobada, NotaEstado.cancelada]),
+        )
+        notes_query = _apply_sucursal_filter(notes_query, allowed_suc_ids, None, Nota.sucursal_id)
+        notas.extend(notes_query.all())
+
+    ajustes: list[tuple[AjusteSaldoPartner, int]] = []
+    if proveedor_id:
+        ajustes.extend(
+            [(a, 1) for a in _get_partner_adjustments(db, partner_type="proveedor", partner_id=proveedor_id)]
+        )
+    if cliente_id:
+        ajustes.extend(
+            [(a, -1) for a in _get_partner_adjustments(db, partner_type="cliente", partner_id=cliente_id)]
+        )
+
+    if not notas and not ajustes:
+        return []
+
+    note_ids = [n.id for n in notas]
+    folio_map = _build_folio_map(notas) if notas else {}
+
+    base_movs = {}
+    reversos = []
+    pagos = []
+    if note_ids:
+        base_movs = {
+            mov.nota_id: mov
+            for mov in db.query(MovimientoContable)
+            .filter(
+                MovimientoContable.nota_id.in_(note_ids),
+                MovimientoContable.tipo.in_([TipoOperacion.compra.value, TipoOperacion.venta.value]),
+            )
+            .all()
+        }
+        reversos = (
+            db.query(MovimientoContable)
+            .filter(
+                MovimientoContable.nota_id.in_(note_ids),
+                MovimientoContable.tipo.in_(["reverso", "reverso_pago"]),
+            )
+            .all()
+        )
+        pagos = (
+            db.query(NotaPago)
+            .filter(NotaPago.nota_id.in_(note_ids))
+            .order_by(NotaPago.created_at.asc())
+            .all()
+        )
+
+    def note_sign(nota: Nota) -> Decimal:
+        return Decimal("1") if nota.tipo_operacion == TipoOperacion.compra else Decimal("-1")
+
+    note_signs = {nota.id: note_sign(nota) for nota in notas}
+
+    events: list[dict] = []
+    for nota in notas:
+        base_mov = base_movs.get(nota.id)
+        fecha = base_mov.created_at if base_mov and base_mov.created_at else nota.created_at
+        total = Decimal(str(nota.total_monto or 0))
+        sign = note_signs.get(nota.id, Decimal("1"))
+        delta = total * sign
+        cargo = delta if delta >= 0 else Decimal("0")
+        abono = Decimal("0") if delta >= 0 else -delta
+        tipo_label = "Nota compra" if nota.tipo_operacion == TipoOperacion.compra else "Nota venta"
+        events.append(
+            {
+                "fecha": fecha,
+                "orden": 0,
+                "tipo": tipo_label,
+                "nota_id": nota.id,
+                "folio": folio_map.get(nota.id) or f"#{nota.id}",
+                "cargo": cargo,
+                "abono": abono,
+                "metodo": "-",
+                "cuenta": "-",
+                "comentario": nota.comentarios_admin or "",
+            }
+        )
+
+    for pago in pagos:
+        cuenta_label = pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or "-")
+        sign = note_signs.get(pago.nota_id, Decimal("1"))
+        delta = Decimal(str(pago.monto or 0)) * (-sign)
+        cargo = delta if delta >= 0 else Decimal("0")
+        abono = Decimal("0") if delta >= 0 else -delta
+        nota = next((n for n in notas if n.id == pago.nota_id), None)
+        tipo_label = "Pago compra" if nota and nota.tipo_operacion == TipoOperacion.compra else "Pago venta"
+        events.append(
+            {
+                "fecha": pago.created_at,
+                "orden": 1,
+                "tipo": tipo_label,
+                "nota_id": pago.nota_id,
+                "folio": folio_map.get(pago.nota_id) or f"#{pago.nota_id}",
+                "cargo": cargo,
+                "abono": abono,
+                "metodo": pago.metodo_pago or "-",
+                "cuenta": cuenta_label,
+                "comentario": pago.comentario or "",
+            }
+        )
+
+    for mov in reversos:
+        monto = abs(Decimal(str(mov.monto or 0)))
+        sign = note_signs.get(mov.nota_id, Decimal("1"))
+        nota = next((n for n in notas if n.id == mov.nota_id), None)
+        tipo_base = "compra" if nota and nota.tipo_operacion == TipoOperacion.compra else "venta"
+        if mov.tipo == "reverso":
+            delta = monto * (-sign)
+            cargo = delta if delta >= 0 else Decimal("0")
+            abono = Decimal("0") if delta >= 0 else -delta
+            tipo_label = f"Devolucion {tipo_base}"
+            events.append(
+                {
+                    "fecha": mov.created_at,
+                    "orden": 2,
+                    "tipo": tipo_label,
+                    "nota_id": mov.nota_id,
+                    "folio": folio_map.get(mov.nota_id) or f"#{mov.nota_id}",
+                    "cargo": cargo,
+                    "abono": abono,
+                    "metodo": mov.metodo_pago or "-",
+                    "cuenta": mov.cuenta.display_label if mov.cuenta else (mov.cuenta_financiera or "-"),
+                    "comentario": mov.comentario or "",
+                }
+            )
+        elif mov.tipo == "reverso_pago":
+            delta = monto * sign
+            cargo = delta if delta >= 0 else Decimal("0")
+            abono = Decimal("0") if delta >= 0 else -delta
+            tipo_label = f"Reverso pago {tipo_base}"
+            events.append(
+                {
+                    "fecha": mov.created_at,
+                    "orden": 3,
+                    "tipo": tipo_label,
+                    "nota_id": mov.nota_id,
+                    "folio": folio_map.get(mov.nota_id) or f"#{mov.nota_id}",
+                    "cargo": cargo,
+                    "abono": abono,
+                    "metodo": mov.metodo_pago or "-",
+                    "cuenta": mov.cuenta.display_label if mov.cuenta else (mov.cuenta_financiera or "-"),
+                    "comentario": mov.comentario or "",
+                }
+            )
+
+    for ajuste, sign in ajustes:
+        delta = Decimal(str(ajuste.monto or 0)) * Decimal(str(sign))
+        cargo = delta if delta >= 0 else Decimal("0")
+        abono = Decimal("0") if delta >= 0 else -delta
+        events.append(
+            {
+                "fecha": ajuste.created_at,
+                "orden": 4,
+                "tipo": "Ajuste manual",
+                "nota_id": None,
+                "folio": "-",
+                "cargo": cargo,
+                "abono": abono,
+                "metodo": "-",
+                "cuenta": "-",
+                "comentario": ajuste.comentario or "",
+            }
+        )
+
+    events = [e for e in events if e["fecha"] is not None]
+    events.sort(key=lambda e: (e["fecha"], e["orden"]))
+
+    saldo = Decimal("0")
+    for event in events:
+        saldo += event["cargo"] - event["abono"]
+        event["saldo"] = saldo
+
+    return events
+
+def _aggregate_unified_partner_summary(
+    *,
+    compras: list[Nota],
+    ventas: list[Nota],
+    ajustes_proveedor: Decimal,
+    ajustes_cliente: Decimal,
+) -> dict:
+    summary = {
+        "total_notas": len(compras) + len(ventas),
+        "notas_aprobadas": 0,
+        "notas_revision": 0,
+        "notas_borrador": 0,
+        "notas_canceladas": 0,
+        "total_compras": Decimal("0"),
+        "total_ventas": Decimal("0"),
+        "total_pagado_compras": Decimal("0"),
+        "total_cobrado_ventas": Decimal("0"),
+        "saldo_pagar": Decimal("0"),
+        "saldo_cobrar": Decimal("0"),
+        "ajustes_proveedor": ajustes_proveedor,
+        "ajustes_cliente": ajustes_cliente,
+        "saldo_neto": Decimal("0"),
+        "saldo_neto_pendiente": Decimal("0"),
+        "saldo_neto_favor": Decimal("0"),
+    }
+
+    for nota in compras:
+        if nota.estado == NotaEstado.aprobada:
+            summary["notas_aprobadas"] += 1
+            total = Decimal(str(nota.total_monto or 0))
+            pagado = Decimal(str(nota.monto_pagado or 0))
+            summary["total_compras"] += total
+            summary["total_pagado_compras"] += pagado
+        elif nota.estado == NotaEstado.en_revision:
+            summary["notas_revision"] += 1
+        elif nota.estado == NotaEstado.borrador:
+            summary["notas_borrador"] += 1
+        elif nota.estado == NotaEstado.cancelada:
+            summary["notas_canceladas"] += 1
+
+    for nota in ventas:
+        if nota.estado == NotaEstado.aprobada:
+            summary["notas_aprobadas"] += 1
+            total = Decimal(str(nota.total_monto or 0))
+            pagado = Decimal(str(nota.monto_pagado or 0))
+            summary["total_ventas"] += total
+            summary["total_cobrado_ventas"] += pagado
+        elif nota.estado == NotaEstado.en_revision:
+            summary["notas_revision"] += 1
+        elif nota.estado == NotaEstado.borrador:
+            summary["notas_borrador"] += 1
+        elif nota.estado == NotaEstado.cancelada:
+            summary["notas_canceladas"] += 1
+
+    summary["saldo_pagar"] = summary["total_compras"] - summary["total_pagado_compras"]
+    summary["saldo_cobrar"] = summary["total_ventas"] - summary["total_cobrado_ventas"]
+
+    neto = (summary["saldo_pagar"] + ajustes_proveedor) - (summary["saldo_cobrar"] + ajustes_cliente)
+    summary["saldo_neto"] = neto
+    if neto > Decimal("0"):
+        summary["saldo_neto_pendiente"] = neto
+    elif neto < Decimal("0"):
+        summary["saldo_neto_favor"] = -neto
+
+    return summary
+
 def _signed_inventario_qty(mov: InventarioMovimiento) -> Decimal:
     qty = Decimal(str(mov.cantidad_kg or 0))
     if mov.tipo == "venta":
@@ -1257,6 +1522,13 @@ def _build_partner_record_context(
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     form_state = form_state or {}
     partner_is_internal = _is_internal_partner_name(db, partner.nombre_completo)
+    linked_partner = None
+    linked_partner_label = None
+    unified_summary = None
+    unified_ledger_rows = None
+    unified_ledger_final = Decimal("0")
+    unified_ledger_label = None
+    unified_ledger_help = None
     if partner_type == "proveedor":
         tipo_operacion = TipoOperacion.compra
         partner_label = "Proveedor"
@@ -1284,6 +1556,76 @@ def _build_partner_record_context(
         ajuste_favor_label = "Saldo a favor del cliente (la empresa debe pagar)"
         ajuste_contra_label = "Saldo en contra del cliente (el cliente debe pagar)"
 
+    if not partner_is_internal:
+        placas_list = _extract_partner_placas(partner)
+        if partner_type == "proveedor":
+            linked_partner = _find_existing_cliente_from_proveedor(
+                db,
+                placas_list=placas_list,
+                correo=partner.correo_electronico,
+                telefono=partner.telefono,
+            )
+            if linked_partner and _is_internal_partner_name(db, linked_partner.nombre_completo):
+                linked_partner = None
+            linked_partner_label = "Cliente"
+        else:
+            linked_partner = _find_existing_proveedor_from_cliente(
+                db,
+                placas_list=placas_list,
+                correo=partner.correo_electronico,
+                telefono=partner.telefono,
+            )
+            if linked_partner and _is_internal_partner_name(db, linked_partner.nombre_completo):
+                linked_partner = None
+            linked_partner_label = "Proveedor"
+
+    if linked_partner:
+        compras_query = db.query(Nota).filter(
+            Nota.proveedor_id == (partner.id if partner_type == "proveedor" else linked_partner.id),
+            Nota.tipo_operacion == TipoOperacion.compra,
+        )
+        ventas_query = db.query(Nota).filter(
+            Nota.cliente_id == (partner.id if partner_type == "cliente" else linked_partner.id),
+            Nota.tipo_operacion == TipoOperacion.venta,
+        )
+        if allowed_suc_ids:
+            compras_query = compras_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
+            ventas_query = ventas_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
+        compras = compras_query.order_by(Nota.created_at.desc()).all()
+        ventas = ventas_query.order_by(Nota.created_at.desc()).all()
+        prov_id = partner.id if partner_type == "proveedor" else linked_partner.id
+        cli_id = partner.id if partner_type == "cliente" else linked_partner.id
+        ajustes_proveedor = _get_partner_adjustments_total(
+            db,
+            partner_type="proveedor",
+            partner_id=prov_id,
+        )
+        ajustes_cliente = _get_partner_adjustments_total(
+            db,
+            partner_type="cliente",
+            partner_id=cli_id,
+        )
+        unified_summary = _aggregate_unified_partner_summary(
+            compras=compras,
+            ventas=ventas,
+            ajustes_proveedor=ajustes_proveedor,
+            ajustes_cliente=ajustes_cliente,
+        )
+        unified_ledger_rows = _build_unified_partner_ledger(
+            db,
+            proveedor_id=prov_id,
+            cliente_id=cli_id,
+            allowed_suc_ids=allowed_suc_ids,
+        )
+        unified_ledger_final = (
+            unified_ledger_rows[-1]["saldo"] if unified_ledger_rows else Decimal("0")
+        )
+        unified_ledger_label = "Saldo unificado (proveedor/cliente)"
+        unified_ledger_help = (
+            "Saldo positivo indica pendiente por pagar al partner. "
+            "Saldo negativo indica pendiente por cobrar del partner."
+        )
+
     notas_query = db.query(Nota).filter(
         (Nota.proveedor_id if partner_type == "proveedor" else Nota.cliente_id) == partner.id,
         Nota.tipo_operacion == tipo_operacion,
@@ -1310,6 +1652,12 @@ def _build_partner_record_context(
         allowed_suc_ids=allowed_suc_ids,
     )
     ledger_final = ledger_rows[-1]["saldo"] if ledger_rows else Decimal("0")
+    if unified_summary:
+        summary = unified_summary
+        ledger_rows = unified_ledger_rows or []
+        ledger_final = unified_ledger_final
+        ledger_saldo_label = unified_ledger_label or ledger_saldo_label
+        ledger_saldo_help = unified_ledger_help or ledger_saldo_help
 
     pagos_query = (
         db.query(NotaPago)
@@ -1363,6 +1711,9 @@ def _build_partner_record_context(
         "link_msg": link_msg,
         "link_warn": link_warn,
         "link_error": link_error,
+        "linked_partner": linked_partner,
+        "linked_partner_label": linked_partner_label,
+        "unified_enabled": bool(unified_summary),
         "partner_is_internal": partner_is_internal,
     }
 

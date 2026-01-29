@@ -9,6 +9,11 @@
             <p class="text-uppercase text-muted small mb-1">Relaciones</p>
             <h1 class="h4 text-dark mb-0">Record {{ partner_label }}: {{ partner.nombre_completo }}</h1>
             <div class="text-muted small">ID {{ partner.id }} &middot; {{ tipo_operacion_label }}</div>
+            {% if unified_enabled and linked_partner %}
+                <div class="text-muted small">
+                    Unificado con {{ linked_partner_label }}: {{ linked_partner.nombre_completo }} (ID {{ linked_partner.id }})
+                </div>
+            {% endif %}
         </div>
         <div class="d-flex gap-2">
             <a href="/web/admin/{{ partner_base }}" class="btn btn-outline-secondary btn-sm">Volver</a>
@@ -93,21 +98,77 @@
                 </div>
                 <div class="d-none d-xl-block vr"></div>
                 <div class="flex-grow-1">
-                    <div class="d-flex align-items-center gap-2 mb-2">
-                        <span class="chip-strong">Resumen</span>
-                        <span class="text-muted small">Totales contables</span>
-                    </div>
-                    <div class="note-meta-grid">
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Notas totales</span>
-                            <strong>{{ summary.total_notas }}</strong>
-                            <div class="note-meta-sub">
-                                Aprobadas {{ summary.notas_aprobadas }} &middot; En revision {{ summary.notas_revision }}
-                            </div>
-                            <div class="note-meta-sub">
-                                Borrador {{ summary.notas_borrador }} &middot; Canceladas {{ summary.notas_canceladas }}
-                            </div>
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="chip-strong">{{ 'Resumen unificado' if unified_enabled else 'Resumen' }}</span>
+                    <span class="text-muted small">Totales contables</span>
+                </div>
+                <div class="note-meta-grid">
+                    <div class="note-meta-item">
+                        <span class="note-meta-label">Notas totales</span>
+                        <strong>{{ summary.total_notas }}</strong>
+                        <div class="note-meta-sub">
+                            Aprobadas {{ summary.notas_aprobadas }} &middot; En revision {{ summary.notas_revision }}
                         </div>
+                        <div class="note-meta-sub">
+                            Borrador {{ summary.notas_borrador }} &middot; Canceladas {{ summary.notas_canceladas }}
+                        </div>
+                    </div>
+                    {% if unified_enabled %}
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">Total compras aprobadas</span>
+                            <strong>${{ "{:,.2f}".format(summary.total_compras or 0) }}</strong>
+                        </div>
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">Total pagado compras</span>
+                            <strong>${{ "{:,.2f}".format(summary.total_pagado_compras or 0) }}</strong>
+                        </div>
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">Saldo por pagar (compras)</span>
+                            <strong class="text-danger">${{ "{:,.2f}".format(summary.saldo_pagar or 0) }}</strong>
+                        </div>
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">Total ventas aprobadas</span>
+                            <strong>${{ "{:,.2f}".format(summary.total_ventas or 0) }}</strong>
+                        </div>
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">Total cobrado ventas</span>
+                            <strong>${{ "{:,.2f}".format(summary.total_cobrado_ventas or 0) }}</strong>
+                        </div>
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">Saldo por cobrar (ventas)</span>
+                            <strong class="text-success">${{ "{:,.2f}".format(summary.saldo_cobrar or 0) }}</strong>
+                        </div>
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">Ajustes proveedor</span>
+                            {% set ajustes_prov = summary.ajustes_proveedor or 0 %}
+                            {% if ajustes_prov > 0 %}
+                                <strong class="text-danger">+${{ "{:,.2f}".format(ajustes_prov) }}</strong>
+                            {% elif ajustes_prov < 0 %}
+                                <strong class="text-success">-${{ "{:,.2f}".format(-ajustes_prov) }}</strong>
+                            {% else %}
+                                <strong>$0.00</strong>
+                            {% endif %}
+                        </div>
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">Ajustes cliente</span>
+                            {% set ajustes_cli = summary.ajustes_cliente or 0 %}
+                            {% if ajustes_cli > 0 %}
+                                <strong class="text-success">+${{ "{:,.2f}".format(ajustes_cli) }}</strong>
+                            {% elif ajustes_cli < 0 %}
+                                <strong class="text-danger">-${{ "{:,.2f}".format(-ajustes_cli) }}</strong>
+                            {% else %}
+                                <strong>$0.00</strong>
+                            {% endif %}
+                        </div>
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">Saldo neto unificado</span>
+                            {% if summary.saldo_neto >= 0 %}
+                                <strong class="text-danger">${{ "{:,.2f}".format(summary.saldo_neto) }}</strong>
+                            {% else %}
+                                <strong class="text-success">-${{ "{:,.2f}".format(-summary.saldo_neto) }}</strong>
+                            {% endif %}
+                        </div>
+                    {% else %}
                         <div class="note-meta-item">
                             <span class="note-meta-label">{{ total_facturado_label }}</span>
                             <strong>${{ "{:,.2f}".format(summary.total_facturado or 0) }}</strong>
@@ -135,11 +196,18 @@
                                 <strong>$0.00</strong>
                             {% endif %}
                         </div>
-                    </div>
-                    <div class="text-muted small mt-2">Saldos calculados con notas aprobadas y ajustes manuales.</div>
+                    {% endif %}
+                </div>
+                <div class="text-muted small mt-2">
+                    {% if unified_enabled %}
+                        Saldos calculados con compras, ventas y ajustes manuales unificados.
+                    {% else %}
+                        Saldos calculados con notas aprobadas y ajustes manuales.
+                    {% endif %}
                 </div>
             </div>
         </div>
+    </div>
     </div>
 
     <div class="card hover-lift mb-3">
