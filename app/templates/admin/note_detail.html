@@ -332,7 +332,7 @@
                     <label class="form-label">Pago inicial</label>
                     {% set pagado_val = form_pagado if form_pagado is not none else (nota.monto_pagado or "") %}
                     <input class="form-control" type="number" step="0.01" min="0" name="monto_pagado" value="{{ pagado_val }}">
-                    <div class="form-text text-muted">Opcional. Aplica solo para notas a credito.</div>
+                    <div class="form-text text-muted">Opcional. Si se deja vacio, el pago inicial sera 0.</div>
                 </div>
                 <div class="col-lg-2 col-md-4">
                     <label class="form-label">IVA</label>
@@ -400,6 +400,81 @@
                 <span>Saldo: <strong class="{{ 'text-danger' if saldo_pendiente > 0 else 'text-success' }}">${{ "{:,.2f}".format(saldo_pendiente) }}</strong></span>
             </div>
         </div>
+        <form method="post" action="/web/admin/notas/{{ nota.id }}/pago-inicial" class="note-payment-form mb-3">
+            <div class="row g-2 align-items-end">
+                <div class="col-lg-2 col-md-4">
+                    <label class="form-label">Pago inicial objetivo</label>
+                    {% set pago_inicial_val = form_pago_inicial_monto if form_pago_inicial_monto is not none else (pago_inicial_total or 0) %}
+                    <input class="form-control form-control-sm" type="number" step="0.01" min="0" name="pago_inicial_monto" value="{{ pago_inicial_val }}">
+                </div>
+                <div class="col-lg-2 col-md-4">
+                    <label class="form-label">M&eacute;todo</label>
+                    {% set pago_inicial_metodo_val = form_pago_inicial_metodo if form_pago_inicial_metodo else nota.metodo_pago %}
+                    <select class="form-select form-select-sm" name="pago_inicial_metodo" id="pago_inicial_metodo_select">
+                        <option value="" {% if not pago_inicial_metodo_val %}selected{% endif %}>Selecciona</option>
+                        <option value="transferencia" {% if pago_inicial_metodo_val == 'transferencia' %}selected{% endif %}>Transferencia</option>
+                        <option value="efectivo" {% if pago_inicial_metodo_val == 'efectivo' %}selected{% endif %}>Efectivo</option>
+                        <option value="cheque" {% if pago_inicial_metodo_val == 'cheque' %}selected{% endif %}>Cheque</option>
+                    </select>
+                </div>
+                <div class="col-lg-3 col-md-4">
+                    <label class="form-label">Cuenta</label>
+                    {% set pago_inicial_cuenta_val = form_pago_inicial_cuenta if form_pago_inicial_cuenta is not none else (nota.cuenta_financiera_id or "") %}
+                    <select class="form-select form-select-sm" name="pago_inicial_cuenta" id="pago_inicial_cuenta_select">
+                        <option value="" {% if not pago_inicial_cuenta_val %}selected{% endif %}>Selecciona cuenta</option>
+                        {% if cuentas_sucursal %}
+                            <optgroup label="Sucursal">
+                                {% for cuenta in cuentas_sucursal %}
+                                    <option value="{{ cuenta.id }}" {% if pago_inicial_cuenta_val|string == cuenta.id|string %}selected{% endif %}>
+                                        {{ cuenta.display_label }}
+                                    </option>
+                                {% endfor %}
+                            </optgroup>
+                        {% endif %}
+                        {% if cuentas_partner %}
+                            <optgroup label="{{ cuentas_partner_label }}">
+                                {% for cuenta in cuentas_partner %}
+                                    <option value="{{ cuenta.id }}" {% if pago_inicial_cuenta_val|string == cuenta.id|string %}selected{% endif %}>
+                                        {{ cuenta.display_label }}
+                                    </option>
+                                {% endfor %}
+                            </optgroup>
+                        {% endif %}
+                    </select>
+                </div>
+                <div class="col-lg-3 col-md-6">
+                    <label class="form-label">Cuenta Scrap360</label>
+                    {% set pago_inicial_cuenta_scrap_val = form_pago_inicial_cuenta_scrap360 if form_pago_inicial_cuenta_scrap360 is not none else "" %}
+                    <select class="form-select form-select-sm" name="pago_inicial_cuenta_scrap360_id" id="pago_inicial_cuenta_scrap360_select">
+                        <option value="" {% if not pago_inicial_cuenta_scrap_val %}selected{% endif %}>Selecciona cuenta</option>
+                        {% for c in cuentas_scrap360 %}
+                            <option value="{{ c.id }}" {% if pago_inicial_cuenta_scrap_val|string == c.id|string %}selected{% endif %}>
+                                {{ c.nombre }} &middot; {{ c.tipo|capitalize }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    {% if cuentas_scrap360|length == 0 %}
+                        <div class="form-text text-muted">No hay cuentas Scrap360 para esta sucursal.</div>
+                    {% else %}
+                        <div class="form-text text-muted">Opcional. Dejalo en blanco si no aplica.</div>
+                    {% endif %}
+                </div>
+                <div class="col-lg-2 col-md-6">
+                    <label class="form-label">Comentario</label>
+                    {% set pago_inicial_comment_val = form_pago_inicial_comentario if form_pago_inicial_comentario is not none else "" %}
+                    <input class="form-control form-control-sm" name="pago_inicial_comentario" placeholder="Opcional" value="{{ pago_inicial_comment_val }}">
+                </div>
+                <div class="col-lg-2 col-md-3 d-grid">
+                    <button type="submit" class="btn btn-outline-secondary btn-sm">Ajustar pago inicial</button>
+                </div>
+                {% if pago_inicial_updated %}
+                    <div class="col-12">
+                        <span class="text-success small">Pago inicial actualizado correctamente.</span>
+                    </div>
+                {% endif %}
+            </div>
+            <div class="form-text text-muted mt-2">Puedes corregir el pago inicial incluso despu&eacute;s de aprobar la nota.</div>
+        </form>
         <form method="post" action="/web/admin/notas/{{ nota.id }}/pago" class="note-payment-form">
             <div class="row g-2 align-items-end">
                 <div class="col-lg-2 col-md-4">
@@ -635,6 +710,29 @@
     if (pagoMetodo) {
         pagoMetodo.addEventListener('change', togglePagoCuenta);
         togglePagoCuenta();
+    }
+    const pagoInicialMetodo = document.getElementById('pago_inicial_metodo_select');
+    const pagoInicialCuenta = document.getElementById('pago_inicial_cuenta_select');
+    const pagoInicialCuentaScrap = document.getElementById('pago_inicial_cuenta_scrap360_select');
+    function togglePagoInicialCuenta() {
+        if (!pagoInicialMetodo || !pagoInicialCuenta) return;
+        const metodo = (pagoInicialMetodo.value || '').toLowerCase();
+        const needsAccount = metodo === 'transferencia' || metodo === 'cheque';
+        pagoInicialCuenta.disabled = !needsAccount;
+        pagoInicialCuenta.required = needsAccount;
+        if (!needsAccount) {
+            pagoInicialCuenta.value = '';
+        }
+        if (pagoInicialCuentaScrap) {
+            pagoInicialCuentaScrap.disabled = !metodo;
+            if (!metodo) {
+                pagoInicialCuentaScrap.value = '';
+            }
+        }
+    }
+    if (pagoInicialMetodo) {
+        pagoInicialMetodo.addEventListener('change', togglePagoInicialCuenta);
+        togglePagoInicialCuenta();
     }
     const noteTable = document.querySelector('.note-table');
     const priceEndpoint = noteTable ? noteTable.dataset.precioEndpoint : '';

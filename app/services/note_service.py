@@ -767,6 +767,112 @@ def add_payment(
     return pago
 
 
+def adjust_initial_payment(
+    db: Session,
+    nota: Nota,
+    *,
+    monto_objetivo: Decimal,
+    usuario_id: int | None = None,
+    metodo_pago: str | None = None,
+    cuenta_financiera: str | None = None,
+    cuenta_scrap360_id: int | None = None,
+    comentario: str | None = None,
+) -> None:
+    if nota.estado != NotaEstado.aprobada:
+        raise ValueError("Solo puedes ajustar pagos en notas aprobadas.")
+    if monto_objetivo < Decimal("0"):
+        raise ValueError("El monto objetivo no puede ser negativo.")
+    total = Decimal(str(nota.total_monto or 0))
+    if monto_objetivo > total:
+        raise ValueError("El pago inicial no puede exceder el total de la nota.")
+
+    pagos_iniciales = (
+        db.query(NotaPago)
+        .filter(
+            NotaPago.nota_id == nota.id,
+            NotaPago.comentario.ilike("Pago inicial%"),
+        )
+        .order_by(NotaPago.created_at.asc())
+        .all()
+    )
+    actual = sum((Decimal(str(p.monto or 0)) for p in pagos_iniciales), Decimal("0"))
+    delta = monto_objetivo - actual
+    if delta == 0:
+        return
+
+    if delta > 0:
+        metodo = (metodo_pago or nota.metodo_pago or "").strip().lower() or None
+        if metodo in ("transferencia", "cheque") and not cuenta_financiera:
+            raise ValueError("Debes indicar la cuenta para transferencia o cheque.")
+        add_payment(
+            db,
+            nota,
+            monto_pagado=delta,
+            usuario_id=usuario_id,
+            metodo_pago=metodo,
+            cuenta_financiera=cuenta_financiera,
+            cuenta_scrap360_id=cuenta_scrap360_id,
+            comentario=comentario or "Pago inicial (ajuste)",
+            commit=False,
+            registrar_contable=True,
+        )
+        db.commit()
+        db.refresh(nota)
+        return
+
+    remaining = -delta
+    if remaining > actual:
+        raise ValueError("El ajuste excede el pago inicial registrado.")
+
+    for pago in reversed(pagos_iniciales):
+        if remaining <= 0:
+            break
+        monto = Decimal(str(pago.monto or 0))
+        if monto <= 0:
+            continue
+        revertir = monto if monto <= remaining else remaining
+        remaining -= revertir
+        nuevo_monto = monto - revertir
+        if nuevo_monto <= Decimal("0"):
+            db.delete(pago)
+        else:
+            pago.monto = nuevo_monto
+            db.add(pago)
+
+        _registrar_movimiento_contable(
+            db,
+            nota=nota,
+            usuario_id=usuario_id,
+            comentario=comentario or "Reverso pago inicial",
+            metodo_pago=pago.metodo_pago or nota.metodo_pago,
+            cuenta_label=pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or None),
+            cuenta_id=pago.cuenta_id,
+            monto=revertir,
+            tipo="reverso_pago",
+        )
+        if pago.cuenta_scrap360_id:
+            cuenta_scrap = db.get(CuentaScrap360, pago.cuenta_scrap360_id)
+            if cuenta_scrap:
+                tipo_mov = "ingreso" if _is_compra_like(nota.tipo_operacion) else "egreso"
+                _registrar_movimiento_cuenta_scrap360(
+                    db,
+                    cuenta=cuenta_scrap,
+                    nota=nota,
+                    pago_id=pago.id,
+                    usuario_id=usuario_id,
+                    tipo=tipo_mov,
+                    monto=revertir,
+                    comentario=comentario or "Reverso pago inicial",
+                )
+
+    nota.monto_pagado = Decimal(str(nota.monto_pagado or 0)) + delta
+    if nota.monto_pagado < Decimal("0"):
+        nota.monto_pagado = Decimal("0")
+    nota.updated_at = datetime.utcnow()
+    db.add(nota)
+    db.commit()
+    db.refresh(nota)
+
 def ajustar_stock(
     db: Session,
     *,
@@ -897,9 +1003,7 @@ def approve_note(
             tipo=nota.tipo_operacion.value,
         )
     pago_inicial: Decimal | None = None
-    if metodo_pago_clean == "efectivo":
-        pago_inicial = Decimal(str(nota.total_monto or 0))
-    elif monto_pagado is not None and Decimal(str(monto_pagado)) > Decimal("0"):
+    if monto_pagado is not None and Decimal(str(monto_pagado)) > Decimal("0"):
         pago_inicial = monto_pagado
     if pago_inicial is not None and Decimal(str(pago_inicial)) > Decimal("0"):
         add_payment(

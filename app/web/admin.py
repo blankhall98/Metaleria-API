@@ -1671,6 +1671,11 @@ def _build_partner_record_context(
         pagos_query = pagos_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
     pagos = pagos_query.order_by(NotaPago.created_at.desc()).all()
 
+    pago_inicial_total = Decimal("0")
+    for pago in pagos:
+        if pago.comentario and pago.comentario.lower().startswith("pago inicial"):
+            pago_inicial_total += Decimal(str(pago.monto or 0))
+
     suc_query = db.query(Sucursal)
     if allowed_suc_ids:
         suc_query = suc_query.filter(Sucursal.id.in_(allowed_suc_ids))
@@ -1697,6 +1702,7 @@ def _build_partner_record_context(
         "saldo_pendiente_label": saldo_pendiente_label,
         "saldo_favor_label": saldo_favor_label,
         "pagos": pagos,
+        "pago_inicial_total": pago_inicial_total,
         "folio_map": folio_map,
         "sucursales": sucursales,
         "q": q or "",
@@ -6051,6 +6057,7 @@ def _render_nota_detail(
     error: str | None = None,
     form_state: dict | None = None,
     pago_updated: bool = False,
+    pago_inicial_updated: bool = False,
     precios_updated: bool = False,
     edit_updated: bool = False,
 ):
@@ -6067,6 +6074,10 @@ def _render_nota_detail(
         .order_by(NotaPago.created_at.desc())
         .all()
     )
+    pago_inicial_total = Decimal("0")
+    for pago in pagos:
+        if pago.comentario and pago.comentario.lower().startswith("pago inicial"):
+            pago_inicial_total += Decimal(str(pago.monto or 0))
     devolucion_check = None
     if nota.estado == NotaEstado.cancelada:
         cont_movs = (
@@ -6166,6 +6177,11 @@ def _render_nota_detail(
         "form_pago_cuenta": None,
         "form_pago_comentario": None,
         "form_pago_cuenta_scrap360": None,
+        "form_pago_inicial_monto": None,
+        "form_pago_inicial_metodo": None,
+        "form_pago_inicial_cuenta": None,
+        "form_pago_inicial_comentario": None,
+        "form_pago_inicial_cuenta_scrap360": None,
         "form_precio_unit_map": {},
         "form_subtotal_map": {},
         "form_precio_mode_map": {},
@@ -6182,6 +6198,7 @@ def _render_nota_detail(
         "tipos_cliente": list(TipoCliente),
         "inv_movs": inv_movs,
         "pagos": pagos,
+        "pago_inicial_total": pago_inicial_total,
         "price_map_json": price_map_json,
         "price_map_by_material": price_map_by_material,
         "saldo_pendiente": saldo_pendiente,
@@ -6197,6 +6214,7 @@ def _render_nota_detail(
         "cuentas_partner_label": cuentas_partner_label,
         "cuentas_scrap360": cuentas_scrap360,
         "pago_updated": pago_updated,
+        "pago_inicial_updated": pago_inicial_updated,
         "precios_updated": precios_updated,
         "edit_updated": edit_updated,
         "devolucion_check": devolucion_check,
@@ -6301,6 +6319,7 @@ async def notas_detail(
     _ensure_nota_access(nota, allowed_suc_ids)
 
     pago_updated = request.query_params.get("pago") == "1"
+    pago_inicial_updated = request.query_params.get("pago_inicial") == "1"
     precios_updated = request.query_params.get("precios") == "1"
     edit_updated = request.query_params.get("edit") == "1"
     return _render_nota_detail(
@@ -6309,6 +6328,7 @@ async def notas_detail(
         current_user,
         nota,
         pago_updated=pago_updated,
+        pago_inicial_updated=pago_inicial_updated,
         precios_updated=precios_updated,
         edit_updated=edit_updated,
     )
@@ -7022,6 +7042,99 @@ async def notas_actualizar_pago(
         )
 
     return RedirectResponse(url=f"/web/admin/notas/{nota_id}?pago=1", status_code=303)
+
+
+@router.post("/notas/{nota_id}/pago-inicial")
+async def notas_ajustar_pago_inicial(
+    nota_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    nota = db.get(Nota, nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_nota_access(nota, allowed_suc_ids)
+    if nota.estado != NotaEstado.aprobada:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="Solo puedes ajustar el pago inicial en notas aprobadas.",
+        )
+
+    form = await request.form()
+    monto_raw = (form.get("pago_inicial_monto") or "").strip()
+    metodo_pago = (form.get("pago_inicial_metodo") or "").strip().lower()
+    cuenta_financiera = (form.get("pago_inicial_cuenta") or "").strip()
+    cuenta_scrap360_raw = (form.get("pago_inicial_cuenta_scrap360_id") or "").strip()
+    comentario = (form.get("pago_inicial_comentario") or "").strip()
+    form_state = {
+        "form_pago_inicial_monto": monto_raw,
+        "form_pago_inicial_metodo": metodo_pago,
+        "form_pago_inicial_cuenta": cuenta_financiera,
+        "form_pago_inicial_comentario": comentario,
+        "form_pago_inicial_cuenta_scrap360": cuenta_scrap360_raw,
+    }
+    if monto_raw == "":
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="Debes indicar el monto objetivo del pago inicial.",
+            form_state=form_state,
+        )
+    try:
+        monto_objetivo = Decimal(str(monto_raw))
+    except (InvalidOperation, TypeError):
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="El monto objetivo es invalido.",
+            form_state=form_state,
+        )
+
+    cuenta_scrap360_id = None
+    if cuenta_scrap360_raw:
+        try:
+            cuenta_scrap360_id = int(cuenta_scrap360_raw)
+        except (TypeError, ValueError):
+            return _render_nota_detail(
+                request,
+                db,
+                current_user,
+                nota,
+                error="La cuenta Scrap360 es invalida.",
+                form_state=form_state,
+            )
+
+    try:
+        note_service.adjust_initial_payment(
+            db,
+            nota,
+            monto_objetivo=monto_objetivo,
+            usuario_id=current_user.get("id"),
+            metodo_pago=metodo_pago or None,
+            cuenta_financiera=cuenta_financiera or None,
+            cuenta_scrap360_id=cuenta_scrap360_id,
+            comentario=comentario or None,
+        )
+    except ValueError as e:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error=str(e),
+            form_state=form_state,
+        )
+
+    return RedirectResponse(url=f"/web/admin/notas/{nota_id}?pago_inicial=1", status_code=303)
 
 
 @router.post("/notas/{nota_id}/cancelar")
