@@ -5423,31 +5423,17 @@ async def cuenta_scrap360_delete(
     if not cuenta:
         raise HTTPException(status_code=404, detail="Cuenta Scrap360 no encontrada.")
 
-    tiene_pagos = db.query(NotaPago.id).filter(NotaPago.cuenta_scrap360_id == cuenta_id).first()
-    tiene_comision_pagos = (
-        db.query(ComisionarioPago.id)
-        .filter(ComisionarioPago.cuenta_scrap360_id == cuenta_id)
-        .first()
+    db.query(NotaPago).filter(NotaPago.cuenta_scrap360_id == cuenta_id).update(
+        {NotaPago.cuenta_scrap360_id: None},
+        synchronize_session=False,
     )
-    tiene_movimientos = (
-        db.query(CuentaScrap360Movimiento.id)
-        .filter(CuentaScrap360Movimiento.cuenta_id == cuenta_id)
-        .first()
+    db.query(ComisionarioPago).filter(ComisionarioPago.cuenta_scrap360_id == cuenta_id).update(
+        {ComisionarioPago.cuenta_scrap360_id: None},
+        synchronize_session=False,
     )
-
-    if tiene_pagos or tiene_comision_pagos or tiene_movimientos:
-        reasons = []
-        if tiene_pagos:
-            reasons.append("pagos")
-        if tiene_comision_pagos:
-            reasons.append("pagos comisionarios")
-        if tiene_movimientos:
-            reasons.append("movimientos")
-        msg = f"No se puede eliminar: tiene {', '.join(reasons)} asociados."
-        return RedirectResponse(
-            url=f"/web/admin/cuentas-scrap360?{urlencode({'delete_error': msg})}",
-            status_code=303,
-        )
+    db.query(CuentaScrap360Movimiento).filter(CuentaScrap360Movimiento.cuenta_id == cuenta_id).delete(
+        synchronize_session=False,
+    )
 
     cuenta.sucursales = []
     db.flush()
