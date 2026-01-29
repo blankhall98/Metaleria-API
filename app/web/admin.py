@@ -4673,30 +4673,22 @@ async def cuenta_delete(
     if not cuenta:
         raise HTTPException(status_code=404, detail="Cuenta no encontrada.")
 
-    tiene_notas = db.query(Nota.id).filter(Nota.cuenta_financiera_id == cuenta_id).first()
-    tiene_pagos = db.query(NotaPago.id).filter(NotaPago.cuenta_id == cuenta_id).first()
-    tiene_comision_pagos = (
-        db.query(ComisionarioPago.id).filter(ComisionarioPago.cuenta_id == cuenta_id).first()
+    db.query(Nota).filter(Nota.cuenta_financiera_id == cuenta_id).update(
+        {Nota.cuenta_financiera_id: None},
+        synchronize_session=False,
     )
-    tiene_movimientos = (
-        db.query(MovimientoContable.id).filter(MovimientoContable.cuenta_id == cuenta_id).first()
+    db.query(NotaPago).filter(NotaPago.cuenta_id == cuenta_id).update(
+        {NotaPago.cuenta_id: None},
+        synchronize_session=False,
     )
-
-    if tiene_notas or tiene_pagos or tiene_comision_pagos or tiene_movimientos:
-        reasons = []
-        if tiene_notas:
-            reasons.append("notas")
-        if tiene_pagos:
-            reasons.append("pagos")
-        if tiene_comision_pagos:
-            reasons.append("pagos comisionarios")
-        if tiene_movimientos:
-            reasons.append("movimientos contables")
-        msg = f"No se puede eliminar: tiene {', '.join(reasons)} asociados."
-        return RedirectResponse(
-            url=f"/web/admin/cuentas?{urlencode({'delete_error': msg})}",
-            status_code=303,
-        )
+    db.query(ComisionarioPago).filter(ComisionarioPago.cuenta_id == cuenta_id).update(
+        {ComisionarioPago.cuenta_id: None},
+        synchronize_session=False,
+    )
+    db.query(MovimientoContable).filter(MovimientoContable.cuenta_id == cuenta_id).update(
+        {MovimientoContable.cuenta_id: None},
+        synchronize_session=False,
+    )
 
     db.delete(cuenta)
     db.commit()
