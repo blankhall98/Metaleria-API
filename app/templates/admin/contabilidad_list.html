@@ -106,6 +106,11 @@
                         <div class="text-uppercase text-muted small mb-1">{{ partner_context.partner_label }}</div>
                         <div class="fw-semibold">{{ partner_context.partner.nombre_completo }}</div>
                         <div class="text-muted small">ID {{ partner_context.partner.id }} &middot; {{ partner_context.tipo_operacion_label }}</div>
+                        {% if partner_context.unified_enabled and partner_context.linked_partner %}
+                            <div class="text-muted small">
+                                Unificado con {{ partner_context.linked_partner_label }}: {{ partner_context.linked_partner.nombre_completo }} (ID {{ partner_context.linked_partner.id }})
+                            </div>
+                        {% endif %}
                     </div>
                     <div class="d-flex gap-2">
                         <a href="{{ partner_context.record_link }}" class="btn btn-sm btn-outline-primary">Record completo</a>
@@ -113,35 +118,98 @@
                 </div>
 
                 <div class="note-meta-grid mt-3">
-                    <div class="note-meta-item">
-                        <span class="note-meta-label">{{ partner_context.total_facturado_label }}</span>
-                        <strong>${{ "{:,.2f}".format(partner_context.summary.total_facturado or 0) }}</strong>
-                    </div>
-                    <div class="note-meta-item">
-                        <span class="note-meta-label">{{ partner_context.total_pagado_label }}</span>
-                        <strong>${{ "{:,.2f}".format(partner_context.summary.total_pagado or 0) }}</strong>
-                    </div>
-                    <div class="note-meta-item">
-                        <span class="note-meta-label">{{ partner_context.saldo_pendiente_label }}</span>
-                        <strong class="text-danger">${{ "{:,.2f}".format(partner_context.summary.saldo_pendiente or 0) }}</strong>
-                    </div>
-                    <div class="note-meta-item">
-                        <span class="note-meta-label">{{ partner_context.saldo_favor_label }}</span>
-                        <strong class="text-success">${{ "{:,.2f}".format(partner_context.summary.saldo_favor or 0) }}</strong>
-                    </div>
-                    <div class="note-meta-item">
-                        <span class="note-meta-label">Ajustes manuales</span>
-                        {% set ajustes_delta = partner_context.summary.ajustes_delta or 0 %}
-                        {% if ajustes_delta > 0 %}
-                            <strong class="text-danger">+${{ "{:,.2f}".format(ajustes_delta) }}</strong>
-                        {% elif ajustes_delta < 0 %}
-                            <strong class="text-success">-${{ "{:,.2f}".format(-ajustes_delta) }}</strong>
-                        {% else %}
-                            <strong>$0.00</strong>
-                        {% endif %}
-                    </div>
+                    {% if partner_context.unified_enabled %}
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">Total compras aprobadas</span>
+                            <strong>${{ "{:,.2f}".format(partner_context.summary.total_compras or 0) }}</strong>
+                        </div>
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">Total pagado compras</span>
+                            <strong>${{ "{:,.2f}".format(partner_context.summary.total_pagado_compras or 0) }}</strong>
+                        </div>
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">Saldo por pagar (compras)</span>
+                            <strong class="text-danger">${{ "{:,.2f}".format(partner_context.summary.saldo_pagar or 0) }}</strong>
+                        </div>
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">Total ventas aprobadas</span>
+                            <strong>${{ "{:,.2f}".format(partner_context.summary.total_ventas or 0) }}</strong>
+                        </div>
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">Total cobrado ventas</span>
+                            <strong>${{ "{:,.2f}".format(partner_context.summary.total_cobrado_ventas or 0) }}</strong>
+                        </div>
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">Saldo por cobrar (ventas)</span>
+                            <strong class="text-success">${{ "{:,.2f}".format(partner_context.summary.saldo_cobrar or 0) }}</strong>
+                        </div>
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">Ajustes proveedor</span>
+                            {% set ajustes_prov = partner_context.summary.ajustes_proveedor or 0 %}
+                            {% if ajustes_prov > 0 %}
+                                <strong class="text-danger">+${{ "{:,.2f}".format(ajustes_prov) }}</strong>
+                            {% elif ajustes_prov < 0 %}
+                                <strong class="text-success">-${{ "{:,.2f}".format(-ajustes_prov) }}</strong>
+                            {% else %}
+                                <strong>$0.00</strong>
+                            {% endif %}
+                        </div>
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">Ajustes cliente</span>
+                            {% set ajustes_cli = partner_context.summary.ajustes_cliente or 0 %}
+                            {% if ajustes_cli > 0 %}
+                                <strong class="text-success">+${{ "{:,.2f}".format(ajustes_cli) }}</strong>
+                            {% elif ajustes_cli < 0 %}
+                                <strong class="text-danger">-${{ "{:,.2f}".format(-ajustes_cli) }}</strong>
+                            {% else %}
+                                <strong>$0.00</strong>
+                            {% endif %}
+                        </div>
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">Saldo neto unificado</span>
+                            {% if partner_context.summary.saldo_neto >= 0 %}
+                                <strong class="text-danger">${{ "{:,.2f}".format(partner_context.summary.saldo_neto) }}</strong>
+                            {% else %}
+                                <strong class="text-success">-${{ "{:,.2f}".format(-partner_context.summary.saldo_neto) }}</strong>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">{{ partner_context.total_facturado_label }}</span>
+                            <strong>${{ "{:,.2f}".format(partner_context.summary.total_facturado or 0) }}</strong>
+                        </div>
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">{{ partner_context.total_pagado_label }}</span>
+                            <strong>${{ "{:,.2f}".format(partner_context.summary.total_pagado or 0) }}</strong>
+                        </div>
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">{{ partner_context.saldo_pendiente_label }}</span>
+                            <strong class="text-danger">${{ "{:,.2f}".format(partner_context.summary.saldo_pendiente or 0) }}</strong>
+                        </div>
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">{{ partner_context.saldo_favor_label }}</span>
+                            <strong class="text-success">${{ "{:,.2f}".format(partner_context.summary.saldo_favor or 0) }}</strong>
+                        </div>
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">Ajustes manuales</span>
+                            {% set ajustes_delta = partner_context.summary.ajustes_delta or 0 %}
+                            {% if ajustes_delta > 0 %}
+                                <strong class="text-danger">+${{ "{:,.2f}".format(ajustes_delta) }}</strong>
+                            {% elif ajustes_delta < 0 %}
+                                <strong class="text-success">-${{ "{:,.2f}".format(-ajustes_delta) }}</strong>
+                            {% else %}
+                                <strong>$0.00</strong>
+                            {% endif %}
+                        </div>
+                    {% endif %}
                 </div>
-                <div class="text-muted small mt-2">Saldos calculados con notas aprobadas y ajustes manuales.</div>
+                <div class="text-muted small mt-2">
+                    {% if partner_context.unified_enabled %}
+                        Saldos unificados entre compras y ventas.
+                    {% else %}
+                        Saldos calculados con notas aprobadas y ajustes manuales.
+                    {% endif %}
+                </div>
 
                 <div class="d-flex align-items-center justify-content-between mt-3">
                     <h3 class="h6 text-dark mb-0">Historial de notas</h3>

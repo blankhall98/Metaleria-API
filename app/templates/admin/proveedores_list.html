@@ -45,12 +45,14 @@
                     <th>Teléfono</th>
                     <th>Correo</th>
                     <th>Placas</th>
+                    <th class="text-end">Saldo neto</th>
                     <th>Activo</th>
                     <th></th>
                 </tr>
                 </thead>
                 <tbody>
-                {% for p in proveedores %}
+                {% for row in proveedores %}
+                    {% set p = row.proveedor %}
                     <tr>
                         <td>{{ p.id }}</td>
                         <td>{{ p.nombre_completo }}</td>
@@ -64,6 +66,13 @@
                                 {% for pl in lista %}
                                     <span class="badge bg-secondary me-1">{{ pl.placa }}</span>
                                 {% endfor %}
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            {% if row.saldo_neto >= 0 %}
+                                <span class="text-danger fw-semibold">${{ "{:,.2f}".format(row.saldo_neto) }}</span>
+                            {% else %}
+                                <span class="text-success fw-semibold">-${{ "{:,.2f}".format(-row.saldo_neto) }}</span>
                             {% endif %}
                         </td>
                         <td>

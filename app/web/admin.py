@@ -2731,6 +2731,7 @@ async def proveedores_list(
     delete_ok = params.get("deleted") == "1"
     delete_error = (params.get("delete_error") or "").strip()
     query = db.query(Proveedor)
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
 
     if q:
         term = f"%{q.strip()}%"
@@ -2744,6 +2745,64 @@ async def proveedores_list(
         )
 
     proveedores = query.order_by(Proveedor.nombre_completo).all()
+    proveedores_view = []
+    for proveedor in proveedores:
+        linked_cliente = None
+        if not _is_internal_partner_name(db, proveedor.nombre_completo):
+            placas_list = _extract_partner_placas(proveedor)
+            linked_cliente = _find_existing_cliente_from_proveedor(
+                db,
+                placas_list=placas_list,
+                correo=proveedor.correo_electronico,
+                telefono=proveedor.telefono,
+            )
+            if linked_cliente and _is_internal_partner_name(db, linked_cliente.nombre_completo):
+                linked_cliente = None
+
+        compras_query = db.query(Nota).filter(
+            Nota.proveedor_id == proveedor.id,
+            Nota.tipo_operacion == TipoOperacion.compra,
+        )
+        if allowed_suc_ids:
+            compras_query = compras_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
+        compras = compras_query.order_by(Nota.created_at.desc()).all()
+
+        ventas = []
+        if linked_cliente:
+            ventas_query = db.query(Nota).filter(
+                Nota.cliente_id == linked_cliente.id,
+                Nota.tipo_operacion == TipoOperacion.venta,
+            )
+            if allowed_suc_ids:
+                ventas_query = ventas_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
+            ventas = ventas_query.order_by(Nota.created_at.desc()).all()
+
+        ajustes_proveedor = _get_partner_adjustments_total(
+            db,
+            partner_type="proveedor",
+            partner_id=proveedor.id,
+        )
+        ajustes_cliente = Decimal("0")
+        if linked_cliente:
+            ajustes_cliente = _get_partner_adjustments_total(
+                db,
+                partner_type="cliente",
+                partner_id=linked_cliente.id,
+            )
+
+        unified_summary = _aggregate_unified_partner_summary(
+            compras=compras,
+            ventas=ventas,
+            ajustes_proveedor=ajustes_proveedor,
+            ajustes_cliente=ajustes_cliente,
+        )
+        proveedores_view.append(
+            {
+                "proveedor": proveedor,
+                "linked_cliente": linked_cliente,
+                "saldo_neto": unified_summary["saldo_neto"],
+            }
+        )
 
     return templates.TemplateResponse(
         "admin/proveedores_list.html",
@@ -2751,7 +2810,7 @@ async def proveedores_list(
             "request": request,
             "env": settings.ENV,
             "user": current_user,
-            "proveedores": proveedores,
+            "proveedores": proveedores_view,
             "q": q or "",
             "delete_ok": delete_ok,
             "delete_error": delete_error,
@@ -7908,6 +7967,17 @@ async def contabilidad_list(
                 if not partner:
                     partner_error = "Proveedor no encontrado."
                 else:
+                    linked_cliente = None
+                    if not _is_internal_partner_name(db, partner.nombre_completo):
+                        placas_list = _extract_partner_placas(partner)
+                        linked_cliente = _find_existing_cliente_from_proveedor(
+                            db,
+                            placas_list=placas_list,
+                            correo=partner.correo_electronico,
+                            telefono=partner.telefono,
+                        )
+                        if linked_cliente and _is_internal_partner_name(db, linked_cliente.nombre_completo):
+                            linked_cliente = None
                     notas_p = (
                         db.query(Nota)
                         .filter(
@@ -7929,6 +7999,29 @@ async def contabilidad_list(
                         partner_type="proveedor",
                         ajustes_delta=ajustes_delta,
                     )
+                    unified_enabled = False
+                    if linked_cliente:
+                        ventas_q = (
+                            db.query(Nota)
+                            .filter(
+                                Nota.cliente_id == linked_cliente.id,
+                                Nota.tipo_operacion == TipoOperacion.venta,
+                            )
+                        )
+                        ventas_q = _apply_sucursal_filter(ventas_q, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
+                        ventas = ventas_q.order_by(Nota.created_at.desc()).all()
+                        ajustes_cliente = _get_partner_adjustments_total(
+                            db,
+                            partner_type="cliente",
+                            partner_id=linked_cliente.id,
+                        )
+                        summary = _aggregate_unified_partner_summary(
+                            compras=notas_p,
+                            ventas=ventas,
+                            ajustes_proveedor=ajustes_delta,
+                            ajustes_cliente=ajustes_cliente,
+                        )
+                        unified_enabled = True
                     pagos_p = (
                         db.query(NotaPago)
                         .join(Nota, NotaPago.nota_id == Nota.id)
@@ -7953,6 +8046,9 @@ async def contabilidad_list(
                         "total_pagado_label": "Total pagado",
                         "saldo_pendiente_label": "Saldo pendiente (por pagar al proveedor)",
                         "saldo_favor_label": "Saldo a favor de la empresa",
+                        "unified_enabled": unified_enabled,
+                        "linked_partner": linked_cliente,
+                        "linked_partner_label": "Cliente",
                     }
             else:
                 partner_error = "Seleccion invalida."
