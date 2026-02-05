@@ -530,6 +530,8 @@ def create_draft_note(
         else:
             kg_bruto = Decimal(str(mp.get("kg_bruto", 0)))
             kg_descuento = Decimal(str(mp.get("kg_descuento", 0)))
+            if kg_descuento > kg_bruto:
+                raise ValueError("El descuento no puede ser mayor que el peso bruto.")
             kg_neto = kg_bruto - kg_descuento
 
         tipo_cli_raw = mp.get("tipo_cliente")
