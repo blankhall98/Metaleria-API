@@ -1315,6 +1315,32 @@ def _build_comisionario_ledger(
         event["saldo"] = saldo
     return events
 
+
+def _parse_kg_neto_overrides(
+    form,
+    nota: Nota,
+) -> tuple[dict[int, Decimal], dict[int, str], str | None]:
+    kg_neto_map: dict[int, Decimal] = {}
+    form_kg_map: dict[int, str] = {}
+    error = None
+
+    for nm in nota.materiales:
+        raw = (form.get(f"kg_neto_{nm.id}") or "").strip()
+        if raw == "":
+            continue
+        form_kg_map[nm.id] = raw
+        try:
+            kg_val = Decimal(str(raw))
+        except (InvalidOperation, TypeError):
+            error = "Kg neto inválido para un material."
+            break
+        if kg_val < Decimal("0"):
+            error = "El kg neto no puede ser negativo."
+            break
+        kg_neto_map[nm.id] = kg_val
+
+    return kg_neto_map, form_kg_map, error
+
 def _parse_owner_key(owner_key: str | None) -> tuple[str | None, int | None]:
     if not owner_key:
         return None, None
@@ -7119,8 +7145,24 @@ async def notas_aprobar(
         "form_iva_incluido": iva_incluido,
         "form_iva_porcentaje": iva_porcentaje_raw,
     }
+    kg_neto_override_map = None
     precio_override_map = None
     if current_user.get("rol") == UserRole.super_admin.value:
+        (
+            kg_neto_override_map,
+            form_kg_neto_map,
+            kg_error,
+        ) = _parse_kg_neto_overrides(form, nota)
+        form_state.update({"form_kg_neto_map": form_kg_neto_map})
+        if kg_error:
+            return _render_nota_detail(
+                request,
+                db,
+                current_user,
+                nota,
+                error=kg_error,
+                form_state=form_state,
+            )
         (
             precio_override_map,
             form_precio_unit_map,
@@ -7146,6 +7188,8 @@ async def notas_aprobar(
             )
         if not precio_override_map:
             precio_override_map = None
+        if not kg_neto_override_map:
+            kg_neto_override_map = None
 
     fecha_caducidad_pago = None
     if fecha_caducidad_pago_raw:
@@ -7225,6 +7269,21 @@ async def notas_aprobar(
             )
 
     try:
+        if kg_neto_override_map:
+            for nm in nota.materiales:
+                if nm.id not in kg_neto_override_map:
+                    continue
+                if nm.subpesajes:
+                    raise ValueError("No puedes ajustar kg neto en materiales con subpesajes.")
+                kg_neto = kg_neto_override_map[nm.id]
+                kg_bruto = Decimal(str(nm.kg_bruto or 0))
+                if kg_neto > kg_bruto:
+                    kg_neto = kg_bruto
+                nm.kg_neto = kg_neto
+                nm.kg_descuento = kg_bruto - kg_neto
+                db.add(nm)
+            note_service._recalc_totals(nota)
+            db.add(nota)
         note_service.approve_note(
             db,
             nota,
