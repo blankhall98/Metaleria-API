@@ -20,7 +20,7 @@
             {% set owner_key = 'cliente:' ~ partner.id if partner_base == 'clientes' else 'proveedor:' ~ partner.id %}
             <a href="/web/admin/cuentas?owner_key={{ owner_key }}" class="btn btn-outline-primary btn-sm">Cuentas</a>
             <a href="/web/admin/{{ partner_base }}/{{ partner.id }}/editar" class="btn btn-outline-primary btn-sm">Editar</a>
-            {% if not partner_is_internal %}
+            {% if not partner_is_internal and not linked_partner %}
                 {% if partner_base == 'proveedores' %}
                     <form method="post" action="/web/admin/proveedores/{{ partner.id }}/crear-cliente" class="d-inline">
                         <button class="btn btn-outline-success btn-sm" type="submit">Agregar como cliente</button>

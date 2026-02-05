@@ -945,6 +945,8 @@ def approve_note(
     """
     if nota.estado not in (NotaEstado.en_revision, NotaEstado.borrador):
         raise ValueError("Solo se puede aprobar desde borrador o en revisión.")
+    if nota.sucursal_id is None:
+        raise ValueError("La nota no tiene una sucursal asignada.")
     if nota.tipo_operacion not in (TipoOperacion.compra, TipoOperacion.venta):
         raise ValueError("Tipo de operacion no soportado.")
     if tipo_cliente_map:
