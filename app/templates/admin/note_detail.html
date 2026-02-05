@@ -202,7 +202,19 @@
                             data-precios='{{ price_map_by_material.get(m.material_id, "{}")|e }}'>
                             <td>{{ m.material.nombre if m.material else m.material_id }}</td>
                             <td class="text-end">{{ "{:,.2f}".format(m.kg_bruto or 0) }}</td>
-                            <td class="text-end">{{ "{:,.2f}".format(m.kg_descuento or 0) }}</td>
+                            <td class="text-end">
+                                {% if user.rol == 'super_admin' and nota.estado.value in ['BORRADOR', 'EN_REVISION'] and not m.subpesajes %}
+                                    {% set kg_desc_override = form_kg_desc_map.get(m.id) if form_kg_desc_map is defined else None %}
+                                    <input class="form-control form-control-sm text-end"
+                                           type="number"
+                                           step="0.001"
+                                           min="0"
+                                           name="kg_desc_{{ m.id }}"
+                                           value="{{ kg_desc_override if kg_desc_override is not none else ('%.3f'|format(m.kg_descuento or 0)) }}">
+                                {% else %}
+                                    {{ "{:,.2f}".format(m.kg_descuento or 0) }}
+                                {% endif %}
+                            </td>
                             <td class="text-end">
                                 {% if user.rol == 'super_admin' and nota.estado.value in ['BORRADOR', 'EN_REVISION'] and not m.subpesajes %}
                                     {% set kg_neto_override = form_kg_neto_map.get(m.id) if form_kg_neto_map is defined else None %}
