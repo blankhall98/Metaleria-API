@@ -1644,17 +1644,17 @@ def _build_partner_record_context(
         ajuste_favor_label = "Saldo a favor del cliente (la empresa debe pagar)"
         ajuste_contra_label = "Saldo en contra del cliente (el cliente debe pagar)"
 
-      if not partner_is_internal:
-          if partner_type == "proveedor":
-              linked_partner = _get_linked_cliente(db, partner)
-              if linked_partner and _is_internal_partner_name(db, linked_partner.nombre_completo):
-                  linked_partner = None
-              linked_partner_label = "Cliente"
-          else:
-              linked_partner = _get_linked_proveedor(db, partner)
-              if linked_partner and _is_internal_partner_name(db, linked_partner.nombre_completo):
-                  linked_partner = None
-              linked_partner_label = "Proveedor"
+    if not partner_is_internal:
+        if partner_type == "proveedor":
+            linked_partner = _get_linked_cliente(db, partner)
+            if linked_partner and _is_internal_partner_name(db, linked_partner.nombre_completo):
+                linked_partner = None
+            linked_partner_label = "Cliente"
+        else:
+            linked_partner = _get_linked_proveedor(db, partner)
+            if linked_partner and _is_internal_partner_name(db, linked_partner.nombre_completo):
+                linked_partner = None
+            linked_partner_label = "Proveedor"
 
     if linked_partner:
         compras_query = db.query(Nota).filter(
