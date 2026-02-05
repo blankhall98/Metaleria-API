@@ -3267,33 +3267,33 @@ async def proveedor_crear_cliente(
             status_code=303,
         )
 
-      existing = _get_linked_cliente(db, proveedor)
-      if existing and _is_internal_partner_name(db, existing.nombre_completo):
-          existing = None
-      if existing:
-          warn = "Ya existe un cliente vinculado o con datos similares; se mostró su record."
-          return RedirectResponse(
-              url=f"/web/admin/clientes/{existing.id}/record?{urlencode({'link_warn': warn})}",
-              status_code=303,
-          )
+    existing = _get_linked_cliente(db, proveedor)
+    if existing and _is_internal_partner_name(db, existing.nombre_completo):
+        existing = None
+    if existing:
+        warn = "Ya existe un cliente vinculado o con datos similares; se mostró su record."
+        return RedirectResponse(
+            url=f"/web/admin/clientes/{existing.id}/record?{urlencode({'link_warn': warn})}",
+            status_code=303,
+        )
 
-      try:
-          cliente, placas_skipped = _create_cliente_from_proveedor(db, proveedor=proveedor)
-          _link_cliente_proveedor(db, cliente=cliente, proveedor=proveedor)
-          db.commit()
-          db.refresh(cliente)
-      except ValueError as exc:
-          db.rollback()
-          msg = str(exc)
-          return RedirectResponse(
-              url=f"/web/admin/proveedores/{proveedor_id}/record?{urlencode({'link_error': msg})}",
-              status_code=303,
-          )
-      except IntegrityError:
-          db.rollback()
-          msg = "No se pudo crear el cliente. Revisa placas o datos duplicados."
-          return RedirectResponse(
-              url=f"/web/admin/proveedores/{proveedor_id}/record?{urlencode({'link_error': msg})}",
+    try:
+        cliente, placas_skipped = _create_cliente_from_proveedor(db, proveedor=proveedor)
+        _link_cliente_proveedor(db, cliente=cliente, proveedor=proveedor)
+        db.commit()
+        db.refresh(cliente)
+    except ValueError as exc:
+        db.rollback()
+        msg = str(exc)
+        return RedirectResponse(
+            url=f"/web/admin/proveedores/{proveedor_id}/record?{urlencode({'link_error': msg})}",
+            status_code=303,
+        )
+    except IntegrityError:
+        db.rollback()
+        msg = "No se pudo crear el cliente. Revisa placas o datos duplicados."
+        return RedirectResponse(
+            url=f"/web/admin/proveedores/{proveedor_id}/record?{urlencode({'link_error': msg})}",
             status_code=303,
         )
 
@@ -3845,33 +3845,33 @@ async def cliente_crear_proveedor(
             status_code=303,
         )
 
-      existing = _get_linked_proveedor(db, cliente)
-      if existing and _is_internal_partner_name(db, existing.nombre_completo):
-          existing = None
-      if existing:
-          warn = "Ya existe un proveedor vinculado o con datos similares; se mostró su record."
-          return RedirectResponse(
-              url=f"/web/admin/proveedores/{existing.id}/record?{urlencode({'link_warn': warn})}",
-              status_code=303,
-          )
+    existing = _get_linked_proveedor(db, cliente)
+    if existing and _is_internal_partner_name(db, existing.nombre_completo):
+        existing = None
+    if existing:
+        warn = "Ya existe un proveedor vinculado o con datos similares; se mostró su record."
+        return RedirectResponse(
+            url=f"/web/admin/proveedores/{existing.id}/record?{urlencode({'link_warn': warn})}",
+            status_code=303,
+        )
 
-      try:
-          proveedor, placas_skipped = _create_proveedor_from_cliente(db, cliente=cliente)
-          _link_cliente_proveedor(db, cliente=cliente, proveedor=proveedor)
-          db.commit()
-          db.refresh(proveedor)
-      except ValueError as exc:
-          db.rollback()
-          msg = str(exc)
-          return RedirectResponse(
-              url=f"/web/admin/clientes/{cliente_id}/record?{urlencode({'link_error': msg})}",
-              status_code=303,
-          )
-      except IntegrityError:
-          db.rollback()
-          msg = "No se pudo crear el proveedor. Revisa placas o datos duplicados."
-          return RedirectResponse(
-              url=f"/web/admin/clientes/{cliente_id}/record?{urlencode({'link_error': msg})}",
+    try:
+        proveedor, placas_skipped = _create_proveedor_from_cliente(db, cliente=cliente)
+        _link_cliente_proveedor(db, cliente=cliente, proveedor=proveedor)
+        db.commit()
+        db.refresh(proveedor)
+    except ValueError as exc:
+        db.rollback()
+        msg = str(exc)
+        return RedirectResponse(
+            url=f"/web/admin/clientes/{cliente_id}/record?{urlencode({'link_error': msg})}",
+            status_code=303,
+        )
+    except IntegrityError:
+        db.rollback()
+        msg = "No se pudo crear el proveedor. Revisa placas o datos duplicados."
+        return RedirectResponse(
+            url=f"/web/admin/clientes/{cliente_id}/record?{urlencode({'link_error': msg})}",
             status_code=303,
         )
 
@@ -8299,12 +8299,12 @@ async def contabilidad_list(
             partner_error = "Seleccion invalida."
             partner_key = ""
         else:
-              if partner_type == "cliente":
-                  partner = db.get(Cliente, partner_id)
-                  if not partner:
-                      partner_error = "Cliente no encontrado."
-                  else:
-                      notas_p = (
+            if partner_type == "cliente":
+                partner = db.get(Cliente, partner_id)
+                if not partner:
+                    partner_error = "Cliente no encontrado."
+                else:
+                    notas_p = (
                         db.query(Nota)
                         .filter(
                             Nota.cliente_id == partner_id,
@@ -8315,72 +8315,72 @@ async def contabilidad_list(
                     notas_p = notas_p.order_by(Nota.created_at.desc()).all()
                     folio_map = _build_folio_map(notas_p)
                     record_rows = _build_partner_record_rows(notas_p, folio_map, partner_type="cliente")
-                      ajustes_delta = _get_partner_adjustments_total(
-                          db,
-                          partner_type="cliente",
-                          partner_id=partner_id,
-                      )
-                      summary = _aggregate_partner_record_summary(
-                          notas_p,
-                          partner_type="cliente",
-                          ajustes_delta=ajustes_delta,
-                      )
-                      unified_enabled = False
-                      linked_partner = None
-                      if not _is_internal_partner_name(db, partner.nombre_completo):
-                          linked_partner = _get_linked_proveedor(db, partner)
-                          if linked_partner and _is_internal_partner_name(db, linked_partner.nombre_completo):
-                              linked_partner = None
-                      if linked_partner:
-                          compras_q = (
-                              db.query(Nota)
-                              .filter(
-                                  Nota.proveedor_id == linked_partner.id,
-                                  Nota.tipo_operacion == TipoOperacion.compra,
-                              )
-                          )
-                          compras_q = _apply_sucursal_filter(compras_q, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
-                          compras = compras_q.order_by(Nota.created_at.desc()).all()
-                          ajustes_proveedor = _get_partner_adjustments_total(
-                              db,
-                              partner_type="proveedor",
-                              partner_id=linked_partner.id,
-                          )
-                          summary = _aggregate_unified_partner_summary(
-                              compras=compras,
-                              ventas=notas_p,
-                              ajustes_proveedor=ajustes_proveedor,
-                              ajustes_cliente=ajustes_delta,
-                          )
-                          unified_enabled = True
-                      pagos_p = (
-                          db.query(NotaPago)
-                          .join(Nota, NotaPago.nota_id == Nota.id)
-                          .filter(
-                              Nota.cliente_id == partner_id,
+                    ajustes_delta = _get_partner_adjustments_total(
+                        db,
+                        partner_type="cliente",
+                        partner_id=partner_id,
+                    )
+                    summary = _aggregate_partner_record_summary(
+                        notas_p,
+                        partner_type="cliente",
+                        ajustes_delta=ajustes_delta,
+                    )
+                    unified_enabled = False
+                    linked_partner = None
+                    if not _is_internal_partner_name(db, partner.nombre_completo):
+                        linked_partner = _get_linked_proveedor(db, partner)
+                        if linked_partner and _is_internal_partner_name(db, linked_partner.nombre_completo):
+                            linked_partner = None
+                    if linked_partner:
+                        compras_q = (
+                            db.query(Nota)
+                            .filter(
+                                Nota.proveedor_id == linked_partner.id,
+                                Nota.tipo_operacion == TipoOperacion.compra,
+                            )
+                        )
+                        compras_q = _apply_sucursal_filter(compras_q, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
+                        compras = compras_q.order_by(Nota.created_at.desc()).all()
+                        ajustes_proveedor = _get_partner_adjustments_total(
+                            db,
+                            partner_type="proveedor",
+                            partner_id=linked_partner.id,
+                        )
+                        summary = _aggregate_unified_partner_summary(
+                            compras=compras,
+                            ventas=notas_p,
+                            ajustes_proveedor=ajustes_proveedor,
+                            ajustes_cliente=ajustes_delta,
+                        )
+                        unified_enabled = True
+                    pagos_p = (
+                        db.query(NotaPago)
+                        .join(Nota, NotaPago.nota_id == Nota.id)
+                        .filter(
+                            Nota.cliente_id == partner_id,
                             Nota.tipo_operacion == TipoOperacion.venta,
                         )
                     )
                     pagos_p = _apply_sucursal_filter(pagos_p, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
                     pagos_p = pagos_p.order_by(NotaPago.created_at.desc()).all()
-                      partner_context = {
-                          "partner": partner,
-                          "partner_label": "Cliente",
-                          "tipo_operacion_label": "Ventas",
-                          "record_rows": record_rows,
-                          "record_total_count": len(notas_p),
-                          "summary": summary,
-                          "pagos": pagos_p,
-                          "folio_map": folio_map,
-                          "record_link": f"/web/admin/clientes/{partner_id}/record",
-                          "total_facturado_label": "Total ventas aprobadas (neto)",
-                          "total_pagado_label": "Total cobrado/pagado (neto)",
-                          "saldo_pendiente_label": "Saldo neto (por cobrar al cliente)",
-                          "saldo_favor_label": "Saldo a favor del cliente",
-                          "unified_enabled": unified_enabled,
-                          "linked_partner": linked_partner,
-                          "linked_partner_label": "Proveedor",
-                      }
+                    partner_context = {
+                        "partner": partner,
+                        "partner_label": "Cliente",
+                        "tipo_operacion_label": "Ventas",
+                        "record_rows": record_rows,
+                        "record_total_count": len(notas_p),
+                        "summary": summary,
+                        "pagos": pagos_p,
+                        "folio_map": folio_map,
+                        "record_link": f"/web/admin/clientes/{partner_id}/record",
+                        "total_facturado_label": "Total ventas aprobadas (neto)",
+                        "total_pagado_label": "Total cobrado/pagado (neto)",
+                        "saldo_pendiente_label": "Saldo neto (por cobrar al cliente)",
+                        "saldo_favor_label": "Saldo a favor del cliente",
+                        "unified_enabled": unified_enabled,
+                        "linked_partner": linked_partner,
+                        "linked_partner_label": "Proveedor",
+                    }
             elif partner_type == "proveedor":
                 partner = db.get(Proveedor, partner_id)
                 if not partner:
