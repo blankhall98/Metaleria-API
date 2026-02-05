@@ -249,11 +249,16 @@ def build_report_data(
             total_ventas += monto
         elif tipo == "compra":
             total_compras += monto
-        elif tipo in ("pago", "reverso_pago"):
+        elif tipo == "pago":
             if tipo_op == "compra":
                 total_pagos_compra += monto
             else:
                 total_pagos_venta += monto
+        elif tipo == "reverso_pago":
+            if tipo_op == "compra":
+                total_pagos_compra -= monto
+            else:
+                total_pagos_venta -= monto
         elif tipo == "ajuste":
             total_ajustes += monto
         elif tipo == "reverso":
