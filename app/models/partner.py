@@ -23,7 +23,11 @@ class Proveedor(Base):
     # Activo / inactivo en catálogo
     activo = Column(Boolean, nullable=False, default=True)
 
+    # Vinculo explicito con cliente (si aplica)
+    linked_cliente_id = Column(Integer, ForeignKey("clientes.id"), nullable=True, unique=True, index=True)
+
     placas_rel = relationship("ProveedorPlaca", back_populates="proveedor", cascade="all, delete-orphan")
+    linked_cliente = relationship("Cliente", foreign_keys=[linked_cliente_id])
 
 
 class Cliente(Base):
