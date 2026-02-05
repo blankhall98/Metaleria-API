@@ -3183,6 +3183,7 @@ async def clientes_list(
     delete_ok = params.get("deleted") == "1"
     delete_error = (params.get("delete_error") or "").strip()
     query = db.query(Cliente)
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
 
     if q:
         term = f"%{q.strip()}%"
@@ -3196,6 +3197,64 @@ async def clientes_list(
         )
 
     clientes = query.order_by(Cliente.nombre_completo).all()
+    clientes_view = []
+    for cliente in clientes:
+        linked_proveedor = None
+        if not _is_internal_partner_name(db, cliente.nombre_completo):
+            placas_list = _extract_partner_placas(cliente)
+            linked_proveedor = _find_existing_proveedor_from_cliente(
+                db,
+                placas_list=placas_list,
+                correo=cliente.correo_electronico,
+                telefono=cliente.telefono,
+            )
+            if linked_proveedor and _is_internal_partner_name(db, linked_proveedor.nombre_completo):
+                linked_proveedor = None
+
+        ventas_query = db.query(Nota).filter(
+            Nota.cliente_id == cliente.id,
+            Nota.tipo_operacion == TipoOperacion.venta,
+        )
+        if allowed_suc_ids:
+            ventas_query = ventas_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
+        ventas = ventas_query.order_by(Nota.created_at.desc()).all()
+
+        compras = []
+        if linked_proveedor:
+            compras_query = db.query(Nota).filter(
+                Nota.proveedor_id == linked_proveedor.id,
+                Nota.tipo_operacion == TipoOperacion.compra,
+            )
+            if allowed_suc_ids:
+                compras_query = compras_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
+            compras = compras_query.order_by(Nota.created_at.desc()).all()
+
+        ajustes_cliente = _get_partner_adjustments_total(
+            db,
+            partner_type="cliente",
+            partner_id=cliente.id,
+        )
+        ajustes_proveedor = Decimal("0")
+        if linked_proveedor:
+            ajustes_proveedor = _get_partner_adjustments_total(
+                db,
+                partner_type="proveedor",
+                partner_id=linked_proveedor.id,
+            )
+
+        unified_summary = _aggregate_unified_partner_summary(
+            compras=compras,
+            ventas=ventas,
+            ajustes_proveedor=ajustes_proveedor,
+            ajustes_cliente=ajustes_cliente,
+        )
+        clientes_view.append(
+            {
+                "cliente": cliente,
+                "linked_proveedor": linked_proveedor,
+                "saldo_neto": unified_summary["saldo_neto"],
+            }
+        )
 
     return templates.TemplateResponse(
         "admin/clientes_list.html",
@@ -3203,7 +3262,7 @@ async def clientes_list(
             "request": request,
             "env": settings.ENV,
             "user": current_user,
-            "clientes": clientes,
+            "clientes": clientes_view,
             "q": q or "",
             "delete_ok": delete_ok,
             "delete_error": delete_error,
