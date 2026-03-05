@@ -322,8 +322,8 @@
                 </div>
             </div>
         </div>
-        <div class="table-responsive">
-            <table class="table table-hover table-sm align-middle mb-0">
+        <div class="table-responsive scroll-x">
+            <table class="table table-hover table-sm align-middle mb-0 notes-state-table">
                 <thead>
                 <tr>
                     <th>Folio</th>
@@ -397,7 +397,7 @@
                         </td>
                         <td>{{ n.created_at.strftime("%Y-%m-%d %H:%M") if n.created_at else '-' }}</td>
                         <td class="text-end">
-                            <div class="d-flex gap-2 justify-content-end flex-wrap">
+                            <div class="d-flex gap-2 justify-content-end notes-state-actions">
                                 <a href="/web/admin/notas/{{ n.id }}/evidencias" class="btn btn-sm btn-outline-primary">Evidencias</a>
                                 <a href="/web/admin/notas/{{ n.id }}" class="btn btn-sm btn-outline-primary">Ver</a>
                             </div>

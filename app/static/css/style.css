@@ -1359,6 +1359,16 @@ body.modal-open {
 .note-state-tab .badge {
     font-size: 0.7rem;
 }
+.notes-state-table {
+    min-width: 1320px;
+}
+.notes-state-table th:last-child,
+.notes-state-table td:last-child {
+    min-width: 180px;
+}
+.notes-state-actions {
+    flex-wrap: nowrap;
+}
 .note-comment-box {
     background: #f8fafc;
     min-height: 80px;
