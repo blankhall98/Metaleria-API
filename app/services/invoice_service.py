@@ -136,7 +136,7 @@ def build_invoice_pdf(db: Session, nota: Nota, generated_at: datetime | None = N
     partner_email = partner.correo_electronico if partner else None
 
     tipo_label = "Compra" if nota.tipo_operacion == TipoOperacion.compra else "Venta"
-    header_title = "NOTA DE COMPRA" if nota.tipo_operacion == TipoOperacion.compra else "NOTA DE VENTA"
+    header_title = "ORDEN DE COMPRA"
     sucursal_name = sucursal.nombre if sucursal else "-"
     sucursal_address = sucursal.direccion if sucursal and sucursal.direccion else "-"
     folio_label = folio or f"nota-{nota.id}"
@@ -176,7 +176,6 @@ def build_invoice_pdf(db: Session, nota: Nota, generated_at: datetime | None = N
         pdf.text(left, y, f"Admin: {admin.nombre_completo}", size=9)
         y -= 12
 
-    metodo = (nota.metodo_pago or "").capitalize() or "-"
     cuenta_label = "-"
     if nota.cuenta_financiera_id:
         cuenta = db.get(Cuenta, nota.cuenta_financiera_id)
@@ -185,9 +184,8 @@ def build_invoice_pdf(db: Session, nota: Nota, generated_at: datetime | None = N
         else:
             cuenta_label = str(nota.cuenta_financiera_id)
     caducidad = nota.fecha_caducidad_pago.strftime("%Y-%m-%d") if nota.fecha_caducidad_pago else "-"
-    pdf.text(380, top - 70, f"Metodo de pago: {metodo}", size=9)
-    pdf.text(380, top - 82, f"Cuenta: {cuenta_label}", size=9)
-    pdf.text(380, top - 94, f"Vencimiento: {caducidad}", size=9)
+    pdf.text(380, top - 70, f"Cuenta: {cuenta_label}", size=9)
+    pdf.text(380, top - 82, f"Vencimiento: {caducidad}", size=9)
 
     table_width = right - left
     header_height = 18
@@ -290,7 +288,7 @@ def build_invoice_pdf(db: Session, nota: Nota, generated_at: datetime | None = N
     pdf.text(left, footer_y - 14, "Documento generado por sistema. Este PDF es un comprobante interno.", size=8)
 
     pdf_bytes = pdf.render()
-    filename = f"factura_{_safe_filename(folio_label)}.pdf"
+    filename = f"orden_compra_{_safe_filename(folio_label)}.pdf"
     return pdf_bytes, filename
 
 

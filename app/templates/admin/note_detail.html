@@ -15,7 +15,7 @@
         {% endif %}
         <a href="/web/admin/notas/{{ nota.id }}/evidencias" class="btn btn-primary btn-sm note-evidence-btn">Evidencias</a>
         {% if nota.estado.value == 'APROBADA' and nota.tipo_operacion.value in ['compra', 'venta'] %}
-            <a href="/web/admin/notas/{{ nota.id }}/factura" class="btn btn-outline-primary btn-sm">Factura PDF</a>
+            <a href="/web/admin/notas/{{ nota.id }}/factura" class="btn btn-outline-primary btn-sm">Orden de Compra</a>
         {% endif %}
         <a href="/web/admin/notas" class="btn btn-outline-secondary btn-sm">Volver</a>
     </div>
