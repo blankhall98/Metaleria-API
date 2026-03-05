@@ -924,6 +924,79 @@ def add_payment(
     return pago
 
 
+def undo_payment(
+    db: Session,
+    nota: Nota,
+    pago: NotaPago,
+    *,
+    usuario_id: int | None = None,
+    comentario: str | None = None,
+    commit: bool = True,
+) -> NotaPago:
+    if nota.estado != NotaEstado.aprobada:
+        raise ValueError("Solo puedes deshacer pagos en notas aprobadas.")
+    if nota.tipo_operacion not in (TipoOperacion.compra, TipoOperacion.venta):
+        raise ValueError("Tipo de operacion no soportado para deshacer pagos.")
+    if pago.nota_id != nota.id:
+        raise ValueError("El pago no pertenece a la nota.")
+
+    monto_revertir = Decimal(str(pago.monto or 0))
+    if monto_revertir <= Decimal("0"):
+        raise ValueError("Este pago ya fue deshecho o no tiene monto valido.")
+
+    comentario_base = comentario or f"Deshacer pago #{pago.id} nota #{nota.id}"
+    cuenta_label = pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or None)
+
+    _registrar_movimiento_contable(
+        db,
+        nota=nota,
+        usuario_id=usuario_id,
+        comentario=comentario_base,
+        metodo_pago=pago.metodo_pago or nota.metodo_pago,
+        cuenta_label=cuenta_label,
+        cuenta_id=pago.cuenta_id,
+        monto=monto_revertir,
+        tipo="reverso_pago",
+    )
+
+    if pago.cuenta_scrap360_id:
+        cuenta_scrap = db.get(CuentaScrap360, pago.cuenta_scrap360_id)
+        if cuenta_scrap:
+            tipo_mov = "ingreso" if _is_compra_like(nota.tipo_operacion) else "egreso"
+            _registrar_movimiento_cuenta_scrap360(
+                db,
+                cuenta=cuenta_scrap,
+                nota=nota,
+                pago_id=pago.id,
+                usuario_id=usuario_id,
+                tipo=tipo_mov,
+                monto=monto_revertir,
+                comentario=comentario_base,
+            )
+
+    nota.monto_pagado = Decimal(str(nota.monto_pagado or 0)) - monto_revertir
+    if nota.monto_pagado < Decimal("0"):
+        nota.monto_pagado = Decimal("0")
+    nota.updated_at = datetime.utcnow()
+
+    stamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+    comentario_prev = (pago.comentario or "").strip()
+    tag = f"DESHECHO {stamp}"
+    if comentario_prev:
+        pago.comentario = f"{comentario_prev} | {tag}"
+    else:
+        pago.comentario = tag
+    pago.monto = Decimal("0")
+
+    db.add(nota)
+    db.add(pago)
+    if commit:
+        db.commit()
+        db.refresh(pago)
+        db.refresh(nota)
+    return pago
+
+
 def adjust_initial_payment(
     db: Session,
     nota: Nota,

@@ -7027,6 +7027,7 @@ def _render_nota_detail(
     error: str | None = None,
     form_state: dict | None = None,
     pago_updated: bool = False,
+    pago_reverted: bool = False,
     pago_inicial_updated: bool = False,
     precios_updated: bool = False,
     edit_updated: bool = False,
@@ -7188,6 +7189,7 @@ def _render_nota_detail(
         "cuentas_partner_label": cuentas_partner_label,
         "cuentas_scrap360": cuentas_scrap360,
         "pago_updated": pago_updated,
+        "pago_reverted": pago_reverted,
         "pago_inicial_updated": pago_inicial_updated,
         "precios_updated": precios_updated,
         "edit_updated": edit_updated,
@@ -7294,6 +7296,7 @@ async def notas_detail(
     _ensure_nota_access(nota, allowed_suc_ids)
 
     pago_updated = request.query_params.get("pago") == "1"
+    pago_reverted = request.query_params.get("pago_revertido") == "1"
     pago_inicial_updated = request.query_params.get("pago_inicial") == "1"
     precios_updated = request.query_params.get("precios") == "1"
     edit_updated = request.query_params.get("edit") == "1"
@@ -7304,6 +7307,7 @@ async def notas_detail(
         current_user,
         nota,
         pago_updated=pago_updated,
+        pago_reverted=pago_reverted,
         pago_inicial_updated=pago_inicial_updated,
         precios_updated=precios_updated,
         edit_updated=edit_updated,
@@ -8087,6 +8091,66 @@ async def notas_actualizar_pago(
         )
 
     return RedirectResponse(url=f"/web/admin/notas/{nota_id}?pago=1", status_code=303)
+
+
+@router.post("/notas/{nota_id}/pago/{pago_id}/deshacer")
+async def notas_deshacer_pago(
+    nota_id: int,
+    pago_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    nota = db.get(Nota, nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_nota_access(nota, allowed_suc_ids)
+    if nota.estado != NotaEstado.aprobada:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="Solo puedes deshacer pagos en notas aprobadas.",
+        )
+
+    pago = (
+        db.query(NotaPago)
+        .filter(
+            NotaPago.id == pago_id,
+            NotaPago.nota_id == nota.id,
+        )
+        .first()
+    )
+    if not pago:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="Pago no encontrado en esta nota.",
+        )
+
+    comentario = f"Deshacer abono por admin (pago #{pago.id})"
+    try:
+        note_service.undo_payment(
+            db,
+            nota,
+            pago,
+            usuario_id=current_user.get("id"),
+            comentario=comentario,
+        )
+    except ValueError as e:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error=str(e),
+        )
+
+    return RedirectResponse(url=f"/web/admin/notas/{nota_id}?pago_revertido=1", status_code=303)
 
 
 @router.post("/notas/{nota_id}/pago-inicial")

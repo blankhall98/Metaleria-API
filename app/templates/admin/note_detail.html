@@ -660,6 +660,11 @@
                         <span class="text-success small">Pago registrado correctamente.</span>
                     </div>
                 {% endif %}
+                {% if pago_reverted %}
+                    <div class="col-12">
+                        <span class="text-success small">Abono deshecho correctamente.</span>
+                    </div>
+                {% endif %}
             </div>
         </form>
         <div class="table-responsive mt-3">
@@ -673,18 +678,34 @@
                     <th>Cuenta Scrap360</th>
                     <th>Usuario</th>
                     <th>Comentario</th>
+                    <th class="text-end">Acciones</th>
                 </tr>
                 </thead>
                 <tbody>
                 {% for pago in pagos %}
                     <tr>
                         <td>{{ pago.created_at.strftime("%Y-%m-%d %H:%M") if pago.created_at else '-' }}</td>
-                        <td class="fw-semibold">${{ "{:,.2f}".format(pago.monto or 0) }}</td>
+                        <td class="fw-semibold">
+                            {% if (pago.monto or 0) > 0 %}
+                                ${{ "{:,.2f}".format(pago.monto or 0) }}
+                            {% else %}
+                                <span class="text-muted">$0.00</span>
+                            {% endif %}
+                        </td>
                         <td>{{ pago.metodo_pago|capitalize if pago.metodo_pago else '-' }}</td>
                         <td>{{ pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or '-') }}</td>
                         <td>{{ pago.cuenta_scrap360.nombre if pago.cuenta_scrap360 else '-' }}</td>
                         <td>{{ pago.usuario.username if pago.usuario else (pago.usuario_id or '-') }}</td>
                         <td>{{ pago.comentario or '-' }}</td>
+                        <td class="text-end">
+                            {% if (pago.monto or 0) > 0 %}
+                                <form method="post" action="/web/admin/notas/{{ nota.id }}/pago/{{ pago.id }}/deshacer" class="d-inline" onsubmit="return confirm('¿Deshacer este abono? Esta acción revertirá saldos y contabilidad.');">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Deshacer</button>
+                                </form>
+                            {% else %}
+                                <span class="badge bg-light text-dark border">Deshecho</span>
+                            {% endif %}
+                        </td>
                     </tr>
                 {% endfor %}
                 </tbody>
