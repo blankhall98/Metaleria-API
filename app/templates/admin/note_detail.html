@@ -40,7 +40,11 @@
                 {% elif nota.estado.value == 'EN_REVISION' %}
                     <span class="badge bg-warning text-dark">En revisi&oacute;n</span>
                 {% elif nota.estado.value == 'APROBADA' %}
-                    <span class="badge bg-success">Aprobada</span>
+                    {% if saldo_pendiente > 0 %}
+                        <span class="badge bg-success">Aprobada</span>
+                    {% else %}
+                        <span class="badge bg-success">Pagada</span>
+                    {% endif %}
                 {% else %}
                     <span class="badge bg-danger">Cancelada</span>
                 {% endif %}

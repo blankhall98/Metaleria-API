@@ -1234,11 +1234,13 @@ def _build_folio_map(notas: Iterable[Nota]) -> dict[int, str]:
     return folio_map
 
 
-def _build_notas_estado_links(folio_query: str | None) -> dict[str, str]:
+def _build_notas_estado_links(folio_query: str | None, pago_filter: str | None = None) -> dict[str, str]:
     def build(estado: str | None) -> str:
         params: dict[str, str] = {}
         if folio_query:
             params["folio"] = folio_query
+        if pago_filter and pago_filter != "TODAS":
+            params["pago"] = pago_filter
         if estado:
             params["estado"] = estado
         qs = urlencode(params)
@@ -1250,6 +1252,25 @@ def _build_notas_estado_links(folio_query: str | None) -> dict[str, str]:
         "EN_REVISION": build("EN_REVISION"),
         "APROBADA": build("APROBADA"),
         "CANCELADA": build("CANCELADA"),
+    }
+
+
+def _build_notas_pago_links(folio_query: str | None, estado_filter: str | None = None) -> dict[str, str]:
+    def build(pago: str | None) -> str:
+        params: dict[str, str] = {}
+        if folio_query:
+            params["folio"] = folio_query
+        if estado_filter and estado_filter != "TODAS":
+            params["estado"] = estado_filter
+        if pago and pago != "TODAS":
+            params["pago"] = pago
+        qs = urlencode(params)
+        return f"/web/admin/notas?{qs}" if qs else "/web/admin/notas"
+
+    return {
+        "TODAS": build(None),
+        "PAGADAS": build("PAGADAS"),
+        "PENDIENTES": build("PENDIENTES"),
     }
 
 
@@ -6423,6 +6444,7 @@ async def notas_list(
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     folio_query = (request.query_params.get("folio") or "").strip()
     estado_raw = (request.query_params.get("estado") or "").strip().upper()
+    pago_raw = (request.query_params.get("pago") or "").strip().upper()
     estado_aliases = {
         "REVISION": "EN_REVISION",
         "ENREVISION": "EN_REVISION",
@@ -6446,6 +6468,40 @@ async def notas_list(
         "CANCELADA": "Canceladas",
     }
     estado_label = estado_labels.get(estado_current, "Todas")
+    pago_aliases = {
+        "TODOS": "TODAS",
+        "TODAS": "TODAS",
+        "PAGADA": "PAGADAS",
+        "PAGADO": "PAGADAS",
+        "LIQUIDADA": "PAGADAS",
+        "LIQUIDADAS": "PAGADAS",
+        "SALDADA": "PAGADAS",
+        "SALDADAS": "PAGADAS",
+        "PENDIENTE": "PENDIENTES",
+        "POR_PAGAR": "PENDIENTES",
+    }
+    if pago_raw in pago_aliases:
+        pago_raw = pago_aliases[pago_raw]
+    pago_filter = None
+    pago_current = "TODAS"
+    if pago_raw in {"PAGADAS", "PENDIENTES"}:
+        pago_filter = pago_raw
+        pago_current = pago_raw
+    pago_labels = {
+        "TODAS": "Todas",
+        "PAGADAS": "Pagadas",
+        "PENDIENTES": "Pendientes por pagar",
+    }
+    pago_label = pago_labels.get(pago_current, "Todas")
+
+    paid_condition = and_(
+        Nota.estado == NotaEstado.aprobada,
+        func.coalesce(Nota.monto_pagado, 0) >= func.coalesce(Nota.total_monto, 0),
+    )
+    pending_condition = and_(
+        Nota.estado == NotaEstado.aprobada,
+        func.coalesce(Nota.monto_pagado, 0) < func.coalesce(Nota.total_monto, 0),
+    )
     notas_revision = (
         db.query(Nota)
         .filter(
@@ -6490,12 +6546,27 @@ async def notas_list(
         if estado and estado.value in estado_counts:
             estado_counts[estado.value] = int(cantidad or 0)
     estado_total = sum(estado_counts.values())
+    pago_counts_query = db.query(Nota)
+    if allowed_suc_ids:
+        pago_counts_query = pago_counts_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
+    pago_counts_query = pago_counts_query.filter(Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]))
+    if estado_filter:
+        pago_counts_query = pago_counts_query.filter(Nota.estado == estado_filter)
+    pago_counts = {
+        "PAGADAS": int(pago_counts_query.filter(paid_condition).count()),
+        "PENDIENTES": int(pago_counts_query.filter(pending_condition).count()),
+    }
+    pago_total = pago_counts["PAGADAS"] + pago_counts["PENDIENTES"]
     notas_estado_query = db.query(Nota)
     if allowed_suc_ids:
         notas_estado_query = notas_estado_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
     notas_estado_query = notas_estado_query.filter(Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]))
     if estado_filter:
         notas_estado_query = notas_estado_query.filter(Nota.estado == estado_filter)
+    if pago_filter == "PAGADAS":
+        notas_estado_query = notas_estado_query.filter(paid_condition)
+    elif pago_filter == "PENDIENTES":
+        notas_estado_query = notas_estado_query.filter(pending_condition)
     notas_estado = notas_estado_query.order_by(Nota.created_at.desc()).limit(200).all()
 
     def saldo_pendiente(nota: Nota) -> Decimal:
@@ -6565,7 +6636,8 @@ async def notas_list(
     if folio_result:
         notas_folio.append(folio_result)
     folio_map = _build_folio_map(notas_folio)
-    estado_links = _build_notas_estado_links(folio_query)
+    estado_links = _build_notas_estado_links(folio_query, pago_current)
+    pago_links = _build_notas_pago_links(folio_query, estado_current)
 
     return templates.TemplateResponse(
         "admin/notes_list.html",
@@ -6591,6 +6663,11 @@ async def notas_list(
             "estado_counts": estado_counts,
             "estado_total": estado_total,
             "estado_links": estado_links,
+            "pago_current": pago_current,
+            "pago_label": pago_label,
+            "pago_counts": pago_counts,
+            "pago_total": pago_total,
+            "pago_links": pago_links,
         },
     )
 
