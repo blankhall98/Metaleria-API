@@ -7,7 +7,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.db.deps import get_db
-from app.models import Proveedor, Cliente
+from app.models import Proveedor, Cliente, Sucursal
 
 router = APIRouter(prefix="/partners", tags=["partners"])
 
@@ -23,7 +23,7 @@ class PartnerBase(BaseModel):
 
 
 class PartnerCreate(PartnerBase):
-    pass
+    sucursal_id: int | None = None
 
 
 class PartnerUpdate(BaseModel):
@@ -32,10 +32,12 @@ class PartnerUpdate(BaseModel):
     correo_electronico: str | None = None
     placas: str | None = None
     activo: bool | None = None
+    sucursal_id: int | None = None
 
 
 class PartnerOut(PartnerBase):
     id: int
+    sucursal_id: int
     activo: bool
 
     class Config:
@@ -58,17 +60,32 @@ def _apply_search(query, model, q: str | None, only_active: bool):
     return query
 
 
+def _resolve_sucursal_id_for_create(db: Session, sucursal_id: int | None) -> int:
+    if sucursal_id:
+        sucursal = db.get(Sucursal, sucursal_id)
+        if not sucursal:
+            raise HTTPException(status_code=400, detail="Sucursal no encontrada.")
+        return sucursal.id
+    first = db.query(Sucursal.id).order_by(Sucursal.id.asc()).first()
+    if not first:
+        raise HTTPException(status_code=400, detail="No hay sucursales registradas.")
+    return int(first[0])
+
+
 # --------- Proveedores ---------
 
 
 @router.get("/proveedores", response_model=List[PartnerOut])
 def list_proveedores(
-    q: str | None = Query(None, description="Texto para buscar por nombre, teléfono, correo o placas"),
+    q: str | None = Query(None, description="Texto para buscar por nombre, telefono, correo o placas"),
     only_active: bool = Query(True),
+    sucursal_id: int | None = Query(None),
     db: Session = Depends(get_db),
 ):
     query = db.query(Proveedor)
     query = _apply_search(query, Proveedor, q, only_active)
+    if sucursal_id:
+        query = query.filter(Proveedor.sucursal_id == sucursal_id)
     proveedores = query.order_by(Proveedor.nombre_completo).all()
     return proveedores
 
@@ -78,7 +95,7 @@ def create_proveedor(
     partner_in: PartnerCreate,
     db: Session = Depends(get_db),
 ):
-    # Unicidad simple por placas (si se envía)
+    # Unicidad simple por placas (si se envia)
     if partner_in.placas:
         existing = (
             db.query(Proveedor)
@@ -90,6 +107,7 @@ def create_proveedor(
 
     proveedor = Proveedor(
         nombre_completo=partner_in.nombre_completo.strip(),
+        sucursal_id=_resolve_sucursal_id_for_create(db, partner_in.sucursal_id),
         telefono=(partner_in.telefono or "").strip() or None,
         correo_electronico=(partner_in.correo_electronico or "").strip() or None,
         placas=(partner_in.placas or "").strip() or None,
@@ -150,6 +168,12 @@ def update_proveedor(
     if "activo" in data and data["activo"] is not None:
         proveedor.activo = bool(data["activo"])
 
+    if "sucursal_id" in data and data["sucursal_id"] is not None:
+        sucursal = db.get(Sucursal, int(data["sucursal_id"]))
+        if not sucursal:
+            raise HTTPException(status_code=400, detail="Sucursal no encontrada.")
+        proveedor.sucursal_id = sucursal.id
+
     db.add(proveedor)
     db.commit()
     db.refresh(proveedor)
@@ -161,12 +185,15 @@ def update_proveedor(
 
 @router.get("/clientes", response_model=List[PartnerOut])
 def list_clientes(
-    q: str | None = Query(None, description="Texto para buscar por nombre, teléfono, correo o placas"),
+    q: str | None = Query(None, description="Texto para buscar por nombre, telefono, correo o placas"),
     only_active: bool = Query(True),
+    sucursal_id: int | None = Query(None),
     db: Session = Depends(get_db),
 ):
     query = db.query(Cliente)
     query = _apply_search(query, Cliente, q, only_active)
+    if sucursal_id:
+        query = query.filter(Cliente.sucursal_id == sucursal_id)
     clientes = query.order_by(Cliente.nombre_completo).all()
     return clientes
 
@@ -187,6 +214,7 @@ def create_cliente(
 
     cliente = Cliente(
         nombre_completo=partner_in.nombre_completo.strip(),
+        sucursal_id=_resolve_sucursal_id_for_create(db, partner_in.sucursal_id),
         telefono=(partner_in.telefono or "").strip() or None,
         correo_electronico=(partner_in.correo_electronico or "").strip() or None,
         placas=(partner_in.placas or "").strip() or None,
@@ -247,7 +275,14 @@ def update_cliente(
     if "activo" in data and data["activo"] is not None:
         cliente.activo = bool(data["activo"])
 
+    if "sucursal_id" in data and data["sucursal_id"] is not None:
+        sucursal = db.get(Sucursal, int(data["sucursal_id"]))
+        if not sucursal:
+            raise HTTPException(status_code=400, detail="Sucursal no encontrada.")
+        cliente.sucursal_id = sucursal.id
+
     db.add(cliente)
     db.commit()
     db.refresh(cliente)
     return cliente
+

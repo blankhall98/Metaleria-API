@@ -885,8 +885,11 @@ def _get_or_create_branch_cliente(db: Session, sucursal: Sucursal) -> Cliente:
     nombre = f"Sucursal {sucursal.nombre}"
     cliente = db.query(Cliente).filter(Cliente.nombre_completo == nombre).first()
     if cliente:
+        if cliente.sucursal_id != sucursal.id:
+            cliente.sucursal_id = sucursal.id
+            db.add(cliente)
         return cliente
-    cliente = Cliente(nombre_completo=nombre, activo=True)
+    cliente = Cliente(nombre_completo=nombre, sucursal_id=sucursal.id, activo=True)
     db.add(cliente)
     db.flush()
     return cliente
@@ -896,8 +899,11 @@ def _get_or_create_branch_proveedor(db: Session, sucursal: Sucursal) -> Proveedo
     nombre = f"Sucursal {sucursal.nombre}"
     proveedor = db.query(Proveedor).filter(Proveedor.nombre_completo == nombre).first()
     if proveedor:
+        if proveedor.sucursal_id != sucursal.id:
+            proveedor.sucursal_id = sucursal.id
+            db.add(proveedor)
         return proveedor
-    proveedor = Proveedor(nombre_completo=nombre, activo=True)
+    proveedor = Proveedor(nombre_completo=nombre, sucursal_id=sucursal.id, activo=True)
     db.add(proveedor)
     db.flush()
     return proveedor
@@ -936,6 +942,7 @@ def _get_linked_cliente(db: Session, proveedor: Proveedor) -> Cliente | None:
         placas_list=placas_list,
         correo=proveedor.correo_electronico,
         telefono=proveedor.telefono,
+        sucursal_id=proveedor.sucursal_id,
     )
 
 
@@ -953,6 +960,7 @@ def _get_linked_proveedor(db: Session, cliente: Cliente) -> Proveedor | None:
         placas_list=placas_list,
         correo=cliente.correo_electronico,
         telefono=cliente.telefono,
+        sucursal_id=cliente.sucursal_id,
     )
 
 
@@ -979,6 +987,13 @@ def _link_cliente_proveedor(db: Session, *, cliente: Cliente, proveedor: Proveed
     ):
         raise ValueError("No se puede vincular con una sucursal interna.")
 
+    if not cliente.sucursal_id and proveedor.sucursal_id:
+        cliente.sucursal_id = proveedor.sucursal_id
+    if not proveedor.sucursal_id and cliente.sucursal_id:
+        proveedor.sucursal_id = cliente.sucursal_id
+    if cliente.sucursal_id and proveedor.sucursal_id and cliente.sucursal_id != proveedor.sucursal_id:
+        raise ValueError("Cliente y proveedor deben pertenecer a la misma sucursal para vincularse.")
+
     if cliente.linked_proveedor_id and cliente.linked_proveedor_id != proveedor.id:
         raise ValueError("Este cliente ya está vinculado a otro proveedor. Desvincula primero.")
     if proveedor.linked_cliente_id and proveedor.linked_cliente_id != cliente.id:
@@ -990,14 +1005,57 @@ def _link_cliente_proveedor(db: Session, *, cliente: Cliente, proveedor: Proveed
     db.add(proveedor)
 
 
-def _list_linkable_proveedores(db: Session) -> list[Proveedor]:
-    proveedores = db.query(Proveedor).order_by(Proveedor.nombre_completo).all()
+def _list_linkable_proveedores(
+    db: Session,
+    *,
+    allowed_suc_ids: list[int] | None = None,
+    sucursal_id: int | None = None,
+) -> list[Proveedor]:
+    proveedores_query = db.query(Proveedor)
+    proveedores_query = _apply_sucursal_filter(
+        proveedores_query,
+        allowed_suc_ids,
+        sucursal_id,
+        Proveedor.sucursal_id,
+    )
+    proveedores = proveedores_query.order_by(Proveedor.nombre_completo).all()
     return [p for p in proveedores if not _is_internal_partner_name(db, p.nombre_completo)]
 
 
-def _list_linkable_clientes(db: Session) -> list[Cliente]:
-    clientes = db.query(Cliente).order_by(Cliente.nombre_completo).all()
+def _list_linkable_clientes(
+    db: Session,
+    *,
+    allowed_suc_ids: list[int] | None = None,
+    sucursal_id: int | None = None,
+) -> list[Cliente]:
+    clientes_query = db.query(Cliente)
+    clientes_query = _apply_sucursal_filter(
+        clientes_query,
+        allowed_suc_ids,
+        sucursal_id,
+        Cliente.sucursal_id,
+    )
+    clientes = clientes_query.order_by(Cliente.nombre_completo).all()
     return [c for c in clientes if not _is_internal_partner_name(db, c.nombre_completo)]
+
+
+def _selected_sucursal_from_request(
+    db: Session,
+    *,
+    raw_value: str | None,
+    allowed_suc_ids: list[int] | None,
+    default_id: int | None = None,
+) -> tuple[int | None, str | None]:
+    if raw_value is None or str(raw_value).strip() == "":
+        return default_id, None
+    sucursal_id = _parse_optional_int(raw_value)
+    if sucursal_id is None:
+        return default_id, "Sucursal invalida."
+    if allowed_suc_ids is not None and sucursal_id not in allowed_suc_ids:
+        return default_id, "Sucursal no autorizada."
+    if not db.get(Sucursal, sucursal_id):
+        return default_id, "Sucursal no encontrada."
+    return sucursal_id, None
 
 
 def _find_existing_cliente_from_proveedor(
@@ -1006,25 +1064,29 @@ def _find_existing_cliente_from_proveedor(
     placas_list: list[str],
     correo: str | None,
     telefono: str | None,
+    sucursal_id: int | None = None,
 ) -> Cliente | None:
+    base_query = db.query(Cliente)
+    if sucursal_id:
+        base_query = base_query.filter(Cliente.sucursal_id == sucursal_id)
     if placas_list:
         existing = (
-            db.query(Cliente)
+            base_query
             .join(ClientePlaca, Cliente.id == ClientePlaca.cliente_id)
             .filter(ClientePlaca.placa.in_(placas_list))
             .first()
         )
         if existing:
             return existing
-        existing = db.query(Cliente).filter(Cliente.placas.in_(placas_list)).first()
+        existing = base_query.filter(Cliente.placas.in_(placas_list)).first()
         if existing:
             return existing
     if correo:
-        existing = db.query(Cliente).filter(Cliente.correo_electronico == correo).first()
+        existing = base_query.filter(Cliente.correo_electronico == correo).first()
         if existing:
             return existing
     if telefono:
-        existing = db.query(Cliente).filter(Cliente.telefono == telefono).first()
+        existing = base_query.filter(Cliente.telefono == telefono).first()
         if existing:
             return existing
     return None
@@ -1036,25 +1098,29 @@ def _find_existing_proveedor_from_cliente(
     placas_list: list[str],
     correo: str | None,
     telefono: str | None,
+    sucursal_id: int | None = None,
 ) -> Proveedor | None:
+    base_query = db.query(Proveedor)
+    if sucursal_id:
+        base_query = base_query.filter(Proveedor.sucursal_id == sucursal_id)
     if placas_list:
         existing = (
-            db.query(Proveedor)
+            base_query
             .join(ProveedorPlaca, Proveedor.id == ProveedorPlaca.proveedor_id)
             .filter(ProveedorPlaca.placa.in_(placas_list))
             .first()
         )
         if existing:
             return existing
-        existing = db.query(Proveedor).filter(Proveedor.placas.in_(placas_list)).first()
+        existing = base_query.filter(Proveedor.placas.in_(placas_list)).first()
         if existing:
             return existing
     if correo:
-        existing = db.query(Proveedor).filter(Proveedor.correo_electronico == correo).first()
+        existing = base_query.filter(Proveedor.correo_electronico == correo).first()
         if existing:
             return existing
     if telefono:
-        existing = db.query(Proveedor).filter(Proveedor.telefono == telefono).first()
+        existing = base_query.filter(Proveedor.telefono == telefono).first()
         if existing:
             return existing
     return None
@@ -1069,6 +1135,7 @@ def _create_cliente_from_proveedor(
     placas_ok, placas_skipped = _filter_placas_for_cliente(db, placas_list)
     cliente = Cliente(
         nombre_completo=proveedor.nombre_completo,
+        sucursal_id=proveedor.sucursal_id,
         telefono=proveedor.telefono,
         correo_electronico=proveedor.correo_electronico,
         placas=placas_ok[0] if placas_ok else None,
@@ -1089,6 +1156,7 @@ def _create_proveedor_from_cliente(
     placas_ok, placas_skipped = _filter_placas_for_proveedor(db, placas_list)
     proveedor = Proveedor(
         nombre_completo=cliente.nombre_completo,
+        sucursal_id=cliente.sucursal_id,
         telefono=cliente.telefono,
         correo_electronico=cliente.correo_electronico,
         placas=placas_ok[0] if placas_ok else None,
@@ -1849,6 +1917,16 @@ def _ensure_nota_access(
     if allowed_ids is None:
         return
     if nota.sucursal_id not in allowed_ids:
+        raise HTTPException(status_code=403, detail="No tienes acceso a esta sucursal.")
+
+
+def _ensure_partner_access(
+    partner: Cliente | Proveedor,
+    allowed_ids: list[int] | None,
+) -> None:
+    if allowed_ids is None:
+        return
+    if partner.sucursal_id not in allowed_ids:
         raise HTTPException(status_code=403, detail="No tienes acceso a esta sucursal.")
 
 
@@ -2835,6 +2913,78 @@ async def material_precio_new_post(
         status_code=303,
     )
 
+def _partner_form_sucursales(
+    db: Session,
+    current_user: dict,
+) -> tuple[list[int] | None, list[Sucursal]]:
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
+    return allowed_suc_ids, sucursales
+
+
+def _render_proveedor_form(
+    request: Request,
+    current_user: dict,
+    *,
+    proveedor: Proveedor | None,
+    error: str | None,
+    placas_text: str,
+    clientes: list[Cliente],
+    linked_cliente_id: int | None,
+    sucursales: list[Sucursal],
+    sucursal_id_selected: int | None,
+    status_code: int = 200,
+):
+    return templates.TemplateResponse(
+        "admin/proveedor_form.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "proveedor": proveedor,
+            "error": error,
+            "placas_text": placas_text,
+            "clientes": clientes,
+            "linked_cliente_id": linked_cliente_id,
+            "sucursales": sucursales,
+            "sucursal_id_selected": sucursal_id_selected,
+        },
+        status_code=status_code,
+    )
+
+
+def _render_cliente_form(
+    request: Request,
+    current_user: dict,
+    *,
+    cliente: Cliente | None,
+    error: str | None,
+    placas_text: str,
+    proveedores: list[Proveedor],
+    linked_proveedor_id: int | None,
+    sucursales: list[Sucursal],
+    sucursal_id_selected: int | None,
+    status_code: int = 200,
+):
+    return templates.TemplateResponse(
+        "admin/cliente_form.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "cliente": cliente,
+            "error": error,
+            "placas_text": placas_text,
+            "proveedores": proveedores,
+            "linked_proveedor_id": linked_proveedor_id,
+            "sucursales": sucursales,
+            "sucursal_id_selected": sucursal_id_selected,
+        },
+        status_code=status_code,
+    )
+
+
 # ---------- PROVEEDORES ----------
 
 
@@ -2850,6 +3000,17 @@ async def proveedores_list(
     delete_error = (params.get("delete_error") or "").strip()
     query = db.query(Proveedor)
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    sucursal_id = None
+    sucursal_error = None
+    if params.get("sucursal_id"):
+        sucursal_id, sucursal_error = _selected_sucursal_from_request(
+            db,
+            raw_value=params.get("sucursal_id"),
+            allowed_suc_ids=allowed_suc_ids,
+        )
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
+    query = _apply_sucursal_filter(query, allowed_suc_ids, sucursal_id, Proveedor.sucursal_id)
 
     if q:
         term = f"%{q.strip()}%"
@@ -2875,8 +3036,12 @@ async def proveedores_list(
             Nota.proveedor_id == proveedor.id,
             Nota.tipo_operacion == TipoOperacion.compra,
         )
-        if allowed_suc_ids:
-            compras_query = compras_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
+        compras_query = _apply_sucursal_filter(
+            compras_query,
+            allowed_suc_ids,
+            sucursal_id,
+            Nota.sucursal_id,
+        )
         compras = compras_query.order_by(Nota.created_at.desc()).all()
 
         ventas = []
@@ -2885,8 +3050,12 @@ async def proveedores_list(
                 Nota.cliente_id == linked_cliente.id,
                 Nota.tipo_operacion == TipoOperacion.venta,
             )
-            if allowed_suc_ids:
-                ventas_query = ventas_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
+            ventas_query = _apply_sucursal_filter(
+                ventas_query,
+                allowed_suc_ids,
+                sucursal_id,
+                Nota.sucursal_id,
+            )
             ventas = ventas_query.order_by(Nota.created_at.desc()).all()
 
         ajustes_proveedor = _get_partner_adjustments_total(
@@ -2924,6 +3093,9 @@ async def proveedores_list(
             "user": current_user,
             "proveedores": proveedores_view,
             "q": q or "",
+            "sucursales": sucursales,
+            "sucursal_id": sucursal_id,
+            "sucursal_error": sucursal_error,
             "delete_ok": delete_ok,
             "delete_error": delete_error,
         },
@@ -2979,18 +3151,23 @@ async def proveedor_new_get(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
-    return templates.TemplateResponse(
-        "admin/proveedor_form.html",
-        {
-            "request": request,
-            "env": settings.ENV,
-            "user": current_user,
-            "proveedor": None,
-            "error": None,
-            "placas_text": "",
-            "clientes": _list_linkable_clientes(db),
-            "linked_cliente_id": None,
-        },
+    allowed_suc_ids, sucursales = _partner_form_sucursales(db, current_user)
+    default_sucursal_id = sucursales[0].id if sucursales else None
+    clientes_list = _list_linkable_clientes(
+        db,
+        allowed_suc_ids=allowed_suc_ids,
+        sucursal_id=default_sucursal_id,
+    )
+    return _render_proveedor_form(
+        request,
+        current_user,
+        proveedor=None,
+        error=None,
+        placas_text="",
+        clientes=clientes_list,
+        linked_cliente_id=None,
+        sucursales=sucursales,
+        sucursal_id_selected=default_sucursal_id,
     )
 
 
@@ -3002,82 +3179,130 @@ async def proveedor_new_post(
     correo_electronico: str = Form(""),
     placas: str = Form(""),
     linked_cliente_id: str | None = Form(None),
+    sucursal_id: str | None = Form(None),
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
-    clientes_list = _list_linkable_clientes(db)
+    allowed_suc_ids, sucursales = _partner_form_sucursales(db, current_user)
+    default_sucursal_id = sucursales[0].id if sucursales else None
+    sucursal_id_selected, sucursal_error = _selected_sucursal_from_request(
+        db,
+        raw_value=sucursal_id,
+        allowed_suc_ids=allowed_suc_ids,
+        default_id=default_sucursal_id,
+    )
+    clientes_list = _list_linkable_clientes(
+        db,
+        allowed_suc_ids=allowed_suc_ids,
+        sucursal_id=sucursal_id_selected,
+    )
+
     nombre_completo = nombre_completo.strip()
     telefono = telefono.strip()
     correo_electronico = correo_electronico.strip()
     placas_list = _parse_placas(placas)
     linked_id = _parse_optional_int(linked_cliente_id)
     linked_cliente = db.get(Cliente, linked_id) if linked_id else None
+
+    if sucursal_error:
+        return _render_proveedor_form(
+            request,
+            current_user,
+            proveedor=None,
+            error=sucursal_error,
+            placas_text=placas,
+            clientes=clientes_list,
+            linked_cliente_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
+            status_code=400,
+        )
+    if not sucursal_id_selected:
+        return _render_proveedor_form(
+            request,
+            current_user,
+            proveedor=None,
+            error="Debes seleccionar una sucursal.",
+            placas_text=placas,
+            clientes=clientes_list,
+            linked_cliente_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
+            status_code=400,
+        )
+
     if linked_id and not linked_cliente:
-        return templates.TemplateResponse(
-            "admin/proveedor_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "proveedor": None,
-                "error": "Cliente vinculado no encontrado.",
-                "placas_text": placas,
-                "clientes": clientes_list,
-                "linked_cliente_id": linked_id,
-            },
+        return _render_proveedor_form(
+            request,
+            current_user,
+            proveedor=None,
+            error="Cliente vinculado no encontrado.",
+            placas_text=placas,
+            clientes=clientes_list,
+            linked_cliente_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
             status_code=400,
         )
     if linked_cliente and _is_internal_partner_name(db, linked_cliente.nombre_completo):
-        return templates.TemplateResponse(
-            "admin/proveedor_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "proveedor": None,
-                "error": "No puedes vincular una sucursal interna.",
-                "placas_text": placas,
-                "clientes": clientes_list,
-                "linked_cliente_id": linked_id,
-            },
+        return _render_proveedor_form(
+            request,
+            current_user,
+            proveedor=None,
+            error="No puedes vincular una sucursal interna.",
+            placas_text=placas,
+            clientes=clientes_list,
+            linked_cliente_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
+            status_code=400,
+        )
+    if linked_cliente and linked_cliente.sucursal_id != sucursal_id_selected:
+        return _render_proveedor_form(
+            request,
+            current_user,
+            proveedor=None,
+            error="El cliente vinculado debe pertenecer a la misma sucursal.",
+            placas_text=placas,
+            clientes=clientes_list,
+            linked_cliente_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
             status_code=400,
         )
 
     if not nombre_completo:
-        return templates.TemplateResponse(
-            "admin/proveedor_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "proveedor": None,
-                "error": "El nombre del proveedor es obligatorio.",
-                "placas_text": placas,
-                "clientes": clientes_list,
-                "linked_cliente_id": linked_id,
-            },
+        return _render_proveedor_form(
+            request,
+            current_user,
+            proveedor=None,
+            error="El nombre del proveedor es obligatorio.",
+            placas_text=placas,
+            clientes=clientes_list,
+            linked_cliente_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
             status_code=400,
         )
 
     conflict = _placas_conflict(db, placas_list, ProveedorPlaca, "proveedor_id", None)
     if conflict:
-        return templates.TemplateResponse(
-            "admin/proveedor_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "proveedor": None,
-                "error": conflict,
-                "placas_text": placas,
-                "clientes": clientes_list,
-                "linked_cliente_id": linked_id,
-            },
+        return _render_proveedor_form(
+            request,
+            current_user,
+            proveedor=None,
+            error=conflict,
+            placas_text=placas,
+            clientes=clientes_list,
+            linked_cliente_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
             status_code=400,
         )
 
     proveedor = Proveedor(
         nombre_completo=nombre_completo,
+        sucursal_id=sucursal_id_selected,
         telefono=telefono or None,
         correo_electronico=correo_electronico or None,
         placas=placas_list[0] if placas_list else None,
@@ -3090,18 +3315,16 @@ async def proveedor_new_post(
             _link_cliente_proveedor(db, cliente=linked_cliente, proveedor=proveedor)
         except ValueError as exc:
             db.rollback()
-            return templates.TemplateResponse(
-                "admin/proveedor_form.html",
-                {
-                    "request": request,
-                    "env": settings.ENV,
-                    "user": current_user,
-                    "proveedor": None,
-                    "error": str(exc),
-                    "placas_text": placas,
-                    "clientes": clientes_list,
-                    "linked_cliente_id": linked_id,
-                },
+            return _render_proveedor_form(
+                request,
+                current_user,
+                proveedor=None,
+                error=str(exc),
+                placas_text=placas,
+                clientes=clientes_list,
+                linked_cliente_id=linked_id,
+                sucursales=sucursales,
+                sucursal_id_selected=sucursal_id_selected,
                 status_code=400,
             )
     db.commit()
@@ -3110,7 +3333,6 @@ async def proveedor_new_post(
     db.commit()
 
     return RedirectResponse(url="/web/admin/proveedores", status_code=303)
-
 
 @router.get("/proveedores/{proveedor_id}/editar")
 async def proveedor_edit_get(
@@ -3123,18 +3345,29 @@ async def proveedor_edit_get(
     if not proveedor:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado.")
 
-    return templates.TemplateResponse(
-        "admin/proveedor_form.html",
-        {
-            "request": request,
-            "env": settings.ENV,
-            "user": current_user,
-            "proveedor": proveedor,
-            "error": None,
-            "placas_text": "\n".join([pl.placa for pl in proveedor.placas_rel]) if proveedor.placas_rel else (proveedor.placas or ""),
-            "clientes": _list_linkable_clientes(db),
-            "linked_cliente_id": proveedor.linked_cliente_id,
-        },
+    allowed_suc_ids, sucursales = _partner_form_sucursales(db, current_user)
+    _ensure_partner_access(proveedor, allowed_suc_ids)
+    clientes_list = _list_linkable_clientes(
+        db,
+        allowed_suc_ids=allowed_suc_ids,
+        sucursal_id=proveedor.sucursal_id,
+    )
+    if proveedor.linked_cliente_id:
+        linked = db.get(Cliente, proveedor.linked_cliente_id)
+        if linked and linked not in clientes_list:
+            clientes_list.append(linked)
+        clientes_list = sorted(clientes_list, key=lambda c: c.nombre_completo or "")
+
+    return _render_proveedor_form(
+        request,
+        current_user,
+        proveedor=proveedor,
+        error=None,
+        placas_text="\n".join([pl.placa for pl in proveedor.placas_rel]) if proveedor.placas_rel else (proveedor.placas or ""),
+        clientes=clientes_list,
+        linked_cliente_id=proveedor.linked_cliente_id,
+        sucursales=sucursales,
+        sucursal_id_selected=proveedor.sucursal_id,
     )
 
 
@@ -3148,13 +3381,27 @@ async def proveedor_edit_post(
     placas: str = Form(""),
     activo: str | None = Form(None),
     linked_cliente_id: str | None = Form(None),
+    sucursal_id: str | None = Form(None),
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
     proveedor = db.query(Proveedor).get(proveedor_id)
     if not proveedor:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado.")
-    clientes_list = _list_linkable_clientes(db)
+
+    allowed_suc_ids, sucursales = _partner_form_sucursales(db, current_user)
+    _ensure_partner_access(proveedor, allowed_suc_ids)
+    sucursal_id_selected, sucursal_error = _selected_sucursal_from_request(
+        db,
+        raw_value=sucursal_id,
+        allowed_suc_ids=allowed_suc_ids,
+        default_id=proveedor.sucursal_id,
+    )
+    clientes_list = _list_linkable_clientes(
+        db,
+        allowed_suc_ids=allowed_suc_ids,
+        sucursal_id=sucursal_id_selected,
+    )
 
     nombre_completo = nombre_completo.strip()
     telefono = telefono.strip()
@@ -3162,71 +3409,105 @@ async def proveedor_edit_post(
     placas_list = _parse_placas(placas)
     linked_id = _parse_optional_int(linked_cliente_id)
     linked_cliente = db.get(Cliente, linked_id) if linked_id else None
+
+    if sucursal_error:
+        return _render_proveedor_form(
+            request,
+            current_user,
+            proveedor=proveedor,
+            error=sucursal_error,
+            placas_text=placas,
+            clientes=clientes_list,
+            linked_cliente_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
+            status_code=400,
+        )
+    if not sucursal_id_selected:
+        return _render_proveedor_form(
+            request,
+            current_user,
+            proveedor=proveedor,
+            error="Debes seleccionar una sucursal.",
+            placas_text=placas,
+            clientes=clientes_list,
+            linked_cliente_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
+            status_code=400,
+        )
+
     if linked_id and not linked_cliente:
-        return templates.TemplateResponse(
-            "admin/proveedor_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "proveedor": proveedor,
-                "error": "Cliente vinculado no encontrado.",
-                "placas_text": placas,
-                "clientes": clientes_list,
-                "linked_cliente_id": linked_id,
-            },
+        return _render_proveedor_form(
+            request,
+            current_user,
+            proveedor=proveedor,
+            error="Cliente vinculado no encontrado.",
+            placas_text=placas,
+            clientes=clientes_list,
+            linked_cliente_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
             status_code=400,
         )
     if linked_cliente and _is_internal_partner_name(db, linked_cliente.nombre_completo):
-        return templates.TemplateResponse(
-            "admin/proveedor_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "proveedor": proveedor,
-                "error": "No puedes vincular una sucursal interna.",
-                "placas_text": placas,
-                "clientes": clientes_list,
-                "linked_cliente_id": linked_id,
-            },
+        return _render_proveedor_form(
+            request,
+            current_user,
+            proveedor=proveedor,
+            error="No puedes vincular una sucursal interna.",
+            placas_text=placas,
+            clientes=clientes_list,
+            linked_cliente_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
+            status_code=400,
+        )
+    if linked_cliente and linked_cliente.sucursal_id != sucursal_id_selected:
+        return _render_proveedor_form(
+            request,
+            current_user,
+            proveedor=proveedor,
+            error="El cliente vinculado debe pertenecer a la misma sucursal.",
+            placas_text=placas,
+            clientes=clientes_list,
+            linked_cliente_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
             status_code=400,
         )
 
     if not nombre_completo:
-        return templates.TemplateResponse(
-            "admin/proveedor_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "proveedor": proveedor,
-                "error": "El nombre del proveedor es obligatorio.",
-                "placas_text": placas,
-                "clientes": clientes_list,
-                "linked_cliente_id": linked_id,
-            },
+        return _render_proveedor_form(
+            request,
+            current_user,
+            proveedor=proveedor,
+            error="El nombre del proveedor es obligatorio.",
+            placas_text=placas,
+            clientes=clientes_list,
+            linked_cliente_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
             status_code=400,
         )
 
     conflict = _placas_conflict(db, placas_list, ProveedorPlaca, "proveedor_id", proveedor.id)
     if conflict:
-        return templates.TemplateResponse(
-            "admin/proveedor_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "proveedor": proveedor,
-                "error": conflict,
-                "placas_text": placas,
-                "clientes": clientes_list,
-                "linked_cliente_id": linked_id,
-            },
+        return _render_proveedor_form(
+            request,
+            current_user,
+            proveedor=proveedor,
+            error=conflict,
+            placas_text=placas,
+            clientes=clientes_list,
+            linked_cliente_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
             status_code=400,
         )
 
     proveedor.nombre_completo = nombre_completo
+    proveedor.sucursal_id = sucursal_id_selected
     proveedor.telefono = telefono or None
     proveedor.correo_electronico = correo_electronico or None
     proveedor.placas = placas_list[0] if placas_list else None
@@ -3238,18 +3519,16 @@ async def proveedor_edit_post(
             _link_cliente_proveedor(db, cliente=linked_cliente, proveedor=proveedor)
         except ValueError as exc:
             db.rollback()
-            return templates.TemplateResponse(
-                "admin/proveedor_form.html",
-                {
-                    "request": request,
-                    "env": settings.ENV,
-                    "user": current_user,
-                    "proveedor": proveedor,
-                    "error": str(exc),
-                    "placas_text": placas,
-                    "clientes": clientes_list,
-                    "linked_cliente_id": linked_id,
-                },
+            return _render_proveedor_form(
+                request,
+                current_user,
+                proveedor=proveedor,
+                error=str(exc),
+                placas_text=placas,
+                clientes=clientes_list,
+                linked_cliente_id=linked_id,
+                sucursales=sucursales,
+                sucursal_id_selected=sucursal_id_selected,
                 status_code=400,
             )
     else:
@@ -3257,7 +3536,6 @@ async def proveedor_edit_post(
     db.commit()
 
     return RedirectResponse(url="/web/admin/proveedores", status_code=303)
-
 
 @router.get("/proveedores/{proveedor_id}/record")
 async def proveedor_record(
@@ -3270,6 +3548,8 @@ async def proveedor_record(
     proveedor = db.get(Proveedor, proveedor_id)
     if not proveedor:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_partner_access(proveedor, allowed_suc_ids)
     ajuste_ok = request.query_params.get("ajuste") == "1"
     link_ok = request.query_params.get("link_ok") == "1"
     link_msg = (request.query_params.get("link_msg") or "").strip() or None
@@ -3301,6 +3581,8 @@ async def proveedor_crear_cliente(
     proveedor = db.get(Proveedor, proveedor_id)
     if not proveedor:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_partner_access(proveedor, allowed_suc_ids)
     if _is_internal_partner_name(db, proveedor.nombre_completo):
         msg = "No se puede crear como cliente porque es una sucursal interna."
         return RedirectResponse(
@@ -3357,6 +3639,8 @@ async def proveedor_ajuste_saldo(
     proveedor = db.get(Proveedor, proveedor_id)
     if not proveedor:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_partner_access(proveedor, allowed_suc_ids)
 
     form = await request.form()
     direction = (form.get("ajuste_direccion") or "").strip().lower()
@@ -3428,6 +3712,17 @@ async def clientes_list(
     delete_error = (params.get("delete_error") or "").strip()
     query = db.query(Cliente)
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    sucursal_id = None
+    sucursal_error = None
+    if params.get("sucursal_id"):
+        sucursal_id, sucursal_error = _selected_sucursal_from_request(
+            db,
+            raw_value=params.get("sucursal_id"),
+            allowed_suc_ids=allowed_suc_ids,
+        )
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
+    query = _apply_sucursal_filter(query, allowed_suc_ids, sucursal_id, Cliente.sucursal_id)
 
     if q:
         term = f"%{q.strip()}%"
@@ -3453,8 +3748,12 @@ async def clientes_list(
             Nota.cliente_id == cliente.id,
             Nota.tipo_operacion == TipoOperacion.venta,
         )
-        if allowed_suc_ids:
-            ventas_query = ventas_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
+        ventas_query = _apply_sucursal_filter(
+            ventas_query,
+            allowed_suc_ids,
+            sucursal_id,
+            Nota.sucursal_id,
+        )
         ventas = ventas_query.order_by(Nota.created_at.desc()).all()
 
         compras = []
@@ -3463,8 +3762,12 @@ async def clientes_list(
                 Nota.proveedor_id == linked_proveedor.id,
                 Nota.tipo_operacion == TipoOperacion.compra,
             )
-            if allowed_suc_ids:
-                compras_query = compras_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
+            compras_query = _apply_sucursal_filter(
+                compras_query,
+                allowed_suc_ids,
+                sucursal_id,
+                Nota.sucursal_id,
+            )
             compras = compras_query.order_by(Nota.created_at.desc()).all()
 
         ajustes_cliente = _get_partner_adjustments_total(
@@ -3502,6 +3805,9 @@ async def clientes_list(
             "user": current_user,
             "clientes": clientes_view,
             "q": q or "",
+            "sucursales": sucursales,
+            "sucursal_id": sucursal_id,
+            "sucursal_error": sucursal_error,
             "delete_ok": delete_ok,
             "delete_error": delete_error,
         },
@@ -3557,18 +3863,23 @@ async def cliente_new_get(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
-    return templates.TemplateResponse(
-        "admin/cliente_form.html",
-        {
-            "request": request,
-            "env": settings.ENV,
-            "user": current_user,
-            "cliente": None,
-            "error": None,
-            "placas_text": "",
-            "proveedores": _list_linkable_proveedores(db),
-            "linked_proveedor_id": None,
-        },
+    allowed_suc_ids, sucursales = _partner_form_sucursales(db, current_user)
+    default_sucursal_id = sucursales[0].id if sucursales else None
+    proveedores_list = _list_linkable_proveedores(
+        db,
+        allowed_suc_ids=allowed_suc_ids,
+        sucursal_id=default_sucursal_id,
+    )
+    return _render_cliente_form(
+        request,
+        current_user,
+        cliente=None,
+        error=None,
+        placas_text="",
+        proveedores=proveedores_list,
+        linked_proveedor_id=None,
+        sucursales=sucursales,
+        sucursal_id_selected=default_sucursal_id,
     )
 
 
@@ -3580,82 +3891,130 @@ async def cliente_new_post(
     correo_electronico: str = Form(""),
     placas: str = Form(""),
     linked_proveedor_id: str | None = Form(None),
+    sucursal_id: str | None = Form(None),
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
-    proveedores_list = _list_linkable_proveedores(db)
+    allowed_suc_ids, sucursales = _partner_form_sucursales(db, current_user)
+    default_sucursal_id = sucursales[0].id if sucursales else None
+    sucursal_id_selected, sucursal_error = _selected_sucursal_from_request(
+        db,
+        raw_value=sucursal_id,
+        allowed_suc_ids=allowed_suc_ids,
+        default_id=default_sucursal_id,
+    )
+    proveedores_list = _list_linkable_proveedores(
+        db,
+        allowed_suc_ids=allowed_suc_ids,
+        sucursal_id=sucursal_id_selected,
+    )
+
     nombre_completo = nombre_completo.strip()
     telefono = telefono.strip()
     correo_electronico = correo_electronico.strip()
     placas_list = _parse_placas(placas)
     linked_id = _parse_optional_int(linked_proveedor_id)
     linked_proveedor = db.get(Proveedor, linked_id) if linked_id else None
+
+    if sucursal_error:
+        return _render_cliente_form(
+            request,
+            current_user,
+            cliente=None,
+            error=sucursal_error,
+            placas_text=placas,
+            proveedores=proveedores_list,
+            linked_proveedor_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
+            status_code=400,
+        )
+    if not sucursal_id_selected:
+        return _render_cliente_form(
+            request,
+            current_user,
+            cliente=None,
+            error="Debes seleccionar una sucursal.",
+            placas_text=placas,
+            proveedores=proveedores_list,
+            linked_proveedor_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
+            status_code=400,
+        )
+
     if linked_id and not linked_proveedor:
-        return templates.TemplateResponse(
-            "admin/cliente_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "cliente": None,
-                "error": "Proveedor vinculado no encontrado.",
-                "placas_text": placas,
-                "proveedores": proveedores_list,
-                "linked_proveedor_id": linked_id,
-            },
+        return _render_cliente_form(
+            request,
+            current_user,
+            cliente=None,
+            error="Proveedor vinculado no encontrado.",
+            placas_text=placas,
+            proveedores=proveedores_list,
+            linked_proveedor_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
             status_code=400,
         )
     if linked_proveedor and _is_internal_partner_name(db, linked_proveedor.nombre_completo):
-        return templates.TemplateResponse(
-            "admin/cliente_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "cliente": None,
-                "error": "No puedes vincular una sucursal interna.",
-                "placas_text": placas,
-                "proveedores": proveedores_list,
-                "linked_proveedor_id": linked_id,
-            },
+        return _render_cliente_form(
+            request,
+            current_user,
+            cliente=None,
+            error="No puedes vincular una sucursal interna.",
+            placas_text=placas,
+            proveedores=proveedores_list,
+            linked_proveedor_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
+            status_code=400,
+        )
+    if linked_proveedor and linked_proveedor.sucursal_id != sucursal_id_selected:
+        return _render_cliente_form(
+            request,
+            current_user,
+            cliente=None,
+            error="El proveedor vinculado debe pertenecer a la misma sucursal.",
+            placas_text=placas,
+            proveedores=proveedores_list,
+            linked_proveedor_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
             status_code=400,
         )
 
     if not nombre_completo:
-        return templates.TemplateResponse(
-            "admin/cliente_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "cliente": None,
-                "error": "El nombre del cliente es obligatorio.",
-                "placas_text": placas,
-                "proveedores": proveedores_list,
-                "linked_proveedor_id": linked_id,
-            },
+        return _render_cliente_form(
+            request,
+            current_user,
+            cliente=None,
+            error="El nombre del cliente es obligatorio.",
+            placas_text=placas,
+            proveedores=proveedores_list,
+            linked_proveedor_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
             status_code=400,
         )
 
     conflict = _placas_conflict(db, placas_list, ClientePlaca, "cliente_id", None)
     if conflict:
-        return templates.TemplateResponse(
-            "admin/cliente_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "cliente": None,
-                "error": conflict,
-                "placas_text": placas,
-                "proveedores": proveedores_list,
-                "linked_proveedor_id": linked_id,
-            },
+        return _render_cliente_form(
+            request,
+            current_user,
+            cliente=None,
+            error=conflict,
+            placas_text=placas,
+            proveedores=proveedores_list,
+            linked_proveedor_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
             status_code=400,
         )
 
     cliente = Cliente(
         nombre_completo=nombre_completo,
+        sucursal_id=sucursal_id_selected,
         telefono=telefono or None,
         correo_electronico=correo_electronico or None,
         placas=placas_list[0] if placas_list else None,
@@ -3668,18 +4027,16 @@ async def cliente_new_post(
             _link_cliente_proveedor(db, cliente=cliente, proveedor=linked_proveedor)
         except ValueError as exc:
             db.rollback()
-            return templates.TemplateResponse(
-                "admin/cliente_form.html",
-                {
-                    "request": request,
-                    "env": settings.ENV,
-                    "user": current_user,
-                    "cliente": None,
-                    "error": str(exc),
-                    "placas_text": placas,
-                    "proveedores": proveedores_list,
-                    "linked_proveedor_id": linked_id,
-                },
+            return _render_cliente_form(
+                request,
+                current_user,
+                cliente=None,
+                error=str(exc),
+                placas_text=placas,
+                proveedores=proveedores_list,
+                linked_proveedor_id=linked_id,
+                sucursales=sucursales,
+                sucursal_id_selected=sucursal_id_selected,
                 status_code=400,
             )
     db.commit()
@@ -3701,18 +4058,29 @@ async def cliente_edit_get(
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado.")
 
-    return templates.TemplateResponse(
-        "admin/cliente_form.html",
-        {
-            "request": request,
-            "env": settings.ENV,
-            "user": current_user,
-            "cliente": cliente,
-            "error": None,
-            "placas_text": "\n".join([pl.placa for pl in cliente.placas_rel]) if cliente.placas_rel else (cliente.placas or ""),
-            "proveedores": _list_linkable_proveedores(db),
-            "linked_proveedor_id": cliente.linked_proveedor_id,
-        },
+    allowed_suc_ids, sucursales = _partner_form_sucursales(db, current_user)
+    _ensure_partner_access(cliente, allowed_suc_ids)
+    proveedores_list = _list_linkable_proveedores(
+        db,
+        allowed_suc_ids=allowed_suc_ids,
+        sucursal_id=cliente.sucursal_id,
+    )
+    if cliente.linked_proveedor_id:
+        linked = db.get(Proveedor, cliente.linked_proveedor_id)
+        if linked and linked not in proveedores_list:
+            proveedores_list.append(linked)
+        proveedores_list = sorted(proveedores_list, key=lambda p: p.nombre_completo or "")
+
+    return _render_cliente_form(
+        request,
+        current_user,
+        cliente=cliente,
+        error=None,
+        placas_text="\n".join([pl.placa for pl in cliente.placas_rel]) if cliente.placas_rel else (cliente.placas or ""),
+        proveedores=proveedores_list,
+        linked_proveedor_id=cliente.linked_proveedor_id,
+        sucursales=sucursales,
+        sucursal_id_selected=cliente.sucursal_id,
     )
 
 
@@ -3726,13 +4094,27 @@ async def cliente_edit_post(
     placas: str = Form(""),
     activo: str | None = Form(None),
     linked_proveedor_id: str | None = Form(None),
+    sucursal_id: str | None = Form(None),
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
     cliente = db.query(Cliente).get(cliente_id)
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado.")
-    proveedores_list = _list_linkable_proveedores(db)
+
+    allowed_suc_ids, sucursales = _partner_form_sucursales(db, current_user)
+    _ensure_partner_access(cliente, allowed_suc_ids)
+    sucursal_id_selected, sucursal_error = _selected_sucursal_from_request(
+        db,
+        raw_value=sucursal_id,
+        allowed_suc_ids=allowed_suc_ids,
+        default_id=cliente.sucursal_id,
+    )
+    proveedores_list = _list_linkable_proveedores(
+        db,
+        allowed_suc_ids=allowed_suc_ids,
+        sucursal_id=sucursal_id_selected,
+    )
 
     nombre_completo = nombre_completo.strip()
     telefono = telefono.strip()
@@ -3740,71 +4122,105 @@ async def cliente_edit_post(
     placas_list = _parse_placas(placas)
     linked_id = _parse_optional_int(linked_proveedor_id)
     linked_proveedor = db.get(Proveedor, linked_id) if linked_id else None
+
+    if sucursal_error:
+        return _render_cliente_form(
+            request,
+            current_user,
+            cliente=cliente,
+            error=sucursal_error,
+            placas_text=placas,
+            proveedores=proveedores_list,
+            linked_proveedor_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
+            status_code=400,
+        )
+    if not sucursal_id_selected:
+        return _render_cliente_form(
+            request,
+            current_user,
+            cliente=cliente,
+            error="Debes seleccionar una sucursal.",
+            placas_text=placas,
+            proveedores=proveedores_list,
+            linked_proveedor_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
+            status_code=400,
+        )
+
     if linked_id and not linked_proveedor:
-        return templates.TemplateResponse(
-            "admin/cliente_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "cliente": cliente,
-                "error": "Proveedor vinculado no encontrado.",
-                "placas_text": placas,
-                "proveedores": proveedores_list,
-                "linked_proveedor_id": linked_id,
-            },
+        return _render_cliente_form(
+            request,
+            current_user,
+            cliente=cliente,
+            error="Proveedor vinculado no encontrado.",
+            placas_text=placas,
+            proveedores=proveedores_list,
+            linked_proveedor_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
             status_code=400,
         )
     if linked_proveedor and _is_internal_partner_name(db, linked_proveedor.nombre_completo):
-        return templates.TemplateResponse(
-            "admin/cliente_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "cliente": cliente,
-                "error": "No puedes vincular una sucursal interna.",
-                "placas_text": placas,
-                "proveedores": proveedores_list,
-                "linked_proveedor_id": linked_id,
-            },
+        return _render_cliente_form(
+            request,
+            current_user,
+            cliente=cliente,
+            error="No puedes vincular una sucursal interna.",
+            placas_text=placas,
+            proveedores=proveedores_list,
+            linked_proveedor_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
+            status_code=400,
+        )
+    if linked_proveedor and linked_proveedor.sucursal_id != sucursal_id_selected:
+        return _render_cliente_form(
+            request,
+            current_user,
+            cliente=cliente,
+            error="El proveedor vinculado debe pertenecer a la misma sucursal.",
+            placas_text=placas,
+            proveedores=proveedores_list,
+            linked_proveedor_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
             status_code=400,
         )
 
     if not nombre_completo:
-        return templates.TemplateResponse(
-            "admin/cliente_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "cliente": cliente,
-                "error": "El nombre del cliente es obligatorio.",
-                "placas_text": placas,
-                "proveedores": proveedores_list,
-                "linked_proveedor_id": linked_id,
-            },
+        return _render_cliente_form(
+            request,
+            current_user,
+            cliente=cliente,
+            error="El nombre del cliente es obligatorio.",
+            placas_text=placas,
+            proveedores=proveedores_list,
+            linked_proveedor_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
             status_code=400,
         )
 
     conflict = _placas_conflict(db, placas_list, ClientePlaca, "cliente_id", cliente.id)
     if conflict:
-        return templates.TemplateResponse(
-            "admin/cliente_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "cliente": cliente,
-                "error": conflict,
-                "placas_text": placas,
-                "proveedores": proveedores_list,
-                "linked_proveedor_id": linked_id,
-            },
+        return _render_cliente_form(
+            request,
+            current_user,
+            cliente=cliente,
+            error=conflict,
+            placas_text=placas,
+            proveedores=proveedores_list,
+            linked_proveedor_id=linked_id,
+            sucursales=sucursales,
+            sucursal_id_selected=sucursal_id_selected,
             status_code=400,
         )
 
     cliente.nombre_completo = nombre_completo
+    cliente.sucursal_id = sucursal_id_selected
     cliente.telefono = telefono or None
     cliente.correo_electronico = correo_electronico or None
     cliente.placas = placas_list[0] if placas_list else None
@@ -3816,18 +4232,16 @@ async def cliente_edit_post(
             _link_cliente_proveedor(db, cliente=cliente, proveedor=linked_proveedor)
         except ValueError as exc:
             db.rollback()
-            return templates.TemplateResponse(
-                "admin/cliente_form.html",
-                {
-                    "request": request,
-                    "env": settings.ENV,
-                    "user": current_user,
-                    "cliente": cliente,
-                    "error": str(exc),
-                    "placas_text": placas,
-                    "proveedores": proveedores_list,
-                    "linked_proveedor_id": linked_id,
-                },
+            return _render_cliente_form(
+                request,
+                current_user,
+                cliente=cliente,
+                error=str(exc),
+                placas_text=placas,
+                proveedores=proveedores_list,
+                linked_proveedor_id=linked_id,
+                sucursales=sucursales,
+                sucursal_id_selected=sucursal_id_selected,
                 status_code=400,
             )
     else:
@@ -3835,7 +4249,6 @@ async def cliente_edit_post(
     db.commit()
 
     return RedirectResponse(url="/web/admin/clientes", status_code=303)
-
 
 @router.get("/clientes/{cliente_id}/record")
 async def cliente_record(
@@ -3848,6 +4261,8 @@ async def cliente_record(
     cliente = db.get(Cliente, cliente_id)
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_partner_access(cliente, allowed_suc_ids)
     ajuste_ok = request.query_params.get("ajuste") == "1"
     link_ok = request.query_params.get("link_ok") == "1"
     link_msg = (request.query_params.get("link_msg") or "").strip() or None
@@ -3879,6 +4294,8 @@ async def cliente_crear_proveedor(
     cliente = db.get(Cliente, cliente_id)
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_partner_access(cliente, allowed_suc_ids)
     if _is_internal_partner_name(db, cliente.nombre_completo):
         msg = "No se puede crear como proveedor porque es una sucursal interna."
         return RedirectResponse(
@@ -3935,6 +4352,8 @@ async def cliente_ajuste_saldo(
     cliente = db.get(Cliente, cliente_id)
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_partner_access(cliente, allowed_suc_ids)
 
     form = await request.form()
     direction = (form.get("ajuste_direccion") or "").strip().lower()
@@ -10113,5 +10532,4 @@ async def inventario_movimientos_export(
     headers = {"Content-Disposition": "attachment; filename=movimientos_inventario.pdf"}
     buffer.seek(0)
     return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
-
 

@@ -14,7 +14,7 @@
 </div>
 
 <form method="get" class="row g-2 mb-3">
-    <div class="col-sm-8 col-md-6">
+    <div class="col-sm-12 col-md-5">
         <input
             type="text"
             class="form-control"
@@ -23,10 +23,26 @@
             value="{{ q }}"
         >
     </div>
+    <div class="col-sm-8 col-md-4">
+        <select class="form-select" name="sucursal_id">
+            <option value="">Todas las sucursales</option>
+            {% for s in sucursales %}
+                <option value="{{ s.id }}" {% if sucursal_id and sucursal_id == s.id %}selected{% endif %}>{{ s.nombre }}</option>
+            {% endfor %}
+        </select>
+    </div>
     <div class="col-auto">
         <button class="btn btn-outline-secondary btn-sm" type="submit">Buscar</button>
     </div>
+    {% if q or sucursal_id %}
+        <div class="col-auto">
+            <a class="btn btn-outline-secondary btn-sm" href="/web/admin/proveedores">Limpiar</a>
+        </div>
+    {% endif %}
 </form>
+{% if sucursal_error %}
+    <div class="alert alert-danger py-2 small mb-3">{{ sucursal_error }}</div>
+{% endif %}
 
 <div class="card hover-lift">
     <div class="card-body">
@@ -42,6 +58,7 @@
                 <tr>
                     <th>ID</th>
                     <th>Nombre</th>
+                    <th>Sucursal</th>
                     <th>Teléfono</th>
                     <th>Correo</th>
                     <th>Placas</th>
@@ -56,6 +73,7 @@
                     <tr>
                         <td>{{ p.id }}</td>
                         <td>{{ p.nombre_completo }}</td>
+                        <td>{{ p.sucursal.nombre if p.sucursal else "-" }}</td>
                         <td>{{ p.telefono or "-" }}</td>
                         <td>{{ p.correo_electronico or "-" }}</td>
                         <td>
@@ -106,3 +124,4 @@
     </div>
 </div>
 {% endblock %}
+

@@ -55,6 +55,19 @@
 
             <div class="row g-3">
                 <div class="col-md-6">
+                    {% set selected_sucursal = sucursal_id_selected if sucursal_id_selected is not none else (cliente.sucursal_id if cliente and cliente.sucursal_id else '') %}
+                    <label class="form-label" for="sucursal_id">Sucursal</label>
+                    <select class="form-select" id="sucursal_id" name="sucursal_id" required>
+                        <option value="">Selecciona una sucursal</option>
+                        {% for s in sucursales %}
+                            <option value="{{ s.id }}" {% if selected_sucursal and selected_sucursal == s.id %}selected{% endif %}>{{ s.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-6">
                     <label class="form-label" for="correo_electronico">Correo electrónico</label>
                     <input
                         class="form-control"
@@ -84,7 +97,7 @@
                         <option value="">Sin vinculo</option>
                         {% for p in proveedores %}
                             <option value="{{ p.id }}" {% if linked_proveedor_id == p.id %}selected{% endif %}>
-                                {{ p.nombre_completo }} (ID {{ p.id }})
+                                {{ p.nombre_completo }} (ID {{ p.id }}) - {{ p.sucursal.nombre if p.sucursal else "Sin sucursal" }}
                             </option>
                         {% endfor %}
                     </select>
@@ -174,3 +187,4 @@
     })();
 </script>
 {% endblock %}
+

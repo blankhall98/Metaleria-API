@@ -11,6 +11,7 @@ class Proveedor(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     nombre_completo = Column(String(200), nullable=False, index=True)
+    sucursal_id = Column(Integer, ForeignKey("sucursales.id"), nullable=False, index=True)
 
     # Datos de contacto (opcionales, pero útiles para búsqueda)
     telefono = Column(String(50), nullable=True, index=True)
@@ -26,6 +27,7 @@ class Proveedor(Base):
     # Vinculo explicito con cliente (si aplica)
     linked_cliente_id = Column(Integer, ForeignKey("clientes.id"), nullable=True, unique=True, index=True)
 
+    sucursal = relationship("Sucursal")
     placas_rel = relationship("ProveedorPlaca", back_populates="proveedor", cascade="all, delete-orphan")
     linked_cliente = relationship("Cliente", foreign_keys=[linked_cliente_id])
 
@@ -35,6 +37,7 @@ class Cliente(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     nombre_completo = Column(String(200), nullable=False, index=True)
+    sucursal_id = Column(Integer, ForeignKey("sucursales.id"), nullable=False, index=True)
 
     telefono = Column(String(50), nullable=True, index=True)
     correo_electronico = Column(String(200), nullable=True, index=True)
@@ -47,6 +50,7 @@ class Cliente(Base):
     # Vinculo explicito con proveedor (si aplica)
     linked_proveedor_id = Column(Integer, ForeignKey("proveedores.id"), nullable=True, unique=True, index=True)
 
+    sucursal = relationship("Sucursal")
     placas_rel = relationship("ClientePlaca", back_populates="cliente", cascade="all, delete-orphan")
     linked_proveedor = relationship("Proveedor", foreign_keys=[linked_proveedor_id])
 

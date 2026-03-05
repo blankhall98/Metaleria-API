@@ -27,6 +27,8 @@ from app.models import (
     CuentaScrap360Movimiento,
     User,
     UserRole,
+    Proveedor,
+    Cliente,
 )
 
 
@@ -320,6 +322,28 @@ def _resolve_nota_sucursal(
     return int(sucursal_id)
 
 
+def _validate_partner_for_nota_sucursal(
+    db: Session,
+    *,
+    tipo_operacion: TipoOperacion,
+    sucursal_id: int,
+    proveedor_id: int | None,
+    cliente_id: int | None,
+) -> None:
+    if tipo_operacion == TipoOperacion.compra and proveedor_id:
+        proveedor = db.get(Proveedor, proveedor_id)
+        if not proveedor:
+            raise ValueError("Proveedor no encontrado.")
+        if proveedor.sucursal_id != sucursal_id:
+            raise ValueError("El proveedor no pertenece a la sucursal de la nota.")
+    if tipo_operacion == TipoOperacion.venta and cliente_id:
+        cliente = db.get(Cliente, cliente_id)
+        if not cliente:
+            raise ValueError("Cliente no encontrado.")
+        if cliente.sucursal_id != sucursal_id:
+            raise ValueError("El cliente no pertenece a la sucursal de la nota.")
+
+
 def _validate_cuenta_for_nota(db: Session, nota: Nota, cuenta_id: int) -> Cuenta:
     cuenta = db.get(Cuenta, cuenta_id)
     if not cuenta or not cuenta.activo:
@@ -493,6 +517,13 @@ def create_draft_note(
         sucursal_id=sucursal_id,
         trabajador_id=trabajador_id,
     )
+    _validate_partner_for_nota_sucursal(
+        db,
+        tipo_operacion=tipo_operacion,
+        sucursal_id=sucursal_id,
+        proveedor_id=proveedor_id,
+        cliente_id=cliente_id,
+    )
     nota = Nota(
         sucursal_id=sucursal_id,
         trabajador_id=trabajador_id,
@@ -613,6 +644,13 @@ def update_worker_note(
             tipo_operacion=tipo_operacion,
         )
 
+    _validate_partner_for_nota_sucursal(
+        db,
+        tipo_operacion=tipo_operacion,
+        sucursal_id=nota.sucursal_id,
+        proveedor_id=proveedor_id,
+        cliente_id=cliente_id,
+    )
     nota.tipo_operacion = tipo_operacion
     nota.comentarios_trabajador = (comentarios_trabajador or "").strip() or None
     if tipo_operacion == TipoOperacion.compra:
@@ -1489,6 +1527,13 @@ def attach_partner(
     """
     Asigna proveedor o cliente según tipo_operacion. Mantiene consistencia.
     """
+    _validate_partner_for_nota_sucursal(
+        db,
+        tipo_operacion=nota.tipo_operacion,
+        sucursal_id=nota.sucursal_id,
+        proveedor_id=proveedor_id,
+        cliente_id=cliente_id,
+    )
     if nota.tipo_operacion == TipoOperacion.compra:
         nota.proveedor_id = proveedor_id
         nota.cliente_id = None

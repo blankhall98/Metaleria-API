@@ -57,6 +57,48 @@ def _get_price_map(db: Session) -> dict:
     return mapping
 
 
+def _get_worker_partners(db: Session, current_user: dict) -> tuple[list[Proveedor], list[Cliente]]:
+    sucursal_id = current_user.get("sucursal_id")
+    proveedores_q = db.query(Proveedor).filter(Proveedor.activo.is_(True))
+    clientes_q = db.query(Cliente).filter(Cliente.activo.is_(True))
+    if sucursal_id:
+        proveedores_q = proveedores_q.filter(Proveedor.sucursal_id == sucursal_id)
+        clientes_q = clientes_q.filter(Cliente.sucursal_id == sucursal_id)
+    proveedores = proveedores_q.order_by(Proveedor.nombre_completo).all()
+    clientes = clientes_q.order_by(Cliente.nombre_completo).all()
+    return proveedores, clientes
+
+
+def _validate_worker_partner_selection(
+    db: Session,
+    *,
+    tipo_operacion: TipoOperacion,
+    proveedor_id: str | None,
+    cliente_id: str | None,
+    sucursal_id: int | None,
+) -> None:
+    if tipo_operacion == TipoOperacion.compra and proveedor_id:
+        try:
+            pid = int(proveedor_id)
+        except (TypeError, ValueError):
+            raise ValueError("Proveedor invalido.")
+        proveedor = db.get(Proveedor, pid)
+        if not proveedor or not proveedor.activo:
+            raise ValueError("Proveedor invalido.")
+        if sucursal_id and proveedor.sucursal_id != sucursal_id:
+            raise ValueError("El proveedor no pertenece a tu sucursal.")
+    if tipo_operacion == TipoOperacion.venta and cliente_id:
+        try:
+            cid = int(cliente_id)
+        except (TypeError, ValueError):
+            raise ValueError("Cliente invalido.")
+        cliente = db.get(Cliente, cid)
+        if not cliente or not cliente.activo:
+            raise ValueError("Cliente invalido.")
+        if sucursal_id and cliente.sucursal_id != sucursal_id:
+            raise ValueError("El cliente no pertenece a tu sucursal.")
+
+
 @router.get("/notes")
 async def notes_list(
     request: Request,
@@ -97,8 +139,7 @@ async def notes_new_get(
     current_user: dict = Depends(require_worker),
 ):
     materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
-    proveedores = db.query(Proveedor).filter(Proveedor.activo.is_(True)).order_by(Proveedor.nombre_completo).all()
-    clientes = db.query(Cliente).filter(Cliente.activo.is_(True)).order_by(Cliente.nombre_completo).all()
+    proveedores, clientes = _get_worker_partners(db, current_user)
     price_map = _get_price_map(db)
     return templates.TemplateResponse(
         "worker/notes_form.html",
@@ -226,8 +267,7 @@ async def notes_new_post(
     current_user: dict = Depends(require_worker),
 ):
     materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
-    proveedores = db.query(Proveedor).filter(Proveedor.activo.is_(True)).order_by(Proveedor.nombre_completo).all()
-    clientes = db.query(Cliente).filter(Cliente.activo.is_(True)).order_by(Cliente.nombre_completo).all()
+    proveedores, clientes = _get_worker_partners(db, current_user)
     price_map = _get_price_map(db)
 
     try:
@@ -372,6 +412,30 @@ async def notes_new_post(
             },
             status_code=400,
         )
+    try:
+        _validate_worker_partner_selection(
+            db,
+            tipo_operacion=tipo_op,
+            proveedor_id=proveedor_id,
+            cliente_id=cliente_id,
+            sucursal_id=current_user.get("sucursal_id"),
+        )
+    except ValueError as e:
+        return templates.TemplateResponse(
+            "worker/notes_form.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "materiales": materiales,
+                "proveedores": proveedores,
+                "clientes": clientes,
+                "error": str(e),
+                "price_map": price_map,
+                "max_mb": settings.FIREBASE_MAX_MB,
+            },
+            status_code=400,
+        )
 
     try:
         nota = note_service.create_draft_note(
@@ -423,8 +487,7 @@ async def notes_edit_get(
         return RedirectResponse(url="/web/worker/notes?success=2", status_code=303)
 
     materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
-    proveedores = db.query(Proveedor).filter(Proveedor.activo.is_(True)).order_by(Proveedor.nombre_completo).all()
-    clientes = db.query(Cliente).filter(Cliente.activo.is_(True)).order_by(Cliente.nombre_completo).all()
+    proveedores, clientes = _get_worker_partners(db, current_user)
     price_map = _get_price_map(db)
     initial_state = _build_worker_note_initial_state(nota)
 
@@ -477,8 +540,7 @@ async def notes_edit_post(
         return RedirectResponse(url="/web/worker/notes?success=2", status_code=303)
 
     materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
-    proveedores = db.query(Proveedor).filter(Proveedor.activo.is_(True)).order_by(Proveedor.nombre_completo).all()
-    clientes = db.query(Cliente).filter(Cliente.activo.is_(True)).order_by(Cliente.nombre_completo).all()
+    proveedores, clientes = _get_worker_partners(db, current_user)
     price_map = _get_price_map(db)
 
     try:
@@ -610,6 +672,34 @@ async def notes_edit_post(
                 "proveedores": proveedores,
                 "clientes": clientes,
                 "error": "Selecciona un cliente para la venta.",
+                "price_map": price_map,
+                "max_mb": settings.FIREBASE_MAX_MB,
+                "form_title": "Editar nota",
+                "action_url": f"/web/worker/notes/{nota.id}/editar",
+                "submit_label": "Guardar cambios",
+                "initial_note_json": json.dumps(_build_worker_note_initial_state(nota), ensure_ascii=True),
+            },
+            status_code=400,
+        )
+    try:
+        _validate_worker_partner_selection(
+            db,
+            tipo_operacion=tipo_op,
+            proveedor_id=proveedor_id,
+            cliente_id=cliente_id,
+            sucursal_id=current_user.get("sucursal_id"),
+        )
+    except ValueError as e:
+        return templates.TemplateResponse(
+            "worker/notes_form.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "materiales": materiales,
+                "proveedores": proveedores,
+                "clientes": clientes,
+                "error": str(e),
                 "price_map": price_map,
                 "max_mb": settings.FIREBASE_MAX_MB,
                 "form_title": "Editar nota",
@@ -826,3 +916,4 @@ async def notes_subpesaje_upload(
         url=f"/web/worker/notes/{nota_id}/evidencias?updated=1",
         status_code=303,
     )
+
