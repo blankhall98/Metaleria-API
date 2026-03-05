@@ -395,7 +395,7 @@
             <form method="post" action="/web/admin/notas/{{ nota.id }}/cancelar" class="m-0" onsubmit="syncCancelComment(this)">
                 <input type="hidden" name="comentarios_admin" value="">
                 <button type="submit" class="btn btn-outline-danger">
-                    {% if nota.estado.value == 'APROBADA' %}Devolucion{% else %}Rechazar{% endif %}
+                    {% if nota.estado.value == 'APROBADA' %}Devolucion total{% else %}Rechazar{% endif %}
                 </button>
             </form>
             {% if nota.estado.value in ['EN_REVISION'] %}
@@ -414,6 +414,89 @@
 </div>
 
 {% if nota.estado.value == 'APROBADA' %}
+<div class="card hover-lift mb-3">
+    <div class="card-body">
+        <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
+            <h2 class="h6 text-dark mb-0 note-section-title">Devolucion parcial</h2>
+            <div class="text-muted small">Ajusta kg por material y precio por kg de la devolucion.</div>
+        </div>
+        {% if devolucion_parcial_updated %}
+            <div class="alert alert-success py-2 small mb-3">Devolucion parcial aplicada correctamente.</div>
+        {% endif %}
+        <form method="post" action="/web/admin/notas/{{ nota.id }}/devolucion-parcial">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm align-middle mb-2">
+                    <thead>
+                    <tr>
+                        <th>Material</th>
+                        <th class="text-end">Kg neto actual</th>
+                        <th class="text-end">Precio actual/kg</th>
+                        <th class="text-end">Kg a devolver</th>
+                        <th class="text-end">Precio devolucion/kg</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for nm in nota.materiales %}
+                        {% set kg_input = form_devol_kg_map.get(nm.id) if form_devol_kg_map else None %}
+                        {% set precio_input = form_devol_precio_map.get(nm.id) if form_devol_precio_map else None %}
+                        <tr>
+                            <td>
+                                <div class="fw-semibold">{{ nm.material.nombre if nm.material else ("Material #" ~ nm.material_id) }}</div>
+                                {% if nm.subpesajes %}
+                                    <div class="text-muted small">Con subpesajes: la devolucion se descuenta del neto acumulado.</div>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">{{ "{:,.3f}".format(nm.kg_neto or 0) }}</td>
+                            <td class="text-end">${{ "{:,.5f}".format(nm.precio_unitario or 0) }}</td>
+                            <td class="text-end" style="max-width: 170px;">
+                                <input
+                                    class="form-control form-control-sm text-end"
+                                    type="number"
+                                    step="0.001"
+                                    min="0"
+                                    max="{{ nm.kg_neto or 0 }}"
+                                    name="devol_kg_{{ nm.id }}"
+                                    value="{{ kg_input if kg_input is not none else '' }}"
+                                >
+                            </td>
+                            <td class="text-end" style="max-width: 190px;">
+                                <input
+                                    class="form-control form-control-sm text-end"
+                                    type="number"
+                                    step="0.00001"
+                                    min="0"
+                                    name="devol_precio_{{ nm.id }}"
+                                    value="{{ precio_input if precio_input is not none else (nm.precio_unitario or 0) }}"
+                                >
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="row g-2 align-items-end">
+                <div class="col-lg-8">
+                    {% set devol_comment_val = form_devol_comment if form_devol_comment is not none else '' %}
+                    <label class="form-label">Comentario devolucion</label>
+                    <input
+                        class="form-control form-control-sm"
+                        type="text"
+                        name="comentario_devolucion_parcial"
+                        placeholder="Motivo o referencia"
+                        value="{{ devol_comment_val }}"
+                    >
+                    <div class="form-text text-muted">
+                        Si queda monto pagado/cobrado por encima del nuevo total, se conserva como saldo a favor.
+                    </div>
+                </div>
+                <div class="col-lg-4 d-grid">
+                    <button type="submit" class="btn btn-outline-danger btn-sm">Aplicar devolucion parcial</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
 <div class="card hover-lift mb-3 note-payments-card">
     <div class="card-body">
         <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">

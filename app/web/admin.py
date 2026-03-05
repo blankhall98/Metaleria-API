@@ -6534,6 +6534,7 @@ def _render_nota_detail(
     pago_inicial_updated: bool = False,
     precios_updated: bool = False,
     edit_updated: bool = False,
+    devolucion_parcial_updated: bool = False,
 ):
     sucursal = db.get(Sucursal, nota.sucursal_id) if nota.sucursal_id else None
     proveedor = db.get(Proveedor, nota.proveedor_id) if nota.proveedor_id else None
@@ -6656,6 +6657,9 @@ def _render_nota_detail(
         "form_pago_inicial_cuenta": None,
         "form_pago_inicial_comentario": None,
         "form_pago_inicial_cuenta_scrap360": None,
+        "form_devol_kg_map": {},
+        "form_devol_precio_map": {},
+        "form_devol_comment": None,
         "form_precio_unit_map": {},
         "form_subtotal_map": {},
         "form_precio_mode_map": {},
@@ -6691,6 +6695,7 @@ def _render_nota_detail(
         "pago_inicial_updated": pago_inicial_updated,
         "precios_updated": precios_updated,
         "edit_updated": edit_updated,
+        "devolucion_parcial_updated": devolucion_parcial_updated,
         "devolucion_check": devolucion_check,
         "error": error,
         "proveedores": proveedores,
@@ -6796,6 +6801,7 @@ async def notas_detail(
     pago_inicial_updated = request.query_params.get("pago_inicial") == "1"
     precios_updated = request.query_params.get("precios") == "1"
     edit_updated = request.query_params.get("edit") == "1"
+    devolucion_parcial_updated = request.query_params.get("devolucion_parcial") == "1"
     return _render_nota_detail(
         request,
         db,
@@ -6805,6 +6811,7 @@ async def notas_detail(
         pago_inicial_updated=pago_inicial_updated,
         precios_updated=precios_updated,
         edit_updated=edit_updated,
+        devolucion_parcial_updated=devolucion_parcial_updated,
     )
 
 
@@ -7677,6 +7684,156 @@ async def notas_ajustar_pago_inicial(
         )
 
     return RedirectResponse(url=f"/web/admin/notas/{nota_id}?pago_inicial=1", status_code=303)
+
+
+@router.post("/notas/{nota_id}/devolucion-parcial")
+async def notas_devolucion_parcial(
+    nota_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    nota = db.get(Nota, nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_nota_access(nota, allowed_suc_ids)
+    if nota.estado != NotaEstado.aprobada:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="Solo puedes aplicar devolucion parcial en notas aprobadas.",
+        )
+
+    form = await request.form()
+    comentario = (form.get("comentario_devolucion_parcial") or "").strip()
+    form_devol_kg_map: dict[int, str] = {}
+    form_devol_precio_map: dict[int, str] = {}
+    devoluciones_payload: list[dict] = []
+
+    for nm in nota.materiales:
+        kg_raw = (form.get(f"devol_kg_{nm.id}") or "").strip()
+        precio_raw = (form.get(f"devol_precio_{nm.id}") or "").strip()
+        if kg_raw:
+            form_devol_kg_map[nm.id] = kg_raw
+        if precio_raw:
+            form_devol_precio_map[nm.id] = precio_raw
+
+        if not kg_raw and not precio_raw:
+            continue
+
+        try:
+            kg_devolucion = Decimal(str(kg_raw or 0))
+        except (InvalidOperation, TypeError):
+            return _render_nota_detail(
+                request,
+                db,
+                current_user,
+                nota,
+                error="El kg de devolucion es invalido.",
+                form_state={
+                    "form_devol_kg_map": form_devol_kg_map,
+                    "form_devol_precio_map": form_devol_precio_map,
+                    "form_devol_comment": comentario,
+                },
+            )
+        if kg_devolucion < Decimal("0"):
+            return _render_nota_detail(
+                request,
+                db,
+                current_user,
+                nota,
+                error="El kg de devolucion no puede ser negativo.",
+                form_state={
+                    "form_devol_kg_map": form_devol_kg_map,
+                    "form_devol_precio_map": form_devol_precio_map,
+                    "form_devol_comment": comentario,
+                },
+            )
+        if kg_devolucion == Decimal("0"):
+            continue
+
+        try:
+            precio_devolucion = (
+                Decimal(str(precio_raw))
+                if precio_raw
+                else Decimal(str(nm.precio_unitario or 0))
+            )
+        except (InvalidOperation, TypeError):
+            return _render_nota_detail(
+                request,
+                db,
+                current_user,
+                nota,
+                error="El precio de devolucion es invalido.",
+                form_state={
+                    "form_devol_kg_map": form_devol_kg_map,
+                    "form_devol_precio_map": form_devol_precio_map,
+                    "form_devol_comment": comentario,
+                },
+            )
+        if precio_devolucion < Decimal("0"):
+            return _render_nota_detail(
+                request,
+                db,
+                current_user,
+                nota,
+                error="El precio de devolucion no puede ser negativo.",
+                form_state={
+                    "form_devol_kg_map": form_devol_kg_map,
+                    "form_devol_precio_map": form_devol_precio_map,
+                    "form_devol_comment": comentario,
+                },
+            )
+
+        devoluciones_payload.append(
+            {
+                "nota_material_id": nm.id,
+                "kg_devolucion": kg_devolucion,
+                "precio_unitario_devolucion": precio_devolucion,
+            }
+        )
+
+    if not devoluciones_payload:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="Debes indicar al menos un material con kg de devolucion mayor a 0.",
+            form_state={
+                "form_devol_kg_map": form_devol_kg_map,
+                "form_devol_precio_map": form_devol_precio_map,
+                "form_devol_comment": comentario,
+            },
+        )
+
+    try:
+        note_service.partial_return_approved_note(
+            db,
+            nota,
+            devoluciones_payload=devoluciones_payload,
+            admin_id=current_user.get("id"),
+            comentario=comentario or None,
+        )
+    except ValueError as e:
+        db.rollback()
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error=str(e),
+            form_state={
+                "form_devol_kg_map": form_devol_kg_map,
+                "form_devol_precio_map": form_devol_precio_map,
+                "form_devol_comment": comentario,
+            },
+        )
+
+    return RedirectResponse(url=f"/web/admin/notas/{nota_id}?devolucion_parcial=1", status_code=303)
 
 
 @router.post("/notas/{nota_id}/cancelar")

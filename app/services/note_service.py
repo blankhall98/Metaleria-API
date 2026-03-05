@@ -1187,6 +1187,181 @@ def cancel_approved_note(
     return nota
 
 
+def partial_return_approved_note(
+    db: Session,
+    nota: Nota,
+    *,
+    devoluciones_payload: Sequence[dict],
+    admin_id: int | None = None,
+    comentario: str | None = None,
+    commit: bool = True,
+) -> Nota:
+    """
+    Aplica una devolucion parcial sobre una nota aprobada.
+    Reduce kg netos por material y descuenta el monto segun precio de devolucion por kg.
+    No genera reembolso automatico: si queda sobrepago, permanece como saldo a favor.
+    """
+    if nota.estado != NotaEstado.aprobada:
+        raise ValueError("Solo puedes aplicar devoluciones parciales en notas aprobadas.")
+    if nota.tipo_operacion not in (TipoOperacion.compra, TipoOperacion.venta):
+        raise ValueError("Tipo de operacion no soportado para devolucion parcial.")
+    if not devoluciones_payload:
+        raise ValueError("Debes indicar al menos un material para devolucion.")
+
+    devoluciones_map: dict[int, dict[str, Decimal]] = {}
+    for item in devoluciones_payload:
+        try:
+            nm_id = int(item.get("nota_material_id"))
+        except (TypeError, ValueError):
+            raise ValueError("Material de devolucion invalido.")
+        kg_devolucion = Decimal(str(item.get("kg_devolucion") or 0))
+        precio_devolucion = Decimal(str(item.get("precio_unitario_devolucion") or 0))
+        if kg_devolucion < Decimal("0"):
+            raise ValueError("El kg de devolucion no puede ser negativo.")
+        if precio_devolucion < Decimal("0"):
+            raise ValueError("El precio de devolucion no puede ser negativo.")
+        if kg_devolucion == Decimal("0"):
+            continue
+        monto_devolucion = kg_devolucion * precio_devolucion
+        if nm_id not in devoluciones_map:
+            devoluciones_map[nm_id] = {
+                "kg_devolucion": Decimal("0"),
+                "monto_devolucion": Decimal("0"),
+            }
+        devoluciones_map[nm_id]["kg_devolucion"] += kg_devolucion
+        devoluciones_map[nm_id]["monto_devolucion"] += monto_devolucion
+
+    if not devoluciones_map:
+        raise ValueError("Debes indicar un kg mayor a 0 en al menos un material.")
+
+    materiales_by_id = {nm.id: nm for nm in nota.materiales}
+    ajustes_material: dict[int, dict[str, Decimal]] = {}
+
+    for nm_id, payload in devoluciones_map.items():
+        nm = materiales_by_id.get(nm_id)
+        if not nm:
+            raise ValueError("Un material de devolucion no pertenece a la nota.")
+        kg_actual = Decimal(str(nm.kg_neto or 0))
+        subtotal_actual = Decimal(str(nm.subtotal or 0))
+        kg_devolucion = payload["kg_devolucion"]
+        monto_devolucion = payload["monto_devolucion"]
+        if kg_actual <= Decimal("0"):
+            raise ValueError("No se puede devolver un material con kg neto 0.")
+        if kg_devolucion > kg_actual:
+            mat_name = nm.material.nombre if nm.material else f"Material {nm.material_id}"
+            raise ValueError(f"La devolucion excede los kg netos disponibles de {mat_name}.")
+        if monto_devolucion > subtotal_actual:
+            mat_name = nm.material.nombre if nm.material else f"Material {nm.material_id}"
+            raise ValueError(f"El monto de devolucion excede el subtotal disponible de {mat_name}.")
+
+        kg_nuevo = kg_actual - kg_devolucion
+        subtotal_nuevo = subtotal_actual - monto_devolucion
+        if subtotal_nuevo < Decimal("0"):
+            subtotal_nuevo = Decimal("0")
+        if kg_nuevo <= Decimal("0"):
+            if subtotal_nuevo > Decimal("0"):
+                mat_name = nm.material.nombre if nm.material else f"Material {nm.material_id}"
+                raise ValueError(
+                    f"La devolucion deja subtotal positivo con kg neto 0 en {mat_name}. "
+                    "Ajusta el precio de devolucion."
+                )
+            kg_nuevo = Decimal("0")
+            subtotal_nuevo = Decimal("0")
+        ajustes_material[nm_id] = {
+            "kg_devolucion": kg_devolucion,
+            "kg_nuevo": kg_nuevo,
+            "subtotal_nuevo": subtotal_nuevo,
+        }
+
+    old_total = Decimal(str(nota.total_monto or 0))
+    comment_base = comentario or f"Devolucion parcial nota #{nota.id}"
+
+    for nm_id, ajuste in ajustes_material.items():
+        nm = materiales_by_id[nm_id]
+        kg_devolucion = ajuste["kg_devolucion"]
+
+        if nm.subpesajes:
+            remaining = kg_devolucion
+            for sp in sorted(nm.subpesajes, key=lambda s: s.id, reverse=True):
+                peso = Decimal(str(sp.peso_kg or 0))
+                desc = Decimal(str(getattr(sp, "descuento_kg", 0) or 0))
+                neto_sp = peso - desc
+                if neto_sp <= Decimal("0"):
+                    continue
+                take = neto_sp if neto_sp <= remaining else remaining
+                sp.descuento_kg = desc + take
+                db.add(sp)
+                remaining -= take
+                if remaining <= Decimal("0"):
+                    break
+            if remaining > Decimal("0"):
+                raise ValueError("No se pudo aplicar la devolucion parcial sobre subpesajes.")
+        else:
+            nm.kg_descuento = Decimal(str(nm.kg_descuento or 0)) + kg_devolucion
+            if nm.kg_descuento > Decimal(str(nm.kg_bruto or 0)):
+                raise ValueError("La devolucion excede el kg bruto del material.")
+
+        _recalc_material(nm)
+        subtotal_nuevo = ajuste["subtotal_nuevo"]
+        nm.subtotal = subtotal_nuevo
+        if Decimal(str(nm.kg_neto or 0)) > Decimal("0"):
+            nm.precio_unitario = subtotal_nuevo / Decimal(str(nm.kg_neto or 0))
+        else:
+            nm.precio_unitario = Decimal("0")
+        nm.version_precio_id = None
+        db.add(nm)
+
+    for nm_id, ajuste in ajustes_material.items():
+        nm = materiales_by_id[nm_id]
+        kg_devolucion = ajuste["kg_devolucion"]
+        stock_delta = -kg_devolucion if _is_compra_like(nota.tipo_operacion) else kg_devolucion
+        inv = _get_or_create_inventario(db, nota.sucursal_id, nm.material_id)
+        new_stock = Decimal(str(inv.stock_actual or 0)) + stock_delta
+        if new_stock < Decimal("0"):
+            nombre_mat = nm.material.nombre if nm.material else f"Material {nm.material_id}"
+            raise ValueError(f"Stock insuficiente para devolver {nombre_mat}.")
+        inv.stock_actual = new_stock
+        inv.updated_at = datetime.utcnow()
+        mov = InventarioMovimiento(
+            inventario_id=inv.id,
+            nota_id=nota.id,
+            nota_material_id=nm.id,
+            tipo="ajuste",
+            cantidad_kg=stock_delta,
+            saldo_resultante=new_stock,
+            comentario=comment_base,
+            usuario_id=admin_id,
+        )
+        db.add(inv)
+        db.add(mov)
+
+    _recalc_totals(nota)
+    nota.updated_at = datetime.utcnow()
+    db.add(nota)
+
+    new_total = Decimal(str(nota.total_monto or 0))
+    delta_total = new_total - old_total
+    if delta_total != Decimal("0"):
+        ajuste_monto = delta_total
+        if _is_compra_like(nota.tipo_operacion):
+            ajuste_monto = -delta_total
+        _registrar_movimiento_contable(
+            db,
+            nota=nota,
+            usuario_id=admin_id,
+            comentario=comment_base,
+            metodo_pago=nota.metodo_pago,
+            cuenta_id=nota.cuenta_financiera_id,
+            monto=ajuste_monto,
+            tipo="ajuste",
+        )
+
+    if commit:
+        db.commit()
+        db.refresh(nota)
+    return nota
+
+
 def attach_partner(
     db: Session,
     nota: Nota,
