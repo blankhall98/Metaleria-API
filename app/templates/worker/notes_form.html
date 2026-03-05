@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}Nueva nota{% endblock %}
+{% block title %}{{ form_title or "Nueva nota" }}{% endblock %}
 
 {% block content %}
 <div class="page-header">
     <div>
         <p class="text-uppercase text-muted small mb-1">Operación</p>
-        <h1 class="h4 text-white mb-0">Nueva nota</h1>
+        <h1 class="h4 text-white mb-0">{{ form_title or "Nueva nota" }}</h1>
     </div>
     <a href="/web/worker/notes" class="btn btn-outline-secondary btn-sm">Volver</a>
 </div>
@@ -20,7 +20,7 @@
 
 <div class="card hover-lift worker-note-card">
     <div class="card-body">
-        <form method="post" class="worker-note-form d-grid gap-4" oninput="updateSteps()">
+        <form method="post" action="{{ action_url or '/web/worker/notes/nueva' }}" class="worker-note-form d-grid gap-4" oninput="updateSteps()">
             <section class="step-card worker-step-card" id="step1">
                 <div class="note-step-header">
                     <span class="chip-strong note-step-pill">Paso 1</span>
@@ -217,7 +217,7 @@
             </section>
 
             <div class="note-submit-panel d-grid gap-2">
-                <button type="submit" class="btn btn-primary btn-lg" id="submitBtn" disabled>Guardar borrador</button>
+                <button type="submit" class="btn btn-primary btn-lg" id="submitBtn" disabled>{{ submit_label or "Guardar borrador" }}</button>
                 <small class="text-muted">Este registro quedará en estado borrador y será visible para revisión.</small>
             </div>
         </form>
@@ -242,9 +242,13 @@
 
 <script>
     const PRICE_MAP = {{ price_map | tojson | safe }};
+    const INITIAL_NOTE = {{ initial_note_json | default('{}', true) | safe }};
+    const SUBMIT_LABEL = {{ (submit_label or "Guardar borrador") | tojson | safe }};
     const MAX_MB = {{ max_mb | default(8) }};
     const UPLOAD_URL = '/web/files/upload';
     let pendingUploads = 0;
+    const materialesWrapper = document.getElementById('materiales-wrapper');
+    const materialTemplateHtml = materialesWrapper ? materialesWrapper.querySelector('.material-row').outerHTML : '';
     const evidenceModal = document.getElementById('workerEvidencePickerModal');
     let activeEvidenceInput = null;
     const extraEvidenceInput = document.getElementById('extra_evidence_input');
@@ -513,6 +517,120 @@
             proveedorSel.value = '';
         }
     }
+    function setEvidenceInputUrl(inputEl, url) {
+        if (!inputEl) return;
+        const cleanUrl = (url || '').trim();
+        inputEl.dataset.url = cleanUrl;
+        inputEl.dataset.uploading = '';
+        inputEl.dataset.error = '';
+        const group = inputEl.closest('.input-group');
+        if (!group) return;
+        const thumb = group.querySelector('.evid-thumb');
+        const label = group.querySelector('.evid-label');
+        if (thumb) {
+            if (cleanUrl) {
+                thumb.src = cleanUrl;
+                thumb.classList.remove('d-none');
+                thumb.dataset.local = '';
+            } else {
+                thumb.removeAttribute('src');
+                thumb.classList.add('d-none');
+                thumb.dataset.local = '';
+            }
+        }
+        if (label) {
+            label.classList.remove('is-uploading', 'is-error', 'is-ready');
+            if (cleanUrl) {
+                label.textContent = 'Evidencia cargada';
+                label.classList.add('is-ready');
+            } else {
+                label.textContent = 'Sin foto';
+            }
+        }
+    }
+    function buildMaterialRowFromData(data) {
+        if (!materialTemplateHtml) return null;
+        const temp = document.createElement('div');
+        temp.innerHTML = materialTemplateHtml.trim();
+        const row = temp.firstElementChild;
+        if (!row) return null;
+
+        const materialSel = row.querySelector('select[name="material_id"]');
+        if (materialSel && data && data.material_id) {
+            materialSel.value = String(data.material_id);
+        }
+        const tipoSel = row.querySelector('select[name="tipo_cliente"]');
+        if (tipoSel) {
+            tipoSel.value = data?.tipo_cliente || '';
+        }
+
+        const subWrapper = row.querySelector('.subpesajes-wrapper');
+        const addBtn = row.querySelector('.subpesaje-actions button');
+        const subList = Array.isArray(data?.subpesajes) && data.subpesajes.length > 0
+            ? data.subpesajes
+            : [{ peso_kg: 0, descuento_kg: 0, foto_url: null }];
+
+        while (subWrapper.querySelectorAll('.subpesaje-group').length > 1) {
+            const groups = subWrapper.querySelectorAll('.subpesaje-group');
+            groups[groups.length - 1].remove();
+        }
+        for (let i = 1; i < subList.length; i += 1) {
+            addPesaje(addBtn);
+        }
+
+        const groups = subWrapper.querySelectorAll('.subpesaje-group');
+        subList.forEach((sp, idx) => {
+            const group = groups[idx];
+            if (!group) return;
+            const brutoInput = group.querySelector('.subpesaje-input');
+            const descInput = group.querySelector('.subpesaje-desc');
+            const evidInput = group.querySelector('.subpesaje-evid');
+            if (brutoInput) brutoInput.value = (sp?.peso_kg ?? 0) > 0 ? String(sp.peso_kg) : '';
+            if (descInput) descInput.value = (sp?.descuento_kg ?? 0) > 0 ? String(sp.descuento_kg) : '';
+            setEvidenceInputUrl(evidInput, sp?.foto_url || '');
+        });
+
+        const firstInput = row.querySelector('.subpesaje-input');
+        if (firstInput) updatePesajes(firstInput);
+        return row;
+    }
+    function loadInitialNoteData() {
+        if (!INITIAL_NOTE || typeof INITIAL_NOTE !== 'object' || !INITIAL_NOTE.materiales) {
+            return;
+        }
+
+        const tipoSel = document.getElementById('tipo_operacion');
+        if (tipoSel && INITIAL_NOTE.tipo_operacion) {
+            tipoSel.value = String(INITIAL_NOTE.tipo_operacion);
+        }
+        togglePartner();
+
+        const provSel = document.getElementById('proveedor_id');
+        const cliSel = document.getElementById('cliente_id');
+        if (provSel && INITIAL_NOTE.proveedor_id) provSel.value = String(INITIAL_NOTE.proveedor_id);
+        if (cliSel && INITIAL_NOTE.cliente_id) cliSel.value = String(INITIAL_NOTE.cliente_id);
+
+        const comments = document.getElementById('comentarios_trabajador');
+        if (comments) comments.value = INITIAL_NOTE.comentarios_trabajador || '';
+
+        if (materialesWrapper) {
+            materialesWrapper.innerHTML = '';
+            const items = Array.isArray(INITIAL_NOTE.materiales) ? INITIAL_NOTE.materiales : [];
+            if (items.length === 0) {
+                const row = buildMaterialRowFromData({});
+                if (row) materialesWrapper.appendChild(row);
+            } else {
+                items.forEach((item) => {
+                    const row = buildMaterialRowFromData(item || {});
+                    if (row) materialesWrapper.appendChild(row);
+                });
+            }
+        }
+
+        extraEvidenceUrls = Array.isArray(INITIAL_NOTE.extra_evidencias)
+            ? INITIAL_NOTE.extra_evidencias.filter(Boolean)
+            : [];
+    }
     function addMaterial() {
         const wrapper = document.getElementById('materiales-wrapper');
         const tpl = wrapper.querySelector('.material-row');
@@ -768,7 +886,7 @@
         if (submitBtn) {
             const blocked = pendingUploads > 0;
             submitBtn.disabled = !step2Valid || blocked;
-            submitBtn.textContent = blocked ? 'Subiendo evidencias...' : 'Guardar borrador';
+            submitBtn.textContent = blocked ? 'Subiendo evidencias...' : SUBMIT_LABEL;
         }
     }
     const formEl = document.querySelector('form');
@@ -781,6 +899,7 @@
         });
     }
     // inicializar partner visible y steps
+    loadInitialNoteData();
     togglePartner();
     updateSteps();
     renderExtraEvidence();

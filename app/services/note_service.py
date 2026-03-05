@@ -586,6 +586,123 @@ def create_draft_note(
     return nota
 
 
+def update_worker_note(
+    db: Session,
+    nota: Nota,
+    *,
+    tipo_operacion: TipoOperacion,
+    materiales_payload: Sequence[dict],
+    comentarios_trabajador: str | None = None,
+    proveedor_id: int | None = None,
+    cliente_id: int | None = None,
+    extra_evidencias_payload: Sequence[str] | None = None,
+) -> Nota:
+    """
+    Permite al trabajador editar su nota mientras no este aprobada/cancelada.
+    """
+    if nota.estado not in (NotaEstado.borrador, NotaEstado.en_revision):
+        raise ValueError("Solo puedes editar notas en borrador o en revision.")
+    if tipo_operacion not in (TipoOperacion.compra, TipoOperacion.venta):
+        raise ValueError("Tipo de operacion invalido.")
+
+    old_tipo = nota.tipo_operacion
+    if old_tipo != tipo_operacion:
+        nota.folio_seq = _next_folio_seq(
+            db,
+            sucursal_id=nota.sucursal_id,
+            tipo_operacion=tipo_operacion,
+        )
+
+    nota.tipo_operacion = tipo_operacion
+    nota.comentarios_trabajador = (comentarios_trabajador or "").strip() or None
+    if tipo_operacion == TipoOperacion.compra:
+        nota.proveedor_id = proveedor_id
+        nota.cliente_id = None
+    else:
+        nota.cliente_id = cliente_id
+        nota.proveedor_id = None
+
+    nota.materiales.clear()
+    db.flush()
+
+    for idx, mp in enumerate(materiales_payload):
+        material = db.get(Material, mp["material_id"])
+        if not material:
+            raise ValueError(f"Material {mp['material_id']} no existe")
+
+        sub_list_payload = mp.get("subpesajes", []) or []
+        if sub_list_payload:
+            bruto_sum = _sum_decimal(sp.get("peso_kg", 0) for sp in sub_list_payload)
+            desc_sum = _sum_decimal(sp.get("descuento_kg", 0) for sp in sub_list_payload)
+            kg_bruto = bruto_sum
+            kg_descuento = desc_sum
+            kg_neto = bruto_sum - desc_sum
+            if kg_neto < 0:
+                kg_neto = Decimal("0")
+        else:
+            kg_bruto = Decimal(str(mp.get("kg_bruto", 0)))
+            kg_descuento = Decimal(str(mp.get("kg_descuento", 0)))
+            if kg_descuento > kg_bruto:
+                raise ValueError("El descuento no puede ser mayor que el peso bruto.")
+            kg_neto = kg_bruto - kg_descuento
+
+        tipo_cli_raw = mp.get("tipo_cliente")
+        tipo_cli = None
+        if tipo_cli_raw:
+            try:
+                tipo_cli = TipoCliente(tipo_cli_raw)
+            except Exception:
+                tipo_cli = None
+
+        nm = NotaMaterial(
+            nota_id=nota.id,
+            material_id=material.id,
+            kg_bruto=kg_bruto,
+            kg_descuento=kg_descuento,
+            kg_neto=kg_neto,
+            orden=idx,
+            evidencia_url=mp.get("evidencia_url") or None,
+            tipo_cliente=tipo_cli,
+        )
+        db.add(nm)
+        db.flush()
+
+        for sp in sub_list_payload:
+            sub = Subpesaje(
+                nota_material_id=nm.id,
+                peso_kg=Decimal(str(sp.get("peso_kg", 0))),
+                descuento_kg=Decimal(str(sp.get("descuento_kg", 0))),
+                foto_url=(sp.get("foto_url") or None),
+            )
+            db.add(sub)
+
+    nota.evidencias_extra.clear()
+    extra_evidencias_payload = extra_evidencias_payload or []
+    seen_urls: set[str] = set()
+    for raw_url in extra_evidencias_payload:
+        url = (raw_url or "").strip()
+        if not url or url in seen_urls:
+            continue
+        seen_urls.add(url)
+        db.add(
+            NotaEvidenciaExtra(
+                nota_id=nota.id,
+                url=url,
+                uploaded_by_id=nota.trabajador_id,
+            )
+        )
+
+    _recalc_totals(nota)
+    apply_prices(db, nota)
+    nota.updated_at = datetime.utcnow()
+    if nota.estado == NotaEstado.en_revision:
+        _store_nota_snapshot(db, nota)
+    db.add(nota)
+    db.commit()
+    db.refresh(nota)
+    return nota
+
+
 def _get_or_create_inventario(db: Session, sucursal_id: int, material_id: int) -> Inventario:
     inv = (
         db.query(Inventario)

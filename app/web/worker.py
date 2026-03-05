@@ -169,6 +169,46 @@ def _parse_materials_from_form(
     return materiales
 
 
+def _build_worker_note_initial_state(nota: Nota) -> dict:
+    materiales: list[dict] = []
+    for nm in sorted(list(nota.materiales or []), key=lambda m: (m.orden or 0, m.id or 0)):
+        subpesajes = []
+        if nm.subpesajes:
+            for sp in sorted(list(nm.subpesajes), key=lambda s: s.id or 0):
+                subpesajes.append(
+                    {
+                        "peso_kg": float(Decimal(str(sp.peso_kg or 0))),
+                        "descuento_kg": float(Decimal(str(getattr(sp, "descuento_kg", 0) or 0))),
+                        "foto_url": sp.foto_url or None,
+                    }
+                )
+        else:
+            subpesajes.append(
+                {
+                    "peso_kg": float(Decimal(str(nm.kg_bruto or 0))),
+                    "descuento_kg": float(Decimal(str(nm.kg_descuento or 0))),
+                    "foto_url": nm.evidencia_url or None,
+                }
+            )
+        materiales.append(
+            {
+                "material_id": nm.material_id,
+                "tipo_cliente": nm.tipo_cliente.value if nm.tipo_cliente else "",
+                "subpesajes": subpesajes,
+            }
+        )
+
+    extra_evidencias = [ev.url for ev in sorted(list(nota.evidencias_extra or []), key=lambda e: e.id or 0) if ev.url]
+    return {
+        "tipo_operacion": nota.tipo_operacion.value if nota.tipo_operacion else "compra",
+        "proveedor_id": nota.proveedor_id or "",
+        "cliente_id": nota.cliente_id or "",
+        "comentarios_trabajador": nota.comentarios_trabajador or "",
+        "materiales": materiales,
+        "extra_evidencias": extra_evidencias,
+    }
+
+
 @router.post("/notes/nueva")
 async def notes_new_post(
     request: Request,
@@ -363,6 +403,255 @@ async def notes_new_post(
         )
 
     return RedirectResponse(url="/web/worker/notes", status_code=303)
+
+
+@router.get("/notes/{nota_id}/editar")
+async def notes_edit_get(
+    nota_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_worker),
+):
+    nota = (
+        db.query(Nota)
+        .filter(Nota.id == nota_id, Nota.trabajador_id == current_user["id"])
+        .first()
+    )
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+    if nota.estado in (NotaEstado.aprobada, NotaEstado.cancelada):
+        return RedirectResponse(url="/web/worker/notes?success=2", status_code=303)
+
+    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
+    proveedores = db.query(Proveedor).filter(Proveedor.activo.is_(True)).order_by(Proveedor.nombre_completo).all()
+    clientes = db.query(Cliente).filter(Cliente.activo.is_(True)).order_by(Cliente.nombre_completo).all()
+    price_map = _get_price_map(db)
+    initial_state = _build_worker_note_initial_state(nota)
+
+    return templates.TemplateResponse(
+        "worker/notes_form.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "materiales": materiales,
+            "proveedores": proveedores,
+            "clientes": clientes,
+            "error": None,
+            "price_map": price_map,
+            "max_mb": settings.FIREBASE_MAX_MB,
+            "form_title": "Editar nota",
+            "action_url": f"/web/worker/notes/{nota.id}/editar",
+            "submit_label": "Guardar cambios",
+            "initial_note_json": json.dumps(initial_state, ensure_ascii=True),
+        },
+    )
+
+
+@router.post("/notes/{nota_id}/editar")
+async def notes_edit_post(
+    nota_id: int,
+    request: Request,
+    tipo_operacion: str = Form(...),
+    proveedor_id: str = Form(""),
+    cliente_id: str = Form(""),
+    material_id: List[str] = Form([]),
+    kg_bruto: List[str] = Form([]),
+    kg_descuento: List[str] = Form([]),
+    subpesajes: List[str] = Form([]),
+    tipo_cliente: List[str] = Form([]),
+    comentarios_trabajador: str = Form(""),
+    extra_evidencias: str = Form(""),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_worker),
+):
+    nota = (
+        db.query(Nota)
+        .filter(Nota.id == nota_id, Nota.trabajador_id == current_user["id"])
+        .first()
+    )
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+    if nota.estado in (NotaEstado.aprobada, NotaEstado.cancelada):
+        return RedirectResponse(url="/web/worker/notes?success=2", status_code=303)
+
+    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
+    proveedores = db.query(Proveedor).filter(Proveedor.activo.is_(True)).order_by(Proveedor.nombre_completo).all()
+    clientes = db.query(Cliente).filter(Cliente.activo.is_(True)).order_by(Cliente.nombre_completo).all()
+    price_map = _get_price_map(db)
+
+    try:
+        tipo_op = TipoOperacion(tipo_operacion)
+    except ValueError:
+        tipo_op = None
+    if tipo_op not in (TipoOperacion.compra, TipoOperacion.venta):
+        return templates.TemplateResponse(
+            "worker/notes_form.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "materiales": materiales,
+                "proveedores": proveedores,
+                "clientes": clientes,
+                "error": "Tipo de operacion invalido.",
+                "price_map": price_map,
+                "max_mb": settings.FIREBASE_MAX_MB,
+                "form_title": "Editar nota",
+                "action_url": f"/web/worker/notes/{nota.id}/editar",
+                "submit_label": "Guardar cambios",
+                "initial_note_json": json.dumps(_build_worker_note_initial_state(nota), ensure_ascii=True),
+            },
+            status_code=400,
+        )
+
+    try:
+        materiales_payload = _parse_materials_from_form(material_id, kg_bruto, kg_descuento, subpesajes, tipo_cliente)
+    except ValueError as e:
+        return templates.TemplateResponse(
+            "worker/notes_form.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "materiales": materiales,
+                "proveedores": proveedores,
+                "clientes": clientes,
+                "error": str(e),
+                "price_map": price_map,
+                "max_mb": settings.FIREBASE_MAX_MB,
+                "form_title": "Editar nota",
+                "action_url": f"/web/worker/notes/{nota.id}/editar",
+                "submit_label": "Guardar cambios",
+                "initial_note_json": json.dumps(_build_worker_note_initial_state(nota), ensure_ascii=True),
+            },
+            status_code=400,
+        )
+
+    if not materiales_payload:
+        return templates.TemplateResponse(
+            "worker/notes_form.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "materiales": materiales,
+                "proveedores": proveedores,
+                "clientes": clientes,
+                "error": "Debes agregar al menos un material con peso.",
+                "price_map": price_map,
+                "max_mb": settings.FIREBASE_MAX_MB,
+                "form_title": "Editar nota",
+                "action_url": f"/web/worker/notes/{nota.id}/editar",
+                "submit_label": "Guardar cambios",
+                "initial_note_json": json.dumps(_build_worker_note_initial_state(nota), ensure_ascii=True),
+            },
+            status_code=400,
+        )
+
+    extra_evidencias_payload: list[str] = []
+    if extra_evidencias:
+        try:
+            loaded = json.loads(extra_evidencias)
+        except json.JSONDecodeError:
+            loaded = None
+        if isinstance(loaded, list):
+            extra_evidencias_payload = [str(u) for u in loaded if u]
+        else:
+            return templates.TemplateResponse(
+                "worker/notes_form.html",
+                {
+                    "request": request,
+                    "env": settings.ENV,
+                    "user": current_user,
+                    "materiales": materiales,
+                    "proveedores": proveedores,
+                    "clientes": clientes,
+                    "error": "Formato de evidencia extra invalido.",
+                    "price_map": price_map,
+                    "max_mb": settings.FIREBASE_MAX_MB,
+                    "form_title": "Editar nota",
+                    "action_url": f"/web/worker/notes/{nota.id}/editar",
+                    "submit_label": "Guardar cambios",
+                    "initial_note_json": json.dumps(_build_worker_note_initial_state(nota), ensure_ascii=True),
+                },
+                status_code=400,
+            )
+
+    if tipo_op == TipoOperacion.compra and not proveedor_id:
+        return templates.TemplateResponse(
+            "worker/notes_form.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "materiales": materiales,
+                "proveedores": proveedores,
+                "clientes": clientes,
+                "error": "Selecciona un proveedor para la compra.",
+                "price_map": price_map,
+                "max_mb": settings.FIREBASE_MAX_MB,
+                "form_title": "Editar nota",
+                "action_url": f"/web/worker/notes/{nota.id}/editar",
+                "submit_label": "Guardar cambios",
+                "initial_note_json": json.dumps(_build_worker_note_initial_state(nota), ensure_ascii=True),
+            },
+            status_code=400,
+        )
+    if tipo_op == TipoOperacion.venta and not cliente_id:
+        return templates.TemplateResponse(
+            "worker/notes_form.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "materiales": materiales,
+                "proveedores": proveedores,
+                "clientes": clientes,
+                "error": "Selecciona un cliente para la venta.",
+                "price_map": price_map,
+                "max_mb": settings.FIREBASE_MAX_MB,
+                "form_title": "Editar nota",
+                "action_url": f"/web/worker/notes/{nota.id}/editar",
+                "submit_label": "Guardar cambios",
+                "initial_note_json": json.dumps(_build_worker_note_initial_state(nota), ensure_ascii=True),
+            },
+            status_code=400,
+        )
+
+    try:
+        note_service.update_worker_note(
+            db,
+            nota,
+            tipo_operacion=tipo_op,
+            materiales_payload=materiales_payload,
+            comentarios_trabajador=comentarios_trabajador,
+            proveedor_id=int(proveedor_id) if proveedor_id else None,
+            cliente_id=int(cliente_id) if cliente_id else None,
+            extra_evidencias_payload=extra_evidencias_payload,
+        )
+    except ValueError as e:
+        return templates.TemplateResponse(
+            "worker/notes_form.html",
+            {
+                "request": request,
+                "env": settings.ENV,
+                "user": current_user,
+                "materiales": materiales,
+                "proveedores": proveedores,
+                "clientes": clientes,
+                "error": str(e),
+                "price_map": price_map,
+                "max_mb": settings.FIREBASE_MAX_MB,
+                "form_title": "Editar nota",
+                "action_url": f"/web/worker/notes/{nota.id}/editar",
+                "submit_label": "Guardar cambios",
+                "initial_note_json": json.dumps(_build_worker_note_initial_state(nota), ensure_ascii=True),
+            },
+            status_code=400,
+        )
+
+    return RedirectResponse(url="/web/worker/notes?success=3", status_code=303)
 
 
 @router.post("/notes/{nota_id}/enviar")
