@@ -18,7 +18,7 @@
         {% elif success == '0' %}
             <div class="alert alert-danger py-2 small">No se pudo enviar la nota. Verifica que sea un borrador.</div>
         {% elif success == '2' %}
-            <div class="alert alert-danger py-2 small">No puedes editar una nota aprobada o cancelada.</div>
+            <div class="alert alert-danger py-2 small">Solo puedes editar notas en borrador.</div>
         {% elif success == '3' %}
             <div class="alert alert-success py-2 small">Nota actualizada correctamente.</div>
         {% endif %}
@@ -59,7 +59,7 @@
                         <td class="text-end">
                             <div class="d-flex gap-2 justify-content-end flex-wrap">
                                 <a href="/web/worker/notes/{{ n.id }}/evidencias" class="btn btn-sm btn-outline-primary">Evidencias</a>
-                                {% if n.estado.value in ['BORRADOR', 'EN_REVISION'] %}
+                                {% if n.estado.value == 'BORRADOR' %}
                                     <a href="/web/worker/notes/{{ n.id }}/editar" class="btn btn-sm btn-outline-secondary">Editar</a>
                                 {% endif %}
                                 {% if n.estado.value == 'BORRADOR' %}
@@ -110,7 +110,7 @@
                     </div>
                     <div class="d-grid gap-2 mt-2">
                         <a href="/web/worker/notes/{{ n.id }}/evidencias" class="btn btn-outline-primary btn-sm w-100">Evidencias</a>
-                        {% if n.estado.value in ['BORRADOR', 'EN_REVISION'] %}
+                        {% if n.estado.value == 'BORRADOR' %}
                             <a href="/web/worker/notes/{{ n.id }}/editar" class="btn btn-outline-secondary btn-sm w-100">Editar</a>
                         {% endif %}
                         {% if n.estado.value == 'BORRADOR' %}

@@ -16,6 +16,11 @@
         {{ error }}
     </div>
 {% endif %}
+{% if review_comment %}
+    <div class="alert alert-warning py-2 small">
+        Comentario del administrador: {{ review_comment }}
+    </div>
+{% endif %}
 <div id="evidence-alert" class="alert alert-warning py-2 small d-none"></div>
 
 <div class="card hover-lift worker-note-card">

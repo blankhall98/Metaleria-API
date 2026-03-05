@@ -399,7 +399,8 @@
                 </button>
             </form>
             {% if nota.estado.value in ['EN_REVISION'] %}
-                <form method="post" action="/web/admin/notas/{{ nota.id }}/devolver" class="m-0">
+                <form method="post" action="/web/admin/notas/{{ nota.id }}/devolver" class="m-0" onsubmit="syncReturnComment(this)">
+                    <input type="hidden" name="comentarios_admin" value="">
                     <button type="submit" class="btn btn-outline-secondary">Devolver a borrador</button>
                 </form>
             {% endif %}
@@ -763,6 +764,13 @@
         }
     }
     function syncCancelComment(formEl) {
+        const comments = document.querySelector('textarea[name="comentarios_admin"]');
+        const hidden = formEl.querySelector('input[name="comentarios_admin"]');
+        if (hidden && comments) {
+            hidden.value = comments.value || '';
+        }
+    }
+    function syncReturnComment(formEl) {
         const comments = document.querySelector('textarea[name="comentarios_admin"]');
         const hidden = formEl.querySelector('input[name="comentarios_admin"]');
         if (hidden && comments) {

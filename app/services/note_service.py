@@ -600,8 +600,8 @@ def update_worker_note(
     """
     Permite al trabajador editar su nota mientras no este aprobada/cancelada.
     """
-    if nota.estado not in (NotaEstado.borrador, NotaEstado.en_revision):
-        raise ValueError("Solo puedes editar notas en borrador o en revision.")
+    if nota.estado != NotaEstado.borrador:
+        raise ValueError("Solo puedes editar notas en borrador.")
     if tipo_operacion not in (TipoOperacion.compra, TipoOperacion.venta):
         raise ValueError("Tipo de operacion invalido.")
 

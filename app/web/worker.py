@@ -419,7 +419,7 @@ async def notes_edit_get(
     )
     if not nota:
         raise HTTPException(status_code=404, detail="Nota no encontrada")
-    if nota.estado in (NotaEstado.aprobada, NotaEstado.cancelada):
+    if nota.estado != NotaEstado.borrador:
         return RedirectResponse(url="/web/worker/notes?success=2", status_code=303)
 
     materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
@@ -444,6 +444,7 @@ async def notes_edit_get(
             "action_url": f"/web/worker/notes/{nota.id}/editar",
             "submit_label": "Guardar cambios",
             "initial_note_json": json.dumps(initial_state, ensure_ascii=True),
+            "review_comment": nota.comentarios_admin or "",
         },
     )
 
@@ -472,7 +473,7 @@ async def notes_edit_post(
     )
     if not nota:
         raise HTTPException(status_code=404, detail="Nota no encontrada")
-    if nota.estado in (NotaEstado.aprobada, NotaEstado.cancelada):
+    if nota.estado != NotaEstado.borrador:
         return RedirectResponse(url="/web/worker/notes?success=2", status_code=303)
 
     materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()

@@ -7885,15 +7885,26 @@ async def notas_devolver(
         raise HTTPException(status_code=404, detail="Nota no encontrada.")
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     _ensure_nota_access(nota, allowed_suc_ids)
-    if nota.estado == NotaEstado.aprobada:
+    if nota.estado != NotaEstado.en_revision:
         return _render_nota_detail(
-            request, db, current_user, nota, error="No puedes devolver una nota aprobada."
+            request, db, current_user, nota, error="Solo puedes devolver notas en revision."
+        )
+    form = await request.form()
+    comentarios_admin = (form.get("comentarios_admin") or "").strip()
+    if not comentarios_admin:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="Debes agregar un comentario para devolver la nota al trabajador.",
         )
     note_service.update_state(
         db,
         nota,
         new_state=NotaEstado.borrador,
         admin_id=current_user.get("id"),
+        comentarios_admin=comentarios_admin,
     )
     return RedirectResponse(url="/web/admin/notas?returned=1", status_code=303)
 
