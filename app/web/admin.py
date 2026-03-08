@@ -928,12 +928,24 @@ def _parse_optional_int(raw: str | None) -> int | None:
     return value
 
 
-def _get_linked_cliente(db: Session, proveedor: Proveedor) -> Cliente | None:
+def _get_formally_linked_cliente(db: Session, proveedor: Proveedor) -> Cliente | None:
     if proveedor.linked_cliente_id:
         linked = db.get(Cliente, proveedor.linked_cliente_id)
         if linked:
             return linked
-    linked = db.query(Cliente).filter(Cliente.linked_proveedor_id == proveedor.id).first()
+    return db.query(Cliente).filter(Cliente.linked_proveedor_id == proveedor.id).first()
+
+
+def _get_formally_linked_proveedor(db: Session, cliente: Cliente) -> Proveedor | None:
+    if cliente.linked_proveedor_id:
+        linked = db.get(Proveedor, cliente.linked_proveedor_id)
+        if linked:
+            return linked
+    return db.query(Proveedor).filter(Proveedor.linked_cliente_id == cliente.id).first()
+
+
+def _get_linked_cliente(db: Session, proveedor: Proveedor) -> Cliente | None:
+    linked = _get_formally_linked_cliente(db, proveedor)
     if linked:
         return linked
     placas_list = _extract_partner_placas(proveedor)
@@ -947,11 +959,7 @@ def _get_linked_cliente(db: Session, proveedor: Proveedor) -> Cliente | None:
 
 
 def _get_linked_proveedor(db: Session, cliente: Cliente) -> Proveedor | None:
-    if cliente.linked_proveedor_id:
-        linked = db.get(Proveedor, cliente.linked_proveedor_id)
-        if linked:
-            return linked
-    linked = db.query(Proveedor).filter(Proveedor.linked_cliente_id == cliente.id).first()
+    linked = _get_formally_linked_proveedor(db, cliente)
     if linked:
         return linked
     placas_list = _extract_partner_placas(cliente)
@@ -962,6 +970,171 @@ def _get_linked_proveedor(db: Session, cliente: Cliente) -> Proveedor | None:
         telefono=cliente.telefono,
         sucursal_id=cliente.sucursal_id,
     )
+
+
+def _normalize_partner_name(nombre: str | None) -> str:
+    if not nombre:
+        return ""
+    return re.sub(r"\s+", " ", nombre).strip().upper()
+
+
+def _find_cliente_by_exact_name(
+    db: Session,
+    *,
+    nombre: str | None,
+    sucursal_id: int | None = None,
+) -> Cliente | None:
+    normalized = _normalize_partner_name(nombre)
+    if not normalized:
+        return None
+    query = db.query(Cliente)
+    if sucursal_id:
+        query = query.filter(Cliente.sucursal_id == sucursal_id)
+    for cliente in query.order_by(Cliente.id).all():
+        if _normalize_partner_name(cliente.nombre_completo) == normalized:
+            return cliente
+    return None
+
+
+def _find_proveedor_by_exact_name(
+    db: Session,
+    *,
+    nombre: str | None,
+    sucursal_id: int | None = None,
+) -> Proveedor | None:
+    normalized = _normalize_partner_name(nombre)
+    if not normalized:
+        return None
+    query = db.query(Proveedor)
+    if sucursal_id:
+        query = query.filter(Proveedor.sucursal_id == sucursal_id)
+    for proveedor in query.order_by(Proveedor.id).all():
+        if _normalize_partner_name(proveedor.nombre_completo) == normalized:
+            return proveedor
+    return None
+
+
+def _build_counterpart_suggestion_for_proveedor(
+    db: Session,
+    proveedor: Proveedor,
+) -> dict | None:
+    if _is_internal_partner_name(db, proveedor.nombre_completo):
+        return None
+
+    linked_cliente = _get_formally_linked_cliente(db, proveedor)
+    if linked_cliente and not _is_internal_partner_name(db, linked_cliente.nombre_completo):
+        return {
+            "candidate": linked_cliente,
+            "reason": "Ya esta vinculado formalmente.",
+            "can_link": True,
+            "is_linked": True,
+            "message": "Este proveedor ya opera tambien como cliente.",
+        }
+
+    placas_list = _extract_partner_placas(proveedor)
+    candidate = _find_existing_cliente_from_proveedor(
+        db,
+        placas_list=placas_list,
+        correo=proveedor.correo_electronico,
+        telefono=proveedor.telefono,
+        sucursal_id=proveedor.sucursal_id,
+    )
+    reason = "Coincidencia por placas, correo o telefono."
+    if not candidate:
+        candidate = _find_cliente_by_exact_name(
+            db,
+            nombre=proveedor.nombre_completo,
+            sucursal_id=proveedor.sucursal_id,
+        )
+        reason = "Coincidencia exacta por nombre y sucursal."
+    if not candidate or _is_internal_partner_name(db, candidate.nombre_completo):
+        return None
+
+    can_link = True
+    message = "Se puede vincular sin crear un registro duplicado."
+    if candidate.linked_proveedor_id and candidate.linked_proveedor_id != proveedor.id:
+        can_link = False
+        message = f"El cliente sugerido ya esta vinculado al proveedor ID {candidate.linked_proveedor_id}."
+    elif candidate.sucursal_id and proveedor.sucursal_id and candidate.sucursal_id != proveedor.sucursal_id:
+        can_link = False
+        message = "La contraparte sugerida pertenece a otra sucursal."
+
+    return {
+        "candidate": candidate,
+        "reason": reason,
+        "can_link": can_link,
+        "is_linked": False,
+        "message": message,
+    }
+
+
+def _build_counterpart_suggestion_for_cliente(
+    db: Session,
+    cliente: Cliente,
+) -> dict | None:
+    if _is_internal_partner_name(db, cliente.nombre_completo):
+        return None
+
+    linked_proveedor = _get_formally_linked_proveedor(db, cliente)
+    if linked_proveedor and not _is_internal_partner_name(db, linked_proveedor.nombre_completo):
+        return {
+            "candidate": linked_proveedor,
+            "reason": "Ya esta vinculado formalmente.",
+            "can_link": True,
+            "is_linked": True,
+            "message": "Este cliente ya opera tambien como proveedor.",
+        }
+
+    placas_list = _extract_partner_placas(cliente)
+    candidate = _find_existing_proveedor_from_cliente(
+        db,
+        placas_list=placas_list,
+        correo=cliente.correo_electronico,
+        telefono=cliente.telefono,
+        sucursal_id=cliente.sucursal_id,
+    )
+    reason = "Coincidencia por placas, correo o telefono."
+    if not candidate:
+        candidate = _find_proveedor_by_exact_name(
+            db,
+            nombre=cliente.nombre_completo,
+            sucursal_id=cliente.sucursal_id,
+        )
+        reason = "Coincidencia exacta por nombre y sucursal."
+    if not candidate or _is_internal_partner_name(db, candidate.nombre_completo):
+        return None
+
+    can_link = True
+    message = "Se puede vincular sin crear un registro duplicado."
+    if candidate.linked_cliente_id and candidate.linked_cliente_id != cliente.id:
+        can_link = False
+        message = f"El proveedor sugerido ya esta vinculado al cliente ID {candidate.linked_cliente_id}."
+    elif candidate.sucursal_id and cliente.sucursal_id and candidate.sucursal_id != cliente.sucursal_id:
+        can_link = False
+        message = "La contraparte sugerida pertenece a otra sucursal."
+
+    return {
+        "candidate": candidate,
+        "reason": reason,
+        "can_link": can_link,
+        "is_linked": False,
+        "message": message,
+    }
+
+
+def _safe_next_admin_url(next_url: str | None, fallback: str) -> str:
+    candidate = (next_url or "").strip()
+    if candidate.startswith("/web/admin/"):
+        return candidate
+    return fallback
+
+
+def _append_query_params(url: str, **params: str) -> str:
+    clean_params = {key: value for key, value in params.items() if value}
+    if not clean_params:
+        return url
+    joiner = "&" if "?" in url else "?"
+    return f"{url}{joiner}{urlencode(clean_params)}"
 
 
 def _unlink_cliente_proveedor(db: Session, *, cliente: Cliente | None = None, proveedor: Proveedor | None = None) -> None:
@@ -2984,6 +3157,11 @@ def _render_proveedor_form(
     linked_cliente_id: int | None,
     sucursales: list[Sucursal],
     sucursal_id_selected: int | None,
+    counterpart_suggestion: dict | None = None,
+    link_ok: bool = False,
+    link_msg: str | None = None,
+    link_warn: str | None = None,
+    link_error: str | None = None,
     status_code: int = 200,
 ):
     return templates.TemplateResponse(
@@ -2999,6 +3177,11 @@ def _render_proveedor_form(
             "linked_cliente_id": linked_cliente_id,
             "sucursales": sucursales,
             "sucursal_id_selected": sucursal_id_selected,
+            "counterpart_suggestion": counterpart_suggestion,
+            "link_ok": link_ok,
+            "link_msg": link_msg,
+            "link_warn": link_warn,
+            "link_error": link_error,
         },
         status_code=status_code,
     )
@@ -3015,6 +3198,11 @@ def _render_cliente_form(
     linked_proveedor_id: int | None,
     sucursales: list[Sucursal],
     sucursal_id_selected: int | None,
+    counterpart_suggestion: dict | None = None,
+    link_ok: bool = False,
+    link_msg: str | None = None,
+    link_warn: str | None = None,
+    link_error: str | None = None,
     status_code: int = 200,
 ):
     return templates.TemplateResponse(
@@ -3030,6 +3218,11 @@ def _render_cliente_form(
             "linked_proveedor_id": linked_proveedor_id,
             "sucursales": sucursales,
             "sucursal_id_selected": sucursal_id_selected,
+            "counterpart_suggestion": counterpart_suggestion,
+            "link_ok": link_ok,
+            "link_msg": link_msg,
+            "link_warn": link_warn,
+            "link_error": link_error,
         },
         status_code=status_code,
     )
@@ -3402,11 +3595,16 @@ async def proveedor_edit_get(
         allowed_suc_ids=allowed_suc_ids,
         sucursal_id=proveedor.sucursal_id,
     )
-    if proveedor.linked_cliente_id:
-        linked = db.get(Cliente, proveedor.linked_cliente_id)
-        if linked and linked not in clientes_list:
-            clientes_list.append(linked)
+    linked_cliente = _get_formally_linked_cliente(db, proveedor)
+    if linked_cliente and linked_cliente not in clientes_list:
+        clientes_list.append(linked_cliente)
+    if linked_cliente:
         clientes_list = sorted(clientes_list, key=lambda c: c.nombre_completo or "")
+    counterpart_suggestion = _build_counterpart_suggestion_for_proveedor(db, proveedor)
+    link_ok = request.query_params.get("link_ok") == "1"
+    link_msg = (request.query_params.get("link_msg") or "").strip() or None
+    link_warn = (request.query_params.get("link_warn") or "").strip() or None
+    link_error = (request.query_params.get("link_error") or "").strip() or None
 
     return _render_proveedor_form(
         request,
@@ -3415,9 +3613,14 @@ async def proveedor_edit_get(
         error=None,
         placas_text="\n".join([pl.placa for pl in proveedor.placas_rel]) if proveedor.placas_rel else (proveedor.placas or ""),
         clientes=clientes_list,
-        linked_cliente_id=proveedor.linked_cliente_id,
+        linked_cliente_id=linked_cliente.id if linked_cliente else proveedor.linked_cliente_id,
         sucursales=sucursales,
         sucursal_id_selected=proveedor.sucursal_id,
+        counterpart_suggestion=counterpart_suggestion,
+        link_ok=link_ok,
+        link_msg=link_msg,
+        link_warn=link_warn,
+        link_error=link_error,
     )
 
 
@@ -3625,6 +3828,7 @@ async def proveedor_record(
 async def proveedor_crear_cliente(
     proveedor_id: int,
     request: Request,
+    next_url: str = Form(""),
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
@@ -3633,20 +3837,45 @@ async def proveedor_crear_cliente(
         raise HTTPException(status_code=404, detail="Proveedor no encontrado.")
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     _ensure_partner_access(proveedor, allowed_suc_ids)
+    redirect_base = _safe_next_admin_url(next_url, f"/web/admin/proveedores/{proveedor_id}/record")
     if _is_internal_partner_name(db, proveedor.nombre_completo):
         msg = "No se puede crear como cliente porque es una sucursal interna."
         return RedirectResponse(
-            url=f"/web/admin/proveedores/{proveedor_id}/record?{urlencode({'link_error': msg})}",
+            url=_append_query_params(redirect_base, link_error=msg),
             status_code=303,
         )
 
-    existing = _get_linked_cliente(db, proveedor)
-    if existing and _is_internal_partner_name(db, existing.nombre_completo):
-        existing = None
-    if existing:
-        warn = "Ya existe un cliente vinculado o con datos similares; se mostró su record."
+    counterpart_suggestion = _build_counterpart_suggestion_for_proveedor(db, proveedor)
+    existing = counterpart_suggestion["candidate"] if counterpart_suggestion else None
+    if existing and counterpart_suggestion.get("is_linked"):
         return RedirectResponse(
-            url=f"/web/admin/clientes/{existing.id}/record?{urlencode({'link_warn': warn})}",
+            url=_append_query_params(redirect_base, link_warn="Este proveedor ya esta relacionado como cliente."),
+            status_code=303,
+        )
+    if existing and not counterpart_suggestion.get("can_link"):
+        return RedirectResponse(
+            url=_append_query_params(
+                redirect_base,
+                link_error=counterpart_suggestion.get("message") or "No se pudo vincular la contraparte sugerida.",
+            ),
+            status_code=303,
+        )
+    if existing:
+        try:
+            _link_cliente_proveedor(db, cliente=existing, proveedor=proveedor)
+            db.commit()
+        except ValueError as exc:
+            db.rollback()
+            return RedirectResponse(
+                url=_append_query_params(redirect_base, link_error=str(exc)),
+                status_code=303,
+            )
+        return RedirectResponse(
+            url=_append_query_params(
+                redirect_base,
+                link_ok="1",
+                link_msg="Cliente existente vinculado correctamente.",
+            ),
             status_code=303,
         )
 
@@ -3659,22 +3888,24 @@ async def proveedor_crear_cliente(
         db.rollback()
         msg = str(exc)
         return RedirectResponse(
-            url=f"/web/admin/proveedores/{proveedor_id}/record?{urlencode({'link_error': msg})}",
+            url=_append_query_params(redirect_base, link_error=msg),
             status_code=303,
         )
     except IntegrityError:
         db.rollback()
         msg = "No se pudo crear el cliente. Revisa placas o datos duplicados."
         return RedirectResponse(
-            url=f"/web/admin/proveedores/{proveedor_id}/record?{urlencode({'link_error': msg})}",
+            url=_append_query_params(redirect_base, link_error=msg),
             status_code=303,
         )
 
-    params = {"link_ok": "1", "link_msg": "Cliente creado desde proveedor."}
-    if placas_skipped:
-        params["link_warn"] = f"Placas omitidas por duplicado: {', '.join(placas_skipped)}."
     return RedirectResponse(
-        url=f"/web/admin/clientes/{cliente.id}/record?{urlencode(params)}",
+        url=_append_query_params(
+            redirect_base,
+            link_ok="1",
+            link_msg="Cliente creado desde proveedor.",
+            link_warn=f"Placas omitidas por duplicado: {', '.join(placas_skipped)}." if placas_skipped else "",
+        ),
         status_code=303,
     )
 
@@ -4115,11 +4346,16 @@ async def cliente_edit_get(
         allowed_suc_ids=allowed_suc_ids,
         sucursal_id=cliente.sucursal_id,
     )
-    if cliente.linked_proveedor_id:
-        linked = db.get(Proveedor, cliente.linked_proveedor_id)
-        if linked and linked not in proveedores_list:
-            proveedores_list.append(linked)
+    linked_proveedor = _get_formally_linked_proveedor(db, cliente)
+    if linked_proveedor and linked_proveedor not in proveedores_list:
+        proveedores_list.append(linked_proveedor)
+    if linked_proveedor:
         proveedores_list = sorted(proveedores_list, key=lambda p: p.nombre_completo or "")
+    counterpart_suggestion = _build_counterpart_suggestion_for_cliente(db, cliente)
+    link_ok = request.query_params.get("link_ok") == "1"
+    link_msg = (request.query_params.get("link_msg") or "").strip() or None
+    link_warn = (request.query_params.get("link_warn") or "").strip() or None
+    link_error = (request.query_params.get("link_error") or "").strip() or None
 
     return _render_cliente_form(
         request,
@@ -4128,9 +4364,14 @@ async def cliente_edit_get(
         error=None,
         placas_text="\n".join([pl.placa for pl in cliente.placas_rel]) if cliente.placas_rel else (cliente.placas or ""),
         proveedores=proveedores_list,
-        linked_proveedor_id=cliente.linked_proveedor_id,
+        linked_proveedor_id=linked_proveedor.id if linked_proveedor else cliente.linked_proveedor_id,
         sucursales=sucursales,
         sucursal_id_selected=cliente.sucursal_id,
+        counterpart_suggestion=counterpart_suggestion,
+        link_ok=link_ok,
+        link_msg=link_msg,
+        link_warn=link_warn,
+        link_error=link_error,
     )
 
 
@@ -4338,6 +4579,7 @@ async def cliente_record(
 async def cliente_crear_proveedor(
     cliente_id: int,
     request: Request,
+    next_url: str = Form(""),
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
@@ -4346,20 +4588,45 @@ async def cliente_crear_proveedor(
         raise HTTPException(status_code=404, detail="Cliente no encontrado.")
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     _ensure_partner_access(cliente, allowed_suc_ids)
+    redirect_base = _safe_next_admin_url(next_url, f"/web/admin/clientes/{cliente_id}/record")
     if _is_internal_partner_name(db, cliente.nombre_completo):
         msg = "No se puede crear como proveedor porque es una sucursal interna."
         return RedirectResponse(
-            url=f"/web/admin/clientes/{cliente_id}/record?{urlencode({'link_error': msg})}",
+            url=_append_query_params(redirect_base, link_error=msg),
             status_code=303,
         )
 
-    existing = _get_linked_proveedor(db, cliente)
-    if existing and _is_internal_partner_name(db, existing.nombre_completo):
-        existing = None
-    if existing:
-        warn = "Ya existe un proveedor vinculado o con datos similares; se mostró su record."
+    counterpart_suggestion = _build_counterpart_suggestion_for_cliente(db, cliente)
+    existing = counterpart_suggestion["candidate"] if counterpart_suggestion else None
+    if existing and counterpart_suggestion.get("is_linked"):
         return RedirectResponse(
-            url=f"/web/admin/proveedores/{existing.id}/record?{urlencode({'link_warn': warn})}",
+            url=_append_query_params(redirect_base, link_warn="Este cliente ya esta relacionado como proveedor."),
+            status_code=303,
+        )
+    if existing and not counterpart_suggestion.get("can_link"):
+        return RedirectResponse(
+            url=_append_query_params(
+                redirect_base,
+                link_error=counterpart_suggestion.get("message") or "No se pudo vincular la contraparte sugerida.",
+            ),
+            status_code=303,
+        )
+    if existing:
+        try:
+            _link_cliente_proveedor(db, cliente=cliente, proveedor=existing)
+            db.commit()
+        except ValueError as exc:
+            db.rollback()
+            return RedirectResponse(
+                url=_append_query_params(redirect_base, link_error=str(exc)),
+                status_code=303,
+            )
+        return RedirectResponse(
+            url=_append_query_params(
+                redirect_base,
+                link_ok="1",
+                link_msg="Proveedor existente vinculado correctamente.",
+            ),
             status_code=303,
         )
 
@@ -4372,22 +4639,24 @@ async def cliente_crear_proveedor(
         db.rollback()
         msg = str(exc)
         return RedirectResponse(
-            url=f"/web/admin/clientes/{cliente_id}/record?{urlencode({'link_error': msg})}",
+            url=_append_query_params(redirect_base, link_error=msg),
             status_code=303,
         )
     except IntegrityError:
         db.rollback()
         msg = "No se pudo crear el proveedor. Revisa placas o datos duplicados."
         return RedirectResponse(
-            url=f"/web/admin/clientes/{cliente_id}/record?{urlencode({'link_error': msg})}",
+            url=_append_query_params(redirect_base, link_error=msg),
             status_code=303,
         )
 
-    params = {"link_ok": "1", "link_msg": "Proveedor creado desde cliente."}
-    if placas_skipped:
-        params["link_warn"] = f"Placas omitidas por duplicado: {', '.join(placas_skipped)}."
     return RedirectResponse(
-        url=f"/web/admin/proveedores/{proveedor.id}/record?{urlencode(params)}",
+        url=_append_query_params(
+            redirect_base,
+            link_ok="1",
+            link_msg="Proveedor creado desde cliente.",
+            link_warn=f"Placas omitidas por duplicado: {', '.join(placas_skipped)}." if placas_skipped else "",
+        ),
         status_code=303,
     )
 

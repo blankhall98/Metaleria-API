@@ -20,6 +20,21 @@
         {{ error }}
     </div>
 {% endif %}
+{% if link_ok %}
+    <div class="alert alert-success py-2 small">
+        {{ link_msg or "Relacion actualizada correctamente." }}
+    </div>
+{% endif %}
+{% if link_warn %}
+    <div class="alert alert-warning py-2 small">
+        {{ link_warn }}
+    </div>
+{% endif %}
+{% if link_error %}
+    <div class="alert alert-danger py-2 small">
+        {{ link_error }}
+    </div>
+{% endif %}
 
 <div class="card hover-lift">
     <div class="card-body">
@@ -104,6 +119,47 @@
                     <div class="form-text">Vincula este cliente con un proveedor para unificar su saldo.</div>
                 </div>
             </div>
+
+            {% if cliente %}
+                <div class="partner-match-card {% if counterpart_suggestion and counterpart_suggestion.is_linked %}is-linked{% endif %}">
+                    <input type="hidden" name="next_url" value="/web/admin/clientes/{{ cliente.id }}/editar">
+                    {% if counterpart_suggestion and counterpart_suggestion.is_linked %}
+                        <div>
+                            <div class="partner-match-title">Este cliente tambien opera como proveedor</div>
+                            <div class="text-muted small">
+                                Proveedor ID {{ counterpart_suggestion.candidate.id }} · {{ counterpart_suggestion.candidate.nombre_completo }}
+                            </div>
+                            <div class="text-muted small mt-1">{{ counterpart_suggestion.message }}</div>
+                        </div>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <a href="/web/admin/proveedores/{{ counterpart_suggestion.candidate.id }}/record" class="btn btn-outline-primary btn-sm">Ver proveedor</a>
+                        </div>
+                    {% elif counterpart_suggestion %}
+                        <div>
+                            <div class="partner-match-title">Proveedor sugerido para vincular</div>
+                            <div class="text-muted small">
+                                Proveedor ID {{ counterpart_suggestion.candidate.id }} · {{ counterpart_suggestion.candidate.nombre_completo }}
+                            </div>
+                            <div class="text-muted small mt-1">{{ counterpart_suggestion.reason }}</div>
+                            <div class="text-muted small mt-1">{{ counterpart_suggestion.message }}</div>
+                        </div>
+                        <div class="d-flex gap-2 flex-wrap">
+                            {% if counterpart_suggestion.can_link %}
+                                <button class="btn btn-outline-success btn-sm" type="submit" formaction="/web/admin/clientes/{{ cliente.id }}/crear-proveedor" formmethod="post" formnovalidate>Vincular proveedor existente</button>
+                            {% endif %}
+                            <a href="/web/admin/proveedores/{{ counterpart_suggestion.candidate.id }}/record" class="btn btn-outline-primary btn-sm">Ver proveedor</a>
+                        </div>
+                    {% else %}
+                        <div>
+                            <div class="partner-match-title">Agregar como proveedor</div>
+                            <div class="text-muted small">
+                                Si aun no existe la contraparte, el sistema la crea automaticamente. Si ya existe una coincidencia clara, la vincula sin duplicar.
+                            </div>
+                        </div>
+                        <button class="btn btn-outline-success btn-sm" type="submit" formaction="/web/admin/clientes/{{ cliente.id }}/crear-proveedor" formmethod="post" formnovalidate>Agregar como proveedor</button>
+                    {% endif %}
+                </div>
+            {% endif %}
 
             {% if cliente %}
                 <div class="form-check mb-2">

@@ -29,11 +29,13 @@
             {% if not partner_is_internal and not linked_partner %}
                 {% if partner_base == 'proveedores' %}
                     <form method="post" action="/web/admin/proveedores/{{ partner.id }}/crear-cliente" class="d-inline">
-                        <button class="btn btn-outline-success btn-sm" type="submit">Agregar como cliente</button>
+                        <input type="hidden" name="next_url" value="{{ request.url.path }}">
+                        <button class="btn btn-outline-success btn-sm" type="submit">Agregar o vincular como cliente</button>
                     </form>
                 {% else %}
                     <form method="post" action="/web/admin/clientes/{{ partner.id }}/crear-proveedor" class="d-inline">
-                        <button class="btn btn-outline-success btn-sm" type="submit">Agregar como proveedor</button>
+                        <input type="hidden" name="next_url" value="{{ request.url.path }}">
+                        <button class="btn btn-outline-success btn-sm" type="submit">Agregar o vincular como proveedor</button>
                     </form>
                 {% endif %}
             {% endif %}
