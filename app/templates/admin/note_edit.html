@@ -3,244 +3,197 @@
 {% block title %}Editar nota {{ nota.id }}{% endblock %}
 
 {% block content %}
+{% set note_state = nota.estado.value %}
 <div class="note-detail-page">
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Edici&oacute;n</p>
-        <h1 class="h4 text-dark mb-0">Nota #{{ nota.id }}</h1>
-    </div>
-    <div class="d-flex gap-2">
-        <a href="/web/admin/notas/{{ nota.id }}" class="btn btn-outline-secondary btn-sm">Volver</a>
-    </div>
-</div>
-
-<div class="card hover-lift mb-3 note-summary-card">
-    <div class="card-body">
-        {% if error %}
-            <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
-        {% endif %}
-        {% if saved %}
-            <div class="alert alert-success py-2 small mb-3">Edici&oacute;n guardada.</div>
-        {% endif %}
-        <div class="note-meta-grid">
-            <div class="note-meta-item">
-                <span class="note-meta-label">Estado</span>
-                {% if nota.estado.value == 'BORRADOR' %}
-                    <span class="badge bg-secondary">Borrador</span>
-                {% elif nota.estado.value == 'EN_REVISION' %}
-                    <span class="badge bg-warning text-dark">En revisi&oacute;n</span>
-                {% elif nota.estado.value == 'APROBADA' %}
-                    {% if saldo_pendiente > 0 %}
-                        <span class="badge bg-success">Aprobada</span>
-                    {% else %}
-                        <span class="badge bg-success">Pagada</span>
-                    {% endif %}
-                {% else %}
-                    <span class="badge bg-danger">Cancelada</span>
-                {% endif %}
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Folio</span>
-                <strong>{{ folio or '-' }}</strong>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Operaci&oacute;n</span>
-                <strong>{{ nota.tipo_operacion.value|capitalize }}</strong>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Sucursal</span>
-                <strong>{{ sucursal.nombre if sucursal else '-' }}</strong>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Trabajador</span>
-                <strong>{{ trabajador.nombre_completo if trabajador else '-' }}</strong>
-                <div class="note-meta-sub">{{ trabajador.username if trabajador else '' }}</div>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Partner</span>
-                {% if nota.tipo_operacion.value == 'venta' %}
-                    <strong>{{ cliente.nombre_completo if cliente else '-' }}</strong>
-                {% elif nota.tipo_operacion.value == 'compra' %}
-                    <strong>{{ proveedor.nombre_completo if proveedor else '-' }}</strong>
-                {% else %}
-                    <strong>{{ proveedor.nombre_completo if proveedor else (cliente.nombre_completo if cliente else '-') }}</strong>
-                {% endif %}
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Kg neto</span>
-                <strong>{{ "{:,.2f}".format(nota.total_kg_neto or 0) }} kg</strong>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Subtotal</span>
-                <strong id="note-subtotal-value">${{ "{:,.2f}".format(subtotal_sin_iva or 0) }}</strong>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">IVA{% if nota.iva_incluido %} ({{ "{:,.2f}".format(iva_pct or 0) }}%){% endif %}</span>
-                <strong id="note-iva-value">${{ "{:,.2f}".format(iva_monto or 0) }}</strong>
-                {% if not nota.iva_incluido %}
-                    <div class="note-meta-sub">No incluye IVA</div>
-                {% endif %}
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Total</span>
-                <strong id="note-total-value">${{ "{:,.2f}".format(nota.total_monto or 0) }}</strong>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Monto pagado</span>
-                <strong>${{ "{:,.2f}".format(nota.monto_pagado or 0) }}</strong>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Saldo pendiente</span>
-                {% if is_transfer %}
-                    {% if saldo_pendiente > 0 %}
-                        {% if nota.tipo_operacion.value == 'venta' %}
-                            <strong class="text-success">+${{ "{:,.2f}".format(saldo_pendiente) }}</strong>
-                        {% else %}
-                            <strong class="text-danger">-${{ "{:,.2f}".format(saldo_pendiente) }}</strong>
-                        {% endif %}
-                    {% else %}
-                        <strong class="text-muted">$0.00</strong>
-                    {% endif %}
-                {% else %}
-                    {% if saldo_pendiente > 0 %}
-                        <strong class="text-danger">${{ "{:,.2f}".format(saldo_pendiente) }}</strong>
-                    {% else %}
-                        <strong class="text-success">$0.00</strong>
-                    {% endif %}
-                {% endif %}
-            </div>
-            {% if is_transfer %}
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Transferencia</span>
-                    {% if transfer_related %}
-                        {% set rel_label = 'Nota entrada' if nota.tipo_operacion.value == 'venta' else 'Nota salida' %}
-                        <a href="/web/admin/notas/{{ transfer_related.id }}">{{ rel_label }} #{{ transfer_related.id }}</a>
-                        <div class="note-meta-sub">{{ transfer_related_sucursal.nombre if transfer_related_sucursal else '-' }}</div>
-                    {% else %}
-                        <span class="text-muted small">Nota relacionada pendiente</span>
-                    {% endif %}
-                </div>
-            {% endif %}
+    <div class="page-header note-page-header">
+        <div>
+            <p class="text-uppercase text-muted small mb-1">Edicion administrativa</p>
+            <h1 class="h4 text-dark mb-1">Editar nota {{ folio or ('#' ~ nota.id) }}</h1>
+            <p class="text-muted mb-0">{{ operation_label }} vinculada a {{ partner_label|lower }}: {{ partner_name }}</p>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="/web/admin/notas/{{ nota.id }}" class="btn btn-outline-secondary btn-sm">Volver a la nota</a>
         </div>
     </div>
-</div>
 
-<form method="post" class="d-grid gap-3">
-    <div class="card hover-lift mb-3 note-report-card">
+    {% if error %}
+        <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
+    {% endif %}
+    {% if saved %}
+        <div class="alert alert-success py-2 small mb-3">Edicion guardada correctamente.</div>
+    {% endif %}
+
+    <div class="card hover-lift mb-3 note-hero-card">
         <div class="card-body">
-            <h2 class="h6 text-dark mb-3 note-section-title">Materiales</h2>
-            <div class="table-responsive">
-                <table class="table table-hover table-sm align-middle mb-0 note-table">
-                    <thead>
-                    <tr>
-                        <th>Material</th>
-                        <th>Subpesajes</th>
-                        <th>Tipo precio</th>
-                        <th class="text-end">Kg bruto</th>
-                        <th class="text-end">Kg desc</th>
-                        <th class="text-end">Kg neto</th>
-                        <th class="text-end">Precio unit</th>
-                        <th class="text-end">Subtotal</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {% for m in nota.materiales %}
-                        <tr data-kg-neto="{{ "%.3f"|format(m.kg_neto or 0) }}">
-                            <td>
-                                <div class="fw-semibold">{{ m.material.nombre if m.material else m.material_id }}</div>
-                                {% if m.subpesajes %}
-                                    <div class="text-muted small">Edita los subpesajes para ajustar los kg.</div>
-                                {% else %}
-                                    <div class="text-muted small">Sin subpesajes. Edita kg directo.</div>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if m.subpesajes %}
-                                    <div class="d-grid gap-2">
-                                        {% for sp in m.subpesajes %}
-                                            <div class="input-group input-group-sm">
-                                                <span class="input-group-text">Peso</span>
-                                                <input class="form-control" type="number" step="0.001" min="0.001" name="sp_peso_{{ sp.id }}" value="{{ "%.3f"|format(sp.peso_kg or 0) }}" required>
-                                                <span class="input-group-text">Desc</span>
-                                                <input class="form-control" type="number" step="0.001" min="0" name="sp_desc_{{ sp.id }}" value="{{ "%.3f"|format(sp.descuento_kg or 0) }}" required>
-                                                {% if sp.foto_url %}
-                                                    <a class="btn btn-outline-secondary btn-sm" href="{{ sp.foto_url }}" target="_blank" rel="noopener">Foto</a>
-                                                {% else %}
-                                                    <span class="input-group-text">Sin foto</span>
-                                                {% endif %}
-                                            </div>
-                                        {% endfor %}
-                                    </div>
-                                {% else %}
-                                    <span class="text-muted small">-</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                <select class="form-select form-select-sm" name="tipo_cliente_{{ m.id }}">
-                                    {% for tc in tipos_cliente %}
-                                        {% set is_selected = (m.tipo_cliente and m.tipo_cliente.value == tc.value) or (not m.tipo_cliente and tc.value == 'regular') %}
-                                        <option value="{{ tc.value }}" {% if is_selected %}selected{% endif %}>
-                                            {{ tc.value|capitalize }}
-                                        </option>
-                                    {% endfor %}
-                                </select>
-                            </td>
-                            <td class="text-end">
-                                <input class="form-control form-control-sm text-end kg-bruto-input" type="number" step="0.001" min="0" name="kg_bruto_{{ m.id }}" value="{{ "%.3f"|format(m.kg_bruto or 0) }}" {% if m.subpesajes %}disabled{% endif %}>
-                            </td>
-                            <td class="text-end">
-                                <input class="form-control form-control-sm text-end kg-desc-input" type="number" step="0.001" min="0" name="kg_desc_{{ m.id }}" value="{{ "%.3f"|format(m.kg_descuento or 0) }}" {% if m.subpesajes %}disabled{% endif %}>
-                            </td>
-                            <td class="text-end">{{ "{:,.3f}".format(m.kg_neto or 0) }}</td>
-                            {% set unit_override = form_precio_unit_map.get(m.id) if form_precio_unit_map is defined else None %}
-                            {% set subtotal_override = form_subtotal_map.get(m.id) if form_subtotal_map is defined else None %}
-                            {% set mode_override = form_precio_mode_map.get(m.id) if form_precio_mode_map is defined else None %}
-                            <td class="text-end">
-                                <input class="form-control form-control-sm text-end note-unit-input"
-                                       type="number"
-                                       step="0.00001"
-                                       min="0"
-                                       name="precio_unitario_{{ m.id }}"
-                                       value="{{ unit_override if unit_override is not none else ('%.5f'|format(m.precio_unitario) if m.precio_unitario is not none else '') }}"
-                                       placeholder="0.00000">
-                                <input type="hidden" name="precio_mode_{{ m.id }}" class="note-precio-mode" value="{{ mode_override if mode_override else 'unit' }}">
-                            </td>
-                            <td class="text-end">
-                                <input class="form-control form-control-sm text-end note-subtotal-input"
-                                       type="number"
-                                       step="0.01"
-                                       min="0"
-                                       name="subtotal_{{ m.id }}"
-                                       value="{{ subtotal_override if subtotal_override is not none else ('%.2f'|format(m.subtotal) if m.subtotal is not none else '') }}"
-                                       placeholder="0.00">
-                            </td>
-                        </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
+            <div class="note-hero-header">
+                <div class="note-hero-copy">
+                    <div class="d-flex flex-wrap gap-2 mb-2">
+                        <span class="notes-op-chip {{ 'buy' if nota.tipo_operacion.value == 'compra' else 'sale' }}">{{ operation_label }}</span>
+                        {% if note_state == 'BORRADOR' %}
+                            <span class="badge bg-secondary">Borrador</span>
+                        {% elif note_state == 'EN_REVISION' %}
+                            <span class="badge bg-warning text-dark">En revision</span>
+                        {% elif note_state == 'APROBADA' %}
+                            <span class="badge bg-success">Aprobada</span>
+                        {% else %}
+                            <span class="badge bg-danger">Cancelada</span>
+                        {% endif %}
+                    </div>
+                    <h2 class="h5 text-dark mb-1">{{ partner_name }}</h2>
+                    <p class="text-muted mb-0">
+                        {{ sucursal.nombre if sucursal else '-' }} &middot;
+                        {{ trabajador.nombre_completo if trabajador else '-' }}
+                    </p>
+                </div>
+                <div class="note-hero-side text-lg-end">
+                    <div class="note-hero-label">Folio</div>
+                    <div class="note-hero-folio">{{ folio or '-' }}</div>
+                    <div class="text-muted small">Solo superadmin</div>
+                </div>
             </div>
-            <div class="row g-3 mt-3">
-                <div class="col-12">
-                    <label class="form-label">Comentario de edici&oacute;n</label>
-                    <textarea class="form-control" name="comentario_edicion" rows="2" placeholder="Opcional. Se registra en los ajustes." >{{ comentario_edicion }}</textarea>
-                    <div class="form-text text-muted">Los cambios actualizan inventario y log contable si la nota est&aacute; aprobada.</div>
+
+            <div class="note-kpi-grid note-kpi-grid-detail">
+                <div class="notes-kpi-card tone-blue">
+                    <span class="notes-kpi-label">Total nota</span>
+                    <strong id="note-total-value">${{ "{:,.2f}".format(nota.total_monto or 0) }}</strong>
+                    <div class="notes-kpi-sub">Subtotal: <span id="note-subtotal-value">${{ "{:,.2f}".format(subtotal_sin_iva or 0) }}</span></div>
+                </div>
+                <div class="notes-kpi-card tone-green">
+                    <span class="notes-kpi-label">Monto pagado</span>
+                    <strong>${{ "{:,.2f}".format(nota.monto_pagado or 0) }}</strong>
+                    <div class="notes-kpi-sub">Saldo pendiente: ${{ "{:,.2f}".format(saldo_pendiente or 0) }}</div>
+                </div>
+                <div class="notes-kpi-card tone-amber">
+                    <span class="notes-kpi-label">Kg neto</span>
+                    <strong>{{ "{:,.2f}".format(nota.total_kg_neto or 0) }} kg</strong>
+                    <div class="notes-kpi-sub">IVA: <span id="note-iva-value">${{ "{:,.2f}".format(iva_monto or 0) }}</span></div>
+                </div>
+                <div class="notes-kpi-card {{ 'tone-blue' if saldo_a_favor > 0 else 'tone-neutral' }}">
+                    <span class="notes-kpi-label">Saldo a favor</span>
+                    <strong>${{ "{:,.2f}".format(saldo_a_favor or 0) }}</strong>
+                    <div class="notes-kpi-sub">Se conserva si ya hubo sobrepago</div>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="note-actions">
-        <div class="note-actions-title">Acciones</div>
-        <div class="note-actions-row">
-            <button type="submit" class="btn btn-primary note-action-primary">Guardar cambios</button>
-            <a href="/web/admin/notas/{{ nota.id }}" class="btn btn-outline-secondary">Cancelar</a>
+    <form method="post" id="noteEditForm">
+        <div class="note-workspace-grid">
+            <div class="note-main-column">
+                <div class="card hover-lift mb-3 note-report-card">
+                    <div class="card-body">
+                        <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
+                            <div>
+                                <h2 class="h6 text-dark mb-1">Materiales editables</h2>
+                                <p class="text-muted small mb-0">Puedes corregir subpesajes, kg, precio unitario o subtotal. Los totales se recalculan automaticamente.</p>
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-hover table-sm align-middle mb-0 note-materials-table">
+                                <thead>
+                                <tr>
+                                    <th>Material</th>
+                                    <th>Subpesajes</th>
+                                    <th>Tipo precio</th>
+                                    <th class="text-end">Kg bruto</th>
+                                    <th class="text-end">Kg desc</th>
+                                    <th class="text-end">Kg neto</th>
+                                    <th class="text-end">Precio unitario</th>
+                                    <th class="text-end">Subtotal</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% for m in nota.materiales %}
+                                    <tr data-kg-neto="{{ '%.3f'|format(m.kg_neto or 0) }}">
+                                        <td>
+                                            <div class="fw-semibold">{{ m.material.nombre if m.material else m.material_id }}</div>
+                                            <div class="text-muted small">
+                                                {% if m.subpesajes %}Edita subpesajes para recalcular kg.{% else %}Sin subpesajes; edicion directa de kg.{% endif %}
+                                            </div>
+                                        </td>
+                                        <td>
+                                            {% if m.subpesajes %}
+                                                <div class="d-grid gap-2 note-edit-subpesajes">
+                                                    {% for sp in m.subpesajes %}
+                                                        <div class="input-group input-group-sm">
+                                                            <span class="input-group-text">Peso</span>
+                                                            <input class="form-control" type="number" step="0.001" min="0.001" name="sp_peso_{{ sp.id }}" value="{{ '%.3f'|format(sp.peso_kg or 0) }}" required>
+                                                            <span class="input-group-text">Desc</span>
+                                                            <input class="form-control" type="number" step="0.001" min="0" name="sp_desc_{{ sp.id }}" value="{{ '%.3f'|format(sp.descuento_kg or 0) }}" required>
+                                                            {% if sp.foto_url %}
+                                                                <a class="btn btn-outline-secondary btn-sm" href="{{ sp.foto_url }}" target="_blank" rel="noopener">Foto</a>
+                                                            {% else %}
+                                                                <span class="input-group-text">Sin foto</span>
+                                                            {% endif %}
+                                                        </div>
+                                                    {% endfor %}
+                                                </div>
+                                            {% else %}
+                                                <span class="text-muted small">-</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <select class="form-select form-select-sm" name="tipo_cliente_{{ m.id }}">
+                                                {% for tc in tipos_cliente %}
+                                                    {% set is_selected = (m.tipo_cliente and m.tipo_cliente.value == tc.value) or (not m.tipo_cliente and tc.value == 'regular') %}
+                                                    <option value="{{ tc.value }}" {% if is_selected %}selected{% endif %}>{{ tc.value|capitalize }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </td>
+                                        <td class="text-end">
+                                            <input class="form-control form-control-sm text-end kg-bruto-input" type="number" step="0.001" min="0" name="kg_bruto_{{ m.id }}" value="{{ '%.3f'|format(m.kg_bruto or 0) }}" {% if m.subpesajes %}disabled{% endif %}>
+                                        </td>
+                                        <td class="text-end">
+                                            <input class="form-control form-control-sm text-end kg-desc-input" type="number" step="0.001" min="0" name="kg_desc_{{ m.id }}" value="{{ '%.3f'|format(m.kg_descuento or 0) }}" {% if m.subpesajes %}disabled{% endif %}>
+                                        </td>
+                                        <td class="text-end">{{ "{:,.3f}".format(m.kg_neto or 0) }}</td>
+                                        {% set unit_override = form_precio_unit_map.get(m.id) if form_precio_unit_map is defined else None %}
+                                        {% set subtotal_override = form_subtotal_map.get(m.id) if form_subtotal_map is defined else None %}
+                                        {% set mode_override = form_precio_mode_map.get(m.id) if form_precio_mode_map is defined else None %}
+                                        <td class="text-end">
+                                            <input class="form-control form-control-sm text-end note-unit-input" type="number" step="0.00001" min="0" name="precio_unitario_{{ m.id }}" value="{{ unit_override if unit_override is not none else ('%.5f'|format(m.precio_unitario) if m.precio_unitario is not none else '') }}" placeholder="0.00000">
+                                            <input type="hidden" name="precio_mode_{{ m.id }}" class="note-precio-mode" value="{{ mode_override if mode_override else 'unit' }}">
+                                        </td>
+                                        <td class="text-end">
+                                            <input class="form-control form-control-sm text-end note-subtotal-input" type="number" step="0.01" min="0" name="subtotal_{{ m.id }}" value="{{ subtotal_override if subtotal_override is not none else ('%.2f'|format(m.subtotal) if m.subtotal is not none else '') }}" placeholder="0.00">
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="note-side-column">
+                <div class="card hover-lift note-side-card">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center gap-2 mb-3">
+                            <span class="chip-strong">Guardar</span>
+                            <span class="text-muted small">Impacto administrativo y contable</span>
+                        </div>
+                        <label class="form-label">Comentario de edicion</label>
+                        <textarea class="form-control" name="comentario_edicion" rows="5" placeholder="Explica por que se modifica la nota.">{{ comentario_edicion }}</textarea>
+                        <div class="form-text text-muted">Si la nota ya estaba aprobada, los cambios ajustan inventario y log contable.</div>
+
+                        <div class="note-actions mt-3">
+                            <div class="note-actions-title">Acciones</div>
+                            <div class="note-actions-row">
+                                <button type="submit" class="btn btn-primary note-action-primary">Guardar cambios</button>
+                                <a href="/web/admin/notas/{{ nota.id }}" class="btn btn-outline-secondary">Cancelar</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-    </div>
-</form>
+    </form>
 </div>
 <script>
     const ivaIncluido = {{ 'true' if nota.iva_incluido else 'false' }};
     const ivaPct = {{ "%.2f"|format(iva_pct or 0) }};
+
     function formatNumber(value, decimals) {
         const safe = Number(value || 0);
         return safe.toLocaleString('en-US', {
@@ -248,15 +201,18 @@
             maximumFractionDigits: decimals,
         });
     }
+
     function formatMoney(value) {
         return `$${formatNumber(value, 2)}`;
     }
+
     function parseNumber(value) {
         const raw = value === null || value === undefined ? '' : String(value);
         const cleaned = raw.replace(/[^0-9.-]+/g, '');
         const parsed = parseFloat(cleaned);
         return Number.isNaN(parsed) ? 0 : parsed;
     }
+
     function getRowKgNeto(row) {
         if (!row) return 0;
         const kgBrutoInput = row.querySelector('.kg-bruto-input');
@@ -266,14 +222,14 @@
         }
         return parseNumber(row.dataset.kgNeto || '0');
     }
+
     function updateTotals() {
         const subtotalEl = document.getElementById('note-subtotal-value');
         const ivaEl = document.getElementById('note-iva-value');
         const totalEl = document.getElementById('note-total-value');
         if (!subtotalEl || !ivaEl || !totalEl) return;
         let baseTotal = 0;
-        const rows = document.querySelectorAll('.note-table tbody tr');
-        rows.forEach((row) => {
+        document.querySelectorAll('.note-materials-table tbody tr').forEach((row) => {
             const subtotalInput = row.querySelector('.note-subtotal-input');
             if (!subtotalInput) return;
             baseTotal += parseNumber(subtotalInput.value);
@@ -284,6 +240,7 @@
         ivaEl.textContent = formatMoney(ivaMonto);
         totalEl.textContent = formatMoney(total);
     }
+
     function syncRowFromUnit(inputEl) {
         const row = inputEl.closest('tr');
         if (!row) return;
@@ -299,6 +256,7 @@
         }
         updateTotals();
     }
+
     function syncRowFromSubtotal(inputEl) {
         const row = inputEl.closest('tr');
         if (!row) return;
@@ -307,14 +265,14 @@
         const kgNeto = getRowKgNeto(row);
         const subtotalVal = parseNumber(inputEl.value);
         if (unitInput) {
-            const unitVal = kgNeto > 0 ? subtotalVal / kgNeto : 0;
-            unitInput.value = unitVal.toFixed(5);
+            unitInput.value = (kgNeto > 0 ? subtotalVal / kgNeto : 0).toFixed(5);
         }
         if (modeInput) {
             modeInput.value = 'subtotal';
         }
         updateTotals();
     }
+
     function syncRowFromKgInput(inputEl) {
         const row = inputEl.closest('tr');
         if (!row) return;
@@ -332,18 +290,17 @@
             }
         }
     }
-    const unitInputs = document.querySelectorAll('.note-unit-input');
-    unitInputs.forEach((input) => {
+
+    document.querySelectorAll('.note-unit-input').forEach((input) => {
         input.addEventListener('input', () => syncRowFromUnit(input));
     });
-    const subtotalInputs = document.querySelectorAll('.note-subtotal-input');
-    subtotalInputs.forEach((input) => {
+    document.querySelectorAll('.note-subtotal-input').forEach((input) => {
         input.addEventListener('input', () => syncRowFromSubtotal(input));
     });
-    const kgInputs = document.querySelectorAll('.kg-bruto-input, .kg-desc-input');
-    kgInputs.forEach((input) => {
+    document.querySelectorAll('.kg-bruto-input, .kg-desc-input').forEach((input) => {
         input.addEventListener('input', () => syncRowFromKgInput(input));
     });
+
     updateTotals();
 </script>
 {% endblock %}

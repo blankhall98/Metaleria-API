@@ -3,1147 +3,1238 @@
 {% block title %}Nota {{ folio or '-' }}{% endblock %}
 
 {% block content %}
+{% set note_state = nota.estado.value %}
+{% set is_pending_review = note_state in ['BORRADOR', 'EN_REVISION'] %}
+{% set is_approved = note_state == 'APROBADA' %}
+{% set is_cancelled = note_state == 'CANCELADA' %}
+{% set payment_badge = 'Sin aplicar' %}
+{% if is_approved %}
+    {% if saldo_a_favor > 0 %}
+        {% set payment_badge = 'Saldo a favor' %}
+    {% elif saldo_pendiente > 0 %}
+        {% set payment_badge = 'Pendiente por saldar' %}
+    {% else %}
+        {% set payment_badge = 'Pagada' %}
+    {% endif %}
+{% endif %}
 <div class="note-detail-page">
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Revisi&oacute;n</p>
-        <h1 class="h4 text-dark mb-0">Nota {{ folio or '-' }}</h1>
-    </div>
-    <div class="d-flex gap-2">
-        {% if user.rol == 'super_admin' %}
-            <a href="/web/admin/notas/{{ nota.id }}/editar" class="btn btn-outline-primary btn-sm">Editar</a>
-        {% endif %}
-        <a href="/web/admin/notas/{{ nota.id }}/evidencias" class="btn btn-primary btn-sm note-evidence-btn">Evidencias</a>
-        {% if nota.estado.value == 'APROBADA' and nota.tipo_operacion.value in ['compra', 'venta'] %}
-            <a href="/web/admin/notas/{{ nota.id }}/factura" class="btn btn-outline-primary btn-sm">Orden de Compra</a>
-        {% endif %}
-        <a href="/web/admin/notas" class="btn btn-outline-secondary btn-sm">Volver</a>
-    </div>
-</div>
-
-<div class="card hover-lift mb-3 note-summary-card">
-    <div class="card-body">
-        {% if error %}
-            <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
-        {% endif %}
-        {% if edit_updated %}
-            <div class="alert alert-success py-2 small mb-3">Edici&oacute;n guardada.</div>
-        {% endif %}
-        {% if precios_updated %}
-            <div class="alert alert-success py-2 small mb-3">Precios actualizados.</div>
-        {% endif %}
-        <div class="note-meta-grid">
-            <div class="note-meta-item">
-                <span class="note-meta-label">Estado</span>
-                {% if nota.estado.value == 'BORRADOR' %}
-                    <span class="badge bg-secondary">Borrador</span>
-                {% elif nota.estado.value == 'EN_REVISION' %}
-                    <span class="badge bg-warning text-dark">En revisi&oacute;n</span>
-                {% elif nota.estado.value == 'APROBADA' %}
-                    {% if saldo_pendiente > 0 %}
-                        <span class="badge bg-success">Aprobada</span>
-                    {% else %}
-                        <span class="badge bg-success">Pagada</span>
-                    {% endif %}
-                {% else %}
-                    <span class="badge bg-danger">Cancelada</span>
-                {% endif %}
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Folio</span>
-                <strong>{{ folio or '-' }}</strong>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Operaci&oacute;n</span>
-                <strong>{{ nota.tipo_operacion.value|capitalize }}</strong>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Sucursal</span>
-                <strong>{{ sucursal.nombre if sucursal else '-' }}</strong>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Trabajador</span>
-                <strong>{{ trabajador.nombre_completo if trabajador else '-' }}</strong>
-                <div class="note-meta-sub">{{ trabajador.username if trabajador else '' }}</div>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Fecha y hora</span>
-                <strong>{{ nota.created_at.strftime("%Y-%m-%d %H:%M") if nota.created_at else '-' }}</strong>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Partner</span>
-                {% if nota.tipo_operacion.value == 'venta' %}
-                    <strong>{{ cliente.nombre_completo if cliente else '-' }}</strong>
-                {% elif nota.tipo_operacion.value == 'compra' %}
-                    <strong>{{ proveedor.nombre_completo if proveedor else '-' }}</strong>
-                {% else %}
-                    <strong>{{ proveedor.nombre_completo if proveedor else (cliente.nombre_completo if cliente else '-') }}</strong>
-                {% endif %}
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Kg neto</span>
-                <strong>{{ "{:,.2f}".format(nota.total_kg_neto or 0) }} kg</strong>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Subtotal</span>
-                <strong id="note-subtotal-value">${{ "{:,.2f}".format(subtotal_sin_iva or 0) }}</strong>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">IVA{% if nota.iva_incluido %} ({{ "{:,.2f}".format(iva_pct or 0) }}%){% endif %}</span>
-                <strong id="note-iva-value">${{ "{:,.2f}".format(iva_monto or 0) }}</strong>
-                {% if not nota.iva_incluido %}
-                    <div class="note-meta-sub">No incluye IVA</div>
-                {% endif %}
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Total</span>
-                <strong id="note-total-value">${{ "{:,.2f}".format(nota.total_monto or 0) }}</strong>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Monto pagado</span>
-                <strong>${{ "{:,.2f}".format(nota.monto_pagado or 0) }}</strong>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Saldo pendiente</span>
-                {% if is_transfer %}
-                    {% if saldo_pendiente > 0 %}
-                        {% if nota.tipo_operacion.value == 'venta' %}
-                            <strong class="text-success">+${{ "{:,.2f}".format(saldo_pendiente) }}</strong>
-                        {% else %}
-                            <strong class="text-danger">-${{ "{:,.2f}".format(saldo_pendiente) }}</strong>
-                        {% endif %}
-                    {% else %}
-                        <strong class="text-muted">$0.00</strong>
-                    {% endif %}
-                {% else %}
-                    {% if saldo_pendiente > 0 %}
-                        <strong class="text-danger">${{ "{:,.2f}".format(saldo_pendiente) }}</strong>
-                    {% else %}
-                        <strong class="text-success">$0.00</strong>
-                    {% endif %}
-                {% endif %}
-            </div>
-            {% if is_transfer %}
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Transferencia</span>
-                    {% if transfer_related %}
-                        {% set rel_label = 'Nota entrada' if nota.tipo_operacion.value == 'venta' else 'Nota salida' %}
-                        <a href="/web/admin/notas/{{ transfer_related.id }}">{{ rel_label }} #{{ transfer_related.id }}</a>
-                        <div class="note-meta-sub">{{ transfer_related_sucursal.nombre if transfer_related_sucursal else '-' }}</div>
-                    {% else %}
-                        <span class="text-muted small">Nota relacionada pendiente</span>
-                    {% endif %}
-                </div>
+    <div class="page-header note-page-header">
+        <div>
+            <p class="text-uppercase text-muted small mb-1">Revision y control</p>
+            <h1 class="h4 text-dark mb-1">Nota {{ folio or '-' }}</h1>
+            <p class="text-muted mb-0">{{ operation_label }} vinculada a {{ partner_label|lower }}: {{ partner_name }}</p>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            {% if user.rol == 'super_admin' %}
+                <a href="/web/admin/notas/{{ nota.id }}/editar" class="btn btn-outline-primary btn-sm">Editar</a>
             {% endif %}
+            <a href="/web/admin/notas/{{ nota.id }}/evidencias" class="btn btn-primary btn-sm note-evidence-btn">Evidencias</a>
+            {% if nota.estado.value == 'APROBADA' and nota.tipo_operacion.value in ['compra', 'venta'] %}
+                <a href="/web/admin/notas/{{ nota.id }}/factura" class="btn btn-outline-primary btn-sm">Orden PDF</a>
+            {% endif %}
+            <a href="/web/admin/notas" class="btn btn-outline-secondary btn-sm">Volver</a>
         </div>
-</div>
-</div>
+    </div>
 
-{% if nota.estado.value == 'CANCELADA' %}
-<div class="card hover-lift mb-3">
-    <div class="card-body">
-        <div class="d-flex align-items-center gap-2 mb-2">
-            <span class="chip-strong">Devolucion</span>
-            <span class="text-muted small">Verificacion automatica</span>
-        </div>
-        {% if devolucion_check and devolucion_check.aplica %}
+    {% if error %}
+        <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
+    {% endif %}
+    {% if edit_updated %}
+        <div class="alert alert-success py-2 small mb-3">Edicion guardada correctamente.</div>
+    {% endif %}
+    {% if precios_updated %}
+        <div class="alert alert-success py-2 small mb-3">Precios actualizados correctamente.</div>
+    {% endif %}
+    {% if pago_updated %}
+        <div class="alert alert-success py-2 small mb-3">Abono registrado correctamente.</div>
+    {% endif %}
+    {% if pago_reverted %}
+        <div class="alert alert-success py-2 small mb-3">Abono deshecho correctamente. Se revirtieron saldo, log contable y movimiento en Cuenta Scrap360 si existia.</div>
+    {% endif %}
+    {% if pago_inicial_updated %}
+        <div class="alert alert-success py-2 small mb-3">Pago inicial actualizado correctamente.</div>
+    {% endif %}
+    {% if devolucion_parcial_updated %}
+        <div class="alert alert-success py-2 small mb-3">Devolucion parcial aplicada correctamente. El saldo se recalculo y cualquier sobrepago permanece como saldo a favor.</div>
+    {% endif %}
+
+    <div class="card hover-lift mb-3 note-hero-card">
+        <div class="card-body">
+            <div class="note-hero-header">
+                <div class="note-hero-copy">
+                    <div class="d-flex flex-wrap gap-2 mb-2">
+                        <span class="notes-op-chip {{ 'buy' if nota.tipo_operacion.value == 'compra' else 'sale' }}">{{ operation_label }}</span>
+                        {% if note_state == 'BORRADOR' %}
+                            <span class="badge bg-secondary">Borrador</span>
+                        {% elif note_state == 'EN_REVISION' %}
+                            <span class="badge bg-warning text-dark">En revision</span>
+                        {% elif note_state == 'APROBADA' %}
+                            <span class="badge bg-success">Aprobada</span>
+                        {% else %}
+                            <span class="badge bg-danger">Cancelada</span>
+                        {% endif %}
+                        {% if is_approved %}
+                            {% if saldo_a_favor > 0 %}
+                                <span class="badge bg-info text-dark">{{ payment_badge }}</span>
+                            {% elif saldo_pendiente > 0 %}
+                                <span class="badge bg-warning text-dark">{{ payment_badge }}</span>
+                            {% else %}
+                                <span class="badge bg-success">{{ payment_badge }}</span>
+                            {% endif %}
+                        {% endif %}
+                        {% if is_transfer %}
+                            <span class="badge bg-light text-dark border">Transferencia interna</span>
+                        {% endif %}
+                    </div>
+                    <h2 class="h5 text-dark mb-1">{{ partner_name }}</h2>
+                    <p class="text-muted mb-0">
+                        {{ sucursal.nombre if sucursal else '-' }} &middot;
+                        {{ trabajador.nombre_completo if trabajador else '-' }} &middot;
+                        {{ nota.created_at.strftime("%Y-%m-%d %H:%M") if nota.created_at else '-' }}
+                    </p>
+                </div>
+                <div class="note-hero-side text-lg-end">
+                    <div class="note-hero-label">Folio</div>
+                    <div class="note-hero-folio">{{ folio or '-' }}</div>
+                    <div class="text-muted small">Nota #{{ nota.id }}</div>
+                </div>
+            </div>
+
+            <div class="note-kpi-grid note-kpi-grid-detail">
+                <div class="notes-kpi-card tone-blue">
+                    <span class="notes-kpi-label">Total nota</span>
+                    <strong id="note-total-value">${{ "{:,.2f}".format(nota.total_monto or 0) }}</strong>
+                    <div class="notes-kpi-sub">Subtotal: <span id="note-subtotal-value">${{ "{:,.2f}".format(subtotal_sin_iva or 0) }}</span></div>
+                </div>
+                <div class="notes-kpi-card tone-green">
+                    <span class="notes-kpi-label">Monto pagado</span>
+                    <strong>${{ "{:,.2f}".format(nota.monto_pagado or 0) }}</strong>
+                    <div class="notes-kpi-sub">{{ pagos_activos_count }} abonos activos</div>
+                </div>
+                <div class="notes-kpi-card {{ 'tone-amber' if saldo_pendiente > 0 else 'tone-green' }}">
+                    <span class="notes-kpi-label">Saldo pendiente</span>
+                    <strong>${{ "{:,.2f}".format(saldo_pendiente or 0) }}</strong>
+                    <div class="notes-kpi-sub">{{ payment_badge }}</div>
+                </div>
+                <div class="notes-kpi-card {{ 'tone-blue' if saldo_a_favor > 0 else 'tone-neutral' }}">
+                    <span class="notes-kpi-label">Saldo a favor</span>
+                    <strong>${{ "{:,.2f}".format(saldo_a_favor or 0) }}</strong>
+                    <div class="notes-kpi-sub">{% if saldo_a_favor > 0 %}Existe sobrepago registrado{% else %}Sin saldo favorable{% endif %}</div>
+                </div>
+            </div>
+
             <div class="note-meta-grid">
                 <div class="note-meta-item">
-                    <span class="note-meta-label">Contabilidad neta</span>
-                    <strong class="{{ 'text-success' if devolucion_check.contabilidad_ok else 'text-danger' }}">
-                        {{ '+' if devolucion_check.contabilidad_saldo > 0 else '' }}${{ "{:,.2f}".format(devolucion_check.contabilidad_saldo or 0) }}
-                    </strong>
-                    <div class="note-meta-sub">Movimientos: {{ devolucion_check.contabilidad_movs }}</div>
-                    {% if devolucion_check.contabilidad_ok %}
-                        <span class="badge bg-success">OK</span>
-                    {% else %}
-                        <span class="badge bg-danger">Revisar</span>
-                    {% endif %}
+                    <span class="note-meta-label">Partner</span>
+                    <strong>{{ partner_name }}</strong>
+                    <div class="note-meta-sub">{{ partner_label }}</div>
                 </div>
                 <div class="note-meta-item">
-                    <span class="note-meta-label">Inventario neto</span>
-                    <strong class="{{ 'text-success' if devolucion_check.inventario_ok else 'text-danger' }}">
-                        {{ '+' if devolucion_check.inventario_saldo > 0 else '' }}{{ "{:,.3f}".format(devolucion_check.inventario_saldo or 0) }} kg
-                    </strong>
-                    <div class="note-meta-sub">Movimientos: {{ devolucion_check.inventario_movs }}</div>
-                    {% if devolucion_check.inventario_ok %}
-                        <span class="badge bg-success">OK</span>
-                    {% else %}
-                        <span class="badge bg-danger">Revisar</span>
-                    {% endif %}
+                    <span class="note-meta-label">Sucursal</span>
+                    <strong>{{ sucursal.nombre if sucursal else '-' }}</strong>
+                </div>
+                <div class="note-meta-item">
+                    <span class="note-meta-label">Trabajador</span>
+                    <strong>{{ trabajador.nombre_completo if trabajador else '-' }}</strong>
+                    <div class="note-meta-sub">{{ trabajador.username if trabajador else '' }}</div>
+                </div>
+                <div class="note-meta-item">
+                    <span class="note-meta-label">Kg neto</span>
+                    <strong>{{ "{:,.2f}".format(nota.total_kg_neto or 0) }} kg</strong>
+                </div>
+                <div class="note-meta-item">
+                    <span class="note-meta-label">IVA</span>
+                    <strong id="note-iva-value">${{ "{:,.2f}".format(iva_monto or 0) }}</strong>
+                    <div class="note-meta-sub">{% if nota.iva_incluido %}{{ "{:,.2f}".format(iva_pct or 0) }}%{% else %}No incluido{% endif %}</div>
+                </div>
+                <div class="note-meta-item">
+                    <span class="note-meta-label">Metodo base</span>
+                    <strong>{{ nota.metodo_pago|capitalize if nota.metodo_pago else '-' }}</strong>
+                    <div class="note-meta-sub">{{ nota.cuenta.display_label if nota.cuenta else '-' }}</div>
+                </div>
+                <div class="note-meta-item">
+                    <span class="note-meta-label">Vence</span>
+                    <strong>{{ nota.fecha_caducidad_pago.strftime("%Y-%m-%d") if nota.fecha_caducidad_pago else '-' }}</strong>
+                    <div class="note-meta-sub">Solo aplica si la nota queda con saldo</div>
+                </div>
+                <div class="note-meta-item">
+                    <span class="note-meta-label">Pagos revertidos</span>
+                    <strong>{{ pagos_revertidos_count }}</strong>
+                    <div class="note-meta-sub">Se mantienen visibles por auditoria</div>
+                </div>
+                {% if is_transfer %}
+                    <div class="note-meta-item">
+                        <span class="note-meta-label">Nota relacionada</span>
+                        {% if transfer_related %}
+                            <a href="/web/admin/notas/{{ transfer_related.id }}">#{{ transfer_related.id }}</a>
+                            <div class="note-meta-sub">{{ transfer_related_sucursal.nombre if transfer_related_sucursal else '-' }}</div>
+                        {% else %}
+                            <span class="text-muted small">Pendiente</span>
+                        {% endif %}
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {% if saldo_a_favor > 0 and is_approved %}
+        <div class="card hover-lift mb-3 note-inline-info">
+            <div class="card-body">
+                <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
+                    <div>
+                        <div class="fw-semibold">La nota tiene saldo a favor</div>
+                        <div class="text-muted small">Esto suele ocurrir cuando hubo un sobrepago o una devolucion parcial redujo el total de la nota despues de haber registrado abonos.</div>
+                    </div>
+                    <div class="text-success fw-semibold">${{ "{:,.2f}".format(saldo_a_favor or 0) }}</div>
                 </div>
             </div>
-        {% else %}
-            <p class="text-muted small mb-0">No hay movimientos registrados para verificar esta devolucion.</p>
-        {% endif %}
-    </div>
-</div>
-{% endif %}
+        </div>
+    {% endif %}
 
-<div class="card hover-lift mb-3 note-report-card">
-    <div class="card-body">
-        <form method="post" action="/web/admin/notas/{{ nota.id }}/aprobar" id="approveForm">
-            <h2 class="h6 text-dark mb-3 note-section-title">Materiales</h2>
-            <div class="table-responsive">
-                <table class="table table-hover table-sm align-middle mb-0 note-table"
-                       data-tipo-operacion="{{ nota.tipo_operacion.value }}"
-                       data-precio-endpoint="/web/admin/notas/precio">
-                    <thead>
-                    <tr>
-                        <th>Material</th>
-                        <th class="text-end">Kg bruto</th>
-                        <th class="text-end">Kg desc</th>
-                        <th class="text-end">Kg neto</th>
-                        <th>Tipo precio</th>
-                        <th class="text-end">Precio unit</th>
-                        <th class="text-end">Subtotal</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {% for m in nota.materiales %}
-                        <tr data-material-id="{{ m.material_id }}"
-                            data-kg-neto="{{ "%.3f"|format(m.kg_neto or 0) }}"
-                            data-precios='{{ price_map_by_material.get(m.material_id, "{}")|e }}'>
-                            <td>{{ m.material.nombre if m.material else m.material_id }}</td>
-                            <td class="text-end">{{ "{:,.2f}".format(m.kg_bruto or 0) }}</td>
-                            <td class="text-end">
-                                {% if user.rol == 'super_admin' and nota.estado.value in ['BORRADOR', 'EN_REVISION'] and not m.subpesajes %}
-                                    {% set kg_desc_override = form_kg_desc_map.get(m.id) if form_kg_desc_map is defined else None %}
-                                    <input class="form-control form-control-sm text-end"
-                                           type="number"
-                                           step="0.001"
-                                           min="0"
-                                           name="kg_desc_{{ m.id }}"
-                                           value="{{ kg_desc_override if kg_desc_override is not none else ('%.3f'|format(m.kg_descuento or 0)) }}">
-                                {% else %}
-                                    {{ "{:,.2f}".format(m.kg_descuento or 0) }}
-                                {% endif %}
-                            </td>
-                            <td class="text-end">
-                                {% if user.rol == 'super_admin' and nota.estado.value in ['BORRADOR', 'EN_REVISION'] and not m.subpesajes %}
-                                    {% set kg_neto_override = form_kg_neto_map.get(m.id) if form_kg_neto_map is defined else None %}
-                                    <input class="form-control form-control-sm text-end"
-                                           type="number"
-                                           step="0.001"
-                                           min="0"
-                                           name="kg_neto_{{ m.id }}"
-                                           value="{{ kg_neto_override if kg_neto_override is not none else ('%.3f'|format(m.kg_neto or 0)) }}">
-                                    <div class="form-text text-muted">Ajusta kg neto; el descuento se recalcula.</div>
-                                {% else %}
-                                    {{ "{:,.2f}".format(m.kg_neto or 0) }}
-                                {% endif %}
-                            </td>
-                            <td>
-                                <select class="form-select form-select-sm note-tipo-precio" name="tipo_cliente_{{ m.id }}">
-                                    {% for tc in tipos_cliente %}
-                                        {% set is_selected = (m.tipo_cliente and m.tipo_cliente.value == tc.value) or (not m.tipo_cliente and tc.value == 'regular') %}
-                                        <option value="{{ tc.value }}" {% if is_selected %}selected{% endif %}>
-                                            {{ tc.value|capitalize }}
-                                        </option>
+    {% if is_cancelled %}
+        <div class="card hover-lift mb-3">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="chip-strong">Devolucion</span>
+                    <span class="text-muted small">Verificacion automatica</span>
+                </div>
+                {% if devolucion_check and devolucion_check.aplica %}
+                    <div class="note-meta-grid">
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">Contabilidad neta</span>
+                            <strong class="{{ 'text-success' if devolucion_check.contabilidad_ok else 'text-danger' }}">
+                                {{ '+' if devolucion_check.contabilidad_saldo > 0 else '' }}${{ "{:,.2f}".format(devolucion_check.contabilidad_saldo or 0) }}
+                            </strong>
+                            <div class="note-meta-sub">Movimientos: {{ devolucion_check.contabilidad_movs }}</div>
+                            <span class="badge {{ 'bg-success' if devolucion_check.contabilidad_ok else 'bg-danger' }}">{{ 'OK' if devolucion_check.contabilidad_ok else 'Revisar' }}</span>
+                        </div>
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">Inventario neto</span>
+                            <strong class="{{ 'text-success' if devolucion_check.inventario_ok else 'text-danger' }}">
+                                {{ '+' if devolucion_check.inventario_saldo > 0 else '' }}{{ "{:,.3f}".format(devolucion_check.inventario_saldo or 0) }} kg
+                            </strong>
+                            <div class="note-meta-sub">Movimientos: {{ devolucion_check.inventario_movs }}</div>
+                            <span class="badge {{ 'bg-success' if devolucion_check.inventario_ok else 'bg-danger' }}">{{ 'OK' if devolucion_check.inventario_ok else 'Revisar' }}</span>
+                        </div>
+                    </div>
+                {% else %}
+                    <p class="text-muted small mb-0">No hay movimientos registrados para verificar esta devolucion.</p>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
+
+    {% if is_pending_review %}
+        <form method="post" action="/web/admin/notas/{{ nota.id }}/aprobar" id="approveForm" class="note-review-workspace">
+            <div class="note-workspace-grid">
+                <div class="note-main-column">
+                    <div class="card hover-lift mb-3 note-report-card">
+                        <div class="card-body">
+                            <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
+                                <div>
+                                    <h2 class="h6 text-dark mb-1">Revision de materiales</h2>
+                                    <p class="text-muted small mb-0">Ajusta pesos, descuentos y precios antes de aprobar. La nota se recalcula en tiempo real.</p>
+                                </div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-hover table-sm align-middle mb-0 note-materials-table"
+                                       data-tipo-operacion="{{ nota.tipo_operacion.value }}"
+                                       data-precio-endpoint="/web/admin/notas/precio">
+                                    <thead>
+                                    <tr>
+                                        <th>Material</th>
+                                        <th class="text-end">Kg bruto</th>
+                                        <th class="text-end">Kg desc</th>
+                                        <th class="text-end">Kg neto</th>
+                                        <th>Tipo precio</th>
+                                        <th class="text-end">Precio unitario</th>
+                                        <th class="text-end">Subtotal</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    {% for m in nota.materiales %}
+                                        <tr data-material-id="{{ m.material_id }}"
+                                            data-kg-neto="{{ '%.3f'|format(m.kg_neto or 0) }}"
+                                            data-precios='{{ price_map_by_material.get(m.material_id, "{}")|e }}'>
+                                            <td>
+                                                <div class="fw-semibold">{{ m.material.nombre if m.material else m.material_id }}</div>
+                                                {% if m.subpesajes %}
+                                                    <div class="text-muted small">Con subpesajes registrados</div>
+                                                {% else %}
+                                                    <div class="text-muted small">Edicion directa de kg habilitada</div>
+                                                {% endif %}
+                                            </td>
+                                            <td class="text-end">{{ "{:,.2f}".format(m.kg_bruto or 0) }}</td>
+                                            <td class="text-end">
+                                                {% if user.rol == 'super_admin' and not m.subpesajes %}
+                                                    {% set kg_desc_override = form_kg_desc_map.get(m.id) if form_kg_desc_map is defined else None %}
+                                                    <input class="form-control form-control-sm text-end"
+                                                           type="number"
+                                                           step="0.001"
+                                                           min="0"
+                                                           name="kg_desc_{{ m.id }}"
+                                                           value="{{ kg_desc_override if kg_desc_override is not none else ('%.3f'|format(m.kg_descuento or 0)) }}">
+                                                {% else %}
+                                                    {{ "{:,.2f}".format(m.kg_descuento or 0) }}
+                                                {% endif %}
+                                            </td>
+                                            <td class="text-end">
+                                                {% if user.rol == 'super_admin' and not m.subpesajes %}
+                                                    {% set kg_neto_override = form_kg_neto_map.get(m.id) if form_kg_neto_map is defined else None %}
+                                                    <input class="form-control form-control-sm text-end"
+                                                           type="number"
+                                                           step="0.001"
+                                                           min="0"
+                                                           name="kg_neto_{{ m.id }}"
+                                                           value="{{ kg_neto_override if kg_neto_override is not none else ('%.3f'|format(m.kg_neto or 0)) }}">
+                                                    <div class="form-text text-muted">Si cambias el neto, el descuento se balancea automaticamente.</div>
+                                                {% else %}
+                                                    {{ "{:,.2f}".format(m.kg_neto or 0) }}
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <select class="form-select form-select-sm note-tipo-precio" name="tipo_cliente_{{ m.id }}">
+                                                    {% for tc in tipos_cliente %}
+                                                        {% set is_selected = (m.tipo_cliente and m.tipo_cliente.value == tc.value) or (not m.tipo_cliente and tc.value == 'regular') %}
+                                                        <option value="{{ tc.value }}" {% if is_selected %}selected{% endif %}>{{ tc.value|capitalize }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </td>
+                                            {% if user.rol == 'super_admin' %}
+                                                {% set unit_override = form_precio_unit_map.get(m.id) if form_precio_unit_map is defined else None %}
+                                                {% set subtotal_override = form_subtotal_map.get(m.id) if form_subtotal_map is defined else None %}
+                                                {% set mode_override = form_precio_mode_map.get(m.id) if form_precio_mode_map is defined else None %}
+                                                <td class="text-end">
+                                                    <input class="form-control form-control-sm text-end note-unit-input"
+                                                           type="number"
+                                                           step="0.00001"
+                                                           min="0"
+                                                           name="precio_unitario_{{ m.id }}"
+                                                           value="{{ unit_override if unit_override is not none else ('%.5f'|format(m.precio_unitario) if m.precio_unitario is not none else '') }}"
+                                                           placeholder="0.00000">
+                                                    <input type="hidden" name="precio_mode_{{ m.id }}" class="note-precio-mode" value="{{ mode_override if mode_override else 'unit' }}">
+                                                </td>
+                                                <td class="text-end">
+                                                    <input class="form-control form-control-sm text-end note-subtotal-input"
+                                                           type="number"
+                                                           step="0.01"
+                                                           min="0"
+                                                           name="subtotal_{{ m.id }}"
+                                                           value="{{ subtotal_override if subtotal_override is not none else ('%.2f'|format(m.subtotal) if m.subtotal is not none else '') }}"
+                                                           placeholder="0.00">
+                                                </td>
+                                            {% else %}
+                                                <td class="text-end note-unit-price">${{ "{:,.5f}".format(m.precio_unitario or 0) }}</td>
+                                                <td class="text-end note-subtotal">${{ "{:,.2f}".format(m.subtotal or 0) }}</td>
+                                            {% endif %}
+                                        </tr>
+                                        {% if m.subpesajes %}
+                                            <tr class="note-subpesaje-row">
+                                                <td colspan="7">
+                                                    <div class="note-subpesajes">
+                                                        <span class="note-subpesajes-label">Subpesajes</span>
+                                                        <div class="note-subpesajes-list">
+                                                            {% for sp in m.subpesajes %}
+                                                                <div class="note-subpesaje-item">
+                                                                    <span class="pill">{{ "{:,.2f}".format(sp.peso_kg or 0) }} kg</span>
+                                                                    <span class="text-muted small">Desc: {{ "{:,.2f}".format(sp.descuento_kg or 0) }} kg</span>
+                                                                    {% if sp.foto_url %}
+                                                                        <a href="{{ sp.foto_url }}" target="_blank" rel="noopener" class="note-subpesaje-link">Ver evidencia</a>
+                                                                    {% endif %}
+                                                                </div>
+                                                            {% endfor %}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        {% endif %}
                                     {% endfor %}
-                                </select>
-                            </td>
-                            {% if user.rol == 'super_admin' and nota.estado.value in ['BORRADOR', 'EN_REVISION'] %}
-                                {% set unit_override = form_precio_unit_map.get(m.id) if form_precio_unit_map is defined else None %}
-                                {% set subtotal_override = form_subtotal_map.get(m.id) if form_subtotal_map is defined else None %}
-                                {% set mode_override = form_precio_mode_map.get(m.id) if form_precio_mode_map is defined else None %}
-                                <td class="text-end">
-                                    <input class="form-control form-control-sm text-end note-unit-input"
-                                           type="number"
-                                           step="0.00001"
-                                           min="0"
-                                           name="precio_unitario_{{ m.id }}"
-                                           value="{{ unit_override if unit_override is not none else ('%.5f'|format(m.precio_unitario) if m.precio_unitario is not none else '') }}"
-                                           placeholder="0.00000">
-                                    <input type="hidden" name="precio_mode_{{ m.id }}" class="note-precio-mode" value="{{ mode_override if mode_override else 'unit' }}">
-                                </td>
-                                <td class="text-end">
-                                    <input class="form-control form-control-sm text-end note-subtotal-input"
-                                           type="number"
-                                           step="0.01"
-                                           min="0"
-                                           name="subtotal_{{ m.id }}"
-                                           value="{{ subtotal_override if subtotal_override is not none else ('%.2f'|format(m.subtotal) if m.subtotal is not none else '') }}"
-                                           placeholder="0.00">
-                                </td>
-                            {% else %}
-                                <td class="text-end note-unit-price">{{ "{:,.5f}".format(m.precio_unitario or 0) if m.precio_unitario else '-' }}</td>
-                                <td class="text-end note-subtotal">{{ "{:,.2f}".format(m.subtotal or 0) if m.subtotal else '-' }}</td>
-                            {% endif %}
-                        </tr>
-                        {% if m.subpesajes %}
-                            <tr class="note-subpesaje-row">
-                                <td colspan="7">
-                                    <div class="note-subpesajes">
-                                        <span class="note-subpesajes-label">Subpesajes</span>
-                                        <div class="note-subpesajes-list">
-                                            {% for sp in m.subpesajes %}
-                                                <div class="note-subpesaje-item">
-                                                    <span class="pill">{{ "{:,.2f}".format(sp.peso_kg) }} kg</span>
-                                                    {% if sp.foto_url %}
-                                                        <a href="{{ sp.foto_url }}" target="_blank" rel="noopener" class="note-subpesaje-link">Ver evidencia</a>
-                                                    {% endif %}
-                                                </div>
-                                            {% endfor %}
-                                        </div>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="note-side-column">
+                    <div class="card hover-lift mb-3 note-side-card">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center gap-2 mb-3">
+                                <span class="chip-strong">Aprobacion</span>
+                                <span class="text-muted small">Condiciones de pago y cierre</span>
+                            </div>
+                            <div class="row g-3">
+                                <div class="col-12">
+                                    <label class="form-label">Fecha de caducidad de pago</label>
+                                    {% set fecha_val = form_fecha if form_fecha is not none else (nota.fecha_caducidad_pago.strftime("%Y-%m-%d") if nota.fecha_caducidad_pago else "") %}
+                                    <input class="form-control" type="date" name="fecha_caducidad_pago" value="{{ fecha_val }}">
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Metodo de pago</label>
+                                    {% set selected_metodo = form_metodo if form_metodo is not none else nota.metodo_pago %}
+                                    <select class="form-select" name="metodo_pago" id="metodo_pago_select" required>
+                                        <option value="" {% if not selected_metodo %}selected{% endif %}>Selecciona metodo</option>
+                                        <option value="transferencia" {% if selected_metodo == 'transferencia' %}selected{% endif %}>Transferencia</option>
+                                        <option value="efectivo" {% if selected_metodo == 'efectivo' %}selected{% endif %}>Efectivo</option>
+                                        <option value="cheque" {% if selected_metodo == 'cheque' %}selected{% endif %}>Cheque</option>
+                                    </select>
+                                    <div class="form-text text-muted">La cuenta financiera solo es obligatoria para transferencia o cheque.</div>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Cuenta financiera</label>
+                                    {% set cuenta_val = form_cuenta if form_cuenta is not none else (nota.cuenta_financiera_id or "") %}
+                                    <select class="form-select" name="cuenta_financiera" id="cuenta_financiera_select">
+                                        <option value="" {% if not cuenta_val %}selected{% endif %}>Selecciona cuenta</option>
+                                        {% if cuentas_sucursal %}
+                                            <optgroup label="Sucursal">
+                                                {% for cuenta in cuentas_sucursal %}
+                                                    <option value="{{ cuenta.id }}" {% if cuenta_val|string == cuenta.id|string %}selected{% endif %}>{{ cuenta.display_label }}</option>
+                                                {% endfor %}
+                                            </optgroup>
+                                        {% endif %}
+                                        {% if cuentas_partner %}
+                                            <optgroup label="{{ cuentas_partner_label }}">
+                                                {% for cuenta in cuentas_partner %}
+                                                    <option value="{{ cuenta.id }}" {% if cuenta_val|string == cuenta.id|string %}selected{% endif %}>{{ cuenta.display_label }}</option>
+                                                {% endfor %}
+                                            </optgroup>
+                                        {% endif %}
+                                    </select>
+                                    {% if cuentas_sucursal|length == 0 and cuentas_partner|length == 0 %}
+                                        <div class="form-text text-muted">No hay cuentas registradas para esta nota.</div>
+                                    {% endif %}
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Cuenta Scrap360</label>
+                                    {% set cuenta_scrap_val = form_cuenta_scrap360 if form_cuenta_scrap360 is not none else "" %}
+                                    <select class="form-select" name="cuenta_scrap360_id" id="cuenta_scrap360_select">
+                                        <option value="" {% if not cuenta_scrap_val %}selected{% endif %}>Selecciona cuenta</option>
+                                        {% for c in cuentas_scrap360 %}
+                                            <option value="{{ c.id }}" {% if cuenta_scrap_val|string == c.id|string %}selected{% endif %}>{{ c.nombre }} &middot; {{ c.tipo|capitalize }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <div class="form-text text-muted">Opcional. Si registras un pago inicial, el movimiento se refleja en la cuenta seleccionada.</div>
+                                </div>
+                                <div class="col-md-6 col-12">
+                                    <label class="form-label">Pago inicial</label>
+                                    {% set pagado_val = form_pagado if form_pagado is not none else '' %}
+                                    <input class="form-control" type="number" step="0.01" min="0" name="monto_pagado" value="{{ pagado_val }}" placeholder="0.00">
+                                    <div class="form-text text-muted">Dejalo vacio si la nota inicia en cero.</div>
+                                </div>
+                                <div class="col-md-6 col-12">
+                                    <label class="form-label">IVA %</label>
+                                    {% set iva_pct_val = form_iva_porcentaje if form_iva_porcentaje is not none else iva_pct %}
+                                    <input class="form-control" type="number" step="0.01" min="0" max="100" name="iva_porcentaje" value="{{ iva_pct_val }}">
+                                    <div class="form-text text-muted">Mexico: 16% por defecto.</div>
+                                </div>
+                                <div class="col-12">
+                                    {% set iva_incluido_val = form_iva_incluido if form_iva_incluido is not none else nota.iva_incluido %}
+                                    <div class="form-check form-switch mt-1">
+                                        <input class="form-check-input" type="checkbox" id="iva_incluido" name="iva_incluido" value="1" {% if iva_incluido_val %}checked{% endif %}>
+                                        <label class="form-check-label" for="iva_incluido">La nota incluye IVA</label>
                                     </div>
-                                </td>
-                            </tr>
-                        {% endif %}
-                    {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-
-            <div class="row g-3 mt-3">
-                <div class="col-lg-2 col-md-4">
-                    <label class="form-label">Fecha de caducidad de pago</label>
-                    {% set fecha_val = form_fecha if form_fecha is not none else (nota.fecha_caducidad_pago.strftime("%Y-%m-%d") if nota.fecha_caducidad_pago else "") %}
-                    <input class="form-control" type="date" name="fecha_caducidad_pago" value="{{ fecha_val }}">
-                </div>
-                <div class="col-lg-2 col-md-4">
-                    <label class="form-label">M&eacute;todo de pago</label>
-                    {% set selected_metodo = form_metodo if form_metodo is not none else nota.metodo_pago %}
-                    <select class="form-select" name="metodo_pago" id="metodo_pago_select" required>
-                        <option value="" {% if not selected_metodo %}selected{% endif %}>Selecciona m&eacute;todo</option>
-                        <option value="transferencia" {% if selected_metodo == 'transferencia' %}selected{% endif %}>Transferencia</option>
-                        <option value="efectivo" {% if selected_metodo == 'efectivo' %}selected{% endif %}>Efectivo</option>
-                        <option value="cheque" {% if selected_metodo == 'cheque' %}selected{% endif %}>Cheque</option>
-                    </select>
-                    <div class="form-text text-muted">La cuenta solo es necesaria para transferencia o cheque.</div>
-                </div>
-                <div class="col-lg-3 col-md-4">
-                    <label class="form-label">Cuenta financiera</label>
-                    {% set cuenta_val = form_cuenta if form_cuenta is not none else (nota.cuenta_financiera_id or "") %}
-                    <select class="form-select" name="cuenta_financiera" id="cuenta_financiera_select">
-                        <option value="" {% if not cuenta_val %}selected{% endif %}>Selecciona cuenta</option>
-                        {% if cuentas_sucursal %}
-                            <optgroup label="Sucursal">
-                                {% for cuenta in cuentas_sucursal %}
-                                    <option value="{{ cuenta.id }}" {% if cuenta_val|string == cuenta.id|string %}selected{% endif %}>
-                                        {{ cuenta.display_label }}
-                                    </option>
-                                {% endfor %}
-                            </optgroup>
-                        {% endif %}
-                        {% if cuentas_partner %}
-                            <optgroup label="{{ cuentas_partner_label }}">
-                                {% for cuenta in cuentas_partner %}
-                                    <option value="{{ cuenta.id }}" {% if cuenta_val|string == cuenta.id|string %}selected{% endif %}>
-                                        {{ cuenta.display_label }}
-                                    </option>
-                                {% endfor %}
-                            </optgroup>
-                        {% endif %}
-                    </select>
-                    {% if cuentas_sucursal|length == 0 and cuentas_partner|length == 0 %}
-                        <div class="form-text text-muted">No hay cuentas registradas para esta nota.</div>
-                    {% endif %}
-                </div>
-                <div class="col-lg-3 col-md-6">
-                    <label class="form-label">Cuenta Scrap360</label>
-                    {% set cuenta_scrap_val = form_cuenta_scrap360 if form_cuenta_scrap360 is not none else "" %}
-                    <select class="form-select" name="cuenta_scrap360_id" id="cuenta_scrap360_select">
-                        <option value="" {% if not cuenta_scrap_val %}selected{% endif %}>Selecciona cuenta</option>
-                        {% for c in cuentas_scrap360 %}
-                            <option value="{{ c.id }}" {% if cuenta_scrap_val|string == c.id|string %}selected{% endif %}>
-                                {{ c.nombre }} &middot; {{ c.tipo|capitalize }}
-                            </option>
-                        {% endfor %}
-                    </select>
-                    {% if cuentas_scrap360|length == 0 %}
-                        <div class="form-text text-muted">No hay cuentas Scrap360 para esta sucursal.</div>
-                    {% else %}
-                        <div class="form-text text-muted">Opcional. Si registras un pago, se reflejara en la cuenta seleccionada.</div>
-                    {% endif %}
-                </div>
-                <div class="col-lg-2 col-md-6">
-                    <label class="form-label">Pago inicial</label>
-                    {% set pagado_val = form_pagado if form_pagado is not none else (nota.monto_pagado or "") %}
-                    <input class="form-control" type="number" step="0.01" min="0" name="monto_pagado" value="{{ pagado_val }}">
-                    <div class="form-text text-muted">Opcional. Si se deja vacio, el pago inicial sera 0.</div>
-                </div>
-                <div class="col-lg-2 col-md-4">
-                    <label class="form-label">IVA</label>
-                    {% set iva_incluido_val = form_iva_incluido if form_iva_incluido is not none else nota.iva_incluido %}
-                    <div class="form-check form-switch mt-1">
-                        <input class="form-check-input" type="checkbox" id="iva_incluido" name="iva_incluido" value="1" {% if iva_incluido_val %}checked{% endif %}>
-                        <label class="form-check-label" for="iva_incluido">Incluye IVA</label>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Comentarios de aprobacion</label>
+                                    {% set comentarios_val = form_comentarios if form_comentarios is not none else (nota.comentarios_admin or "") %}
+                                    <textarea class="form-control" name="comentarios_admin" rows="4" placeholder="Observaciones, condiciones de pago, notas administrativas.">{{ comentarios_val }}</textarea>
+                                </div>
+                            </div>
+                            <div class="note-actions mt-3">
+                                <div class="note-actions-title">Acciones de aprobacion</div>
+                                <div class="note-actions-row">
+                                    <button type="submit" class="btn btn-primary note-action-primary">Aprobar nota</button>
+                                    <button type="submit"
+                                            class="btn btn-outline-primary"
+                                            formaction="/web/admin/notas/{{ nota.id }}/precios"
+                                            formnovalidate>
+                                        Actualizar precios
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="col-lg-2 col-md-4">
-                    <label class="form-label">IVA %</label>
-                    {% set iva_pct_val = form_iva_porcentaje if form_iva_porcentaje is not none else iva_pct %}
-                    <input class="form-control" type="number" step="0.01" min="0" max="100" name="iva_porcentaje" value="{{ iva_pct_val }}">
-                    <div class="form-text text-muted">Default 16%.</div>
-                </div>
-                <div class="col-12">
-                    <label class="form-label">Comentarios admin</label>
-                    {% set comentarios_val = form_comentarios if form_comentarios is not none else (nota.comentarios_admin or "") %}
-                    <textarea class="form-control" name="comentarios_admin" rows="2" placeholder="Notas, m&eacute;todo de pago, cuenta financiera, motivo de rechazo, etc.">{{ comentarios_val }}</textarea>
-                </div>
             </div>
-
         </form>
-        <div class="note-actions">
-            <div class="note-actions-title">Acciones</div>
-            <div class="note-actions-row">
-                <button type="submit" class="btn btn-primary note-action-primary" form="approveForm">Aprobar</button>
-                <button type="submit"
-                        class="btn btn-outline-primary"
-                        form="approveForm"
-                        formaction="/web/admin/notas/{{ nota.id }}/precios"
-                        formnovalidate>
-                    Actualizar precios
-                </button>
-            <form method="post" action="/web/admin/notas/{{ nota.id }}/cancelar" class="m-0" onsubmit="syncCancelComment(this)">
-                <input type="hidden" name="comentarios_admin" value="">
-                <button type="submit" class="btn btn-outline-danger">
-                    {% if nota.estado.value == 'APROBADA' %}Devolucion total{% else %}Rechazar{% endif %}
-                </button>
-            </form>
-            {% if nota.estado.value in ['EN_REVISION'] %}
-                <form method="post" action="/web/admin/notas/{{ nota.id }}/devolver" class="m-0" onsubmit="syncReturnComment(this)">
-                    <input type="hidden" name="comentarios_admin" value="">
-                    <button type="submit" class="btn btn-outline-secondary">Devolver a borrador</button>
-                </form>
-            {% endif %}
-            {% if user.rol == 'super_admin' %}
-                <form method="post" action="/web/admin/notas/{{ nota.id }}/eliminar" class="m-0 ms-auto">
-                    <button type="submit" class="btn btn-outline-secondary">Eliminar (solo SA)</button>
-                </form>
-            {% endif %}
+        <div class="card hover-lift note-side-card">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-2 mb-3">
+                    <span class="chip-strong">Control</span>
+                    <span class="text-muted small">Devolucion o regreso a trabajador</span>
+                </div>
+                <label class="form-label">Comentario de control</label>
+                <textarea class="form-control" id="note_control_comment" rows="4" placeholder="Motivo de rechazo, comentario de correccion o referencia administrativa."></textarea>
+                <div class="form-text text-muted">Este comentario se enviara al devolver, rechazar o eliminar la nota.</div>
+                <div class="d-grid gap-2 mt-3">
+                    <form method="post" action="/web/admin/notas/{{ nota.id }}/cancelar" onsubmit="syncControlComment(this)">
+                        <input type="hidden" name="comentarios_admin" value="">
+                        <button type="submit" class="btn btn-outline-danger w-100">Rechazar nota</button>
+                    </form>
+                    {% if note_state == 'EN_REVISION' %}
+                        <form method="post" action="/web/admin/notas/{{ nota.id }}/devolver" onsubmit="syncControlComment(this)">
+                            <input type="hidden" name="comentarios_admin" value="">
+                            <button type="submit" class="btn btn-outline-secondary w-100">Devolver a borrador</button>
+                        </form>
+                    {% endif %}
+                    {% if user.rol == 'super_admin' %}
+                        <form method="post" action="/web/admin/notas/{{ nota.id }}/eliminar" onsubmit="syncControlComment(this)">
+                            <input type="hidden" name="comentarios_admin" value="">
+                            <button type="submit" class="btn btn-outline-dark w-100">Eliminar nota</button>
+                        </form>
+                    {% endif %}
+                </div>
             </div>
         </div>
-    </div>
-</div>
-
-{% if nota.estado.value == 'APROBADA' %}
-<div class="card hover-lift mb-3">
-    <div class="card-body">
-        <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
-            <h2 class="h6 text-dark mb-0 note-section-title">Devolucion parcial</h2>
-            <div class="text-muted small">Ajusta kg por material y precio por kg de la devolucion.</div>
-        </div>
-        {% if devolucion_parcial_updated %}
-            <div class="alert alert-success py-2 small mb-3">Devolucion parcial aplicada correctamente.</div>
-        {% endif %}
-        <form method="post" action="/web/admin/notas/{{ nota.id }}/devolucion-parcial">
-            <div class="table-responsive">
-                <table class="table table-hover table-sm align-middle mb-2">
-                    <thead>
-                    <tr>
-                        <th>Material</th>
-                        <th class="text-end">Kg neto actual</th>
-                        <th class="text-end">Precio actual/kg</th>
-                        <th class="text-end">Kg a devolver</th>
-                        <th class="text-end">Precio devolucion/kg</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {% for nm in nota.materiales %}
-                        {% set kg_input = form_devol_kg_map.get(nm.id) if form_devol_kg_map else None %}
-                        {% set precio_input = form_devol_precio_map.get(nm.id) if form_devol_precio_map else None %}
+    {% else %}
+        <div class="card hover-lift mb-3 note-report-card">
+            <div class="card-body">
+                <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
+                    <div>
+                        <h2 class="h6 text-dark mb-1">Materiales registrados</h2>
+                        <p class="text-muted small mb-0">Vista consolidada del pesaje y valuacion de la nota.</p>
+                    </div>
+                    <div class="d-flex gap-2 flex-wrap">
+                        {% if user.rol == 'super_admin' and not is_cancelled %}
+                            <a href="/web/admin/notas/{{ nota.id }}/editar" class="btn btn-outline-primary btn-sm">Editar pesos y precios</a>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm align-middle mb-0 note-materials-table">
+                        <thead>
                         <tr>
-                            <td>
-                                <div class="fw-semibold">{{ nm.material.nombre if nm.material else ("Material #" ~ nm.material_id) }}</div>
-                                {% if nm.subpesajes %}
-                                    <div class="text-muted small">Con subpesajes: la devolucion se descuenta del neto acumulado.</div>
-                                {% endif %}
-                            </td>
-                            <td class="text-end">{{ "{:,.3f}".format(nm.kg_neto or 0) }}</td>
-                            <td class="text-end">${{ "{:,.5f}".format(nm.precio_unitario or 0) }}</td>
-                            <td class="text-end" style="max-width: 170px;">
-                                <input
-                                    class="form-control form-control-sm text-end"
-                                    type="number"
-                                    step="0.001"
-                                    min="0"
-                                    max="{{ nm.kg_neto or 0 }}"
-                                    name="devol_kg_{{ nm.id }}"
-                                    value="{{ kg_input if kg_input is not none else '' }}"
-                                >
-                            </td>
-                            <td class="text-end" style="max-width: 190px;">
-                                <input
-                                    class="form-control form-control-sm text-end"
-                                    type="number"
-                                    step="0.00001"
-                                    min="0"
-                                    name="devol_precio_{{ nm.id }}"
-                                    value="{{ precio_input if precio_input is not none else (nm.precio_unitario or 0) }}"
-                                >
-                            </td>
+                            <th>Material</th>
+                            <th class="text-end">Kg bruto</th>
+                            <th class="text-end">Kg desc</th>
+                            <th class="text-end">Kg neto</th>
+                            <th>Tipo precio</th>
+                            <th class="text-end">Precio unitario</th>
+                            <th class="text-end">Subtotal</th>
                         </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            <div class="row g-2 align-items-end">
-                <div class="col-lg-8">
-                    {% set devol_comment_val = form_devol_comment if form_devol_comment is not none else '' %}
-                    <label class="form-label">Comentario devolucion</label>
-                    <input
-                        class="form-control form-control-sm"
-                        type="text"
-                        name="comentario_devolucion_parcial"
-                        placeholder="Motivo o referencia"
-                        value="{{ devol_comment_val }}"
-                    >
-                    <div class="form-text text-muted">
-                        Si queda monto pagado/cobrado por encima del nuevo total, se conserva como saldo a favor.
-                    </div>
-                </div>
-                <div class="col-lg-4 d-grid">
-                    <button type="submit" class="btn btn-outline-danger btn-sm">Aplicar devolucion parcial</button>
-                </div>
-            </div>
-        </form>
-    </div>
-</div>
-
-<div class="card hover-lift mb-3 note-payments-card">
-    <div class="card-body">
-        <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
-            <h2 class="h6 text-dark mb-0 note-section-title">Pagos registrados</h2>
-            <div class="note-payment-summary">
-                <span>Subtotal: <strong>${{ "{:,.2f}".format(subtotal_sin_iva or 0) }}</strong></span>
-                <span>IVA: <strong>${{ "{:,.2f}".format(iva_monto or 0) }}</strong></span>
-                <span>Total: <strong>${{ "{:,.2f}".format(nota.total_monto or 0) }}</strong></span>
-                <span>Saldo: <strong class="{{ 'text-danger' if saldo_pendiente > 0 else 'text-success' }}">${{ "{:,.2f}".format(saldo_pendiente) }}</strong></span>
-            </div>
-        </div>
-        <form method="post" action="/web/admin/notas/{{ nota.id }}/pago-inicial" class="note-payment-form mb-3">
-            <div class="row g-2 align-items-end">
-                <div class="col-lg-2 col-md-4">
-                    <label class="form-label">Pago inicial objetivo</label>
-                    {% set pago_inicial_val = form_pago_inicial_monto if form_pago_inicial_monto is not none else (pago_inicial_total or 0) %}
-                    <input class="form-control form-control-sm" type="number" step="0.01" min="0" name="pago_inicial_monto" value="{{ pago_inicial_val }}">
-                </div>
-                <div class="col-lg-2 col-md-4">
-                    <label class="form-label">M&eacute;todo</label>
-                    {% set pago_inicial_metodo_val = form_pago_inicial_metodo if form_pago_inicial_metodo else nota.metodo_pago %}
-                    <select class="form-select form-select-sm" name="pago_inicial_metodo" id="pago_inicial_metodo_select">
-                        <option value="" {% if not pago_inicial_metodo_val %}selected{% endif %}>Selecciona</option>
-                        <option value="transferencia" {% if pago_inicial_metodo_val == 'transferencia' %}selected{% endif %}>Transferencia</option>
-                        <option value="efectivo" {% if pago_inicial_metodo_val == 'efectivo' %}selected{% endif %}>Efectivo</option>
-                        <option value="cheque" {% if pago_inicial_metodo_val == 'cheque' %}selected{% endif %}>Cheque</option>
-                    </select>
-                </div>
-                <div class="col-lg-3 col-md-4">
-                    <label class="form-label">Cuenta</label>
-                    {% set pago_inicial_cuenta_val = form_pago_inicial_cuenta if form_pago_inicial_cuenta is not none else (nota.cuenta_financiera_id or "") %}
-                    <select class="form-select form-select-sm" name="pago_inicial_cuenta" id="pago_inicial_cuenta_select">
-                        <option value="" {% if not pago_inicial_cuenta_val %}selected{% endif %}>Selecciona cuenta</option>
-                        {% if cuentas_sucursal %}
-                            <optgroup label="Sucursal">
-                                {% for cuenta in cuentas_sucursal %}
-                                    <option value="{{ cuenta.id }}" {% if pago_inicial_cuenta_val|string == cuenta.id|string %}selected{% endif %}>
-                                        {{ cuenta.display_label }}
-                                    </option>
-                                {% endfor %}
-                            </optgroup>
-                        {% endif %}
-                        {% if cuentas_partner %}
-                            <optgroup label="{{ cuentas_partner_label }}">
-                                {% for cuenta in cuentas_partner %}
-                                    <option value="{{ cuenta.id }}" {% if pago_inicial_cuenta_val|string == cuenta.id|string %}selected{% endif %}>
-                                        {{ cuenta.display_label }}
-                                    </option>
-                                {% endfor %}
-                            </optgroup>
-                        {% endif %}
-                    </select>
-                </div>
-                <div class="col-lg-3 col-md-6">
-                    <label class="form-label">Cuenta Scrap360</label>
-                    {% set pago_inicial_cuenta_scrap_val = form_pago_inicial_cuenta_scrap360 if form_pago_inicial_cuenta_scrap360 is not none else "" %}
-                    <select class="form-select form-select-sm" name="pago_inicial_cuenta_scrap360_id" id="pago_inicial_cuenta_scrap360_select">
-                        <option value="" {% if not pago_inicial_cuenta_scrap_val %}selected{% endif %}>Selecciona cuenta</option>
-                        {% for c in cuentas_scrap360 %}
-                            <option value="{{ c.id }}" {% if pago_inicial_cuenta_scrap_val|string == c.id|string %}selected{% endif %}>
-                                {{ c.nombre }} &middot; {{ c.tipo|capitalize }}
-                            </option>
-                        {% endfor %}
-                    </select>
-                    {% if cuentas_scrap360|length == 0 %}
-                        <div class="form-text text-muted">No hay cuentas Scrap360 para esta sucursal.</div>
-                    {% else %}
-                        <div class="form-text text-muted">Opcional. Dejalo en blanco si no aplica.</div>
-                    {% endif %}
-                </div>
-                <div class="col-lg-2 col-md-6">
-                    <label class="form-label">Comentario</label>
-                    {% set pago_inicial_comment_val = form_pago_inicial_comentario if form_pago_inicial_comentario is not none else "" %}
-                    <input class="form-control form-control-sm" name="pago_inicial_comentario" placeholder="Opcional" value="{{ pago_inicial_comment_val }}">
-                </div>
-                <div class="col-lg-2 col-md-3 d-grid">
-                    <button type="submit" class="btn btn-outline-secondary btn-sm">Ajustar pago inicial</button>
-                </div>
-                {% if pago_inicial_updated %}
-                    <div class="col-12">
-                        <span class="text-success small">Pago inicial actualizado correctamente.</span>
-                    </div>
-                {% endif %}
-            </div>
-            <div class="form-text text-muted mt-2">Puedes corregir el pago inicial incluso despu&eacute;s de aprobar la nota.</div>
-        </form>
-        <form method="post" action="/web/admin/notas/{{ nota.id }}/pago" class="note-payment-form">
-            <div class="row g-2 align-items-end">
-                <div class="col-lg-2 col-md-4">
-                    <label class="form-label">Monto</label>
-                    {% set pago_monto_val = form_pago_monto if form_pago_monto is not none else "" %}
-                    <input class="form-control form-control-sm" type="number" step="0.01" min="0" name="monto_pagado" value="{{ pago_monto_val }}" placeholder="0.00" required>
-                </div>
-                <div class="col-lg-2 col-md-4">
-                    <label class="form-label">M&eacute;todo</label>
-                    {% set pago_metodo_val = form_pago_metodo if form_pago_metodo else nota.metodo_pago %}
-                    <select class="form-select form-select-sm" name="pago_metodo" id="pago_metodo_select">
-                        <option value="" {% if not pago_metodo_val %}selected{% endif %}>Selecciona</option>
-                        <option value="transferencia" {% if pago_metodo_val == 'transferencia' %}selected{% endif %}>Transferencia</option>
-                        <option value="efectivo" {% if pago_metodo_val == 'efectivo' %}selected{% endif %}>Efectivo</option>
-                        <option value="cheque" {% if pago_metodo_val == 'cheque' %}selected{% endif %}>Cheque</option>
-                    </select>
-                </div>
-                <div class="col-lg-3 col-md-4">
-                    <label class="form-label">Cuenta</label>
-                    {% set pago_cuenta_val = form_pago_cuenta if form_pago_cuenta is not none else (nota.cuenta_financiera_id or "") %}
-                    <select class="form-select form-select-sm" name="pago_cuenta" id="pago_cuenta_select">
-                        <option value="" {% if not pago_cuenta_val %}selected{% endif %}>Selecciona cuenta</option>
-                        {% if cuentas_sucursal %}
-                            <optgroup label="Sucursal">
-                                {% for cuenta in cuentas_sucursal %}
-                                    <option value="{{ cuenta.id }}" {% if pago_cuenta_val|string == cuenta.id|string %}selected{% endif %}>
-                                        {{ cuenta.display_label }}
-                                    </option>
-                                {% endfor %}
-                            </optgroup>
-                        {% endif %}
-                        {% if cuentas_partner %}
-                            <optgroup label="{{ cuentas_partner_label }}">
-                                {% for cuenta in cuentas_partner %}
-                                    <option value="{{ cuenta.id }}" {% if pago_cuenta_val|string == cuenta.id|string %}selected{% endif %}>
-                                        {{ cuenta.display_label }}
-                                    </option>
-                                {% endfor %}
-                            </optgroup>
-                        {% endif %}
-                    </select>
-                </div>
-                <div class="col-lg-3 col-md-6">
-                    <label class="form-label">Cuenta Scrap360</label>
-                    {% set pago_cuenta_scrap_val = form_pago_cuenta_scrap360 if form_pago_cuenta_scrap360 is not none else "" %}
-                    <select class="form-select form-select-sm" name="pago_cuenta_scrap360_id" id="pago_cuenta_scrap360_select">
-                        <option value="" {% if not pago_cuenta_scrap_val %}selected{% endif %}>Selecciona cuenta</option>
-                        {% for c in cuentas_scrap360 %}
-                            <option value="{{ c.id }}" {% if pago_cuenta_scrap_val|string == c.id|string %}selected{% endif %}>
-                                {{ c.nombre }} &middot; {{ c.tipo|capitalize }}
-                            </option>
-                        {% endfor %}
-                    </select>
-                    {% if cuentas_scrap360|length == 0 %}
-                        <div class="form-text text-muted">No hay cuentas Scrap360 para esta sucursal.</div>
-                    {% else %}
-                        <div class="form-text text-muted">Opcional. Dejalo en blanco si no aplica.</div>
-                    {% endif %}
-                </div>
-                <div class="col-lg-2 col-md-6">
-                    <label class="form-label">Comentario</label>
-                    {% set pago_comment_val = form_pago_comentario if form_pago_comentario is not none else "" %}
-                    <input class="form-control form-control-sm" name="pago_comentario" placeholder="Opcional" value="{{ pago_comment_val }}">
-                </div>
-                <div class="col-lg-2 col-md-3 d-grid">
-                    <button type="submit" class="btn btn-outline-primary btn-sm">Agregar pago</button>
-                </div>
-                {% if pago_updated %}
-                    <div class="col-12">
-                        <span class="text-success small">Pago registrado correctamente.</span>
-                    </div>
-                {% endif %}
-                {% if pago_reverted %}
-                    <div class="col-12">
-                        <span class="text-success small">Abono deshecho correctamente.</span>
-                    </div>
-                {% endif %}
-            </div>
-        </form>
-        <div class="table-responsive mt-3">
-            <table class="table table-sm align-middle mb-0 note-payments-table">
-                <thead>
-                <tr>
-                    <th>Fecha</th>
-                    <th>Monto</th>
-                    <th>M&eacute;todo</th>
-                    <th>Cuenta</th>
-                    <th>Cuenta Scrap360</th>
-                    <th>Usuario</th>
-                    <th>Comentario</th>
-                    <th class="text-end">Acciones</th>
-                </tr>
-                </thead>
-                <tbody>
-                {% for pago in pagos %}
-                    <tr>
-                        <td>{{ pago.created_at.strftime("%Y-%m-%d %H:%M") if pago.created_at else '-' }}</td>
-                        <td class="fw-semibold">
-                            {% if (pago.monto or 0) > 0 %}
-                                ${{ "{:,.2f}".format(pago.monto or 0) }}
-                            {% else %}
-                                <span class="text-muted">$0.00</span>
+                        </thead>
+                        <tbody>
+                        {% for m in nota.materiales %}
+                            <tr data-kg-neto="{{ '%.3f'|format(m.kg_neto or 0) }}">
+                                <td>
+                                    <div class="fw-semibold">{{ m.material.nombre if m.material else m.material_id }}</div>
+                                    {% if m.subpesajes %}
+                                        <div class="text-muted small">Subpesajes incluidos</div>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">{{ "{:,.2f}".format(m.kg_bruto or 0) }}</td>
+                                <td class="text-end">{{ "{:,.2f}".format(m.kg_descuento or 0) }}</td>
+                                <td class="text-end">{{ "{:,.2f}".format(m.kg_neto or 0) }}</td>
+                                <td>{{ m.tipo_cliente.value|capitalize if m.tipo_cliente else 'Regular' }}</td>
+                                <td class="text-end note-unit-price">${{ "{:,.5f}".format(m.precio_unitario or 0) }}</td>
+                                <td class="text-end note-subtotal">${{ "{:,.2f}".format(m.subtotal or 0) }}</td>
+                            </tr>
+                            {% if m.subpesajes %}
+                                <tr class="note-subpesaje-row">
+                                    <td colspan="7">
+                                        <div class="note-subpesajes">
+                                            <span class="note-subpesajes-label">Subpesajes</span>
+                                            <div class="note-subpesajes-list">
+                                                {% for sp in m.subpesajes %}
+                                                    <div class="note-subpesaje-item">
+                                                        <span class="pill">{{ "{:,.2f}".format(sp.peso_kg or 0) }} kg</span>
+                                                        <span class="text-muted small">Desc: {{ "{:,.2f}".format(sp.descuento_kg or 0) }} kg</span>
+                                                        {% if sp.foto_url %}
+                                                            <a href="{{ sp.foto_url }}" target="_blank" rel="noopener" class="note-subpesaje-link">Ver evidencia</a>
+                                                        {% endif %}
+                                                    </div>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
                             {% endif %}
-                        </td>
-                        <td>{{ pago.metodo_pago|capitalize if pago.metodo_pago else '-' }}</td>
-                        <td>{{ pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or '-') }}</td>
-                        <td>{{ pago.cuenta_scrap360.nombre if pago.cuenta_scrap360 else '-' }}</td>
-                        <td>{{ pago.usuario.username if pago.usuario else (pago.usuario_id or '-') }}</td>
-                        <td>{{ pago.comentario or '-' }}</td>
-                        <td class="text-end">
-                            {% if (pago.monto or 0) > 0 %}
-                                <form method="post" action="/web/admin/notas/{{ nota.id }}/pago/{{ pago.id }}/deshacer" class="d-inline" onsubmit="return confirm('¿Deshacer este abono? Esta acción revertirá saldos y contabilidad.');">
-                                    <button type="submit" class="btn btn-sm btn-outline-danger">Deshacer</button>
-                                </form>
-                            {% else %}
-                                <span class="badge bg-light text-dark border">Deshecho</span>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+    {% if is_approved %}
+        <div class="note-workspace-grid">
+            <div class="note-main-column">
+                <div class="card hover-lift mb-3">
+                    <div class="card-body">
+                        <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
+                            <div>
+                                <h2 class="h6 text-dark mb-1">Devolucion parcial</h2>
+                                <p class="text-muted small mb-0">Edita cuantas unidades regresan por material y a que precio por kilo se valora la devolucion.</p>
+                            </div>
+                            <span class="badge bg-light text-dark border">No genera reembolso automatico</span>
+                        </div>
+                        <form method="post" action="/web/admin/notas/{{ nota.id }}/devolucion-parcial" class="note-return-form" data-current-total="{{ nota.total_monto or 0 }}" data-current-paid="{{ nota.monto_pagado or 0 }}" data-iva-factor="{{ (1 + ((iva_pct or 0) / 100)) if nota.iva_incluido else 1 }}">
+                            <div class="table-responsive">
+                                <table class="table table-hover table-sm align-middle mb-0 note-return-table">
+                                    <thead>
+                                    <tr>
+                                        <th>Material</th>
+                                        <th class="text-end">Kg neto actual</th>
+                                        <th class="text-end">Precio actual/kg</th>
+                                        <th class="text-end">Kg a devolver</th>
+                                        <th class="text-end">Precio devolucion/kg</th>
+                                        <th class="text-end">Impacto estimado</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    {% for nm in nota.materiales %}
+                                        {% set kg_input = form_devol_kg_map.get(nm.id) if form_devol_kg_map else None %}
+                                        {% set precio_input = form_devol_precio_map.get(nm.id) if form_devol_precio_map else None %}
+                                        <tr>
+                                            <td>
+                                                <div class="fw-semibold">{{ nm.material.nombre if nm.material else ('Material #' ~ nm.material_id) }}</div>
+                                                {% if nm.subpesajes %}
+                                                    <div class="text-muted small">La devolucion descuenta neto desde subpesajes.</div>
+                                                {% endif %}
+                                            </td>
+                                            <td class="text-end">{{ "{:,.3f}".format(nm.kg_neto or 0) }}</td>
+                                            <td class="text-end">${{ "{:,.5f}".format(nm.precio_unitario or 0) }}</td>
+                                            <td class="text-end note-return-input-cell">
+                                                <input class="form-control form-control-sm text-end note-return-kg-input" type="number" step="0.001" min="0" max="{{ nm.kg_neto or 0 }}" name="devol_kg_{{ nm.id }}" value="{{ kg_input if kg_input is not none else '' }}">
+                                            </td>
+                                            <td class="text-end note-return-input-cell">
+                                                <input class="form-control form-control-sm text-end note-return-price-input" type="number" step="0.00001" min="0" name="devol_precio_{{ nm.id }}" value="{{ precio_input if precio_input is not none else (nm.precio_unitario or 0) }}">
+                                            </td>
+                                            <td class="text-end note-return-preview">$0.00</td>
+                                        </tr>
+                                    {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="note-return-summary-grid mt-3">
+                                <div class="note-return-summary-item">
+                                    <span class="note-meta-label">Nuevo total estimado</span>
+                                    <strong id="return_new_total">${{ "{:,.2f}".format(nota.total_monto or 0) }}</strong>
+                                </div>
+                                <div class="note-return-summary-item">
+                                    <span class="note-meta-label">Saldo estimado</span>
+                                    <strong id="return_new_balance">${{ "{:,.2f}".format(saldo_pendiente or 0) }}</strong>
+                                </div>
+                                <div class="note-return-summary-item">
+                                    <span class="note-meta-label">Saldo a favor estimado</span>
+                                    <strong id="return_new_favor">${{ "{:,.2f}".format(saldo_a_favor or 0) }}</strong>
+                                </div>
+                            </div>
+                            <div class="row g-3 align-items-end mt-1">
+                                <div class="col-lg-8">
+                                    {% set devol_comment_val = form_devol_comment if form_devol_comment is not none else '' %}
+                                    <label class="form-label">Comentario de devolucion</label>
+                                    <input class="form-control form-control-sm" type="text" name="comentario_devolucion_parcial" placeholder="Motivo o referencia" value="{{ devol_comment_val }}">
+                                    <div class="form-text text-muted">Si la nota ya estaba pagada por encima del nuevo total, el excedente queda como saldo a favor.</div>
+                                </div>
+                                <div class="col-lg-4 d-grid">
+                                    <button type="submit" class="btn btn-outline-danger">Aplicar devolucion parcial</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="card hover-lift mb-3 note-payments-card">
+                    <div class="card-body">
+                        <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
+                            <div>
+                                <h2 class="h6 text-dark mb-1">Pagos y abonos</h2>
+                                <p class="text-muted small mb-0">Administra el pago inicial, registra abonos adicionales y deshaz movimientos cuando sea necesario.</p>
+                            </div>
+                            <div class="note-payment-summary">
+                                <span>Total: <strong>${{ "{:,.2f}".format(nota.total_monto or 0) }}</strong></span>
+                                <span>Abonos activos: <strong>${{ "{:,.2f}".format(pagos_activos_total or 0) }}</strong></span>
+                                <span>Saldo: <strong class="{{ 'text-danger' if saldo_pendiente > 0 else 'text-success' }}">${{ "{:,.2f}".format(saldo_pendiente or 0) }}</strong></span>
+                            </div>
+                        </div>
+
+                        <div class="note-payment-panels">
+                            <form method="post" action="/web/admin/notas/{{ nota.id }}/pago-inicial" class="note-payment-form">
+                                <div class="note-form-card-title">Corregir pago inicial</div>
+                                <div class="row g-2 align-items-end">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Pago inicial objetivo</label>
+                                        {% set pago_inicial_val = form_pago_inicial_monto if form_pago_inicial_monto is not none else (pago_inicial_total or 0) %}
+                                        <input class="form-control form-control-sm" type="number" step="0.01" min="0" name="pago_inicial_monto" value="{{ pago_inicial_val }}">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Metodo</label>
+                                        {% set pago_inicial_metodo_val = form_pago_inicial_metodo if form_pago_inicial_metodo else nota.metodo_pago %}
+                                        <select class="form-select form-select-sm" name="pago_inicial_metodo" id="pago_inicial_metodo_select">
+                                            <option value="" {% if not pago_inicial_metodo_val %}selected{% endif %}>Selecciona</option>
+                                            <option value="transferencia" {% if pago_inicial_metodo_val == 'transferencia' %}selected{% endif %}>Transferencia</option>
+                                            <option value="efectivo" {% if pago_inicial_metodo_val == 'efectivo' %}selected{% endif %}>Efectivo</option>
+                                            <option value="cheque" {% if pago_inicial_metodo_val == 'cheque' %}selected{% endif %}>Cheque</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label">Cuenta</label>
+                                        {% set pago_inicial_cuenta_val = form_pago_inicial_cuenta if form_pago_inicial_cuenta is not none else (nota.cuenta_financiera_id or "") %}
+                                        <select class="form-select form-select-sm" name="pago_inicial_cuenta" id="pago_inicial_cuenta_select">
+                                            <option value="" {% if not pago_inicial_cuenta_val %}selected{% endif %}>Selecciona cuenta</option>
+                                            {% if cuentas_sucursal %}<optgroup label="Sucursal">{% for cuenta in cuentas_sucursal %}<option value="{{ cuenta.id }}" {% if pago_inicial_cuenta_val|string == cuenta.id|string %}selected{% endif %}>{{ cuenta.display_label }}</option>{% endfor %}</optgroup>{% endif %}
+                                            {% if cuentas_partner %}<optgroup label="{{ cuentas_partner_label }}">{% for cuenta in cuentas_partner %}<option value="{{ cuenta.id }}" {% if pago_inicial_cuenta_val|string == cuenta.id|string %}selected{% endif %}>{{ cuenta.display_label }}</option>{% endfor %}</optgroup>{% endif %}
+                                        </select>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label">Cuenta Scrap360</label>
+                                        {% set pago_inicial_cuenta_scrap_val = form_pago_inicial_cuenta_scrap360 if form_pago_inicial_cuenta_scrap360 is not none else "" %}
+                                        <select class="form-select form-select-sm" name="pago_inicial_cuenta_scrap360_id" id="pago_inicial_cuenta_scrap360_select">
+                                            <option value="" {% if not pago_inicial_cuenta_scrap_val %}selected{% endif %}>Selecciona cuenta</option>
+                                            {% for c in cuentas_scrap360 %}<option value="{{ c.id }}" {% if pago_inicial_cuenta_scrap_val|string == c.id|string %}selected{% endif %}>{{ c.nombre }} &middot; {{ c.tipo|capitalize }}</option>{% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label">Comentario</label>
+                                        {% set pago_inicial_comment_val = form_pago_inicial_comentario if form_pago_inicial_comentario is not none else "" %}
+                                        <input class="form-control form-control-sm" name="pago_inicial_comentario" placeholder="Opcional" value="{{ pago_inicial_comment_val }}">
+                                    </div>
+                                    <div class="col-12 d-grid">
+                                        <button type="submit" class="btn btn-outline-secondary btn-sm">Actualizar pago inicial</button>
+                                    </div>
+                                </div>
+                                <div class="form-text text-muted mt-2">Util cuando la nota se aprobo con monto inicial incorrecto o en cero por error.</div>
+                            </form>
+                            <form method="post" action="/web/admin/notas/{{ nota.id }}/pago" class="note-payment-form">
+                                <div class="note-form-card-title">Registrar nuevo abono</div>
+                                <div class="row g-2 align-items-end">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Monto</label>
+                                        {% set pago_monto_val = form_pago_monto if form_pago_monto is not none else "" %}
+                                        <input class="form-control form-control-sm" type="number" step="0.01" min="0" name="monto_pagado" value="{{ pago_monto_val }}" placeholder="0.00" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Metodo</label>
+                                        {% set pago_metodo_val = form_pago_metodo if form_pago_metodo else nota.metodo_pago %}
+                                        <select class="form-select form-select-sm" name="pago_metodo" id="pago_metodo_select">
+                                            <option value="" {% if not pago_metodo_val %}selected{% endif %}>Selecciona</option>
+                                            <option value="transferencia" {% if pago_metodo_val == 'transferencia' %}selected{% endif %}>Transferencia</option>
+                                            <option value="efectivo" {% if pago_metodo_val == 'efectivo' %}selected{% endif %}>Efectivo</option>
+                                            <option value="cheque" {% if pago_metodo_val == 'cheque' %}selected{% endif %}>Cheque</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label">Cuenta</label>
+                                        {% set pago_cuenta_val = form_pago_cuenta if form_pago_cuenta is not none else (nota.cuenta_financiera_id or "") %}
+                                        <select class="form-select form-select-sm" name="pago_cuenta" id="pago_cuenta_select">
+                                            <option value="" {% if not pago_cuenta_val %}selected{% endif %}>Selecciona cuenta</option>
+                                            {% if cuentas_sucursal %}<optgroup label="Sucursal">{% for cuenta in cuentas_sucursal %}<option value="{{ cuenta.id }}" {% if pago_cuenta_val|string == cuenta.id|string %}selected{% endif %}>{{ cuenta.display_label }}</option>{% endfor %}</optgroup>{% endif %}
+                                            {% if cuentas_partner %}<optgroup label="{{ cuentas_partner_label }}">{% for cuenta in cuentas_partner %}<option value="{{ cuenta.id }}" {% if pago_cuenta_val|string == cuenta.id|string %}selected{% endif %}>{{ cuenta.display_label }}</option>{% endfor %}</optgroup>{% endif %}
+                                        </select>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label">Cuenta Scrap360</label>
+                                        {% set pago_cuenta_scrap_val = form_pago_cuenta_scrap360 if form_pago_cuenta_scrap360 is not none else "" %}
+                                        <select class="form-select form-select-sm" name="pago_cuenta_scrap360_id" id="pago_cuenta_scrap360_select">
+                                            <option value="" {% if not pago_cuenta_scrap_val %}selected{% endif %}>Selecciona cuenta</option>
+                                            {% for c in cuentas_scrap360 %}<option value="{{ c.id }}" {% if pago_cuenta_scrap_val|string == c.id|string %}selected{% endif %}>{{ c.nombre }} &middot; {{ c.tipo|capitalize }}</option>{% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label">Comentario</label>
+                                        {% set pago_comment_val = form_pago_comentario if form_pago_comentario is not none else "" %}
+                                        <input class="form-control form-control-sm" name="pago_comentario" placeholder="Opcional" value="{{ pago_comment_val }}">
+                                    </div>
+                                    <div class="col-12 d-grid">
+                                        <button type="submit" class="btn btn-outline-primary btn-sm">Agregar abono</button>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+
+                        <div class="table-responsive mt-3">
+                            <table class="table table-sm align-middle mb-0 note-payments-table">
+                                <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Estado</th>
+                                    <th class="text-end">Monto</th>
+                                    <th>Metodo</th>
+                                    <th>Cuenta</th>
+                                    <th>Cuenta Scrap360</th>
+                                    <th>Usuario</th>
+                                    <th>Comentario</th>
+                                    <th class="text-end">Acciones</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% for pago in pagos %}
+                                    {% set pago_activo = (pago.monto or 0) > 0 %}
+                                    <tr class="{{ 'is-reverted' if not pago_activo else '' }}">
+                                        <td>{{ pago.created_at.strftime("%Y-%m-%d %H:%M") if pago.created_at else '-' }}</td>
+                                        <td>{% if pago_activo %}<span class="badge bg-success">Activo</span>{% else %}<span class="badge bg-light text-dark border">Deshecho</span>{% endif %}</td>
+                                        <td class="text-end fw-semibold">{% if pago_activo %}${{ "{:,.2f}".format(pago.monto or 0) }}{% else %}<span class="text-muted">$0.00</span>{% endif %}</td>
+                                        <td>{{ pago.metodo_pago|capitalize if pago.metodo_pago else '-' }}</td>
+                                        <td>{{ pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or '-') }}</td>
+                                        <td>{{ pago.cuenta_scrap360.nombre if pago.cuenta_scrap360 else '-' }}</td>
+                                        <td>{{ pago.usuario.username if pago.usuario else (pago.usuario_id or '-') }}</td>
+                                        <td>{{ pago.comentario or '-' }}</td>
+                                        <td class="text-end">
+                                            {% if pago_activo %}
+                                                <form method="post" action="/web/admin/notas/{{ nota.id }}/pago/{{ pago.id }}/deshacer" class="d-inline" onsubmit="return confirm('Deshacer este abono revertira el saldo, el log contable y el movimiento de la Cuenta Scrap360 asociado. Deseas continuar?');">
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger">Deshacer</button>
+                                                </form>
+                                            {% else %}
+                                                <span class="text-muted small">Solo auditoria</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% if pagos|length == 0 %}
+                            <p class="text-muted small mb-0 mt-3">Aun no hay pagos registrados para esta nota.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="note-side-column">
+                <div class="card hover-lift note-side-card">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center gap-2 mb-3">
+                            <span class="chip-strong">Control</span>
+                            <span class="text-muted small">Acciones sobre nota aprobada</span>
+                        </div>
+                        <form method="post" action="/web/admin/notas/{{ nota.id }}/cancelar">
+                            <label class="form-label">Comentario de devolucion total</label>
+                            <textarea class="form-control" name="comentarios_admin" rows="4" placeholder="Motivo, referencia o explicacion administrativa.">{{ nota.comentarios_admin or '' }}</textarea>
+                            <div class="form-text text-muted">La devolucion total revierte inventario, movimientos contables y pagos activos.</div>
+                            <div class="d-grid gap-2 mt-3">
+                                <button type="submit" class="btn btn-outline-danger">Aplicar devolucion total</button>
+                                {% if user.rol == 'super_admin' %}
+                                    <a href="/web/admin/notas/{{ nota.id }}/editar" class="btn btn-outline-primary">Editar nota aprobada</a>
+                                {% endif %}
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+    {% if inv_movs and inv_movs|length > 0 %}
+        <div class="card hover-lift mb-3 note-report-card">
+            <div class="card-body">
+                <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
+                    <div>
+                        <h2 class="h6 text-dark mb-1">Movimientos de inventario</h2>
+                        <p class="text-muted small mb-0">Rastro de entradas, salidas o ajustes generados por esta nota.</p>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0 note-aux-table">
+                        <thead>
+                        <tr>
+                            <th>Sucursal</th>
+                            <th>Material</th>
+                            <th>Tipo</th>
+                            <th class="text-end">Cantidad</th>
+                            <th class="text-end">Saldo</th>
+                            <th>Fecha</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for mov in inv_movs %}
+                            {% set qty = mov.cantidad_kg or 0 %}
+                            {% if mov.tipo == 'venta' %}
+                                {% set qty = qty * -1 %}
                             {% endif %}
-                        </td>
-                    </tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% if pagos|length == 0 %}
-            <p class="text-muted small mb-0 mt-3">Aun no hay pagos registrados.</p>
-        {% endif %}
-    </div>
-</div>
-{% endif %}
-
-{% if inv_movs and inv_movs|length > 0 %}
-<div class="card hover-lift mb-3 note-report-card">
-    <div class="card-body">
-        <h2 class="h6 text-dark mb-3 note-section-title">Movimientos de inventario generados</h2>
-        <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0 note-table">
-                <thead>
-                <tr>
-                    <th>Sucursal</th>
-                    <th>Material</th>
-                    <th>Tipo</th>
-                    <th class="text-end">Cantidad</th>
-                    <th class="text-end">Saldo</th>
-                    <th>Fecha</th>
-                </tr>
-                </thead>
-                <tbody>
-                {% for mov in inv_movs %}
-                    {% set qty = mov.cantidad_kg or 0 %}
-                    {% if mov.tipo == 'venta' %}
-                        {% set qty = qty * -1 %}
-                    {% endif %}
-                    <tr>
-                        <td>{{ mov.inventario.sucursal.nombre if mov.inventario and mov.inventario.sucursal else '-' }}</td>
-                        <td>{{ mov.inventario.material.nombre if mov.inventario and mov.inventario.material else '-' }}</td>
-                        <td class="text-uppercase">{{ mov.tipo }}</td>
-                        <td class="text-end">{{ "{:,.2f}".format(qty) }} kg</td>
-                        <td class="text-end">{{ "{:,.2f}".format(mov.saldo_resultante or 0) }} kg</td>
-                        <td>{{ mov.created_at.strftime("%Y-%m-%d %H:%M") if mov.created_at else '-' }}</td>
-                    </tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-{% endif %}
-
-<div class="card hover-lift note-comments-card">
-    <div class="card-body">
-        <div class="note-comments-header">
-            <h2 class="h6 text-dark mb-0 note-section-title">Comentarios</h2>
-        </div>
-        <div class="row g-3 note-comments-grid">
-            <div class="col-md-6">
-                <div class="note-comment-panel">
-                    <div class="note-comment-title">Trabajador</div>
-                    <div class="note-comment-body">{{ nota.comentarios_trabajador or '-' }}</div>
+                            <tr>
+                                <td>{{ mov.inventario.sucursal.nombre if mov.inventario and mov.inventario.sucursal else '-' }}</td>
+                                <td>{{ mov.inventario.material.nombre if mov.inventario and mov.inventario.material else '-' }}</td>
+                                <td class="text-uppercase">{{ mov.tipo }}</td>
+                                <td class="text-end">{{ "{:,.2f}".format(qty) }} kg</td>
+                                <td class="text-end">{{ "{:,.2f}".format(mov.saldo_resultante or 0) }} kg</td>
+                                <td>{{ mov.created_at.strftime("%Y-%m-%d %H:%M") if mov.created_at else '-' }}</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
-            <div class="col-md-6">
-                <div class="note-comment-panel">
-                    <div class="note-comment-title">Admin</div>
-                    <div class="note-comment-body">{{ nota.comentarios_admin or '-' }}</div>
+        </div>
+    {% endif %}
+
+    <div class="card hover-lift note-comments-card">
+        <div class="card-body">
+            <div class="note-comments-header">
+                <h2 class="h6 text-dark mb-0">Comentarios y contexto</h2>
+            </div>
+            <div class="row g-3 note-comments-grid">
+                <div class="col-md-6">
+                    <div class="note-comment-panel">
+                        <div class="note-comment-title">Trabajador</div>
+                        <div class="note-comment-body">{{ nota.comentarios_trabajador or '-' }}</div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="note-comment-panel">
+                        <div class="note-comment-title">Admin</div>
+                        <div class="note-comment-body">{{ nota.comentarios_admin or '-' }}</div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-</div>
-<script type="application/json" id="notePriceMap">{{ price_map_json|safe }}</script>
-<script>
-    const priceMapScript = document.getElementById('notePriceMap');
-    let priceMap = {};
-    if (priceMapScript) {
-        try {
-            priceMap = JSON.parse(priceMapScript.textContent || '{}');
-        } catch (err) {
-            priceMap = {};
-        }
-    }
-    function syncCancelComment(formEl) {
-        const comments = document.querySelector('textarea[name="comentarios_admin"]');
-        const hidden = formEl.querySelector('input[name="comentarios_admin"]');
-        if (hidden && comments) {
-            hidden.value = comments.value || '';
-        }
-    }
-    function syncReturnComment(formEl) {
-        const comments = document.querySelector('textarea[name="comentarios_admin"]');
-        const hidden = formEl.querySelector('input[name="comentarios_admin"]');
-        if (hidden && comments) {
-            hidden.value = comments.value || '';
-        }
-    }
-    const metodoSelect = document.getElementById('metodo_pago_select');
-    const cuentaInput = document.getElementById('cuenta_financiera_select');
-    const cuentaScrapInput = document.getElementById('cuenta_scrap360_select');
-    const pagoInput = document.querySelector('input[name="monto_pagado"]');
-    function toggleCuenta() {
-        if (!metodoSelect || !cuentaInput) return;
-        const metodo = (metodoSelect.value || '').toLowerCase();
-        const needsAccount = metodo === 'transferencia' || metodo === 'cheque';
-        cuentaInput.disabled = !needsAccount;
-        cuentaInput.required = needsAccount;
-        if (!needsAccount) {
-            cuentaInput.value = '';
-        }
-    }
-    function toggleCuentaScrap() {
-        if (!cuentaScrapInput) return;
-        const metodo = (metodoSelect && metodoSelect.value ? metodoSelect.value : '').toLowerCase();
-        const pago = parseFloat(pagoInput && pagoInput.value ? pagoInput.value : '0') || 0;
-        const hasMetodo = !!metodo;
-        cuentaScrapInput.disabled = !hasMetodo && pago <= 0;
-        if (cuentaScrapInput.disabled) {
-            cuentaScrapInput.value = '';
-        }
-    }
-    if (metodoSelect) {
-        metodoSelect.addEventListener('change', toggleCuenta);
-        metodoSelect.addEventListener('change', toggleCuentaScrap);
-        toggleCuenta();
-        toggleCuentaScrap();
-    }
-    if (pagoInput) {
-        pagoInput.addEventListener('input', toggleCuentaScrap);
-        toggleCuentaScrap();
-    }
-    const pagoMetodo = document.getElementById('pago_metodo_select');
-    const pagoCuenta = document.getElementById('pago_cuenta_select');
-    function togglePagoCuenta() {
-        if (!pagoMetodo || !pagoCuenta) return;
-        const metodo = (pagoMetodo.value || '').toLowerCase();
-        const needsAccount = metodo === 'transferencia' || metodo === 'cheque';
-        pagoCuenta.disabled = !needsAccount;
-        pagoCuenta.required = needsAccount;
-        if (!needsAccount) {
-            pagoCuenta.value = '';
-        }
-    }
-    if (pagoMetodo) {
-        pagoMetodo.addEventListener('change', togglePagoCuenta);
-        togglePagoCuenta();
-    }
-    const pagoInicialMetodo = document.getElementById('pago_inicial_metodo_select');
-    const pagoInicialCuenta = document.getElementById('pago_inicial_cuenta_select');
-    const pagoInicialCuentaScrap = document.getElementById('pago_inicial_cuenta_scrap360_select');
-    function togglePagoInicialCuenta() {
-        if (!pagoInicialMetodo || !pagoInicialCuenta) return;
-        const metodo = (pagoInicialMetodo.value || '').toLowerCase();
-        const needsAccount = metodo === 'transferencia' || metodo === 'cheque';
-        pagoInicialCuenta.disabled = !needsAccount;
-        pagoInicialCuenta.required = needsAccount;
-        if (!needsAccount) {
-            pagoInicialCuenta.value = '';
-        }
-        if (pagoInicialCuentaScrap) {
-            pagoInicialCuentaScrap.disabled = !metodo;
-            if (!metodo) {
-                pagoInicialCuentaScrap.value = '';
+    <script type="application/json" id="notePriceMap">{{ price_map_json|safe }}</script>
+    <script>
+        const priceMapScript = document.getElementById('notePriceMap');
+        let priceMap = {};
+        if (priceMapScript) {
+            try {
+                priceMap = JSON.parse(priceMapScript.textContent || '{}');
+            } catch (err) {
+                priceMap = {};
             }
         }
-    }
-    if (pagoInicialMetodo) {
-        pagoInicialMetodo.addEventListener('change', togglePagoInicialCuenta);
-        togglePagoInicialCuenta();
-    }
-    const noteTable = document.querySelector('.note-table');
-    const priceEndpoint = noteTable ? noteTable.dataset.precioEndpoint : '';
-    const tipoOperacion = noteTable ? noteTable.dataset.tipoOperacion : '';
-    function formatNumber(value, decimals) {
-        const safe = Number(value || 0);
-        return safe.toLocaleString('en-US', {
-            minimumFractionDigits: decimals,
-            maximumFractionDigits: decimals,
-        });
-    }
-    function formatMoney(value) {
-        return `$${formatNumber(value, 2)}`;
-    }
-    function formatUnit(value) {
-        return `$${formatNumber(value, 5)}`;
-    }
-    function parseNumber(value) {
-        const raw = value === null || value === undefined ? '' : String(value);
-        const cleaned = raw.replace(/[^0-9.-]+/g, '');
-        const parsed = parseFloat(cleaned);
-        return Number.isNaN(parsed) ? 0 : parsed;
-    }
-    function parseMoneyText(text) {
-        return parseNumber(text || '');
-    }
-    function getRowKgNeto(row) {
-        if (!row) return 0;
-        return parseNumber(row.dataset.kgNeto || '0');
-    }
-    function getRowSubtotal(row) {
-        if (!row) return 0;
-        const input = row.querySelector('.note-subtotal-input');
-        if (input) {
-            return parseNumber(input.value);
-        }
-        const cell = row.querySelector('.note-subtotal');
-        return cell ? parseMoneyText(cell.textContent) : 0;
-    }
-    function updateTotals() {
-        const subtotalEl = document.getElementById('note-subtotal-value');
-        const ivaEl = document.getElementById('note-iva-value');
-        const totalEl = document.getElementById('note-total-value');
-        if (!subtotalEl || !ivaEl || !totalEl) return;
 
-        let baseTotal = 0;
-        const rows = document.querySelectorAll('.note-table tbody tr');
-        rows.forEach((row) => {
-            if (row.classList.contains('note-subpesaje-row')) return;
-            baseTotal += getRowSubtotal(row);
+        function syncControlComment(formEl) {
+            const comments = document.getElementById('note_control_comment');
+            const hidden = formEl.querySelector('input[name="comentarios_admin"]');
+            if (hidden && comments) {
+                hidden.value = comments.value || '';
+            }
+        }
+
+        const metodoSelect = document.getElementById('metodo_pago_select');
+        const cuentaInput = document.getElementById('cuenta_financiera_select');
+        const cuentaScrapInput = document.getElementById('cuenta_scrap360_select');
+        const pagoInput = document.querySelector('#approveForm input[name="monto_pagado"]');
+
+        function toggleCuenta() {
+            if (!metodoSelect || !cuentaInput) return;
+            const metodo = (metodoSelect.value || '').toLowerCase();
+            const needsAccount = metodo === 'transferencia' || metodo === 'cheque';
+            cuentaInput.disabled = !needsAccount;
+            cuentaInput.required = needsAccount;
+            if (!needsAccount) {
+                cuentaInput.value = '';
+            }
+        }
+
+        function toggleCuentaScrap() {
+            if (!cuentaScrapInput) return;
+            const metodo = (metodoSelect && metodoSelect.value ? metodoSelect.value : '').toLowerCase();
+            const pago = parseFloat(pagoInput && pagoInput.value ? pagoInput.value : '0') || 0;
+            const hasMetodo = !!metodo;
+            cuentaScrapInput.disabled = !hasMetodo && pago <= 0;
+            if (cuentaScrapInput.disabled) {
+                cuentaScrapInput.value = '';
+            }
+        }
+
+        if (metodoSelect) {
+            metodoSelect.addEventListener('change', toggleCuenta);
+            metodoSelect.addEventListener('change', toggleCuentaScrap);
+            toggleCuenta();
+            toggleCuentaScrap();
+        }
+        if (pagoInput) {
+            pagoInput.addEventListener('input', toggleCuentaScrap);
+            toggleCuentaScrap();
+        }
+
+        const pagoMetodo = document.getElementById('pago_metodo_select');
+        const pagoCuenta = document.getElementById('pago_cuenta_select');
+        function togglePagoCuenta() {
+            if (!pagoMetodo || !pagoCuenta) return;
+            const metodo = (pagoMetodo.value || '').toLowerCase();
+            const needsAccount = metodo === 'transferencia' || metodo === 'cheque';
+            pagoCuenta.disabled = !needsAccount;
+            pagoCuenta.required = needsAccount;
+            if (!needsAccount) {
+                pagoCuenta.value = '';
+            }
+        }
+        if (pagoMetodo) {
+            pagoMetodo.addEventListener('change', togglePagoCuenta);
+            togglePagoCuenta();
+        }
+
+        const pagoInicialMetodo = document.getElementById('pago_inicial_metodo_select');
+        const pagoInicialCuenta = document.getElementById('pago_inicial_cuenta_select');
+        const pagoInicialCuentaScrap = document.getElementById('pago_inicial_cuenta_scrap360_select');
+        function togglePagoInicialCuenta() {
+            if (!pagoInicialMetodo || !pagoInicialCuenta) return;
+            const metodo = (pagoInicialMetodo.value || '').toLowerCase();
+            const needsAccount = metodo === 'transferencia' || metodo === 'cheque';
+            pagoInicialCuenta.disabled = !needsAccount;
+            pagoInicialCuenta.required = needsAccount;
+            if (!needsAccount) {
+                pagoInicialCuenta.value = '';
+            }
+            if (pagoInicialCuentaScrap) {
+                pagoInicialCuentaScrap.disabled = !metodo;
+                if (!metodo) {
+                    pagoInicialCuentaScrap.value = '';
+                }
+            }
+        }
+        if (pagoInicialMetodo) {
+            pagoInicialMetodo.addEventListener('change', togglePagoInicialCuenta);
+            togglePagoInicialCuenta();
+        }
+
+        const noteTable = document.querySelector('.note-materials-table');
+        const priceEndpoint = noteTable ? noteTable.dataset.precioEndpoint : '';
+        const tipoOperacion = noteTable ? noteTable.dataset.tipoOperacion : '';
+
+        function formatNumber(value, decimals) {
+            const safe = Number(value || 0);
+            return safe.toLocaleString('en-US', {
+                minimumFractionDigits: decimals,
+                maximumFractionDigits: decimals,
+            });
+        }
+
+        function formatMoney(value) {
+            return `$${formatNumber(value, 2)}`;
+        }
+
+        function formatUnit(value) {
+            return `$${formatNumber(value, 5)}`;
+        }
+
+        function parseNumber(value) {
+            const raw = value === null || value === undefined ? '' : String(value);
+            const cleaned = raw.replace(/[^0-9.-]+/g, '');
+            const parsed = parseFloat(cleaned);
+            return Number.isNaN(parsed) ? 0 : parsed;
+        }
+
+        function parseMoneyText(text) {
+            return parseNumber(text || '');
+        }
+
+        function getRowKgNeto(row) {
+            if (!row) return 0;
+            return parseNumber(row.dataset.kgNeto || '0');
+        }
+
+        function getRowSubtotal(row) {
+            if (!row) return 0;
+            const input = row.querySelector('.note-subtotal-input');
+            if (input) {
+                return parseNumber(input.value);
+            }
+            const cell = row.querySelector('.note-subtotal');
+            return cell ? parseMoneyText(cell.textContent) : 0;
+        }
+
+        function updateTotals() {
+            const subtotalEl = document.getElementById('note-subtotal-value');
+            const ivaEl = document.getElementById('note-iva-value');
+            const totalEl = document.getElementById('note-total-value');
+            if (!subtotalEl || !ivaEl || !totalEl || !noteTable) return;
+
+            let baseTotal = 0;
+            const rows = noteTable.querySelectorAll('tbody tr');
+            rows.forEach((row) => {
+                if (row.classList.contains('note-subpesaje-row')) return;
+                baseTotal += getRowSubtotal(row);
+            });
+
+            const ivaToggle = document.getElementById('iva_incluido');
+            const ivaPctInput = document.querySelector('#approveForm input[name="iva_porcentaje"]');
+            const ivaIncluido = !!(ivaToggle && ivaToggle.checked);
+            const ivaPct = parseNumber(ivaPctInput ? ivaPctInput.value : '0');
+            const ivaMonto = ivaIncluido ? (baseTotal * ivaPct) / 100 : 0;
+            const total = ivaIncluido ? baseTotal + ivaMonto : baseTotal;
+
+            subtotalEl.textContent = formatMoney(baseTotal);
+            ivaEl.textContent = formatMoney(ivaMonto);
+            totalEl.textContent = formatMoney(total);
+        }
+
+        function getRowPriceMap(row) {
+            if (!row) return null;
+            const raw = row.dataset.precios;
+            if (!raw) return null;
+            try {
+                return JSON.parse(raw);
+            } catch (err) {
+                return null;
+            }
+        }
+
+        async function updateRowPrice(selectEl) {
+            if (!noteTable || !priceEndpoint || !tipoOperacion || !selectEl) return;
+            const row = selectEl.closest('tr');
+            if (!row) return;
+            const materialId = row.dataset.materialId;
+            const kgNeto = getRowKgNeto(row);
+            const unitInput = row.querySelector('.note-unit-input');
+            const subtotalInput = row.querySelector('.note-subtotal-input');
+            const modeInput = row.querySelector('.note-precio-mode');
+            const unitCell = row.querySelector('.note-unit-price');
+            const subtotalCell = row.querySelector('.note-subtotal');
+            if (!materialId || (!unitCell && !unitInput) || (!subtotalCell && !subtotalInput)) return;
+
+            const tipoCliente = selectEl.value || '';
+            const rowMap = getRowPriceMap(row);
+            if (rowMap && Object.prototype.hasOwnProperty.call(rowMap, tipoCliente)) {
+                const unitLocal = parseFloat(rowMap[tipoCliente]);
+                const subtotalLocal = unitLocal * (Number.isNaN(kgNeto) ? 0 : kgNeto);
+                if (unitInput && subtotalInput) {
+                    unitInput.value = unitLocal.toFixed(5);
+                    subtotalInput.value = subtotalLocal.toFixed(2);
+                    if (modeInput) modeInput.value = 'unit';
+                } else {
+                    if (unitCell) unitCell.textContent = formatUnit(unitLocal);
+                    if (subtotalCell) subtotalCell.textContent = formatMoney(subtotalLocal);
+                }
+                updateTotals();
+                return;
+            }
+
+            if (priceMap[materialId] && Object.prototype.hasOwnProperty.call(priceMap[materialId], tipoCliente)) {
+                const unitLocal = parseFloat(priceMap[materialId][tipoCliente]);
+                const subtotalLocal = unitLocal * (Number.isNaN(kgNeto) ? 0 : kgNeto);
+                if (unitInput && subtotalInput) {
+                    unitInput.value = unitLocal.toFixed(5);
+                    subtotalInput.value = subtotalLocal.toFixed(2);
+                    if (modeInput) modeInput.value = 'unit';
+                } else {
+                    if (unitCell) unitCell.textContent = formatUnit(unitLocal);
+                    if (subtotalCell) subtotalCell.textContent = formatMoney(subtotalLocal);
+                }
+                updateTotals();
+                return;
+            }
+
+            const params = new URLSearchParams({
+                material_id: materialId,
+                tipo_operacion: tipoOperacion,
+                tipo_cliente: tipoCliente,
+            });
+            try {
+                const res = await fetch(`${priceEndpoint}?${params.toString()}`, { credentials: 'same-origin' });
+                if (!res.ok) {
+                    return;
+                }
+                const data = await res.json();
+                if (data.precio_unitario === null || data.precio_unitario === undefined) {
+                    return;
+                }
+                const unit = parseFloat(data.precio_unitario);
+                if (Number.isNaN(unit)) {
+                    return;
+                }
+                const subtotal = unit * (Number.isNaN(kgNeto) ? 0 : kgNeto);
+                if (unitInput && subtotalInput) {
+                    unitInput.value = unit.toFixed(5);
+                    subtotalInput.value = subtotal.toFixed(2);
+                    if (modeInput) modeInput.value = 'unit';
+                } else {
+                    if (unitCell) unitCell.textContent = formatUnit(unit);
+                    if (subtotalCell) subtotalCell.textContent = formatMoney(subtotal);
+                }
+                if (!priceMap[materialId]) {
+                    priceMap[materialId] = {};
+                }
+                priceMap[materialId][tipoCliente] = unit;
+                updateTotals();
+            } catch (err) {
+                return;
+            }
+        }
+
+        function syncRowFromUnit(inputEl) {
+            const row = inputEl.closest('tr');
+            if (!row) return;
+            const subtotalInput = row.querySelector('.note-subtotal-input');
+            const modeInput = row.querySelector('.note-precio-mode');
+            const kgNeto = getRowKgNeto(row);
+            const unitVal = parseNumber(inputEl.value);
+            const subtotalVal = unitVal * kgNeto;
+            if (subtotalInput) {
+                subtotalInput.value = subtotalVal.toFixed(2);
+            }
+            if (modeInput) {
+                modeInput.value = 'unit';
+            }
+            updateTotals();
+        }
+
+        function syncRowFromSubtotal(inputEl) {
+            const row = inputEl.closest('tr');
+            if (!row) return;
+            const unitInput = row.querySelector('.note-unit-input');
+            const modeInput = row.querySelector('.note-precio-mode');
+            const kgNeto = getRowKgNeto(row);
+            const subtotalVal = parseNumber(inputEl.value);
+            if (unitInput) {
+                const unitVal = kgNeto > 0 ? subtotalVal / kgNeto : 0;
+                unitInput.value = unitVal.toFixed(5);
+            }
+            if (modeInput) {
+                modeInput.value = 'subtotal';
+            }
+            updateTotals();
+        }
+        const priceSelects = document.querySelectorAll('.note-tipo-precio');
+        priceSelects.forEach((sel) => {
+            sel.addEventListener('change', () => updateRowPrice(sel));
+            sel.addEventListener('input', () => updateRowPrice(sel));
+        });
+
+        const unitInputs = document.querySelectorAll('.note-unit-input');
+        unitInputs.forEach((input) => {
+            input.addEventListener('input', () => syncRowFromUnit(input));
+        });
+
+        const subtotalInputs = document.querySelectorAll('.note-subtotal-input');
+        subtotalInputs.forEach((input) => {
+            input.addEventListener('input', () => syncRowFromSubtotal(input));
         });
 
         const ivaToggle = document.getElementById('iva_incluido');
-        const ivaPctInput = document.querySelector('input[name="iva_porcentaje"]');
-        const ivaIncluido = !!(ivaToggle && ivaToggle.checked);
-        const ivaPct = parseNumber(ivaPctInput ? ivaPctInput.value : '0');
-        const ivaMonto = ivaIncluido ? (baseTotal * ivaPct) / 100 : 0;
-        const total = ivaIncluido ? baseTotal + ivaMonto : baseTotal;
+        const ivaPctInput = document.querySelector('#approveForm input[name="iva_porcentaje"]');
+        if (ivaToggle) {
+            ivaToggle.addEventListener('change', updateTotals);
+        }
+        if (ivaPctInput) {
+            ivaPctInput.addEventListener('input', updateTotals);
+        }
 
-        subtotalEl.textContent = formatMoney(baseTotal);
-        ivaEl.textContent = formatMoney(ivaMonto);
-        totalEl.textContent = formatMoney(total);
-    }
-    function getRowPriceMap(row) {
-        if (!row) return null;
-        const raw = row.dataset.precios;
-        if (!raw) return null;
-        try {
-            return JSON.parse(raw);
-        } catch (err) {
-            return null;
+        function updateReturnPreview() {
+            const returnForm = document.querySelector('.note-return-form');
+            if (!returnForm) return;
+            const ivaFactor = parseNumber(returnForm.dataset.ivaFactor || '1') || 1;
+            const currentTotal = parseNumber(returnForm.dataset.currentTotal || '0');
+            const currentPaid = parseNumber(returnForm.dataset.currentPaid || '0');
+            let totalImpact = 0;
+
+            returnForm.querySelectorAll('tbody tr').forEach((row) => {
+                const kgInput = row.querySelector('.note-return-kg-input');
+                const priceInput = row.querySelector('.note-return-price-input');
+                const preview = row.querySelector('.note-return-preview');
+                if (!kgInput || !priceInput || !preview) return;
+                const rowImpact = parseNumber(kgInput.value) * parseNumber(priceInput.value) * ivaFactor;
+                totalImpact += rowImpact;
+                preview.textContent = formatMoney(rowImpact);
+            });
+
+            const newTotal = Math.max(0, currentTotal - totalImpact);
+            const newFavor = Math.max(0, currentPaid - newTotal);
+            const newBalance = Math.max(0, newTotal - currentPaid);
+
+            const newTotalEl = document.getElementById('return_new_total');
+            const newBalanceEl = document.getElementById('return_new_balance');
+            const newFavorEl = document.getElementById('return_new_favor');
+            if (newTotalEl) newTotalEl.textContent = formatMoney(newTotal);
+            if (newBalanceEl) newBalanceEl.textContent = formatMoney(newBalance);
+            if (newFavorEl) newFavorEl.textContent = formatMoney(newFavor);
         }
-    }
-    async function updateRowPrice(selectEl) {
-        if (!noteTable || !priceEndpoint || !tipoOperacion || !selectEl) return;
-        const row = selectEl.closest('tr');
-        if (!row) return;
-        const materialId = row.dataset.materialId;
-        const kgNeto = getRowKgNeto(row);
-        const unitInput = row.querySelector('.note-unit-input');
-        const subtotalInput = row.querySelector('.note-subtotal-input');
-        const modeInput = row.querySelector('.note-precio-mode');
-        const unitCell = row.querySelector('.note-unit-price');
-        const subtotalCell = row.querySelector('.note-subtotal');
-        if (!materialId || (!unitCell && !unitInput) || (!subtotalCell && !subtotalInput)) return;
-        if (unitInput) {
-            unitInput.value = '';
-        } else if (unitCell) {
-            unitCell.textContent = '...';
-        }
-        if (subtotalInput) {
-            subtotalInput.value = '';
-        } else if (subtotalCell) {
-            subtotalCell.textContent = '...';
-        }
-        const tipoCliente = selectEl.value || '';
-        const rowMap = getRowPriceMap(row);
-        if (rowMap && Object.prototype.hasOwnProperty.call(rowMap, tipoCliente)) {
-            const unitLocal = parseFloat(rowMap[tipoCliente]);
-            const subtotalLocal = unitLocal * (Number.isNaN(kgNeto) ? 0 : kgNeto);
-            if (unitInput && subtotalInput) {
-                unitInput.value = unitLocal.toFixed(5);
-                subtotalInput.value = subtotalLocal.toFixed(2);
-                if (modeInput) {
-                    modeInput.value = 'unit';
-                }
-            } else {
-                if (unitCell) unitCell.textContent = formatUnit(unitLocal);
-                if (subtotalCell) subtotalCell.textContent = formatMoney(subtotalLocal);
-            }
-            updateTotals();
-            return;
-        }
-        if (priceMap[materialId] && Object.prototype.hasOwnProperty.call(priceMap[materialId], tipoCliente)) {
-            const unitLocal = parseFloat(priceMap[materialId][tipoCliente]);
-            const subtotalLocal = unitLocal * (Number.isNaN(kgNeto) ? 0 : kgNeto);
-            if (unitInput && subtotalInput) {
-                unitInput.value = unitLocal.toFixed(5);
-                subtotalInput.value = subtotalLocal.toFixed(2);
-                if (modeInput) {
-                    modeInput.value = 'unit';
-                }
-            } else {
-                if (unitCell) unitCell.textContent = formatUnit(unitLocal);
-                if (subtotalCell) subtotalCell.textContent = formatMoney(subtotalLocal);
-            }
-            updateTotals();
-            return;
-        }
-        const params = new URLSearchParams({
-            material_id: materialId,
-            tipo_operacion: tipoOperacion,
-            tipo_cliente: tipoCliente,
+
+        document.querySelectorAll('.note-return-kg-input, .note-return-price-input').forEach((input) => {
+            input.addEventListener('input', updateReturnPreview);
         });
-        try {
-            const res = await fetch(`${priceEndpoint}?${params.toString()}`, { credentials: 'same-origin' });
-            if (!res.ok) {
-                if (unitInput) {
-                    unitInput.value = '';
-                } else if (unitCell) {
-                    unitCell.textContent = '-';
-                }
-                if (subtotalInput) {
-                    subtotalInput.value = '';
-                } else if (subtotalCell) {
-                    subtotalCell.textContent = '-';
-                }
-                updateTotals();
-                return;
-            }
-            const data = await res.json();
-            if (data.precio_unitario === null || data.precio_unitario === undefined) {
-                if (unitInput) {
-                    unitInput.value = '';
-                } else if (unitCell) {
-                    unitCell.textContent = '-';
-                }
-                if (subtotalInput) {
-                    subtotalInput.value = '';
-                } else if (subtotalCell) {
-                    subtotalCell.textContent = '-';
-                }
-                updateTotals();
-                return;
-            }
-            const unit = parseFloat(data.precio_unitario);
-            if (Number.isNaN(unit)) {
-                if (unitInput) {
-                    unitInput.value = '';
-                } else if (unitCell) {
-                    unitCell.textContent = '-';
-                }
-                if (subtotalInput) {
-                    subtotalInput.value = '';
-                } else if (subtotalCell) {
-                    subtotalCell.textContent = '-';
-                }
-                updateTotals();
-                return;
-            }
-            const subtotal = unit * (Number.isNaN(kgNeto) ? 0 : kgNeto);
-            if (unitInput && subtotalInput) {
-                unitInput.value = unit.toFixed(5);
-                subtotalInput.value = subtotal.toFixed(2);
-                if (modeInput) {
-                    modeInput.value = 'unit';
-                }
-            } else {
-                if (unitCell) unitCell.textContent = formatUnit(unit);
-                if (subtotalCell) subtotalCell.textContent = formatMoney(subtotal);
-            }
-            if (!priceMap[materialId]) {
-                priceMap[materialId] = {};
-            }
-            priceMap[materialId][tipoCliente] = unit;
-            updateTotals();
-        } catch (err) {
-            if (unitInput) {
-                unitInput.value = '';
-            } else if (unitCell) {
-                unitCell.textContent = '-';
-            }
-            if (subtotalInput) {
-                subtotalInput.value = '';
-            } else if (subtotalCell) {
-                subtotalCell.textContent = '-';
-            }
-            updateTotals();
-        }
-    }
-    const priceSelects = document.querySelectorAll('.note-tipo-precio');
-    priceSelects.forEach((sel) => {
-        sel.addEventListener('change', () => updateRowPrice(sel));
-        sel.addEventListener('input', () => updateRowPrice(sel));
-    });
-    document.addEventListener('change', (event) => {
-        const target = event.target;
-        if (target && target.classList && target.classList.contains('note-tipo-precio')) {
-            updateRowPrice(target);
-        }
-    });
-    function syncRowFromUnit(inputEl) {
-        const row = inputEl.closest('tr');
-        if (!row) return;
-        const subtotalInput = row.querySelector('.note-subtotal-input');
-        const modeInput = row.querySelector('.note-precio-mode');
-        const kgNeto = getRowKgNeto(row);
-        const unitVal = parseNumber(inputEl.value);
-        const subtotalVal = unitVal * kgNeto;
-        if (subtotalInput) {
-            subtotalInput.value = subtotalVal.toFixed(2);
-        }
-        if (modeInput) {
-            modeInput.value = 'unit';
-        }
+
         updateTotals();
-    }
-    function syncRowFromSubtotal(inputEl) {
-        const row = inputEl.closest('tr');
-        if (!row) return;
-        const unitInput = row.querySelector('.note-unit-input');
-        const modeInput = row.querySelector('.note-precio-mode');
-        const kgNeto = getRowKgNeto(row);
-        const subtotalVal = parseNumber(inputEl.value);
-        if (unitInput) {
-            const unitVal = kgNeto > 0 ? subtotalVal / kgNeto : 0;
-            unitInput.value = unitVal.toFixed(5);
-        }
-        if (modeInput) {
-            modeInput.value = 'subtotal';
-        }
-        updateTotals();
-    }
-    const unitInputs = document.querySelectorAll('.note-unit-input');
-    unitInputs.forEach((input) => {
-        input.addEventListener('input', () => syncRowFromUnit(input));
-    });
-    const subtotalInputs = document.querySelectorAll('.note-subtotal-input');
-    subtotalInputs.forEach((input) => {
-        input.addEventListener('input', () => syncRowFromSubtotal(input));
-    });
-    const ivaToggle = document.getElementById('iva_incluido');
-    const ivaPctInput = document.querySelector('input[name="iva_porcentaje"]');
-    if (ivaToggle) {
-        ivaToggle.addEventListener('change', updateTotals);
-    }
-    if (ivaPctInput) {
-        ivaPctInput.addEventListener('input', updateTotals);
-    }
-    updateTotals();
-</script>
+        updateReturnPreview();
+    </script>
 </div>
 {% endblock %}

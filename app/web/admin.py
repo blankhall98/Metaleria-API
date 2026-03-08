@@ -6864,6 +6864,15 @@ async def notas_list(
     elif pago_filter == "PENDIENTES":
         notas_estado_query = notas_estado_query.filter(pending_condition)
     notas_estado = notas_estado_query.order_by(Nota.created_at.desc()).limit(200).all()
+    notas_aprobadas = (
+        db.query(Nota)
+        .filter(
+            Nota.estado == NotaEstado.aprobada,
+            Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]),
+            *([Nota.sucursal_id.in_(allowed_suc_ids)] if allowed_suc_ids else []),
+        )
+        .all()
+    )
 
     def saldo_pendiente(nota: Nota) -> Decimal:
         total = Decimal(str(nota.total_monto or 0))
@@ -6872,6 +6881,10 @@ async def notas_list(
         if saldo < Decimal("0"):
             saldo = Decimal("0")
         return saldo
+
+    saldo_vivo_total = Decimal("0")
+    for nota in notas_aprobadas:
+        saldo_vivo_total += saldo_pendiente(nota)
 
     notas_vencidas = []
     notas_por_vencer = []
@@ -6945,7 +6958,11 @@ async def notas_list(
             "notas_recientes": notas_recientes,
             "notas_vencidas": notas_vencidas,
             "notas_por_vencer": notas_por_vencer,
+            "hoy": hoy,
+            "limite_alerta": limite_alerta,
             "alerta_dias": alerta_dias,
+            "saldo_vivo_total": saldo_vivo_total,
+            "notas_aprobadas_total": len(notas_aprobadas),
             "sucursales": sucursales,
             "proveedores": proveedores,
             "clientes": clientes,
@@ -7333,6 +7350,22 @@ def _render_nota_detail(
     proveedor = db.get(Proveedor, nota.proveedor_id) if nota.proveedor_id else None
     cliente = db.get(Cliente, nota.cliente_id) if nota.cliente_id else None
     trabajador = db.get(User, nota.trabajador_id) if nota.trabajador_id else None
+    partner_kind, _ = _nota_partner_key(nota)
+    if partner_kind == "proveedor":
+        partner_label = "Proveedor"
+        partner_name = proveedor.nombre_completo if proveedor else "-"
+    elif partner_kind == "cliente":
+        partner_label = "Cliente"
+        partner_name = cliente.nombre_completo if cliente else "-"
+    else:
+        partner_label = "Partner"
+        partner_name = "-"
+    if nota.tipo_operacion == TipoOperacion.compra:
+        operation_label = "Compra"
+    elif nota.tipo_operacion == TipoOperacion.venta:
+        operation_label = "Venta"
+    else:
+        operation_label = nota.tipo_operacion.value.capitalize() if nota.tipo_operacion else "Nota"
     proveedores = db.query(Proveedor).filter(Proveedor.activo.is_(True)).order_by(Proveedor.nombre_completo).all()
     clientes = db.query(Cliente).filter(Cliente.activo.is_(True)).order_by(Cliente.nombre_completo).all()
     inv_movs = db.query(InventarioMovimiento).filter(InventarioMovimiento.nota_id == nota.id).all()
@@ -7401,6 +7434,12 @@ def _render_nota_detail(
     saldo_pendiente = Decimal(str(nota.total_monto or 0)) - Decimal(str(nota.monto_pagado or 0))
     if saldo_pendiente < Decimal("0"):
         saldo_pendiente = Decimal("0")
+    saldo_a_favor = Decimal(str(nota.monto_pagado or 0)) - Decimal(str(nota.total_monto or 0))
+    if saldo_a_favor < Decimal("0"):
+        saldo_a_favor = Decimal("0")
+    pagos_activos = [p for p in pagos if Decimal(str(p.monto or 0)) > Decimal("0")]
+    pagos_revertidos = [p for p in pagos if Decimal(str(p.monto or 0)) <= Decimal("0")]
+    pagos_activos_total = sum((Decimal(str(p.monto or 0)) for p in pagos_activos), Decimal("0"))
     iva_monto = Decimal(str(nota.iva_monto or 0))
     total_monto = Decimal(str(nota.total_monto or 0))
     subtotal_sin_iva = total_monto - iva_monto if iva_monto else total_monto
@@ -7424,7 +7463,6 @@ def _render_nota_detail(
                 transfer_related_sucursal = db.get(Sucursal, transfer_related.sucursal_id)
     cuentas_sucursal, cuentas_partner = _get_cuentas_for_nota(db, nota)
     cuentas_scrap360 = _get_scrap360_cuentas_for_nota(db, nota)
-    partner_kind, _ = _nota_partner_key(nota)
     if partner_kind == "cliente":
         cuentas_partner_label = "Cliente"
     elif partner_kind == "proveedor":
@@ -7466,6 +7504,9 @@ def _render_nota_detail(
         "proveedor": proveedor,
         "cliente": cliente,
         "trabajador": trabajador,
+        "partner_label": partner_label,
+        "partner_name": partner_name,
+        "operation_label": operation_label,
         "tipos_cliente": list(TipoCliente),
         "inv_movs": inv_movs,
         "pagos": pagos,
@@ -7473,6 +7514,10 @@ def _render_nota_detail(
         "price_map_json": price_map_json,
         "price_map_by_material": price_map_by_material,
         "saldo_pendiente": saldo_pendiente,
+        "saldo_a_favor": saldo_a_favor,
+        "pagos_activos_total": pagos_activos_total,
+        "pagos_activos_count": len(pagos_activos),
+        "pagos_revertidos_count": len(pagos_revertidos),
         "subtotal_sin_iva": subtotal_sin_iva,
         "iva_monto": iva_monto,
         "iva_pct": iva_pct,
@@ -7522,9 +7567,28 @@ def _render_nota_edit(
     proveedor = db.get(Proveedor, nota.proveedor_id) if nota.proveedor_id else None
     cliente = db.get(Cliente, nota.cliente_id) if nota.cliente_id else None
     trabajador = db.get(User, nota.trabajador_id) if nota.trabajador_id else None
+    partner_kind, _ = _nota_partner_key(nota)
+    if partner_kind == "proveedor":
+        partner_label = "Proveedor"
+        partner_name = proveedor.nombre_completo if proveedor else "-"
+    elif partner_kind == "cliente":
+        partner_label = "Cliente"
+        partner_name = cliente.nombre_completo if cliente else "-"
+    else:
+        partner_label = "Partner"
+        partner_name = "-"
+    if nota.tipo_operacion == TipoOperacion.compra:
+        operation_label = "Compra"
+    elif nota.tipo_operacion == TipoOperacion.venta:
+        operation_label = "Venta"
+    else:
+        operation_label = nota.tipo_operacion.value.capitalize() if nota.tipo_operacion else "Nota"
     saldo_pendiente = Decimal(str(nota.total_monto or 0)) - Decimal(str(nota.monto_pagado or 0))
     if saldo_pendiente < Decimal("0"):
         saldo_pendiente = Decimal("0")
+    saldo_a_favor = Decimal(str(nota.monto_pagado or 0)) - Decimal(str(nota.total_monto or 0))
+    if saldo_a_favor < Decimal("0"):
+        saldo_a_favor = Decimal("0")
     iva_monto = Decimal(str(nota.iva_monto or 0))
     total_monto = Decimal(str(nota.total_monto or 0))
     subtotal_sin_iva = total_monto - iva_monto if iva_monto else total_monto
@@ -7558,8 +7622,12 @@ def _render_nota_edit(
             "proveedor": proveedor,
             "cliente": cliente,
             "trabajador": trabajador,
+            "partner_label": partner_label,
+            "partner_name": partner_name,
+            "operation_label": operation_label,
             "tipos_cliente": list(TipoCliente),
             "saldo_pendiente": saldo_pendiente,
+            "saldo_a_favor": saldo_a_favor,
             "subtotal_sin_iva": subtotal_sin_iva,
             "iva_monto": iva_monto,
             "iva_pct": iva_pct,

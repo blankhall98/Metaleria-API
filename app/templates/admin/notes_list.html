@@ -1,416 +1,367 @@
 {% extends "base.html" %}
 
-{% block title %}Notas en revisión{% endblock %}
+{% block title %}Notas{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Revisión</p>
-        <h1 class="h4 text-white mb-0">Notas pendientes</h1>
+{% set approved_ok = request.query_params.get("approved") == "1" %}
+{% set cancelled_ok = request.query_params.get("cancelled") == "1" %}
+{% set returned_ok = request.query_params.get("returned") == "1" %}
+<div class="notes-dashboard">
+    <div class="page-header note-page-header">
+        <div>
+            <p class="text-uppercase text-muted small mb-1">Operacion diaria</p>
+            <h1 class="h4 text-dark mb-1">Control de notas</h1>
+            <p class="text-muted mb-0">Busca, revisa y filtra notas de compra y venta con foco en estatus, cobranza y seguimiento.</p>
+        </div>
     </div>
-</div>
 
-<div class="card hover-lift mb-3">
-    <div class="card-body">
-        <div class="d-flex flex-column flex-lg-row gap-4">
-            <div class="flex-grow-1">
-                <div class="d-flex align-items-center gap-2 mb-2">
-                    <span class="chip-strong">B&uacute;squeda</span>
-                    <span class="text-muted small">Folio de nota</span>
-                </div>
-                <form method="get">
-                    <div class="d-flex flex-wrap gap-2 align-items-end">
-                        <div class="flex-grow-1 min-w-0">
-                            <label class="form-label">Buscar por folio</label>
-                            <input class="form-control" name="folio" placeholder="01_C_1" value="{{ folio_query }}">
-                        </div>
-                        <div class="min-w-0" style="min-width: 220px;">
-                            <label class="form-label">Estado de pago</label>
-                            <select class="form-select" name="pago">
-                                <option value="TODAS" {% if pago_current == 'TODAS' %}selected{% endif %}>Todas</option>
-                                <option value="PENDIENTES" {% if pago_current == 'PENDIENTES' %}selected{% endif %}>Pendientes por pagar</option>
-                                <option value="PAGADAS" {% if pago_current == 'PAGADAS' %}selected{% endif %}>Pagadas</option>
-                            </select>
+    {% if approved_ok or cancelled_ok or returned_ok %}
+        <div class="alert alert-success py-2 small mb-3">
+            {% if approved_ok %}La nota fue aprobada correctamente.{% endif %}
+            {% if cancelled_ok %}La nota fue procesada correctamente.{% endif %}
+            {% if returned_ok %}La nota fue devuelta al trabajador.{% endif %}
+        </div>
+    {% endif %}
+
+    <div class="card hover-lift mb-3 notes-toolbar-card">
+        <div class="card-body">
+            <div class="notes-toolbar-grid">
+                <div class="notes-search-panel">
+                    <div class="d-flex align-items-center gap-2 mb-3">
+                        <span class="chip-strong">Busqueda</span>
+                        <span class="text-muted small">Acceso rapido por folio y estado de pago</span>
+                    </div>
+                    <form method="get" class="notes-search-form">
+                        <div class="row g-3 align-items-end">
+                            <div class="col-lg-6">
+                                <label class="form-label">Buscar por folio</label>
+                                <input class="form-control" name="folio" placeholder="01_C_1" value="{{ folio_query }}">
+                            </div>
+                            <div class="col-lg-4">
+                                <label class="form-label">Estado de pago</label>
+                                <select class="form-select" name="pago">
+                                    <option value="TODAS" {% if pago_current == 'TODAS' %}selected{% endif %}>Todas</option>
+                                    <option value="PENDIENTES" {% if pago_current == 'PENDIENTES' %}selected{% endif %}>Pendientes por pagar</option>
+                                    <option value="PAGADAS" {% if pago_current == 'PAGADAS' %}selected{% endif %}>Pagadas</option>
+                                </select>
+                            </div>
+                            <div class="col-lg-2 d-grid">
+                                <button class="btn btn-primary">Buscar</button>
+                            </div>
                         </div>
                         {% if estado_current and estado_current != 'TODAS' %}
                             <input type="hidden" name="estado" value="{{ estado_current }}">
                         {% endif %}
-                        <div class="d-flex gap-2 align-items-end">
-                            <button class="btn btn-outline-primary">Buscar</button>
-                            {% if folio_query or pago_current != 'TODAS' %}
-                                <a class="btn btn-outline-secondary" href="/web/admin/notas">Limpiar</a>
-                            {% endif %}
-                        </div>
-                    </div>
-                </form>
-                {% if folio_error %}
-                    <div class="alert alert-danger py-2 small mt-2 mb-0">{{ folio_error }}</div>
-                {% endif %}
-                {% if folio_result %}
-                    <div class="border rounded-3 p-3 mt-3 bg-light d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
-                        <div>
-                            <div class="text-uppercase text-muted small mb-1">Resultado</div>
-                            <div class="fw-semibold">Folio {{ folio_map.get(folio_result.id, '-') }}</div>
-                            <div class="text-muted small">
-                                {% if folio_result.tipo_operacion.value == 'venta' %}
-                                    {{ clientes[folio_result.cliente_id].nombre_completo if folio_result.cliente_id else '-' }}
-                                {% elif folio_result.tipo_operacion.value == 'compra' %}
-                                    {{ proveedores[folio_result.proveedor_id].nombre_completo if folio_result.proveedor_id else '-' }}
-                                {% else %}
-                                    {{ proveedores[folio_result.proveedor_id].nombre_completo if folio_result.proveedor_id else (clientes[folio_result.cliente_id].nombre_completo if folio_result.cliente_id else '-') }}
-                                {% endif %}
-                                &middot;
-                                {{ sucursales[folio_result.sucursal_id].nombre if folio_result.sucursal_id else '-' }}
+                        {% if folio_query or pago_current != 'TODAS' %}
+                            <div class="mt-3">
+                                <a class="btn btn-outline-secondary btn-sm" href="/web/admin/notas">Limpiar filtros</a>
                             </div>
-                        </div>
-                        <div class="text-end">
-                            <a href="/web/admin/notas/{{ folio_result.id }}" class="btn btn-primary btn-sm">Ver nota</a>
-                        </div>
-                    </div>
-                {% endif %}
-            </div>
-            <div class="d-none d-lg-block vr"></div>
-            <div class="flex-grow-1">
-                <div class="d-flex align-items-center gap-2 mb-2">
-                    <span class="chip-strong">Resumen</span>
-                    <span class="text-muted small">Notificaciones y alertas</span>
-                </div>
-                <div class="d-grid gap-3">
-                    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
-                        <div>
-                            <div class="fw-semibold">Notas en revision</div>
-                            <div class="text-muted small">Revisa y aprueba las notas enviadas por los trabajadores.</div>
-                        </div>
-                        <div class="text-end">
-                            {% if notas_revision|length > 0 %}
-                                <a href="#tabla-revision" class="btn btn-primary btn-sm">Ver notas</a>
-                            {% else %}
-                                <span class="badge bg-secondary">Sin pendientes</span>
-                            {% endif %}
-                        </div>
-                    </div>
-                    <div class="border-top pt-3">
-                        <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
+                        {% endif %}
+                    </form>
+                    {% if folio_error %}
+                        <div class="alert alert-danger py-2 small mt-3 mb-0">{{ folio_error }}</div>
+                    {% endif %}
+                    {% if folio_result %}
+                        {% if folio_result.tipo_operacion.value == 'venta' %}
+                            {% set result_partner = clientes.get(folio_result.cliente_id).nombre_completo if folio_result.cliente_id and clientes.get(folio_result.cliente_id) else '-' %}
+                        {% else %}
+                            {% set result_partner = proveedores.get(folio_result.proveedor_id).nombre_completo if folio_result.proveedor_id and proveedores.get(folio_result.proveedor_id) else '-' %}
+                        {% endif %}
+                        <div class="notes-result-card mt-3">
                             <div>
-                                <div class="fw-semibold">Vencimientos de pago</div>
-                                <div class="text-muted small">Notas con saldo pendiente que vencen en los pr&oacute;ximos {{ alerta_dias }} d&iacute;as o ya vencieron.</div>
+                                <div class="text-uppercase text-muted small mb-1">Resultado exacto</div>
+                                <div class="fw-semibold">Folio {{ folio_map.get(folio_result.id, '-') }}</div>
+                                <div class="text-muted small">
+                                    {{ result_partner }} &middot;
+                                    {{ sucursales.get(folio_result.sucursal_id).nombre if folio_result.sucursal_id and sucursales.get(folio_result.sucursal_id) else '-' }}
+                                </div>
                             </div>
-                            <div class="d-flex flex-wrap gap-2 justify-content-end">
-                                {% if notas_por_vencer|length > 0 %}
-                                    <a href="#tabla-por-vencer" class="btn btn-outline-primary btn-sm">Por vencer ({{ notas_por_vencer|length }})</a>
-                                {% endif %}
-                                {% if notas_vencidas|length > 0 %}
-                                    <a href="#tabla-vencidas" class="btn btn-danger btn-sm">Vencidas ({{ notas_vencidas|length }})</a>
-                                {% endif %}
-                                {% if notas_por_vencer|length == 0 and notas_vencidas|length == 0 %}
-                                    <span class="badge bg-secondary">Sin alertas</span>
-                                {% endif %}
-                            </div>
+                            <a href="/web/admin/notas/{{ folio_result.id }}" class="btn btn-primary btn-sm">Abrir nota</a>
                         </div>
+                    {% endif %}
+                </div>
+
+                <div class="notes-kpi-grid">
+                    <div class="notes-kpi-card tone-blue">
+                        <span class="notes-kpi-label">En revision</span>
+                        <strong>{{ notas_revision|length }}</strong>
+                        <div class="notes-kpi-sub">Esperando aprobacion administrativa</div>
+                    </div>
+                    <div class="notes-kpi-card tone-red">
+                        <span class="notes-kpi-label">Vencidas</span>
+                        <strong>{{ notas_vencidas|length }}</strong>
+                        <div class="notes-kpi-sub">Requieren seguimiento inmediato</div>
+                    </div>
+                    <div class="notes-kpi-card tone-amber">
+                        <span class="notes-kpi-label">Por vencer</span>
+                        <strong>{{ notas_por_vencer|length }}</strong>
+                        <div class="notes-kpi-sub">Dentro de {{ alerta_dias }} dias</div>
+                    </div>
+                    <div class="notes-kpi-card tone-green">
+                        <span class="notes-kpi-label">Saldo vivo</span>
+                        <strong>${{ "{:,.2f}".format(saldo_vivo_total or 0) }}</strong>
+                        <div class="notes-kpi-sub">{{ pago_counts['PENDIENTES'] }} notas aprobadas con saldo</div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-</div>
 
-<div class="card hover-lift" id="tabla-revision">
-    <div class="card-body">
-        <h2 class="h6 text-white mb-3">En revisión</h2>
-        <div class="table-responsive">
-            <table class="table table-hover table-sm align-middle mb-0">
-                <thead>
-                <tr>
-                    <th>Folio</th>
-                    <th>Operación</th>
-                    <th>Partner</th>
-                    <th>Sucursal</th>
-                    <th>Kg neto</th>
-                    <th>Total $</th>
-                    <th>Fecha</th>
-                    <th></th>
-                </tr>
-                </thead>
-                <tbody>
-                {% for n in notas_revision %}
-                    <tr>
-                        <td>
-                            <div class="fw-semibold">{{ folio_map.get(n.id, '-') }}</div>
-                        </td>
-                        <td>{{ n.tipo_operacion.value|capitalize }}</td>
-                        <td>
-                            {% if n.tipo_operacion.value == 'venta' %}
-                                {{ clientes[n.cliente_id].nombre_completo if n.cliente_id else '-' }}
-                            {% elif n.tipo_operacion.value == 'compra' %}
-                                {{ proveedores[n.proveedor_id].nombre_completo if n.proveedor_id else '-' }}
-                            {% else %}
-                                {{ proveedores[n.proveedor_id].nombre_completo if n.proveedor_id else (clientes[n.cliente_id].nombre_completo if n.cliente_id else '-') }}
-                            {% endif %}
-                        </td>
-                        <td>{{ sucursales[n.sucursal_id].nombre if n.sucursal_id else '-' }}</td>
-                        <td>{{ "{:,.2f}".format(n.total_kg_neto or 0) }} kg</td>
-                        <td>${{ "{:,.2f}".format(n.total_monto or 0) }}</td>
-                        <td>{{ n.created_at.strftime("%Y-%m-%d %H:%M") if n.created_at else '-' }}</td>
-                        <td class="text-end">
-                            <div class="d-flex gap-2 justify-content-end flex-wrap">
-                                <a href="/web/admin/notas/{{ n.id }}/evidencias" class="btn btn-sm btn-outline-primary">Evidencias</a>
-                                <a href="/web/admin/notas/{{ n.id }}" class="btn btn-sm btn-primary">Revisar</a>
-                            </div>
-                        </td>
-                    </tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% if notas_revision|length == 0 %}
-            <p class="text-muted small mb-0 mt-3">No hay notas en revisión.</p>
-        {% endif %}
-    </div>
-</div>
-
-{% if notas_vencidas|length > 0 %}
-<div class="card hover-lift mt-4" id="tabla-vencidas">
-    <div class="card-body">
-        <h2 class="h6 text-white mb-3">Notas vencidas</h2>
-        <div class="table-responsive">
-            <table class="table table-hover table-sm align-middle mb-0">
-                <thead>
-                <tr>
-                    <th>Folio</th>
-                    <th>OperaciA3n</th>
-                    <th>Partner</th>
-                    <th>Sucursal</th>
-                    <th>Total $</th>
-                    <th>Saldo pendiente</th>
-                    <th>Vence</th>
-                    <th>D&iacute;as vencida</th>
-                    <th></th>
-                </tr>
-                </thead>
-                <tbody>
-                {% for item in notas_vencidas %}
-                    {% set n = item.nota %}
-                    <tr>
-                        <td>
-                            <div class="fw-semibold">{{ folio_map.get(n.id, '-') }}</div>
-                        </td>
-                        <td>{{ n.tipo_operacion.value|capitalize }}</td>
-                        <td>
-                            {% if n.tipo_operacion.value == 'venta' %}
-                                {{ clientes[n.cliente_id].nombre_completo if n.cliente_id else '-' }}
-                            {% elif n.tipo_operacion.value == 'compra' %}
-                                {{ proveedores[n.proveedor_id].nombre_completo if n.proveedor_id else '-' }}
-                            {% else %}
-                                {{ proveedores[n.proveedor_id].nombre_completo if n.proveedor_id else (clientes[n.cliente_id].nombre_completo if n.cliente_id else '-') }}
-                            {% endif %}
-                        </td>
-                        <td>{{ sucursales[n.sucursal_id].nombre if n.sucursal_id else '-' }}</td>
-                        <td>${{ "{:,.2f}".format(n.total_monto or 0) }}</td>
-                        <td class="text-danger fw-semibold">${{ "{:,.2f}".format(item.saldo_pendiente or 0) }}</td>
-                        <td>{{ n.fecha_caducidad_pago.strftime("%Y-%m-%d") if n.fecha_caducidad_pago else '-' }}</td>
-                        <td><span class="badge bg-danger">{{ item.dias }} d&iacute;as</span></td>
-                        <td class="text-end">
-                            <div class="d-flex gap-2 justify-content-end flex-wrap">
-                                <a href="/web/admin/notas/{{ n.id }}/evidencias" class="btn btn-sm btn-outline-primary">Evidencias</a>
-                                <a href="/web/admin/notas/{{ n.id }}" class="btn btn-sm btn-primary">Ver</a>
-                            </div>
-                        </td>
-                    </tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-{% endif %}
-
-{% if notas_por_vencer|length > 0 %}
-<div class="card hover-lift mt-4" id="tabla-por-vencer">
-    <div class="card-body">
-        <h2 class="h6 text-white mb-3">Notas por vencer</h2>
-        <div class="table-responsive">
-            <table class="table table-hover table-sm align-middle mb-0">
-                <thead>
-                <tr>
-                    <th>Folio</th>
-                    <th>OperaciA3n</th>
-                    <th>Partner</th>
-                    <th>Sucursal</th>
-                    <th>Total $</th>
-                    <th>Saldo pendiente</th>
-                    <th>Vence</th>
-                    <th>D&iacute;as restantes</th>
-                    <th></th>
-                </tr>
-                </thead>
-                <tbody>
-                {% for item in notas_por_vencer %}
-                    {% set n = item.nota %}
-                    <tr>
-                        <td>
-                            <div class="fw-semibold">{{ folio_map.get(n.id, '-') }}</div>
-                        </td>
-                        <td>{{ n.tipo_operacion.value|capitalize }}</td>
-                        <td>
-                            {% if n.tipo_operacion.value == 'venta' %}
-                                {{ clientes[n.cliente_id].nombre_completo if n.cliente_id else '-' }}
-                            {% elif n.tipo_operacion.value == 'compra' %}
-                                {{ proveedores[n.proveedor_id].nombre_completo if n.proveedor_id else '-' }}
-                            {% else %}
-                                {{ proveedores[n.proveedor_id].nombre_completo if n.proveedor_id else (clientes[n.cliente_id].nombre_completo if n.cliente_id else '-') }}
-                            {% endif %}
-                        </td>
-                        <td>{{ sucursales[n.sucursal_id].nombre if n.sucursal_id else '-' }}</td>
-                        <td>${{ "{:,.2f}".format(n.total_monto or 0) }}</td>
-                        <td class="text-warning fw-semibold">${{ "{:,.2f}".format(item.saldo_pendiente or 0) }}</td>
-                        <td>{{ n.fecha_caducidad_pago.strftime("%Y-%m-%d") if n.fecha_caducidad_pago else '-' }}</td>
-                        <td><span class="badge bg-warning text-dark">{{ item.dias }} d&iacute;as</span></td>
-                        <td class="text-end">
-                            <div class="d-flex gap-2 justify-content-end flex-wrap">
-                                <a href="/web/admin/notas/{{ n.id }}/evidencias" class="btn btn-sm btn-outline-primary">Evidencias</a>
-                                <a href="/web/admin/notas/{{ n.id }}" class="btn btn-sm btn-outline-primary">Ver</a>
-                            </div>
-                        </td>
-                    </tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-{% endif %}
-
-<div class="card hover-lift mt-4" id="tabla-estado">
-    <div class="card-body">
-        <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2 mb-3">
-            <div>
-                <h2 class="h6 text-white mb-1">Clasificaci&oacute;n por estado</h2>
-                <div class="text-muted small">
-                    Mostrando {{ notas_estado|length }} de {{ estado_total }} notas
-                    &middot; Estado: {{ estado_label }}
-                    &middot; Pago: {{ pago_label }}
+    <div class="notes-attention-grid mb-4">
+        <div class="card hover-lift">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
+                    <div>
+                        <h2 class="h6 text-dark mb-1">Revision inmediata</h2>
+                        <p class="text-muted small mb-0">Notas enviadas por trabajadores pendientes de validar.</p>
+                    </div>
+                    <span class="badge bg-warning text-dark">{{ notas_revision|length }}</span>
                 </div>
-            </div>
-            <div class="d-flex flex-column gap-2 align-items-start align-items-lg-end">
-                <div class="note-state-tabs">
-                    <a href="{{ estado_links.TODAS }}" class="btn btn-sm note-state-tab {{ 'active' if estado_current == 'TODAS' else 'btn-outline-secondary' }}">
-                        Todas <span class="badge bg-secondary">{{ estado_total }}</span>
-                    </a>
-                    <a href="{{ estado_links.EN_REVISION }}" class="btn btn-sm note-state-tab {{ 'active' if estado_current == 'EN_REVISION' else 'btn-outline-secondary' }}">
-                        En revisi&oacute;n <span class="badge bg-warning text-dark">{{ estado_counts['EN_REVISION'] }}</span>
-                    </a>
-                    <a href="{{ estado_links.APROBADA }}" class="btn btn-sm note-state-tab {{ 'active' if estado_current == 'APROBADA' else 'btn-outline-secondary' }}">
-                        Aprobadas <span class="badge bg-success">{{ estado_counts['APROBADA'] }}</span>
-                    </a>
-                    <a href="{{ estado_links.BORRADOR }}" class="btn btn-sm note-state-tab {{ 'active' if estado_current == 'BORRADOR' else 'btn-outline-secondary' }}">
-                        Borrador <span class="badge bg-secondary">{{ estado_counts['BORRADOR'] }}</span>
-                    </a>
-                    <a href="{{ estado_links.CANCELADA }}" class="btn btn-sm note-state-tab {{ 'active' if estado_current == 'CANCELADA' else 'btn-outline-secondary' }}">
-                        Canceladas <span class="badge bg-danger">{{ estado_counts['CANCELADA'] }}</span>
-                    </a>
-                </div>
-                <div class="note-state-tabs">
-                    <a href="{{ pago_links.TODAS }}" class="btn btn-sm note-state-tab {{ 'active' if pago_current == 'TODAS' else 'btn-outline-secondary' }}">
-                        Pago: Todas <span class="badge bg-secondary">{{ pago_total }}</span>
-                    </a>
-                    <a href="{{ pago_links.PENDIENTES }}" class="btn btn-sm note-state-tab {{ 'active' if pago_current == 'PENDIENTES' else 'btn-outline-secondary' }}">
-                        Pendientes <span class="badge bg-warning text-dark">{{ pago_counts['PENDIENTES'] }}</span>
-                    </a>
-                    <a href="{{ pago_links.PAGADAS }}" class="btn btn-sm note-state-tab {{ 'active' if pago_current == 'PAGADAS' else 'btn-outline-secondary' }}">
-                        Pagadas <span class="badge bg-success">{{ pago_counts['PAGADAS'] }}</span>
-                    </a>
-                </div>
+                {% if notas_revision %}
+                    <div class="notes-mini-list">
+                        {% for n in notas_revision[:5] %}
+                            {% if n.tipo_operacion.value == 'venta' %}
+                                {% set partner_name = clientes.get(n.cliente_id).nombre_completo if n.cliente_id and clientes.get(n.cliente_id) else '-' %}
+                            {% else %}
+                                {% set partner_name = proveedores.get(n.proveedor_id).nombre_completo if n.proveedor_id and proveedores.get(n.proveedor_id) else '-' %}
+                            {% endif %}
+                            <a class="notes-mini-item" href="/web/admin/notas/{{ n.id }}">
+                                <div>
+                                    <div class="fw-semibold">{{ folio_map.get(n.id, '-') }}</div>
+                                    <div class="text-muted small">{{ partner_name }} &middot; {{ sucursales.get(n.sucursal_id).nombre if n.sucursal_id and sucursales.get(n.sucursal_id) else '-' }}</div>
+                                </div>
+                                <div class="text-end">
+                                    <div class="small fw-semibold">${{ "{:,.2f}".format(n.total_monto or 0) }}</div>
+                                    <div class="text-muted small">{{ n.created_at.strftime("%Y-%m-%d %H:%M") if n.created_at else '-' }}</div>
+                                </div>
+                            </a>
+                        {% endfor %}
+                    </div>
+                    {% if notas_revision|length > 5 %}
+                        <div class="mt-3 text-muted small">Se muestran las primeras 5. Usa la tabla principal para ver todas.</div>
+                    {% endif %}
+                {% else %}
+                    <p class="text-muted small mb-0">No hay notas en revision.</p>
+                {% endif %}
             </div>
         </div>
-        <div class="table-responsive scroll-x">
-            <table class="table table-hover table-sm align-middle mb-0 notes-state-table">
-                <thead>
-                <tr>
-                    <th>Folio</th>
-                    <th>Operaci&oacute;n</th>
-                    <th>Estado</th>
-                    <th>Pago</th>
-                    <th>Partner</th>
-                    <th>Sucursal</th>
-                    <th>Kg neto</th>
-                    <th>Total $</th>
-                    <th>Saldo $</th>
-                    <th>Fecha</th>
-                    <th></th>
-                </tr>
-                </thead>
-                <tbody>
-                {% for n in notas_estado %}
-                    {% set saldo = (n.total_monto or 0) - (n.monto_pagado or 0) %}
-                    {% set saldo_pendiente = saldo if saldo > 0 else 0 %}
+
+        <div class="card hover-lift">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
+                    <div>
+                        <h2 class="h6 text-dark mb-1">Cobranza y vencimientos</h2>
+                        <p class="text-muted small mb-0">Vista rapida de las notas aprobadas con saldo pendiente.</p>
+                    </div>
+                    <span class="badge bg-danger">{{ notas_vencidas|length }}</span>
+                </div>
+                <div class="notes-deadline-grid">
+                    <div class="notes-deadline-card danger">
+                        <span class="notes-deadline-label">Vencidas</span>
+                        <strong>{{ notas_vencidas|length }}</strong>
+                        <div class="notes-deadline-sub">Cobro o pago atrasado</div>
+                    </div>
+                    <div class="notes-deadline-card warning">
+                        <span class="notes-deadline-label">Por vencer</span>
+                        <strong>{{ notas_por_vencer|length }}</strong>
+                        <div class="notes-deadline-sub">Atencion preventiva</div>
+                    </div>
+                    <div class="notes-deadline-card neutral">
+                        <span class="notes-deadline-label">Pagadas</span>
+                        <strong>{{ pago_counts['PAGADAS'] }}</strong>
+                        <div class="notes-deadline-sub">Ya quedaron saldadas</div>
+                    </div>
+                </div>
+                {% if notas_vencidas %}
+                    {% set urgent = notas_vencidas[0].nota %}
+                    {% if urgent.tipo_operacion.value == 'venta' %}
+                        {% set urgent_partner = clientes.get(urgent.cliente_id).nombre_completo if urgent.cliente_id and clientes.get(urgent.cliente_id) else '-' %}
+                    {% else %}
+                        {% set urgent_partner = proveedores.get(urgent.proveedor_id).nombre_completo if urgent.proveedor_id and proveedores.get(urgent.proveedor_id) else '-' %}
+                    {% endif %}
+                    <div class="notes-result-card mt-3">
+                        <div>
+                            <div class="text-uppercase text-muted small mb-1">Caso mas urgente</div>
+                            <div class="fw-semibold">{{ folio_map.get(urgent.id, '-') }} &middot; {{ urgent_partner }}</div>
+                            <div class="text-muted small">
+                                Saldo ${{ "{:,.2f}".format(notas_vencidas[0].saldo_pendiente or 0) }}
+                                &middot; {{ notas_vencidas[0].dias }} dias vencida
+                            </div>
+                        </div>
+                        <a href="/web/admin/notas/{{ urgent.id }}" class="btn btn-outline-danger btn-sm">Atender</a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="card hover-lift" id="tabla-principal">
+        <div class="card-body">
+            <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3 mb-3">
+                <div>
+                    <h2 class="h6 text-dark mb-1">Explorador de notas</h2>
+                    <div class="text-muted small">
+                        Mostrando {{ notas_estado|length }} de {{ estado_total }} notas
+                        &middot; Estado: {{ estado_label }}
+                        &middot; Pago: {{ pago_label }}
+                    </div>
+                </div>
+                <div class="d-flex flex-column gap-2 align-items-start align-items-lg-end">
+                    <div class="note-state-tabs">
+                        <a href="{{ estado_links.TODAS }}" class="btn btn-sm note-state-tab {{ 'active' if estado_current == 'TODAS' else 'btn-outline-secondary' }}">
+                            Todas <span class="badge bg-secondary">{{ estado_total }}</span>
+                        </a>
+                        <a href="{{ estado_links.EN_REVISION }}" class="btn btn-sm note-state-tab {{ 'active' if estado_current == 'EN_REVISION' else 'btn-outline-secondary' }}">
+                            En revision <span class="badge bg-warning text-dark">{{ estado_counts['EN_REVISION'] }}</span>
+                        </a>
+                        <a href="{{ estado_links.APROBADA }}" class="btn btn-sm note-state-tab {{ 'active' if estado_current == 'APROBADA' else 'btn-outline-secondary' }}">
+                            Aprobadas <span class="badge bg-success">{{ estado_counts['APROBADA'] }}</span>
+                        </a>
+                        <a href="{{ estado_links.BORRADOR }}" class="btn btn-sm note-state-tab {{ 'active' if estado_current == 'BORRADOR' else 'btn-outline-secondary' }}">
+                            Borrador <span class="badge bg-secondary">{{ estado_counts['BORRADOR'] }}</span>
+                        </a>
+                        <a href="{{ estado_links.CANCELADA }}" class="btn btn-sm note-state-tab {{ 'active' if estado_current == 'CANCELADA' else 'btn-outline-secondary' }}">
+                            Canceladas <span class="badge bg-danger">{{ estado_counts['CANCELADA'] }}</span>
+                        </a>
+                    </div>
+                    <div class="note-state-tabs">
+                        <a href="{{ pago_links.TODAS }}" class="btn btn-sm note-state-tab {{ 'active' if pago_current == 'TODAS' else 'btn-outline-secondary' }}">
+                            Pago: Todas <span class="badge bg-secondary">{{ pago_total }}</span>
+                        </a>
+                        <a href="{{ pago_links.PENDIENTES }}" class="btn btn-sm note-state-tab {{ 'active' if pago_current == 'PENDIENTES' else 'btn-outline-secondary' }}">
+                            Pendientes <span class="badge bg-warning text-dark">{{ pago_counts['PENDIENTES'] }}</span>
+                        </a>
+                        <a href="{{ pago_links.PAGADAS }}" class="btn btn-sm note-state-tab {{ 'active' if pago_current == 'PAGADAS' else 'btn-outline-secondary' }}">
+                            Pagadas <span class="badge bg-success">{{ pago_counts['PAGADAS'] }}</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-responsive scroll-x">
+                <table class="table table-hover table-sm align-middle mb-0 notes-state-table">
+                    <thead>
                     <tr>
-                        <td>
-                            <div class="fw-semibold">{{ folio_map.get(n.id, '-') }}</div>
-                        </td>
-                        <td>{{ n.tipo_operacion.value|capitalize }}</td>
-                        <td>
-                            {% if n.estado.value == 'BORRADOR' %}
-                                <span class="badge bg-secondary">Borrador</span>
-                            {% elif n.estado.value == 'EN_REVISION' %}
-                                <span class="badge bg-warning text-dark">En revisi&oacute;n</span>
-                            {% elif n.estado.value == 'APROBADA' %}
-                                {% if saldo_pendiente > 0 %}
+                        <th>Folio</th>
+                        <th>Operacion</th>
+                        <th>Partner</th>
+                        <th>Sucursal</th>
+                        <th>Estado</th>
+                        <th>Pago</th>
+                        <th class="text-end">Kg neto</th>
+                        <th class="text-end">Total</th>
+                        <th class="text-end">Saldo</th>
+                        <th>Seguimiento</th>
+                        <th>Fecha</th>
+                        <th></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for n in notas_estado %}
+                        {% set total = n.total_monto or 0 %}
+                        {% set pagado = n.monto_pagado or 0 %}
+                        {% set saldo = total - pagado %}
+                        {% set saldo_pendiente = saldo if saldo > 0 else 0 %}
+                        {% set saldo_favor = pagado - total if pagado > total else 0 %}
+                        {% if n.tipo_operacion.value == 'venta' %}
+                            {% set partner_name = clientes.get(n.cliente_id).nombre_completo if n.cliente_id and clientes.get(n.cliente_id) else '-' %}
+                        {% else %}
+                            {% set partner_name = proveedores.get(n.proveedor_id).nombre_completo if n.proveedor_id and proveedores.get(n.proveedor_id) else '-' %}
+                        {% endif %}
+                        {% set sucursal_name = sucursales.get(n.sucursal_id).nombre if n.sucursal_id and sucursales.get(n.sucursal_id) else '-' %}
+                        <tr>
+                            <td>
+                                <div class="fw-semibold">{{ folio_map.get(n.id, '-') }}</div>
+                                <div class="text-muted small">#{{ n.id }}</div>
+                            </td>
+                            <td>
+                                <span class="notes-op-chip {{ 'buy' if n.tipo_operacion.value == 'compra' else 'sale' }}">
+                                    {{ n.tipo_operacion.value|capitalize }}
+                                </span>
+                            </td>
+                            <td>
+                                <div class="fw-semibold">{{ partner_name }}</div>
+                            </td>
+                            <td>{{ sucursal_name }}</td>
+                            <td>
+                                {% if n.estado.value == 'BORRADOR' %}
+                                    <span class="badge bg-secondary">Borrador</span>
+                                {% elif n.estado.value == 'EN_REVISION' %}
+                                    <span class="badge bg-warning text-dark">En revision</span>
+                                {% elif n.estado.value == 'APROBADA' %}
                                     <span class="badge bg-success">Aprobada</span>
                                 {% else %}
-                                    <span class="badge bg-success">Pagada</span>
+                                    <span class="badge bg-danger">Cancelada</span>
                                 {% endif %}
-                            {% else %}
-                                <span class="badge bg-danger">Cancelada</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if n.estado.value == 'APROBADA' %}
-                                {% if saldo_pendiente > 0 %}
-                                    <span class="badge bg-warning text-dark">Pendiente</span>
+                            </td>
+                            <td>
+                                {% if n.estado.value == 'APROBADA' %}
+                                    {% if saldo_favor > 0 %}
+                                        <span class="badge bg-info text-dark">Saldo a favor</span>
+                                    {% elif saldo_pendiente > 0 %}
+                                        <span class="badge bg-warning text-dark">Pendiente</span>
+                                    {% else %}
+                                        <span class="badge bg-success">Pagada</span>
+                                    {% endif %}
                                 {% else %}
-                                    <span class="badge bg-success">Pagada</span>
+                                    <span class="badge bg-light text-dark border">N/A</span>
                                 {% endif %}
-                            {% else %}
-                                <span class="badge bg-light text-dark border">N/A</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if n.tipo_operacion.value == 'venta' %}
-                                {{ clientes[n.cliente_id].nombre_completo if n.cliente_id else '-' }}
-                            {% elif n.tipo_operacion.value == 'compra' %}
-                                {{ proveedores[n.proveedor_id].nombre_completo if n.proveedor_id else '-' }}
-                            {% else %}
-                                {{ proveedores[n.proveedor_id].nombre_completo if n.proveedor_id else (clientes[n.cliente_id].nombre_completo if n.cliente_id else '-') }}
-                            {% endif %}
-                        </td>
-                        <td>{{ sucursales[n.sucursal_id].nombre if n.sucursal_id else '-' }}</td>
-                        <td>{{ "{:,.2f}".format(n.total_kg_neto or 0) }} kg</td>
-                        <td>${{ "{:,.2f}".format(n.total_monto or 0) }}</td>
-                        <td>
-                            {% if n.estado.value == 'APROBADA' %}
-                                <span class="{{ 'text-danger' if saldo > 0 else 'text-success' }}">
-                                    ${{ "{:,.2f}".format(saldo) }}
-                                </span>
-                            {% else %}
-                                <span class="text-muted">-</span>
-                            {% endif %}
-                        </td>
-                        <td>{{ n.created_at.strftime("%Y-%m-%d %H:%M") if n.created_at else '-' }}</td>
-                        <td class="text-end">
-                            <div class="d-flex gap-2 justify-content-end notes-state-actions">
-                                <a href="/web/admin/notas/{{ n.id }}/evidencias" class="btn btn-sm btn-outline-primary">Evidencias</a>
-                                <a href="/web/admin/notas/{{ n.id }}" class="btn btn-sm btn-outline-primary">Ver</a>
-                            </div>
-                        </td>
-                    </tr>
-                {% endfor %}
-                </tbody>
-            </table>
+                            </td>
+                            <td class="text-end">{{ "{:,.2f}".format(n.total_kg_neto or 0) }} kg</td>
+                            <td class="text-end fw-semibold">${{ "{:,.2f}".format(total) }}</td>
+                            <td class="text-end">
+                                {% if n.estado.value == 'APROBADA' %}
+                                    {% if saldo_favor > 0 %}
+                                        <div class="text-success fw-semibold">${{ "{:,.2f}".format(saldo_favor) }}</div>
+                                        <div class="text-muted small">A favor</div>
+                                    {% else %}
+                                        <div class="{{ 'text-danger' if saldo_pendiente > 0 else 'text-success' }} fw-semibold">
+                                            ${{ "{:,.2f}".format(saldo_pendiente) }}
+                                        </div>
+                                        <div class="text-muted small">{{ 'Por saldar' if saldo_pendiente > 0 else 'En cero' }}</div>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if n.estado.value == 'APROBADA' and n.fecha_caducidad_pago and saldo_pendiente > 0 %}
+                                    <div class="fw-semibold">{{ n.fecha_caducidad_pago.strftime("%Y-%m-%d") }}</div>
+                                    {% if n.fecha_caducidad_pago < hoy %}
+                                        <span class="badge bg-danger">{{ (hoy - n.fecha_caducidad_pago).days }} dias vencida</span>
+                                    {% elif n.fecha_caducidad_pago <= limite_alerta %}
+                                        <span class="badge bg-warning text-dark">{{ (n.fecha_caducidad_pago - hoy).days }} dias restantes</span>
+                                    {% else %}
+                                        <span class="text-muted small">En plazo</span>
+                                    {% endif %}
+                                {% elif n.estado.value == 'EN_REVISION' %}
+                                    <span class="text-muted small">Pendiente de validar</span>
+                                {% elif n.estado.value == 'CANCELADA' %}
+                                    <span class="text-muted small">Devolucion registrada</span>
+                                {% else %}
+                                    <span class="text-muted small">Sin seguimiento</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ n.created_at.strftime("%Y-%m-%d %H:%M") if n.created_at else '-' }}</td>
+                            <td class="text-end">
+                                <div class="d-flex gap-2 justify-content-end notes-state-actions">
+                                    <a href="/web/admin/notas/{{ n.id }}/evidencias" class="btn btn-sm btn-outline-primary">Evidencias</a>
+                                    <a href="/web/admin/notas/{{ n.id }}" class="btn btn-sm btn-primary">{{ 'Revisar' if n.estado.value == 'EN_REVISION' else 'Ver' }}</a>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if notas_estado|length == 0 %}
+                <div class="notes-empty-state">
+                    <h3 class="h6 text-dark mb-1">No hay notas para este filtro</h3>
+                    <p class="text-muted small mb-0">Prueba cambiando el estado, el filtro de pago o buscando otro folio.</p>
+                </div>
+            {% endif %}
         </div>
-        {% if notas_estado|length == 0 %}
-            <p class="text-muted small mt-3 mb-0">No hay notas en este estado.</p>
-        {% endif %}
     </div>
 </div>
 {% endblock %}
-

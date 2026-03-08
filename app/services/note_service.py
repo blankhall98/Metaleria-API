@@ -981,7 +981,7 @@ def undo_payment(
 
     stamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
     comentario_prev = (pago.comentario or "").strip()
-    tag = f"DESHECHO {stamp}"
+    tag = f"DESHECHO {stamp} | monto original {monto_revertir:.2f}"
     if comentario_prev:
         pago.comentario = f"{comentario_prev} | {tag}"
     else:
@@ -1374,15 +1374,18 @@ def cancel_approved_note(
     )
 
     for pago in nota.pagos or []:
+        monto_pago = Decimal(str(pago.monto or 0))
+        if monto_pago <= Decimal("0"):
+            continue
         _registrar_movimiento_contable(
             db,
             nota=nota,
             usuario_id=admin_id,
             comentario=f"Reverso pago nota #{nota.id}",
             metodo_pago=pago.metodo_pago or nota.metodo_pago,
-            cuenta_label=pago.cuenta_financiera,
+            cuenta_label=pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or None),
             cuenta_id=pago.cuenta_id,
-            monto=Decimal(str(pago.monto or 0)) * Decimal("-1"),
+            monto=monto_pago * Decimal("-1"),
             tipo="reverso_pago",
         )
         if pago.cuenta_scrap360_id:
@@ -1396,7 +1399,7 @@ def cancel_approved_note(
                     pago_id=pago.id,
                     usuario_id=admin_id,
                     tipo=tipo_mov,
-                    monto=Decimal(str(pago.monto or 0)),
+                    monto=monto_pago,
                     comentario=f"Reverso pago nota #{nota.id}",
                 )
 
