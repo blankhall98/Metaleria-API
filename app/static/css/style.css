@@ -1369,6 +1369,52 @@ body.modal-open {
 .notes-state-actions {
     flex-wrap: nowrap;
 }
+.partner-role-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.28rem 0.72rem;
+    border-radius: 999px;
+    border: 1px solid rgba(29, 78, 216, 0.18);
+    background: rgba(29, 78, 216, 0.08);
+    color: var(--blue);
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+.partner-role-badge.dual {
+    border-color: rgba(215, 161, 59, 0.24);
+    background: rgba(215, 161, 59, 0.14);
+    color: #9a6700;
+}
+.partner-unified-banner {
+    background:
+        radial-gradient(circle at top right, rgba(215, 161, 59, 0.14), transparent 38%),
+        radial-gradient(circle at bottom left, rgba(29, 78, 216, 0.1), transparent 44%),
+        linear-gradient(135deg, #ffffff, #f8fafc);
+}
+.partner-balance-hero {
+    min-width: 260px;
+    padding: 1rem 1.15rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    background: rgba(255, 255, 255, 0.88);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+.partner-balance-label {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 0.35rem;
+}
+.partner-balance-amount {
+    font-size: 1.9rem;
+    line-height: 1.05;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+}
 .note-comment-box {
     background: #f8fafc;
     min-height: 80px;

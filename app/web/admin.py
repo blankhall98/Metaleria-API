@@ -1747,6 +1747,8 @@ def _build_partner_record_context(
     unified_ledger_final = Decimal("0")
     unified_ledger_label = None
     unified_ledger_help = None
+    record_scope_label = None
+    payments_scope_label = None
     if partner_type == "proveedor":
         tipo_operacion = TipoOperacion.compra
         partner_label = "Proveedor"
@@ -1773,6 +1775,8 @@ def _build_partner_record_context(
         ledger_saldo_help = "Saldo positivo indica pendiente por cobrar. Saldo negativo indica saldo a favor del cliente."
         ajuste_favor_label = "Saldo a favor del cliente (la empresa debe pagar)"
         ajuste_contra_label = "Saldo en contra del cliente (el cliente debe pagar)"
+    record_scope_label = tipo_operacion_label
+    payments_scope_label = tipo_operacion_label
 
     if not partner_is_internal:
         if partner_type == "proveedor":
@@ -1840,8 +1844,6 @@ def _build_partner_record_context(
     if allowed_suc_ids:
         notas_query = notas_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
     notas = notas_query.order_by(Nota.created_at.desc()).all()
-    notas_filtradas, folio_map = _filter_notes_by_query(notas, q)
-    rows = _build_partner_record_rows(notas_filtradas, folio_map, partner_type=partner_type)
     ajustes_delta = _get_partner_adjustments_total(
         db,
         partner_type=partner_type,
@@ -1859,24 +1861,49 @@ def _build_partner_record_context(
         allowed_suc_ids=allowed_suc_ids,
     )
     ledger_final = ledger_rows[-1]["saldo"] if ledger_rows else Decimal("0")
-    if unified_summary:
+
+    record_notes = notas
+    record_partner_type = partner_type
+    if unified_summary and linked_partner:
         summary = unified_summary
         ledger_rows = unified_ledger_rows or []
         ledger_final = unified_ledger_final
         ledger_saldo_label = unified_ledger_label or ledger_saldo_label
         ledger_saldo_help = unified_ledger_help or ledger_saldo_help
-
-    pagos_query = (
-        db.query(NotaPago)
-        .join(Nota, NotaPago.nota_id == Nota.id)
-        .filter(
-            (Nota.proveedor_id if partner_type == "proveedor" else Nota.cliente_id) == partner.id,
-            Nota.tipo_operacion == tipo_operacion,
+        record_notes = sorted(
+            compras + ventas,
+            key=lambda nota: nota.created_at or datetime.min,
+            reverse=True,
         )
-    )
-    if allowed_suc_ids:
-        pagos_query = pagos_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
-    pagos = pagos_query.order_by(NotaPago.created_at.desc()).all()
+        record_partner_type = None
+        record_scope_label = "Compras y ventas unificadas"
+        payments_scope_label = "compras y ventas unificadas"
+        note_ids = [nota.id for nota in record_notes]
+        if note_ids:
+            pagos = (
+                db.query(NotaPago)
+                .join(Nota, NotaPago.nota_id == Nota.id)
+                .filter(Nota.id.in_(note_ids))
+                .order_by(NotaPago.created_at.desc())
+                .all()
+            )
+        else:
+            pagos = []
+    else:
+        pagos_query = (
+            db.query(NotaPago)
+            .join(Nota, NotaPago.nota_id == Nota.id)
+            .filter(
+                (Nota.proveedor_id if partner_type == "proveedor" else Nota.cliente_id) == partner.id,
+                Nota.tipo_operacion == tipo_operacion,
+            )
+        )
+        if allowed_suc_ids:
+            pagos_query = pagos_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
+        pagos = pagos_query.order_by(NotaPago.created_at.desc()).all()
+
+    notas_filtradas, folio_map = _filter_notes_by_query(record_notes, q)
+    rows = _build_partner_record_rows(notas_filtradas, folio_map, partner_type=record_partner_type)
 
     pago_inicial_total = Decimal("0")
     for pago in pagos:
@@ -1897,8 +1924,10 @@ def _build_partner_record_context(
         "partner_base": partner_base,
         "tipo_operacion_label": tipo_operacion_label,
         "record_rows": rows,
-        "record_total_count": len(notas),
+        "record_total_count": len(record_notes),
         "record_filtered_count": len(notas_filtradas),
+        "record_scope_label": record_scope_label,
+        "payments_scope_label": payments_scope_label,
         "summary": summary,
         "ledger_rows": ledger_rows,
         "ledger_final": ledger_final,

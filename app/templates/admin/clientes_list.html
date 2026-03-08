@@ -72,7 +72,20 @@
                     {% set c = row.cliente %}
                     <tr>
                         <td>{{ c.id }}</td>
-                        <td>{{ c.nombre_completo }}</td>
+                        <td>
+                            <div class="fw-semibold">{{ c.nombre_completo }}</div>
+                            <div class="d-flex flex-wrap gap-1 mt-1">
+                                <span class="partner-role-badge">Cliente</span>
+                                {% if row.linked_proveedor %}
+                                    <span class="partner-role-badge dual">Tambien proveedor</span>
+                                {% endif %}
+                            </div>
+                            {% if row.linked_proveedor %}
+                                <div class="text-muted small mt-1">
+                                    Vinculado con proveedor ID {{ row.linked_proveedor.id }}
+                                </div>
+                            {% endif %}
+                        </td>
                         <td>{{ c.sucursal.nombre if c.sucursal else "-" }}</td>
                         <td>{{ c.telefono or "-" }}</td>
                         <td>{{ c.correo_electronico or "-" }}</td>
@@ -91,6 +104,9 @@
                                 <span class="text-danger fw-semibold">${{ "{:,.2f}".format(row.saldo_neto) }}</span>
                             {% else %}
                                 <span class="text-success fw-semibold">-${{ "{:,.2f}".format(-row.saldo_neto) }}</span>
+                            {% endif %}
+                            {% if row.linked_proveedor %}
+                                <div class="text-muted small mt-1">Saldo neto unificado</div>
                             {% endif %}
                         </td>
                         <td>

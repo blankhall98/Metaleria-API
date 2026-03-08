@@ -8,7 +8,13 @@
         <div>
             <p class="text-uppercase text-muted small mb-1">Relaciones</p>
             <h1 class="h4 text-dark mb-0">Record {{ partner_label }}: {{ partner.nombre_completo }}</h1>
-            <div class="text-muted small">ID {{ partner.id }} &middot; {{ tipo_operacion_label }}</div>
+            <div class="d-flex flex-wrap gap-2 mt-2">
+                <span class="partner-role-badge">{{ partner_label }}</span>
+                {% if unified_enabled and linked_partner %}
+                    <span class="partner-role-badge dual">Tambien {{ linked_partner_label|lower }}</span>
+                {% endif %}
+            </div>
+            <div class="text-muted small">ID {{ partner.id }} &middot; {{ record_scope_label if unified_enabled else tipo_operacion_label }}</div>
             {% if unified_enabled and linked_partner %}
                 <div class="text-muted small">
                     Unificado con {{ linked_partner_label }}: {{ linked_partner.nombre_completo }} (ID {{ linked_partner.id }})
@@ -47,6 +53,40 @@
     {% if link_error %}
         <div class="alert alert-danger py-2 small mb-3">
             {{ link_error }}
+        </div>
+    {% endif %}
+
+    {% if unified_enabled and linked_partner %}
+        <div class="card hover-lift mb-3 partner-unified-banner">
+            <div class="card-body">
+                <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center">
+                    <div>
+                        <div class="d-flex flex-wrap gap-2 mb-2">
+                            <span class="partner-role-badge">{{ partner_label }}</span>
+                            <span class="partner-role-badge dual">{{ linked_partner_label }}</span>
+                        </div>
+                        <h2 class="h5 mb-1">Saldo neto unificado</h2>
+                        <div class="text-muted small">
+                            Esta vista integra compras, ventas y ajustes del mismo partner en sus dos roles.
+                        </div>
+                        <div class="text-muted small mt-1">
+                            Partner vinculado: {{ linked_partner.nombre_completo }} (ID {{ linked_partner.id }})
+                        </div>
+                    </div>
+                    <div class="partner-balance-hero">
+                        {% if summary.saldo_neto > 0 %}
+                            <div class="partner-balance-label">La metaleria le debe</div>
+                            <div class="partner-balance-amount text-danger">${{ "{:,.2f}".format(summary.saldo_neto) }}</div>
+                        {% elif summary.saldo_neto < 0 %}
+                            <div class="partner-balance-label">Debe a la metaleria</div>
+                            <div class="partner-balance-amount text-success">${{ "{:,.2f}".format(-summary.saldo_neto) }}</div>
+                        {% else %}
+                            <div class="partner-balance-label">Saldo equilibrado</div>
+                            <div class="partner-balance-amount">$0.00</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
         </div>
     {% endif %}
 
@@ -93,6 +133,25 @@
                             <span class="badge {{ 'bg-success' if partner.activo else 'bg-secondary' }}">
                                 {{ 'Activo' if partner.activo else 'Inactivo' }}
                             </span>
+                        </div>
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">Roles</span>
+                            <div class="d-flex flex-wrap gap-1">
+                                <span class="partner-role-badge">{{ partner_label }}</span>
+                                {% if unified_enabled and linked_partner %}
+                                    <span class="partner-role-badge dual">{{ linked_partner_label }}</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="note-meta-item">
+                            <span class="note-meta-label">Relacion vinculada</span>
+                            <strong>
+                                {% if linked_partner %}
+                                    {{ linked_partner.nombre_completo }} (ID {{ linked_partner.id }})
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </strong>
                         </div>
                     </div>
                 </div>
@@ -254,7 +313,7 @@
         <div class="card-body">
             <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2">
                 <div>
-                    <h2 class="h6 text-dark mb-1">Estado de cuenta</h2>
+                    <h2 class="h6 text-dark mb-1">{{ 'Estado de cuenta unificado' if unified_enabled else 'Estado de cuenta' }}</h2>
                     <div class="text-muted small">Movimientos cronologicos con saldo acumulado.</div>
                 </div>
                 <div class="text-muted small">
@@ -322,9 +381,12 @@
         <div class="card-body">
             <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
                 <div>
-                    <h2 class="h6 text-dark mb-1">Historial de notas</h2>
+                    <h2 class="h6 text-dark mb-1">{{ 'Historial unificado de notas' if unified_enabled else 'Historial de notas' }}</h2>
                     <div class="text-muted small">
                         Mostrando {{ record_filtered_count }} de {{ record_total_count }} notas registradas.
+                        {% if record_scope_label %}
+                            &middot; {{ record_scope_label }}
+                        {% endif %}
                     </div>
                 </div>
                 <form method="get" class="d-flex flex-wrap gap-2 align-items-end">
@@ -352,6 +414,9 @@
                     <thead>
                     <tr>
                         <th>Folio</th>
+                        {% if unified_enabled %}
+                            <th>Operacion</th>
+                        {% endif %}
                         <th>Estado</th>
                         <th>Fecha</th>
                         <th>Sucursal</th>
@@ -371,6 +436,15 @@
                                 <div class="fw-semibold">{{ row.folio }}</div>
                                 <div class="text-muted small">#{{ nota.id }}</div>
                             </td>
+                            {% if unified_enabled %}
+                                <td>
+                                    {% if nota.tipo_operacion.value == 'compra' %}
+                                        <span class="partner-role-badge">Compra al proveedor</span>
+                                    {% else %}
+                                        <span class="partner-role-badge dual">Venta como cliente</span>
+                                    {% endif %}
+                                </td>
+                            {% endif %}
                             <td>
                                 {% if nota.estado.value == 'BORRADOR' %}
                                     <span class="badge bg-secondary">Borrador</span>
@@ -426,8 +500,8 @@
         <div class="card-body">
             <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2">
                 <div>
-                    <h2 class="h6 text-dark mb-1">Historial de pagos</h2>
-                    <div class="text-muted small">Pagos registrados en notas de {{ tipo_operacion_label|lower }}.</div>
+                    <h2 class="h6 text-dark mb-1">{{ 'Historial unificado de pagos' if unified_enabled else 'Historial de pagos' }}</h2>
+                    <div class="text-muted small">Pagos registrados en notas de {{ payments_scope_label|lower }}.</div>
                 </div>
             </div>
             <div class="table-responsive mt-3">
@@ -436,6 +510,9 @@
                     <tr>
                         <th>Fecha</th>
                         <th>Nota</th>
+                        {% if unified_enabled %}
+                            <th>Operacion</th>
+                        {% endif %}
                         <th class="text-end">Monto</th>
                         <th>Metodo</th>
                         <th>Cuenta</th>
@@ -469,6 +546,17 @@
                                     <span class="text-muted">-</span>
                                 {% endif %}
                             </td>
+                            {% if unified_enabled %}
+                                <td>
+                                    {% if nota and nota.tipo_operacion.value == 'compra' %}
+                                        <span class="partner-role-badge">Compra</span>
+                                    {% elif nota and nota.tipo_operacion.value == 'venta' %}
+                                        <span class="partner-role-badge dual">Venta</span>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                            {% endif %}
                             <td class="text-end">${{ "{:,.2f}".format(pago.monto or 0) }}</td>
                             <td>{{ pago.metodo_pago or '-' }}</td>
                             <td>{{ pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or '-') }}</td>
