@@ -105,21 +105,6 @@
                 </div>
             </div>
 
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label">Proveedor vinculado (opcional)</label>
-                    <select class="form-select" name="linked_proveedor_id">
-                        <option value="">Sin vinculo</option>
-                        {% for p in proveedores %}
-                            <option value="{{ p.id }}" {% if linked_proveedor_id == p.id %}selected{% endif %}>
-                                {{ p.nombre_completo }} (ID {{ p.id }}) - {{ p.sucursal.nombre if p.sucursal else "Sin sucursal" }}
-                            </option>
-                        {% endfor %}
-                    </select>
-                    <div class="form-text">Vincula este cliente con un proveedor para unificar su saldo.</div>
-                </div>
-            </div>
-
             {% if cliente %}
                 <div class="partner-match-card {% if counterpart_suggestion and counterpart_suggestion.is_linked %}is-linked{% endif %}">
                     <input type="hidden" name="next_url" value="/web/admin/clientes/{{ cliente.id }}/editar">

@@ -1953,12 +1953,12 @@ def _build_partner_record_context(
 
     if not partner_is_internal:
         if partner_type == "proveedor":
-            linked_partner = _get_linked_cliente(db, partner)
+            linked_partner = _get_formally_linked_cliente(db, partner)
             if linked_partner and _is_internal_partner_name(db, linked_partner.nombre_completo):
                 linked_partner = None
             linked_partner_label = "Cliente"
         else:
-            linked_partner = _get_linked_proveedor(db, partner)
+            linked_partner = _get_formally_linked_proveedor(db, partner)
             if linked_partner and _is_internal_partner_name(db, linked_partner.nombre_completo):
                 linked_partner = None
             linked_partner_label = "Proveedor"
@@ -3271,7 +3271,7 @@ async def proveedores_list(
     for proveedor in proveedores:
         linked_cliente = None
         if not _is_internal_partner_name(db, proveedor.nombre_completo):
-            linked_cliente = _get_linked_cliente(db, proveedor)
+            linked_cliente = _get_formally_linked_cliente(db, proveedor)
             if linked_cliente and _is_internal_partner_name(db, linked_cliente.nombre_completo):
                 linked_cliente = None
 
@@ -3660,7 +3660,8 @@ async def proveedor_edit_post(
     telefono = telefono.strip()
     correo_electronico = correo_electronico.strip()
     placas_list = _parse_placas(placas)
-    linked_id = _parse_optional_int(linked_cliente_id)
+    existing_linked_cliente = _get_formally_linked_cliente(db, proveedor)
+    linked_id = existing_linked_cliente.id if existing_linked_cliente else _parse_optional_int(linked_cliente_id)
     linked_cliente = db.get(Cliente, linked_id) if linked_id else None
 
     if sucursal_error:
@@ -3784,8 +3785,6 @@ async def proveedor_edit_post(
                 sucursal_id_selected=sucursal_id_selected,
                 status_code=400,
             )
-    else:
-        _unlink_cliente_proveedor(db, proveedor=proveedor)
     db.commit()
 
     return RedirectResponse(url="/web/admin/proveedores", status_code=303)
@@ -4021,7 +4020,7 @@ async def clientes_list(
     for cliente in clientes:
         linked_proveedor = None
         if not _is_internal_partner_name(db, cliente.nombre_completo):
-            linked_proveedor = _get_linked_proveedor(db, cliente)
+            linked_proveedor = _get_formally_linked_proveedor(db, cliente)
             if linked_proveedor and _is_internal_partner_name(db, linked_proveedor.nombre_completo):
                 linked_proveedor = None
 
@@ -4411,7 +4410,8 @@ async def cliente_edit_post(
     telefono = telefono.strip()
     correo_electronico = correo_electronico.strip()
     placas_list = _parse_placas(placas)
-    linked_id = _parse_optional_int(linked_proveedor_id)
+    existing_linked_proveedor = _get_formally_linked_proveedor(db, cliente)
+    linked_id = existing_linked_proveedor.id if existing_linked_proveedor else _parse_optional_int(linked_proveedor_id)
     linked_proveedor = db.get(Proveedor, linked_id) if linked_id else None
 
     if sucursal_error:
@@ -4535,8 +4535,6 @@ async def cliente_edit_post(
                 sucursal_id_selected=sucursal_id_selected,
                 status_code=400,
             )
-    else:
-        _unlink_cliente_proveedor(db, cliente=cliente)
     db.commit()
 
     return RedirectResponse(url="/web/admin/clientes", status_code=303)
@@ -9463,7 +9461,7 @@ async def contabilidad_list(
                     unified_enabled = False
                     linked_partner = None
                     if not _is_internal_partner_name(db, partner.nombre_completo):
-                        linked_partner = _get_linked_proveedor(db, partner)
+                        linked_partner = _get_formally_linked_proveedor(db, partner)
                         if linked_partner and _is_internal_partner_name(db, linked_partner.nombre_completo):
                             linked_partner = None
                     if linked_partner:
@@ -9523,7 +9521,7 @@ async def contabilidad_list(
                 else:
                     linked_cliente = None
                     if not _is_internal_partner_name(db, partner.nombre_completo):
-                        linked_cliente = _get_linked_cliente(db, partner)
+                        linked_cliente = _get_formally_linked_cliente(db, partner)
                         if linked_cliente and _is_internal_partner_name(db, linked_cliente.nombre_completo):
                             linked_cliente = None
                     notas_p = (
