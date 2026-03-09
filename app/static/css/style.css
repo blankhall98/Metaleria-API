@@ -171,9 +171,81 @@ a:hover {
 }
 .table-responsive.scroll-x {
     overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
 }
 .table-responsive.scroll-x table {
     min-width: 980px;
+}
+.table-scroll-shell {
+    position: relative;
+}
+.table-scroll-shell::before,
+.table-scroll-shell::after {
+    content: "";
+    position: absolute;
+    top: 1px;
+    bottom: 1.9rem;
+    width: 1.5rem;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.18s ease;
+    z-index: 2;
+}
+.table-scroll-shell::before {
+    left: 1px;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0));
+    border-radius: 0.9rem 0 0 0.9rem;
+}
+.table-scroll-shell::after {
+    right: 1px;
+    background: linear-gradient(270deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0));
+    border-radius: 0 0.9rem 0.9rem 0;
+}
+.table-scroll-shell.can-scroll-left::before {
+    opacity: 1;
+}
+.table-scroll-shell.can-scroll-right::after {
+    opacity: 1;
+}
+.table-scroll-shell .table-responsive {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(59, 130, 246, 0.45) rgba(148, 163, 184, 0.12);
+}
+.table-scroll-shell .table-responsive::-webkit-scrollbar {
+    height: 10px;
+}
+.table-scroll-shell .table-responsive::-webkit-scrollbar-track {
+    background: rgba(148, 163, 184, 0.12);
+    border-radius: 999px;
+}
+.table-scroll-shell .table-responsive::-webkit-scrollbar-thumb {
+    background: linear-gradient(90deg, rgba(37, 99, 235, 0.55), rgba(59, 130, 246, 0.7));
+    border-radius: 999px;
+    border: 2px solid rgba(255, 255, 255, 0.75);
+}
+.table-scroll-shell .table-responsive::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(90deg, rgba(29, 78, 216, 0.72), rgba(59, 130, 246, 0.82));
+}
+.table-scroll-hint {
+    display: none;
+    align-items: center;
+    justify-content: flex-end;
+    min-height: 1.65rem;
+    padding: 0.35rem 0.2rem 0;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    letter-spacing: 0.02em;
+}
+.table-scroll-hint::before {
+    content: "\2194";
+    margin-right: 0.35rem;
+    font-size: 0.8rem;
+}
+.table-scroll-shell.is-scrollable .table-scroll-hint {
+    display: flex;
 }
 
 .btn-primary {
@@ -1128,6 +1200,24 @@ body.modal-open {
     border-radius: 0.75rem;
     overflow: hidden;
     background: #ffffff;
+}
+.note-table-scroll {
+    scrollbar-gutter: stable both-edges;
+}
+.notes-state-table {
+    min-width: 1360px;
+}
+.note-materials-table {
+    min-width: 980px;
+}
+.note-return-table {
+    min-width: 980px;
+}
+.note-payments-table {
+    min-width: 1120px;
+}
+.note-aux-table {
+    min-width: 860px;
 }
 .note-report-card .form-label {
     font-size: 0.72rem;

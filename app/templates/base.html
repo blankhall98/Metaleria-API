@@ -147,6 +147,29 @@
             overlay.classList.remove('open');
         }
     }
+
+    function updateTableScrollCues() {
+        document.querySelectorAll('.table-scroll-shell').forEach((shell) => {
+            const area = shell.querySelector('.table-responsive');
+            if (!area) return;
+
+            const hasOverflow = area.scrollWidth - area.clientWidth > 4;
+            const canScrollLeft = area.scrollLeft > 4;
+            const canScrollRight = area.scrollLeft + area.clientWidth < area.scrollWidth - 4;
+
+            shell.classList.toggle('is-scrollable', hasOverflow);
+            shell.classList.toggle('can-scroll-left', hasOverflow && canScrollLeft);
+            shell.classList.toggle('can-scroll-right', hasOverflow && canScrollRight);
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.table-scroll-shell .table-responsive').forEach((area) => {
+            area.addEventListener('scroll', updateTableScrollCues, { passive: true });
+        });
+        updateTableScrollCues();
+        window.addEventListener('resize', updateTableScrollCues);
+    });
 </script>
 </body>
 </html>

@@ -238,8 +238,9 @@
                 </div>
             </div>
 
-            <div class="table-responsive scroll-x">
-                <table class="table table-hover table-sm align-middle mb-0 notes-state-table">
+            <div class="table-scroll-shell">
+                <div class="table-responsive scroll-x note-table-scroll">
+                    <table class="table table-hover table-sm align-middle mb-0 notes-state-table">
                     <thead>
                     <tr>
                         <th>Folio</th>
@@ -352,7 +353,9 @@
                         </tr>
                     {% endfor %}
                     </tbody>
-                </table>
+                    </table>
+                </div>
+                <div class="table-scroll-hint">Desliza lateralmente para ver todas las columnas.</div>
             </div>
 
             {% if notas_estado|length == 0 %}
