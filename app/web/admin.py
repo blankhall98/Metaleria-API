@@ -43,6 +43,7 @@ from app.models import (
     Subpesaje,
     NotaPago,
     ConversionMaterial,
+    ConversionMaterialReversion,
     Cuenta,
     CuentaScrap360,
     CuentaScrap360Movimiento,
@@ -56,6 +57,10 @@ from app.models import (
     MovimientoContable,
     Material,
     InventarioMovimiento,
+    NotaDevolucionParcial,
+    NotaDevolucionParcialLinea,
+    NotaDevolucionTotal,
+    InventarioAjusteManual,
 )
 
 from app.services.pricing_service import create_price_version
@@ -114,8 +119,12 @@ def _movimiento_label(tipo_raw: str, tipo_op: str | None) -> str:
         return f"PAGO {tipo_op.upper()}" if tipo_op else "PAGO"
     if tipo_raw == "reverso_pago":
         return f"REVERSO PAGO {tipo_op.upper()}" if tipo_op else "REVERSO PAGO"
+    if tipo_raw == "restauracion_pago":
+        return f"RESTAURACION PAGO {tipo_op.upper()}" if tipo_op else "RESTAURACION PAGO"
     if tipo_raw == "reverso":
         return f"REVERSO {tipo_op.upper()}" if tipo_op else "REVERSO"
+    if tipo_raw == "restauracion":
+        return f"RESTAURACION {tipo_op.upper()}" if tipo_op else "RESTAURACION"
     if tipo_raw in ("compra", "venta"):
         return tipo_raw.upper()
     if tipo_raw == "ajuste":
@@ -138,11 +147,21 @@ def _movimiento_naturaleza(tipo_raw: str, tipo_op: str | None) -> str:
             return "INGRESO"
         if tipo_op == "venta":
             return "EGRESO"
+    if tipo_raw == "restauracion":
+        if tipo_op == "compra":
+            return "EGRESO"
+        if tipo_op == "venta":
+            return "INGRESO"
     if tipo_raw == "reverso_pago":
         if tipo_op == "compra":
             return "INGRESO"
         if tipo_op == "venta":
             return "EGRESO"
+    if tipo_raw == "restauracion_pago":
+        if tipo_op == "compra":
+            return "EGRESO"
+        if tipo_op == "venta":
+            return "INGRESO"
     if tipo_raw == "ajuste":
         return "AJUSTE"
     return "-"
@@ -167,11 +186,23 @@ def _movimiento_monto_firmado(mov: MovimientoContable, tipo_raw: str, tipo_op: s
         if tipo_op == "venta":
             return -abs_val
         return base
+    if tipo_raw == "restauracion":
+        if tipo_op == "compra":
+            return -abs_val
+        if tipo_op == "venta":
+            return abs_val
+        return base
     if tipo_raw == "reverso_pago":
         if tipo_op == "compra":
             return abs_val
         if tipo_op == "venta":
             return -abs_val
+        return base
+    if tipo_raw == "restauracion_pago":
+        if tipo_op == "compra":
+            return -abs_val
+        if tipo_op == "venta":
+            return abs_val
         return base
     return base
 
@@ -269,6 +300,8 @@ def _movimiento_display_partner(
         view["naturaleza"] = "ABONO"
     elif tipo_raw == "reverso_pago":
         view["naturaleza"] = "REVERSO"
+    elif tipo_raw == "restauracion_pago":
+        view["naturaleza"] = "RESTAURACION"
     return view
 
 
@@ -392,7 +425,7 @@ def _build_partner_ledger(
             db.query(MovimientoContable)
             .filter(
                 MovimientoContable.nota_id.in_(note_ids),
-                MovimientoContable.tipo.in_(["reverso", "reverso_pago"]),
+                MovimientoContable.tipo.in_(["reverso", "reverso_pago", "restauracion", "restauracion_pago"]),
             )
             .all()
         )
@@ -482,6 +515,42 @@ def _build_partner_ledger(
                     "fecha": mov.created_at,
                     "orden": 3,
                     "tipo": "Reverso pago",
+                    "nota_id": mov.nota_id,
+                    "folio": folio_map.get(mov.nota_id) or f"#{mov.nota_id}",
+                    "cargo": cargo,
+                    "abono": abono,
+                    "metodo": mov.metodo_pago or "-",
+                    "cuenta": mov.cuenta.display_label if mov.cuenta else (mov.cuenta_financiera or "-"),
+                    "comentario": mov.comentario or "",
+                }
+            )
+        elif mov.tipo == "restauracion":
+            delta = monto * sign
+            cargo = delta if delta >= 0 else Decimal("0")
+            abono = Decimal("0") if delta >= 0 else -delta
+            events.append(
+                {
+                    "fecha": mov.created_at,
+                    "orden": 2,
+                    "tipo": "Restauracion devolucion",
+                    "nota_id": mov.nota_id,
+                    "folio": folio_map.get(mov.nota_id) or f"#{mov.nota_id}",
+                    "cargo": cargo,
+                    "abono": abono,
+                    "metodo": mov.metodo_pago or "-",
+                    "cuenta": mov.cuenta.display_label if mov.cuenta else (mov.cuenta_financiera or "-"),
+                    "comentario": mov.comentario or "",
+                }
+            )
+        elif mov.tipo == "restauracion_pago":
+            delta = monto * (-sign)
+            cargo = delta if delta >= 0 else Decimal("0")
+            abono = Decimal("0") if delta >= 0 else -delta
+            events.append(
+                {
+                    "fecha": mov.created_at,
+                    "orden": 3,
+                    "tipo": "Restauracion pago",
                     "nota_id": mov.nota_id,
                     "folio": folio_map.get(mov.nota_id) or f"#{mov.nota_id}",
                     "cargo": cargo,
@@ -583,7 +652,7 @@ def _build_unified_partner_ledger(
             db.query(MovimientoContable)
             .filter(
                 MovimientoContable.nota_id.in_(note_ids),
-                MovimientoContable.tipo.in_(["reverso", "reverso_pago"]),
+                MovimientoContable.tipo.in_(["reverso", "reverso_pago", "restauracion", "restauracion_pago"]),
             )
             .all()
         )
@@ -676,6 +745,44 @@ def _build_unified_partner_ledger(
             cargo = delta if delta >= 0 else Decimal("0")
             abono = Decimal("0") if delta >= 0 else -delta
             tipo_label = f"Reverso pago {tipo_base}"
+            events.append(
+                {
+                    "fecha": mov.created_at,
+                    "orden": 3,
+                    "tipo": tipo_label,
+                    "nota_id": mov.nota_id,
+                    "folio": folio_map.get(mov.nota_id) or f"#{mov.nota_id}",
+                    "cargo": cargo,
+                    "abono": abono,
+                    "metodo": mov.metodo_pago or "-",
+                    "cuenta": mov.cuenta.display_label if mov.cuenta else (mov.cuenta_financiera or "-"),
+                    "comentario": mov.comentario or "",
+                }
+            )
+        elif mov.tipo == "restauracion":
+            delta = monto * sign
+            cargo = delta if delta >= 0 else Decimal("0")
+            abono = Decimal("0") if delta >= 0 else -delta
+            tipo_label = f"Restauracion devolucion {tipo_base}"
+            events.append(
+                {
+                    "fecha": mov.created_at,
+                    "orden": 2,
+                    "tipo": tipo_label,
+                    "nota_id": mov.nota_id,
+                    "folio": folio_map.get(mov.nota_id) or f"#{mov.nota_id}",
+                    "cargo": cargo,
+                    "abono": abono,
+                    "metodo": mov.metodo_pago or "-",
+                    "cuenta": mov.cuenta.display_label if mov.cuenta else (mov.cuenta_financiera or "-"),
+                    "comentario": mov.comentario or "",
+                }
+            )
+        elif mov.tipo == "restauracion_pago":
+            delta = monto * (-sign)
+            cargo = delta if delta >= 0 else Decimal("0")
+            abono = Decimal("0") if delta >= 0 else -delta
+            tipo_label = f"Restauracion pago {tipo_base}"
             events.append(
                 {
                     "fecha": mov.created_at,
@@ -5958,7 +6065,7 @@ async def cuenta_detail(
     movimientos_query = db.query(MovimientoContable).filter(MovimientoContable.cuenta_id == cuenta_id)
     if owner_kind in ("proveedor", "cliente"):
         movimientos_query = movimientos_query.filter(
-            MovimientoContable.tipo.in_(["pago", "reverso_pago"])
+            MovimientoContable.tipo.in_(["pago", "reverso_pago", "restauracion_pago"])
         )
     movimientos = (
         movimientos_query
@@ -6011,7 +6118,7 @@ async def cuenta_detail(
         MovimientoContable.created_at >= start_dt,
     )
     if owner_kind in ("proveedor", "cliente"):
-        kpi_query = kpi_query.filter(MovimientoContable.tipo.in_(["pago", "reverso_pago"]))
+        kpi_query = kpi_query.filter(MovimientoContable.tipo.in_(["pago", "reverso_pago", "restauracion_pago"]))
     kpi_movs = kpi_query.order_by(MovimientoContable.created_at.asc()).all()
     for mov in kpi_movs:
         if not mov.created_at:
@@ -7345,6 +7452,8 @@ def _render_nota_detail(
     precios_updated: bool = False,
     edit_updated: bool = False,
     devolucion_parcial_updated: bool = False,
+    devolucion_parcial_reverted: bool = False,
+    devolucion_total_reverted: bool = False,
 ):
     sucursal = db.get(Sucursal, nota.sucursal_id) if nota.sucursal_id else None
     proveedor = db.get(Proveedor, nota.proveedor_id) if nota.proveedor_id else None
@@ -7375,6 +7484,19 @@ def _render_nota_detail(
         .order_by(NotaPago.created_at.desc())
         .all()
     )
+    devoluciones_parciales = (
+        db.query(NotaDevolucionParcial)
+        .filter(NotaDevolucionParcial.nota_id == nota.id)
+        .order_by(NotaDevolucionParcial.created_at.desc(), NotaDevolucionParcial.id.desc())
+        .all()
+    )
+    devoluciones_totales = (
+        db.query(NotaDevolucionTotal)
+        .filter(NotaDevolucionTotal.nota_id == nota.id)
+        .order_by(NotaDevolucionTotal.created_at.desc(), NotaDevolucionTotal.id.desc())
+        .all()
+    )
+    devolucion_total_activa = next((d for d in devoluciones_totales if not d.reverted_at), None)
     pago_inicial_total = Decimal("0")
     for pago in pagos:
         if pago.comentario and pago.comentario.lower().startswith("pago inicial"):
@@ -7535,7 +7657,12 @@ def _render_nota_detail(
         "precios_updated": precios_updated,
         "edit_updated": edit_updated,
         "devolucion_parcial_updated": devolucion_parcial_updated,
+        "devolucion_parcial_reverted": devolucion_parcial_reverted,
+        "devolucion_total_reverted": devolucion_total_reverted,
         "devolucion_check": devolucion_check,
+        "devoluciones_parciales": devoluciones_parciales,
+        "devoluciones_totales": devoluciones_totales,
+        "devolucion_total_activa": devolucion_total_activa,
         "error": error,
         "proveedores": proveedores,
         "clientes": clientes,
@@ -7665,6 +7792,8 @@ async def notas_detail(
     precios_updated = request.query_params.get("precios") == "1"
     edit_updated = request.query_params.get("edit") == "1"
     devolucion_parcial_updated = request.query_params.get("devolucion_parcial") == "1"
+    devolucion_parcial_reverted = request.query_params.get("devolucion_parcial_revertida") == "1"
+    devolucion_total_reverted = request.query_params.get("devolucion_total_revertida") == "1"
     return _render_nota_detail(
         request,
         db,
@@ -7676,6 +7805,8 @@ async def notas_detail(
         precios_updated=precios_updated,
         edit_updated=edit_updated,
         devolucion_parcial_updated=devolucion_parcial_updated,
+        devolucion_parcial_reverted=devolucion_parcial_reverted,
+        devolucion_total_reverted=devolucion_total_reverted,
     )
 
 
@@ -8760,6 +8891,59 @@ async def notas_devolucion_parcial(
     return RedirectResponse(url=f"/web/admin/notas/{nota_id}?devolucion_parcial=1", status_code=303)
 
 
+@router.post("/notas/{nota_id}/devolucion-parcial/{linea_id}/revertir")
+async def notas_revertir_devolucion_parcial(
+    nota_id: int,
+    linea_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    nota = db.get(Nota, nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_nota_access(nota, allowed_suc_ids)
+
+    linea = (
+        db.query(NotaDevolucionParcialLinea)
+        .join(NotaDevolucionParcial, NotaDevolucionParcialLinea.devolucion_id == NotaDevolucionParcial.id)
+        .filter(
+            NotaDevolucionParcialLinea.id == linea_id,
+            NotaDevolucionParcial.nota_id == nota.id,
+        )
+        .first()
+    )
+    if not linea:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="La linea de devolucion parcial no fue encontrada.",
+        )
+
+    try:
+        note_service.reverse_partial_return_line(
+            db,
+            nota,
+            linea,
+            admin_id=current_user.get("id"),
+            comentario=f"Reversion devolucion parcial linea #{linea.id}",
+        )
+    except ValueError as e:
+        db.rollback()
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error=str(e),
+        )
+
+    return RedirectResponse(url=f"/web/admin/notas/{nota_id}?devolucion_parcial_revertida=1", status_code=303)
+
+
 @router.post("/notas/{nota_id}/cancelar")
 async def notas_cancelar(
     nota_id: int,
@@ -8794,7 +8978,59 @@ async def notas_cancelar(
             admin_id=current_user.get("id"),
             comentarios_admin=comentarios_admin,
         )
-    return RedirectResponse(url="/web/admin/notas?cancelled=1", status_code=303)
+    return RedirectResponse(url=f"/web/admin/notas/{nota_id}?cancelled=1", status_code=303)
+
+
+@router.post("/notas/{nota_id}/devolucion-total/{devolucion_id}/revertir")
+async def notas_revertir_devolucion_total(
+    nota_id: int,
+    devolucion_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    nota = db.get(Nota, nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_nota_access(nota, allowed_suc_ids)
+
+    devolucion_total = (
+        db.query(NotaDevolucionTotal)
+        .filter(
+            NotaDevolucionTotal.id == devolucion_id,
+            NotaDevolucionTotal.nota_id == nota.id,
+        )
+        .first()
+    )
+    if not devolucion_total:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="La devolucion total no fue encontrada.",
+        )
+
+    try:
+        note_service.reverse_total_return(
+            db,
+            nota,
+            devolucion_total,
+            admin_id=current_user.get("id"),
+            comentario=f"Reversion devolucion total #{devolucion_total.id}",
+        )
+    except ValueError as e:
+        db.rollback()
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error=str(e),
+        )
+
+    return RedirectResponse(url=f"/web/admin/notas/{nota_id}?devolucion_total_revertida=1", status_code=303)
 
 
 @router.post("/notas/{nota_id}/devolver")
@@ -9004,14 +9240,23 @@ async def inventario_aumentar_post(
     if not comentario:
         comentario = "Aumento manual" if operacion == "aumentar" else "Disminucion manual"
 
-    note_service.ajustar_stock(
-        db,
-        sucursal_id=suc.id,
-        material_id=mat.id,
-        cantidad_kg=delta,
-        comentario=comentario,
-        usuario_id=current_user.get("id"),
-    )
+    try:
+        note_service.ajustar_stock(
+            db,
+            sucursal_id=suc.id,
+            material_id=mat.id,
+            cantidad_kg=delta,
+            comentario=comentario,
+            usuario_id=current_user.get("id"),
+        )
+    except ValueError as exc:
+        return _render_inventario_aumentar(
+            request,
+            db,
+            current_user,
+            error=str(exc),
+            form_data=form_data,
+        )
     return RedirectResponse(url="/web/admin/inventario", status_code=303)
 
 
@@ -9098,14 +9343,17 @@ async def inventario_ajuste_post(
 
     comentario = (comentario or "").strip() or "Ajuste manual"
 
-    note_service.ajustar_stock(
-        db,
-        sucursal_id=suc.id,
-        material_id=mat.id,
-        cantidad_kg=delta,
-        comentario=comentario,
-        usuario_id=current_user.get("id"),
-    )
+    try:
+        note_service.ajustar_stock(
+            db,
+            sucursal_id=suc.id,
+            material_id=mat.id,
+            cantidad_kg=delta,
+            comentario=comentario,
+            usuario_id=current_user.get("id"),
+        )
+    except ValueError as exc:
+        return render_error(str(exc))
     return RedirectResponse(url="/web/admin/inventario?ajuste=1", status_code=303)
 
 
@@ -9126,6 +9374,21 @@ def _render_conversiones_materiales(
         .limit(200)
         .all()
     )
+    conversion_ids = [c.id for c in conversions]
+    reversion_links = (
+        db.query(ConversionMaterialReversion)
+        .filter(
+            or_(
+                ConversionMaterialReversion.conversion_id.in_(conversion_ids or [-1]),
+                ConversionMaterialReversion.reversal_conversion_id.in_(conversion_ids or [-1]),
+            )
+        )
+        .all()
+        if conversion_ids
+        else []
+    )
+    reversion_by_conversion_id = {link.conversion_id: link for link in reversion_links}
+    reversion_by_reversal_id = {link.reversal_conversion_id: link for link in reversion_links}
     suc_ids = [s.id for s in sucursales]
     inv_rows = db.query(Inventario).filter(Inventario.sucursal_id.in_(suc_ids)).all() if suc_ids else []
     inv_map: dict[int, dict[int, float]] = {}
@@ -9141,6 +9404,8 @@ def _render_conversiones_materiales(
             "sucursales": sucursales,
             "materiales": materiales,
             "conversions": conversions,
+            "reversion_by_conversion_id": reversion_by_conversion_id,
+            "reversion_by_reversal_id": reversion_by_reversal_id,
             "inv_map": inv_map,
             "error": error,
             "ok": ok,
@@ -9230,6 +9495,104 @@ async def conversiones_materiales_post(
         )
 
     return RedirectResponse(url="/web/admin/conversiones-materiales?ok=1", status_code=303)
+
+
+@router.get("/conversiones-materiales/{conversion_id}")
+async def conversion_material_detail(
+    conversion_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    conversion = db.get(ConversionMaterial, conversion_id)
+    if not conversion:
+        raise HTTPException(status_code=404, detail="Conversion no encontrada.")
+
+    reversion_link = (
+        db.query(ConversionMaterialReversion)
+        .filter(
+            or_(
+                ConversionMaterialReversion.conversion_id == conversion.id,
+                ConversionMaterialReversion.reversal_conversion_id == conversion.id,
+            )
+        )
+        .first()
+    )
+    original_conversion = conversion
+    reversal_conversion = None
+    is_reversal = False
+    if reversion_link:
+        if reversion_link.reversal_conversion_id == conversion.id:
+            is_reversal = True
+            original_conversion = reversion_link.conversion
+            reversal_conversion = conversion
+        else:
+            reversal_conversion = reversion_link.reversal_conversion
+
+    inv_origen = (
+        db.query(Inventario)
+        .filter(
+            Inventario.sucursal_id == conversion.sucursal_id,
+            Inventario.material_id == conversion.material_origen_id,
+        )
+        .first()
+    )
+    inv_destino = (
+        db.query(Inventario)
+        .filter(
+            Inventario.sucursal_id == conversion.sucursal_id,
+            Inventario.material_id == conversion.material_destino_id,
+        )
+        .first()
+    )
+
+    return templates.TemplateResponse(
+        "admin/conversion_detail.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "conversion": conversion,
+            "reversion_link": reversion_link,
+            "original_conversion": original_conversion,
+            "reversal_conversion": reversal_conversion,
+            "is_reversal": is_reversal,
+            "inv_origen": inv_origen,
+            "inv_destino": inv_destino,
+            "error": request.query_params.get("error") or None,
+            "reverted_ok": request.query_params.get("revertida") == "1",
+        },
+    )
+
+
+@router.post("/conversiones-materiales/{conversion_id}/revertir")
+async def conversion_material_reverse(
+    conversion_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    conversion = db.get(ConversionMaterial, conversion_id)
+    if not conversion:
+        raise HTTPException(status_code=404, detail="Conversion no encontrada.")
+
+    try:
+        reversal = conversion_service.reverse_conversion(
+            db,
+            conversion,
+            usuario_id=current_user.get("id"),
+            comentario=f"Reversion conversion #{conversion.id}",
+        )
+    except ValueError as exc:
+        return RedirectResponse(
+            url=f"/web/admin/conversiones-materiales/{conversion_id}?{urlencode({'error': str(exc)})}",
+            status_code=303,
+        )
+
+    return RedirectResponse(
+        url=f"/web/admin/conversiones-materiales/{reversal.id}?revertida=1",
+        status_code=303,
+    )
 
 
 @router.get("/inventario")
@@ -10048,7 +10411,7 @@ def _build_corte_cash_movimientos(
         db.query(MovimientoContable)
         .filter(
             MovimientoContable.sucursal_id == sucursal_id,
-            MovimientoContable.tipo == "reverso_pago",
+            MovimientoContable.tipo.in_(["reverso_pago", "restauracion_pago"]),
             MovimientoContable.metodo_pago == "efectivo",
             MovimientoContable.created_at >= start_dt,
             MovimientoContable.created_at < end_dt,
@@ -10113,7 +10476,7 @@ def _build_corte_cash_movimientos(
         movimientos.append(
             {
                 "fecha": mov.created_at,
-                "tipo": "Reverso pago",
+                "tipo": "Restauracion pago" if mov.tipo == "restauracion_pago" else "Reverso pago",
                 "detalle": tipo_op or "-",
                 "nota_id": mov.nota_id,
                 "folio": folio_map.get(mov.nota_id) or f"#{mov.nota_id}",
@@ -10864,6 +11227,15 @@ async def inventario_movimientos(
         tipo=tipo,
     )
     movimientos = query.order_by(InventarioMovimiento.created_at.desc()).limit(200).all()
+    mov_ids = [mov.id for mov in movimientos]
+    ajustes_by_mov_id = {}
+    if mov_ids:
+        ajustes_by_mov_id = {
+            ajuste.inventario_movimiento_id: ajuste
+            for ajuste in db.query(InventarioAjusteManual)
+            .filter(InventarioAjusteManual.inventario_movimiento_id.in_(mov_ids))
+            .all()
+        }
     total_firmado = 0
     for mov in movimientos:
         total_firmado += float(_signed_inventario_qty(mov))
@@ -10881,7 +11253,89 @@ async def inventario_movimientos(
             "material_id": material_id,
             "tipo": tipo or "",
             "total_firmado": total_firmado,
+            "ajustes_by_mov_id": ajustes_by_mov_id,
         },
+    )
+
+
+@router.get("/inventario/ajustes/{ajuste_id}")
+async def inventario_ajuste_detail(
+    ajuste_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    ajuste = db.get(InventarioAjusteManual, ajuste_id)
+    if not ajuste:
+        raise HTTPException(status_code=404, detail="Ajuste manual no encontrado.")
+
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    if allowed_suc_ids and ajuste.sucursal_id not in allowed_suc_ids:
+        raise HTTPException(status_code=403, detail="Sin acceso a esta sucursal.")
+
+    reversion = None
+    if not ajuste.reversal_of_id:
+        reversion = (
+            db.query(InventarioAjusteManual)
+            .filter(InventarioAjusteManual.reversal_of_id == ajuste.id)
+            .first()
+        )
+    original = ajuste.reversal_of if ajuste.reversal_of_id else ajuste
+
+    return templates.TemplateResponse(
+        "admin/inventario_ajuste_detail.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "ajuste": ajuste,
+            "original": original,
+            "reversion": reversion,
+            "is_reversal": bool(ajuste.reversal_of_id),
+            "error": request.query_params.get("error") or None,
+            "reverted_ok": request.query_params.get("revertida") == "1",
+        },
+    )
+
+
+@router.post("/inventario/ajustes/{ajuste_id}/revertir")
+async def inventario_ajuste_reverse(
+    ajuste_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    ajuste = db.get(InventarioAjusteManual, ajuste_id)
+    if not ajuste:
+        raise HTTPException(status_code=404, detail="Ajuste manual no encontrado.")
+
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    if allowed_suc_ids and ajuste.sucursal_id not in allowed_suc_ids:
+        raise HTTPException(status_code=403, detail="Sin acceso a esta sucursal.")
+
+    try:
+        note_service.reverse_manual_inventory_adjustment(
+            db,
+            ajuste,
+            usuario_id=current_user.get("id"),
+            comentario=f"Reversion ajuste manual #{ajuste.id}",
+        )
+    except ValueError as exc:
+        return RedirectResponse(
+            url=f"/web/admin/inventario/ajustes/{ajuste_id}?{urlencode({'error': str(exc)})}",
+            status_code=303,
+        )
+
+    reversion = (
+        db.query(InventarioAjusteManual)
+        .filter(InventarioAjusteManual.reversal_of_id == ajuste.id)
+        .order_by(InventarioAjusteManual.created_at.desc())
+        .first()
+    )
+    target_id = reversion.id if reversion else ajuste.id
+    return RedirectResponse(
+        url=f"/web/admin/inventario/ajustes/{target_id}?revertida=1",
+        status_code=303,
     )
 
 

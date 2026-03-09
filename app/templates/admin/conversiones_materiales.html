@@ -86,11 +86,13 @@
             <h2 class="h6 text-dark mb-0 note-section-title">Historial reciente</h2>
             <span class="text-muted small">Ultimas {{ conversions|length }} conversiones</span>
         </div>
-        <div class="table-responsive">
-            <table class="table table-hover table-sm align-middle mb-0">
+        <div class="table-scroll-shell">
+            <div class="table-responsive scroll-x note-table-scroll">
+                <table class="table table-hover table-sm align-middle mb-0">
                 <thead>
                 <tr>
                     <th>Fecha</th>
+                    <th>Estado</th>
                     <th>Sucursal</th>
                     <th>Material origen</th>
                     <th class="text-end">Cantidad</th>
@@ -98,12 +100,24 @@
                     <th class="text-end">Cantidad</th>
                     <th>Usuario</th>
                     <th>Comentario</th>
+                    <th class="text-end"></th>
                 </tr>
                 </thead>
                 <tbody>
                 {% for conv in conversions %}
+                    {% set rev_link = reversion_by_conversion_id.get(conv.id) %}
+                    {% set reverse_link = reversion_by_reversal_id.get(conv.id) %}
                     <tr>
                         <td>{{ conv.created_at.strftime("%Y-%m-%d %H:%M") if conv.created_at else '-' }}</td>
+                        <td>
+                            {% if reverse_link %}
+                                <span class="badge bg-light text-dark border">Reversion</span>
+                            {% elif rev_link %}
+                                <span class="badge bg-warning text-dark">Revertida</span>
+                            {% else %}
+                                <span class="badge bg-success">Activa</span>
+                            {% endif %}
+                        </td>
                         <td>{{ conv.sucursal.nombre if conv.sucursal else conv.sucursal_id }}</td>
                         <td>{{ conv.material_origen.nombre if conv.material_origen else conv.material_origen_id }}</td>
                         <td class="text-end">{{ "{:,.3f}".format(conv.cantidad_origen or 0) }} kg</td>
@@ -111,10 +125,13 @@
                         <td class="text-end">{{ "{:,.3f}".format(conv.cantidad_destino or 0) }} kg</td>
                         <td>{{ conv.usuario.username if conv.usuario else (conv.usuario_id or '-') }}</td>
                         <td class="small text-muted">{{ conv.comentario or '-' }}</td>
+                        <td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="/web/admin/conversiones-materiales/{{ conv.id }}">Detalle</a></td>
                     </tr>
                 {% endfor %}
                 </tbody>
-            </table>
+                </table>
+            </div>
+            <div class="table-scroll-hint">Desliza lateralmente para ver el estado y abrir el detalle de la conversion.</div>
         </div>
         {% if conversions|length == 0 %}
             <p class="text-muted small mt-3 mb-0">Aun no hay conversiones registradas.</p>

@@ -63,3 +63,31 @@ class MovimientoContable(Base):
     nota = relationship("Nota")
     sucursal = relationship("Sucursal")
     cuenta = relationship("Cuenta")
+
+
+class InventarioAjusteManual(Base):
+    __tablename__ = "inventario_ajustes_manuales"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sucursal_id = Column(Integer, ForeignKey("sucursales.id"), nullable=False, index=True)
+    material_id = Column(Integer, ForeignKey("materiales.id"), nullable=False, index=True)
+    inventario_movimiento_id = Column(Integer, ForeignKey("inventario_movimientos.id"), nullable=True, index=True)
+    usuario_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+
+    cantidad_kg = Column(Numeric(12, 3), nullable=False, default=0)
+    stock_anterior = Column(Numeric(12, 3), nullable=False, default=0)
+    stock_resultante = Column(Numeric(12, 3), nullable=False, default=0)
+    comentario = Column(String(255), nullable=True)
+
+    reversal_of_id = Column(Integer, ForeignKey("inventario_ajustes_manuales.id"), nullable=True, index=True)
+    reverted_at = Column(DateTime, nullable=True)
+    reverted_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    comentario_reversion = Column(String(255), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    sucursal = relationship("Sucursal")
+    material = relationship("Material")
+    movimiento = relationship("InventarioMovimiento")
+    usuario = relationship("User", foreign_keys=[usuario_id])
+    reverted_by = relationship("User", foreign_keys=[reverted_by_user_id])
+    reversal_of = relationship("InventarioAjusteManual", remote_side=[id])

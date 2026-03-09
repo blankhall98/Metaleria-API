@@ -42,6 +42,9 @@
     {% if edit_updated %}
         <div class="alert alert-success py-2 small mb-3">Edicion guardada correctamente.</div>
     {% endif %}
+    {% if request.query_params.get("cancelled") == "1" %}
+        <div class="alert alert-success py-2 small mb-3">La devolucion total fue aplicada correctamente. Puedes revisar la verificacion automatica o revertirla desde esta misma vista.</div>
+    {% endif %}
     {% if precios_updated %}
         <div class="alert alert-success py-2 small mb-3">Precios actualizados correctamente.</div>
     {% endif %}
@@ -56,6 +59,12 @@
     {% endif %}
     {% if devolucion_parcial_updated %}
         <div class="alert alert-success py-2 small mb-3">Devolucion parcial aplicada correctamente. El saldo se recalculo y cualquier sobrepago permanece como saldo a favor.</div>
+    {% endif %}
+    {% if devolucion_parcial_reverted %}
+        <div class="alert alert-success py-2 small mb-3">La linea de devolucion parcial fue revertida correctamente.</div>
+    {% endif %}
+    {% if devolucion_total_reverted %}
+        <div class="alert alert-success py-2 small mb-3">La devolucion total fue revertida. La nota regreso a estado aprobada con sus efectos contables e inventario restaurados.</div>
     {% endif %}
 
     <div class="card hover-lift mb-3 note-hero-card">
@@ -220,6 +229,79 @@
                 {% else %}
                     <p class="text-muted small mb-0">No hay movimientos registrados para verificar esta devolucion.</p>
                 {% endif %}
+            </div>
+        </div>
+        {% if devolucion_total_activa %}
+            <div class="card hover-lift mb-3 note-inline-info">
+                <div class="card-body">
+                    <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
+                        <div>
+                            <div class="fw-semibold">Devolucion total activa</div>
+                            <div class="text-muted small">
+                                Accion #{{ devolucion_total_activa.id }}
+                                &middot; {{ devolucion_total_activa.created_at.strftime("%Y-%m-%d %H:%M") if devolucion_total_activa.created_at else '-' }}
+                                &middot; {{ devolucion_total_activa.usuario.username if devolucion_total_activa.usuario else (devolucion_total_activa.usuario_id or '-') }}
+                            </div>
+                            <div class="text-muted small">{{ devolucion_total_activa.comentario or 'Sin comentario.' }}</div>
+                        </div>
+                        <form method="post" action="/web/admin/notas/{{ nota.id }}/devolucion-total/{{ devolucion_total_activa.id }}/revertir" onsubmit="return confirm('La nota volvera a estado aprobada y se restauraran inventario, contabilidad y pagos activos. Deseas continuar?');">
+                            <button type="submit" class="btn btn-outline-primary">Revertir devolucion total</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+    {% endif %}
+
+    {% if devoluciones_totales %}
+        <div class="card hover-lift mb-3 note-payments-card">
+            <div class="card-body">
+                <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
+                    <div>
+                        <h2 class="h6 text-dark mb-1">Historial de devoluciones totales</h2>
+                        <p class="text-muted small mb-0">Cada devolucion total conserva su estado y, si fue revertida, queda enlazada a la restauracion posterior.</p>
+                    </div>
+                    <span class="badge bg-light text-dark border">{{ devoluciones_totales|length }} acciones</span>
+                </div>
+                <div class="table-scroll-shell">
+                    <div class="table-responsive scroll-x note-table-scroll">
+                        <table class="table table-sm align-middle mb-0 note-payments-table">
+                            <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Estado</th>
+                                <th>Usuario</th>
+                                <th>Comentario</th>
+                                <th>Reversion</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for devolucion in devoluciones_totales %}
+                                <tr class="{{ 'is-reverted' if devolucion.reverted_at else '' }}">
+                                    <td>{{ devolucion.created_at.strftime("%Y-%m-%d %H:%M") if devolucion.created_at else '-' }}</td>
+                                    <td>
+                                        {% if devolucion.reverted_at %}
+                                            <span class="badge bg-light text-dark border">Revertida</span>
+                                        {% else %}
+                                            <span class="badge bg-warning text-dark">Activa</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ devolucion.usuario.username if devolucion.usuario else (devolucion.usuario_id or '-') }}</td>
+                                    <td class="small text-muted">{{ devolucion.comentario or '-' }}</td>
+                                    <td class="small text-muted">
+                                        {% if devolucion.reverted_at %}
+                                            {{ devolucion.reverted_at.strftime("%Y-%m-%d %H:%M") }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="table-scroll-hint">Desliza lateralmente para revisar el historial completo de devoluciones totales.</div>
+                </div>
             </div>
         </div>
     {% endif %}
@@ -782,8 +864,8 @@
                                         <td>{{ pago.comentario or '-' }}</td>
                                         <td class="text-end">
                                             {% if pago_activo %}
-                                                <form method="post" action="/web/admin/notas/{{ nota.id }}/pago/{{ pago.id }}/deshacer" class="d-inline" onsubmit="return confirm('Deshacer este abono revertira el saldo, el log contable y el movimiento de la Cuenta Scrap360 asociado. Deseas continuar?');">
-                                                    <button type="submit" class="btn btn-sm btn-outline-danger">Deshacer</button>
+                                                <form method="post" action="/web/admin/notas/{{ nota.id }}/pago/{{ pago.id }}/deshacer" class="d-inline" onsubmit="return confirm('Revertir este abono restaurara saldo, log contable y movimiento de Cuenta Scrap360 asociado. Deseas continuar?');">
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger">Revertir pago</button>
                                                 </form>
                                             {% else %}
                                                 <span class="text-muted small">Solo auditoria</span>
@@ -822,6 +904,84 @@
                             </div>
                         </form>
                     </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+    {% if devoluciones_parciales and not is_pending_review %}
+        <div class="card hover-lift mb-3 note-payments-card">
+            <div class="card-body">
+                <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
+                    <div>
+                        <h2 class="h6 text-dark mb-1">Historial de devoluciones parciales</h2>
+                        {% if is_cancelled %}
+                            <p class="text-muted small mb-0">La nota esta en devolucion total. Puedes auditar las devoluciones parciales previas y, si necesitas cambiarlas, primero revierte la devolucion total.</p>
+                        {% else %}
+                            <p class="text-muted small mb-0">Cada linea se puede revertir una sola vez mientras la nota siga aprobada y el inventario lo permita.</p>
+                        {% endif %}
+                    </div>
+                    <span class="badge bg-light text-dark border">{{ devoluciones_parciales|length }} acciones</span>
+                </div>
+                <div class="table-scroll-shell">
+                    <div class="table-responsive scroll-x note-table-scroll">
+                        <table class="table table-sm align-middle mb-0 note-payments-table">
+                            <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Material</th>
+                                <th class="text-end">Kg</th>
+                                <th class="text-end">Precio/kg</th>
+                                <th class="text-end">Monto</th>
+                                <th>Estado</th>
+                                <th>Usuario</th>
+                                <th>Comentario</th>
+                                <th class="text-end">Accion</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for devolucion in devoluciones_parciales %}
+                                {% for linea in devolucion.lineas %}
+                                    <tr class="{{ 'is-reverted' if linea.reverted_at else '' }}">
+                                        <td>{{ devolucion.created_at.strftime("%Y-%m-%d %H:%M") if devolucion.created_at else '-' }}</td>
+                                        <td>
+                                            <div class="fw-semibold">{{ linea.material.nombre if linea.material else (linea.nota_material.material.nombre if linea.nota_material and linea.nota_material.material else ('Material #' ~ linea.material_id)) }}</div>
+                                            <div class="text-muted small">Accion #{{ devolucion.id }} &middot; Linea #{{ linea.id }}</div>
+                                        </td>
+                                        <td class="text-end">{{ "{:,.3f}".format(linea.kg_devolucion or 0) }} kg</td>
+                                        <td class="text-end">${{ "{:,.5f}".format(linea.precio_unitario_devolucion or 0) }}</td>
+                                        <td class="text-end fw-semibold">${{ "{:,.2f}".format(linea.monto_devolucion or 0) }}</td>
+                                        <td>
+                                            {% if linea.reverted_at %}
+                                                <span class="badge bg-light text-dark border">Revertida</span>
+                                            {% else %}
+                                                <span class="badge bg-warning text-dark">Activa</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ devolucion.usuario.username if devolucion.usuario else (devolucion.usuario_id or '-') }}</td>
+                                        <td class="small text-muted">
+                                            {{ devolucion.comentario or '-' }}
+                                            {% if linea.reverted_at %}
+                                                <div>Revertida: {{ linea.reverted_at.strftime("%Y-%m-%d %H:%M") }}</div>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-end">
+                                            {% if not linea.reverted_at and is_approved %}
+                                                <form method="post" action="/web/admin/notas/{{ nota.id }}/devolucion-parcial/{{ linea.id }}/revertir" class="d-inline" onsubmit="return confirm('Se restauraran exactamente los kg y el valor de esta linea de devolucion parcial. Deseas continuar?');">
+                                                    <button type="submit" class="btn btn-sm btn-outline-primary">Revertir linea</button>
+                                                </form>
+                                            {% elif not linea.reverted_at and is_cancelled %}
+                                                <span class="text-muted small">Revertir primero la devolucion total</span>
+                                            {% else %}
+                                                <span class="text-muted small">Solo auditoria</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="table-scroll-hint">Desliza lateralmente para ver estado, comentario y accion de cada linea.</div>
                 </div>
             </div>
         </div>

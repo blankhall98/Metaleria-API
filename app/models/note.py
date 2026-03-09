@@ -170,3 +170,80 @@ class NotaPago(Base):
     usuario = relationship("User")
     cuenta = relationship("Cuenta")
     cuenta_scrap360 = relationship("CuentaScrap360")
+
+
+class NotaDevolucionParcial(Base):
+    __tablename__ = "nota_devoluciones_parciales"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nota_id = Column(Integer, ForeignKey("notas.id"), nullable=False, index=True)
+    usuario_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    comentario = Column(String(255), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    nota = relationship("Nota")
+    usuario = relationship("User")
+    lineas = relationship(
+        "NotaDevolucionParcialLinea",
+        back_populates="devolucion",
+        cascade="all, delete-orphan",
+    )
+
+
+class NotaDevolucionParcialLinea(Base):
+    __tablename__ = "nota_devoluciones_parciales_lineas"
+
+    id = Column(Integer, primary_key=True, index=True)
+    devolucion_id = Column(Integer, ForeignKey("nota_devoluciones_parciales.id"), nullable=False, index=True)
+    nota_material_id = Column(Integer, ForeignKey("nota_materiales.id"), nullable=False, index=True)
+    material_id = Column(Integer, ForeignKey("materiales.id"), nullable=True, index=True)
+
+    kg_devolucion = Column(Numeric(12, 3), nullable=False, default=0)
+    precio_unitario_devolucion = Column(Numeric(12, 5), nullable=False, default=0)
+    monto_devolucion = Column(Numeric(12, 2), nullable=False, default=0)
+
+    reverted_at = Column(DateTime, nullable=True)
+    reverted_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    comentario_reversion = Column(String(255), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    devolucion = relationship("NotaDevolucionParcial", back_populates="lineas")
+    nota_material = relationship("NotaMaterial")
+    material = relationship("Material")
+    reverted_by = relationship("User", foreign_keys=[reverted_by_user_id])
+    aplicaciones = relationship(
+        "NotaDevolucionParcialAplicacion",
+        back_populates="linea",
+        cascade="all, delete-orphan",
+    )
+
+
+class NotaDevolucionParcialAplicacion(Base):
+    __tablename__ = "nota_devoluciones_parciales_aplicaciones"
+
+    id = Column(Integer, primary_key=True, index=True)
+    linea_id = Column(Integer, ForeignKey("nota_devoluciones_parciales_lineas.id"), nullable=False, index=True)
+    subpesaje_id = Column(Integer, ForeignKey("subpesajes.id"), nullable=True, index=True)
+    kg_aplicado = Column(Numeric(12, 3), nullable=False, default=0)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    linea = relationship("NotaDevolucionParcialLinea", back_populates="aplicaciones")
+    subpesaje = relationship("Subpesaje")
+
+
+class NotaDevolucionTotal(Base):
+    __tablename__ = "nota_devoluciones_totales"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nota_id = Column(Integer, ForeignKey("notas.id"), nullable=False, index=True)
+    usuario_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    comentario = Column(String(255), nullable=True)
+
+    reverted_at = Column(DateTime, nullable=True)
+    reverted_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    comentario_reversion = Column(String(255), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    nota = relationship("Nota")
+    usuario = relationship("User", foreign_keys=[usuario_id])
+    reverted_by = relationship("User", foreign_keys=[reverted_by_user_id])

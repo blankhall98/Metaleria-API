@@ -12,7 +12,7 @@ from .comision import (
     ComisionarioNotaEstado,
     ComisionarioPago,
 )
-from .conversion import ConversionMaterial
+from .conversion import ConversionMaterial, ConversionMaterialReversion
 from .cash import (
     CorteCaja,
     CorteCajaEstado,
@@ -21,8 +21,20 @@ from .cash import (
     CorteCajaMovimientoTipo,
     CorteCajaDenominacion,
 )
-from .note import Nota, NotaEstado, NotaMaterial, Subpesaje, NotaOriginal, NotaEvidenciaExtra, NotaPago
-from .inventory import Inventario, InventarioMovimiento, MovimientoContable
+from .note import (
+    Nota,
+    NotaEstado,
+    NotaMaterial,
+    Subpesaje,
+    NotaOriginal,
+    NotaEvidenciaExtra,
+    NotaPago,
+    NotaDevolucionParcial,
+    NotaDevolucionParcialLinea,
+    NotaDevolucionParcialAplicacion,
+    NotaDevolucionTotal,
+)
+from .inventory import Inventario, InventarioMovimiento, MovimientoContable, InventarioAjusteManual
 
 __all__ = [
     "User",
@@ -50,6 +62,7 @@ __all__ = [
     "ComisionarioNotaEstado",
     "ComisionarioPago",
     "ConversionMaterial",
+    "ConversionMaterialReversion",
     "CorteCaja",
     "CorteCajaEstado",
     "CorteCajaGasto",
@@ -63,8 +76,13 @@ __all__ = [
     "NotaOriginal",
     "NotaEvidenciaExtra",
     "NotaPago",
+    "NotaDevolucionParcial",
+    "NotaDevolucionParcialLinea",
+    "NotaDevolucionParcialAplicacion",
+    "NotaDevolucionTotal",
     "Inventario",
     "InventarioMovimiento",
     "MovimientoContable",
+    "InventarioAjusteManual",
 ]
 

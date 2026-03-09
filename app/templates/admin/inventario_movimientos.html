@@ -71,8 +71,9 @@
         <div class="d-flex justify-content-end text-muted small mb-2">
             Total (firmado): <strong class="ms-1">{{ "{:,.2f}".format(total_firmado or 0) }} kg</strong>
         </div>
-        <div class="table-responsive">
-            <table class="table table-hover table-sm align-middle mb-0">
+        <div class="table-scroll-shell">
+            <div class="table-responsive scroll-x note-table-scroll">
+                <table class="table table-hover table-sm align-middle mb-0">
                 <thead>
                 <tr>
                     <th>Sucursal</th>
@@ -83,6 +84,7 @@
                     <th>Nota</th>
                     <th>Fecha</th>
                     <th>Comentario</th>
+                    <th class="text-end"></th>
                 </tr>
                 </thead>
                 <tbody>
@@ -106,10 +108,20 @@
                         </td>
                         <td>{{ mov.created_at.strftime("%Y-%m-%d %H:%M") if mov.created_at else '-' }}</td>
                         <td class="small text-muted">{{ mov.comentario or '-' }}</td>
+                        <td class="text-end">
+                            {% set ajuste = ajustes_by_mov_id.get(mov.id) %}
+                            {% if ajuste %}
+                                <a class="btn btn-sm btn-outline-secondary" href="/web/admin/inventario/ajustes/{{ ajuste.id }}">Detalle</a>
+                            {% else %}
+                                <span class="text-muted small">-</span>
+                            {% endif %}
+                        </td>
                     </tr>
                 {% endfor %}
                 </tbody>
-            </table>
+                </table>
+            </div>
+            <div class="table-scroll-hint">Desliza lateralmente para abrir detalles de ajustes manuales y revisar cada movimiento.</div>
         </div>
         {% if movimientos|length == 0 %}
             <p class="text-muted small mt-3 mb-0">No hay movimientos con estos filtros.</p>

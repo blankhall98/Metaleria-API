@@ -24,3 +24,17 @@ class ConversionMaterial(Base):
     material_origen = relationship("Material", foreign_keys=[material_origen_id])
     material_destino = relationship("Material", foreign_keys=[material_destino_id])
     usuario = relationship("User")
+
+
+class ConversionMaterialReversion(Base):
+    __tablename__ = "conversiones_material_reversiones"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversion_id = Column(Integer, ForeignKey("conversiones_material.id"), nullable=False, unique=True, index=True)
+    reversal_conversion_id = Column(Integer, ForeignKey("conversiones_material.id"), nullable=False, unique=True, index=True)
+    usuario_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    conversion = relationship("ConversionMaterial", foreign_keys=[conversion_id])
+    reversal_conversion = relationship("ConversionMaterial", foreign_keys=[reversal_conversion_id])
+    usuario = relationship("User")

@@ -64,8 +64,12 @@ def _movimiento_label(tipo_raw: str, tipo_op: str | None) -> str:
         return f"PAGO {tipo_op.upper()}" if tipo_op else "PAGO"
     if tipo_raw == "reverso_pago":
         return f"REVERSO PAGO {tipo_op.upper()}" if tipo_op else "REVERSO PAGO"
+    if tipo_raw == "restauracion_pago":
+        return f"RESTAURACION PAGO {tipo_op.upper()}" if tipo_op else "RESTAURACION PAGO"
     if tipo_raw == "reverso":
         return f"REVERSO {tipo_op.upper()}" if tipo_op else "REVERSO"
+    if tipo_raw == "restauracion":
+        return f"RESTAURACION {tipo_op.upper()}" if tipo_op else "RESTAURACION"
     if tipo_raw in ("compra", "venta"):
         return tipo_raw.upper()
     if tipo_raw == "ajuste":
@@ -95,11 +99,23 @@ def _movimiento_monto_firmado(
         if tipo_op == "venta":
             return -abs_val
         return monto
+    if tipo_raw == "restauracion":
+        if tipo_op == "compra":
+            return -abs_val
+        if tipo_op == "venta":
+            return abs_val
+        return monto
     if tipo_raw == "reverso_pago":
         if tipo_op == "compra":
             return abs_val
         if tipo_op == "venta":
             return -abs_val
+        return monto
+    if tipo_raw == "restauracion_pago":
+        if tipo_op == "compra":
+            return -abs_val
+        if tipo_op == "venta":
+            return abs_val
         return monto
     return monto
 
@@ -159,11 +175,21 @@ def _movimiento_naturaleza(tipo_raw: str, tipo_op: str | None) -> str:
             return "INGRESO"
         if tipo_op == "venta":
             return "EGRESO"
+    if tipo_raw == "restauracion":
+        if tipo_op == "compra":
+            return "EGRESO"
+        if tipo_op == "venta":
+            return "INGRESO"
     if tipo_raw == "reverso_pago":
         if tipo_op == "compra":
             return "INGRESO"
         if tipo_op == "venta":
             return "EGRESO"
+    if tipo_raw == "restauracion_pago":
+        if tipo_op == "compra":
+            return "EGRESO"
+        if tipo_op == "venta":
+            return "INGRESO"
     if tipo_raw == "ajuste":
         return "AJUSTE"
     return "-"
@@ -259,10 +285,17 @@ def build_report_data(
                 total_pagos_compra -= monto
             else:
                 total_pagos_venta -= monto
+        elif tipo == "restauracion_pago":
+            if tipo_op == "compra":
+                total_pagos_compra += monto
+            else:
+                total_pagos_venta += monto
         elif tipo == "ajuste":
             total_ajustes += monto
         elif tipo == "reverso":
             total_reversos += monto
+        elif tipo == "restauracion":
+            total_reversos -= monto
 
         folio = None
         if nota:

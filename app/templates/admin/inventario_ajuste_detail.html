@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Ajuste {{ ajuste.id }}{% endblock %}
+
+{% block content %}
+<div class="page-header note-page-header">
+    <div>
+        <p class="text-uppercase text-muted small mb-1">Inventario</p>
+        <h1 class="h4 text-dark mb-1">Detalle de ajuste manual #{{ ajuste.id }}</h1>
+        <p class="text-muted mb-0">Vista auditable del ajuste y su posible reversa.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="/web/admin/inventario/movimientos" class="btn btn-outline-secondary btn-sm">Volver</a>
+    </div>
+</div>
+
+{% if error %}
+    <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
+{% endif %}
+{% if reverted_ok %}
+    <div class="alert alert-success py-2 small mb-3">El ajuste manual fue revertido correctamente. Se genero un ajuste compensatorio para auditoria.</div>
+{% endif %}
+
+<div class="card hover-lift mb-3 note-hero-card">
+    <div class="card-body">
+        <div class="note-hero-header">
+            <div class="note-hero-copy">
+                <div class="d-flex flex-wrap gap-2 mb-2">
+                    {% if is_reversal %}
+                        <span class="badge bg-light text-dark border">Reversion</span>
+                    {% elif ajuste.reverted_at %}
+                        <span class="badge bg-warning text-dark">Revertido</span>
+                    {% else %}
+                        <span class="badge bg-success">Activo</span>
+                    {% endif %}
+                </div>
+                <h2 class="h5 text-dark mb-1">{{ ajuste.material.nombre if ajuste.material else ajuste.material_id }}</h2>
+                <p class="text-muted mb-0">
+                    {{ ajuste.sucursal.nombre if ajuste.sucursal else ajuste.sucursal_id }} &middot;
+                    {{ ajuste.usuario.username if ajuste.usuario else (ajuste.usuario_id or '-') }} &middot;
+                    {{ ajuste.created_at.strftime("%Y-%m-%d %H:%M") if ajuste.created_at else '-' }}
+                </p>
+            </div>
+            <div class="note-hero-side text-lg-end">
+                <div class="note-hero-label">Comentario</div>
+                <div class="text-muted small">{{ ajuste.comentario or 'Sin comentario.' }}</div>
+            </div>
+        </div>
+
+        <div class="note-kpi-grid note-kpi-grid-detail">
+            <div class="notes-kpi-card {{ 'tone-green' if (ajuste.cantidad_kg or 0) >= 0 else 'tone-red' }}">
+                <span class="notes-kpi-label">Movimiento</span>
+                <strong>{{ '+' if (ajuste.cantidad_kg or 0) >= 0 else '' }}{{ "{:,.3f}".format(ajuste.cantidad_kg or 0) }} kg</strong>
+                <div class="notes-kpi-sub">Cantidad aplicada</div>
+            </div>
+            <div class="notes-kpi-card tone-blue">
+                <span class="notes-kpi-label">Stock anterior</span>
+                <strong>{{ "{:,.3f}".format(ajuste.stock_anterior or 0) }} kg</strong>
+                <div class="notes-kpi-sub">Antes del ajuste</div>
+            </div>
+            <div class="notes-kpi-card tone-blue">
+                <span class="notes-kpi-label">Stock resultante</span>
+                <strong>{{ "{:,.3f}".format(ajuste.stock_resultante or 0) }} kg</strong>
+                <div class="notes-kpi-sub">Despues del ajuste</div>
+            </div>
+            <div class="notes-kpi-card tone-neutral">
+                <span class="notes-kpi-label">Movimiento inventario</span>
+                <strong>{% if ajuste.movimiento %}#{{ ajuste.movimiento.id }}{% else %}-{% endif %}</strong>
+                <div class="notes-kpi-sub">Rastro tecnico</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card hover-lift">
+    <div class="card-body">
+        <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
+            <div>
+                <h2 class="h6 text-dark mb-1">Control de reversion</h2>
+                {% if is_reversal %}
+                    <p class="text-muted small mb-0">Este ajuste es la reversion del ajuste original <a href="/web/admin/inventario/ajustes/{{ original.id }}">#{{ original.id }}</a>. No puede revertirse nuevamente.</p>
+                {% elif reversion %}
+                    <p class="text-muted small mb-0">Este ajuste ya fue revertido. El ajuste compensatorio esta en <a href="/web/admin/inventario/ajustes/{{ reversion.id }}">#{{ reversion.id }}</a>.</p>
+                {% else %}
+                    <p class="text-muted small mb-0">La reversa creara un ajuste compensatorio exacto. Solo se permitira si el stock actual soporta la compensacion sin quedar negativo.</p>
+                {% endif %}
+            </div>
+            {% if not is_reversal and not reversion %}
+                <form method="post" action="/web/admin/inventario/ajustes/{{ ajuste.id }}/revertir" onsubmit="return confirm('Se generara un ajuste compensatorio exacto para revertir esta accion. Deseas continuar?');">
+                    <button type="submit" class="btn btn-outline-primary">Revertir accion</button>
+                </form>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

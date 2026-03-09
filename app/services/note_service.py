@@ -29,6 +29,11 @@ from app.models import (
     UserRole,
     Proveedor,
     Cliente,
+    NotaDevolucionParcial,
+    NotaDevolucionParcialLinea,
+    NotaDevolucionParcialAplicacion,
+    NotaDevolucionTotal,
+    InventarioAjusteManual,
 )
 
 
@@ -41,6 +46,12 @@ def _sum_decimal(values: Iterable[Decimal | float | int]) -> Decimal:
 
 def _is_compra_like(tipo_operacion: TipoOperacion | None) -> bool:
     return tipo_operacion == TipoOperacion.compra
+
+
+def _partial_return_contable_amount(nota: Nota, monto_devolucion: Decimal, *, reverse: bool = False) -> Decimal:
+    amount = Decimal(str(monto_devolucion or 0))
+    signed = amount if _is_compra_like(nota.tipo_operacion) else -amount
+    return -signed if reverse else signed
 
 
 def _nota_partner_key(nota: Nota) -> tuple[str | None, int | None]:
@@ -1111,6 +1122,7 @@ def ajustar_stock(
     cantidad_kg: Decimal,
     comentario: str | None,
     usuario_id: int | None,
+    reversal_of_id: int | None = None,
 ) -> Inventario:
     """
     Ajuste manual de inventario (positivo suma, negativo resta). Registra movimiento y log contable en 0.
@@ -1120,7 +1132,7 @@ def ajustar_stock(
     delta = Decimal(str(cantidad_kg or 0))
     nuevo_saldo = saldo_actual + delta
     if nuevo_saldo < Decimal("0"):
-        nuevo_saldo = Decimal("0")
+        raise ValueError("El ajuste deja el inventario en negativo.")
     inv.stock_actual = nuevo_saldo
     inv.updated_at = datetime.utcnow()
 
@@ -1146,9 +1158,64 @@ def ajustar_stock(
         comentario=comentario or "Ajuste inventario",
     )
     db.add(movc)
+    db.flush()
+
+    ajuste = InventarioAjusteManual(
+        sucursal_id=sucursal_id,
+        material_id=material_id,
+        inventario_movimiento_id=mov.id,
+        usuario_id=usuario_id,
+        cantidad_kg=delta,
+        stock_anterior=saldo_actual,
+        stock_resultante=nuevo_saldo,
+        comentario=comentario or "Ajuste manual",
+        reversal_of_id=reversal_of_id,
+    )
+    db.add(ajuste)
+    if reversal_of_id:
+        original = db.get(InventarioAjusteManual, reversal_of_id)
+        if original:
+            original.reverted_at = datetime.utcnow()
+            original.reverted_by_user_id = usuario_id
+            original.comentario_reversion = comentario or f"Reversion ajuste manual #{reversal_of_id}"
+            db.add(original)
     db.commit()
     db.refresh(inv)
     return inv
+
+
+def reverse_manual_inventory_adjustment(
+    db: Session,
+    ajuste: InventarioAjusteManual,
+    *,
+    usuario_id: int | None = None,
+    comentario: str | None = None,
+) -> InventarioAjusteManual:
+    if ajuste.reversal_of_id:
+        raise ValueError("No puedes revertir una reversion de inventario.")
+    if ajuste.reverted_at:
+        raise ValueError("Este ajuste manual ya fue revertido.")
+
+    delta_original = Decimal(str(ajuste.cantidad_kg or 0))
+    delta_reversion = -delta_original
+    inv = _get_or_create_inventario(db, ajuste.sucursal_id, ajuste.material_id)
+    stock_actual = Decimal(str(inv.stock_actual or 0))
+    nuevo_saldo = stock_actual + delta_reversion
+    if nuevo_saldo < Decimal("0"):
+        raise ValueError("No hay stock suficiente para revertir este ajuste manual.")
+
+    comment = comentario or f"Reversion ajuste manual #{ajuste.id}"
+    ajustar_stock(
+        db,
+        sucursal_id=ajuste.sucursal_id,
+        material_id=ajuste.material_id,
+        cantidad_kg=delta_reversion,
+        comentario=comment,
+        usuario_id=usuario_id,
+        reversal_of_id=ajuste.id,
+    )
+    db.refresh(ajuste)
+    return ajuste
 
 
 
@@ -1285,6 +1352,104 @@ def update_state(
     return nota
 
 
+def reverse_partial_return_line(
+    db: Session,
+    nota: Nota,
+    linea: NotaDevolucionParcialLinea,
+    *,
+    admin_id: int | None = None,
+    comentario: str | None = None,
+    commit: bool = True,
+) -> Nota:
+    if nota.estado != NotaEstado.aprobada:
+        raise ValueError("Solo puedes revertir devoluciones parciales en notas aprobadas.")
+    if linea.devolucion.nota_id != nota.id:
+        raise ValueError("La linea no pertenece a esta nota.")
+    if linea.reverted_at:
+        raise ValueError("Esta linea de devolucion parcial ya fue revertida.")
+
+    nm = linea.nota_material
+    if not nm:
+        raise ValueError("No se encontro el material original de la devolucion.")
+
+    kg_restore = Decimal(str(linea.kg_devolucion or 0))
+    monto_restore = Decimal(str(linea.monto_devolucion or 0))
+    if kg_restore <= Decimal("0"):
+        raise ValueError("La linea no tiene kg validos para revertir.")
+
+    if nm.subpesajes:
+        for aplicacion in linea.aplicaciones:
+            sp = aplicacion.subpesaje
+            if not sp:
+                raise ValueError("Falta un subpesaje necesario para revertir esta accion.")
+            kg_aplicado = Decimal(str(aplicacion.kg_aplicado or 0))
+            desc_actual = Decimal(str(sp.descuento_kg or 0))
+            if desc_actual < kg_aplicado:
+                raise ValueError("Los subpesajes actuales ya no permiten revertir esta devolucion.")
+            sp.descuento_kg = desc_actual - kg_aplicado
+            db.add(sp)
+    else:
+        desc_actual = Decimal(str(nm.kg_descuento or 0))
+        if desc_actual < kg_restore:
+            raise ValueError("El descuento actual del material no permite revertir esta devolucion.")
+        nm.kg_descuento = desc_actual - kg_restore
+
+    _recalc_material(nm)
+    nm.subtotal = Decimal(str(nm.subtotal or 0)) + monto_restore
+    if Decimal(str(nm.kg_neto or 0)) > Decimal("0"):
+        nm.precio_unitario = Decimal(str(nm.subtotal or 0)) / Decimal(str(nm.kg_neto or 0))
+    else:
+        nm.precio_unitario = Decimal("0")
+    nm.version_precio_id = None
+    db.add(nm)
+
+    stock_delta = kg_restore if _is_compra_like(nota.tipo_operacion) else -kg_restore
+    inv = _get_or_create_inventario(db, nota.sucursal_id, nm.material_id)
+    new_stock = Decimal(str(inv.stock_actual or 0)) + stock_delta
+    if new_stock < Decimal("0"):
+        raise ValueError("No hay stock suficiente para revertir esta devolucion parcial.")
+    inv.stock_actual = new_stock
+    inv.updated_at = datetime.utcnow()
+    db.add(inv)
+    db.add(
+        InventarioMovimiento(
+            inventario_id=inv.id,
+            nota_id=nota.id,
+            nota_material_id=nm.id,
+            tipo="ajuste",
+            cantidad_kg=stock_delta,
+            saldo_resultante=new_stock,
+            comentario=comentario or f"Reversion devolucion parcial #{linea.id}",
+            usuario_id=admin_id,
+        )
+    )
+
+    _recalc_totals(nota)
+    nota.updated_at = datetime.utcnow()
+    db.add(nota)
+
+    _registrar_movimiento_contable(
+        db,
+        nota=nota,
+        usuario_id=admin_id,
+        comentario=comentario or f"Reversion devolucion parcial #{linea.id}",
+        metodo_pago=nota.metodo_pago,
+        cuenta_id=nota.cuenta_financiera_id,
+        monto=_partial_return_contable_amount(nota, monto_restore, reverse=True),
+        tipo="ajuste",
+    )
+
+    linea.reverted_at = datetime.utcnow()
+    linea.reverted_by_user_id = admin_id
+    linea.comentario_reversion = comentario or f"Revertida por admin en nota #{nota.id}"
+    db.add(linea)
+
+    if commit:
+        db.commit()
+        db.refresh(nota)
+    return nota
+
+
 def send_to_revision(
     db: Session,
     nota: Nota,
@@ -1338,6 +1503,13 @@ def cancel_approved_note(
         )
 
     comment_base = comentarios_admin or f"Cancelacion nota #{nota.id}"
+    devolucion_total = NotaDevolucionTotal(
+        nota_id=nota.id,
+        usuario_id=admin_id,
+        comentario=comentarios_admin or None,
+        created_at=datetime.utcnow(),
+    )
+    db.add(devolucion_total)
 
     for nm in nota.materiales:
         delta = Decimal(str(nm.kg_neto or 0))
@@ -1418,6 +1590,108 @@ def cancel_approved_note(
     return nota
 
 
+def reverse_total_return(
+    db: Session,
+    nota: Nota,
+    devolucion_total: NotaDevolucionTotal,
+    *,
+    admin_id: int | None = None,
+    comentario: str | None = None,
+    commit: bool = True,
+) -> Nota:
+    if nota.estado != NotaEstado.cancelada:
+        raise ValueError("Solo puedes revertir una devolucion total cuando la nota esta cancelada.")
+    if devolucion_total.nota_id != nota.id:
+        raise ValueError("La devolucion total no pertenece a esta nota.")
+    if devolucion_total.reverted_at:
+        raise ValueError("Esta devolucion total ya fue revertida.")
+    if nota.tipo_operacion not in (TipoOperacion.compra, TipoOperacion.venta):
+        raise ValueError("Tipo de operacion no soportado para reversion.")
+
+    comment_base = comentario or f"Reversion devolucion total #{devolucion_total.id} nota #{nota.id}"
+
+    for nm in nota.materiales:
+        delta = Decimal(str(nm.kg_neto or 0))
+        signed_delta = delta if nota.tipo_operacion == TipoOperacion.compra else -delta
+        inv = _get_or_create_inventario(db, nota.sucursal_id, nm.material_id)
+        nuevo_saldo = Decimal(str(inv.stock_actual or 0)) + signed_delta
+        if nuevo_saldo < Decimal("0"):
+            nombre_mat = nm.material.nombre if nm.material else f"Material {nm.material_id}"
+            raise ValueError(f"Stock insuficiente para restaurar {nombre_mat}.")
+        inv.stock_actual = nuevo_saldo
+        inv.updated_at = datetime.utcnow()
+        db.add(inv)
+        db.add(
+            InventarioMovimiento(
+                inventario_id=inv.id,
+                nota_id=nota.id,
+                nota_material_id=nm.id,
+                tipo="ajuste",
+                cantidad_kg=signed_delta,
+                saldo_resultante=nuevo_saldo,
+                comentario=comment_base,
+                usuario_id=admin_id,
+            )
+        )
+
+    _registrar_movimiento_contable(
+        db,
+        nota=nota,
+        usuario_id=admin_id,
+        comentario=comment_base,
+        metodo_pago=nota.metodo_pago,
+        cuenta_id=nota.cuenta_financiera_id,
+        monto=Decimal(str(nota.total_monto or 0)),
+        tipo="restauracion",
+    )
+
+    for pago in nota.pagos or []:
+        monto_pago = Decimal(str(pago.monto or 0))
+        if monto_pago <= Decimal("0"):
+            continue
+        _registrar_movimiento_contable(
+            db,
+            nota=nota,
+            usuario_id=admin_id,
+            comentario=f"Restauracion pago nota #{nota.id}",
+            metodo_pago=pago.metodo_pago or nota.metodo_pago,
+            cuenta_label=pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or None),
+            cuenta_id=pago.cuenta_id,
+            monto=monto_pago,
+            tipo="restauracion_pago",
+        )
+        if pago.cuenta_scrap360_id:
+            cuenta_scrap = db.get(CuentaScrap360, pago.cuenta_scrap360_id)
+            if cuenta_scrap:
+                tipo_mov = "egreso" if _is_compra_like(nota.tipo_operacion) else "ingreso"
+                _registrar_movimiento_cuenta_scrap360(
+                    db,
+                    cuenta=cuenta_scrap,
+                    nota=nota,
+                    pago_id=pago.id,
+                    usuario_id=admin_id,
+                    tipo=tipo_mov,
+                    monto=monto_pago,
+                    comentario=f"Restauracion pago nota #{nota.id}",
+                )
+
+    nota.estado = NotaEstado.aprobada
+    if admin_id is not None:
+        nota.admin_id = admin_id
+    nota.updated_at = datetime.utcnow()
+    db.add(nota)
+
+    devolucion_total.reverted_at = datetime.utcnow()
+    devolucion_total.reverted_by_user_id = admin_id
+    devolucion_total.comentario_reversion = comentario or None
+    db.add(devolucion_total)
+
+    if commit:
+        db.commit()
+        db.refresh(nota)
+    return nota
+
+
 def partial_return_approved_note(
     db: Session,
     nota: Nota,
@@ -1458,9 +1732,15 @@ def partial_return_approved_note(
             devoluciones_map[nm_id] = {
                 "kg_devolucion": Decimal("0"),
                 "monto_devolucion": Decimal("0"),
+                "precio_unitario_devolucion": precio_devolucion,
             }
         devoluciones_map[nm_id]["kg_devolucion"] += kg_devolucion
         devoluciones_map[nm_id]["monto_devolucion"] += monto_devolucion
+        devoluciones_map[nm_id]["precio_unitario_devolucion"] = (
+            devoluciones_map[nm_id]["monto_devolucion"] / devoluciones_map[nm_id]["kg_devolucion"]
+            if devoluciones_map[nm_id]["kg_devolucion"] > Decimal("0")
+            else Decimal("0")
+        )
 
     if not devoluciones_map:
         raise ValueError("Debes indicar un kg mayor a 0 en al menos un material.")
@@ -1502,10 +1782,21 @@ def partial_return_approved_note(
             "kg_devolucion": kg_devolucion,
             "kg_nuevo": kg_nuevo,
             "subtotal_nuevo": subtotal_nuevo,
+            "monto_devolucion": monto_devolucion,
+            "precio_unitario_devolucion": payload["precio_unitario_devolucion"],
+            "aplicaciones": [],
         }
 
     old_total = Decimal(str(nota.total_monto or 0))
     comment_base = comentario or f"Devolucion parcial nota #{nota.id}"
+    devolucion = NotaDevolucionParcial(
+        nota_id=nota.id,
+        usuario_id=admin_id,
+        comentario=comentario or None,
+        created_at=datetime.utcnow(),
+    )
+    db.add(devolucion)
+    db.flush()
 
     for nm_id, ajuste in ajustes_material.items():
         nm = materiales_by_id[nm_id]
@@ -1522,6 +1813,7 @@ def partial_return_approved_note(
                 take = neto_sp if neto_sp <= remaining else remaining
                 sp.descuento_kg = desc + take
                 db.add(sp)
+                ajuste["aplicaciones"].append({"subpesaje_id": sp.id, "kg_aplicado": take})
                 remaining -= take
                 if remaining <= Decimal("0"):
                     break
@@ -1565,6 +1857,27 @@ def partial_return_approved_note(
         )
         db.add(inv)
         db.add(mov)
+
+        linea = NotaDevolucionParcialLinea(
+            devolucion_id=devolucion.id,
+            nota_material_id=nm.id,
+            material_id=nm.material_id,
+            kg_devolucion=kg_devolucion,
+            precio_unitario_devolucion=ajuste["precio_unitario_devolucion"],
+            monto_devolucion=ajuste["monto_devolucion"],
+            created_at=datetime.utcnow(),
+        )
+        db.add(linea)
+        db.flush()
+        for aplicacion in ajuste["aplicaciones"]:
+            db.add(
+                NotaDevolucionParcialAplicacion(
+                    linea_id=linea.id,
+                    subpesaje_id=aplicacion["subpesaje_id"],
+                    kg_aplicado=aplicacion["kg_aplicado"],
+                    created_at=datetime.utcnow(),
+                )
+            )
 
     _recalc_totals(nota)
     nota.updated_at = datetime.utcnow()
