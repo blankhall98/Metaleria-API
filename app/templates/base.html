@@ -56,19 +56,9 @@
             {% if user.rol == 'super_admin' %}
                 <a class="nav-drawer-link" href="/web/admin/users">Usuarios</a>
                 <a class="nav-drawer-link" href="/web/admin/sucursales">Sucursales</a>
-                <a class="nav-drawer-link" href="/web/admin/materiales">Materiales</a>
-                <a class="nav-drawer-link" href="/web/admin/conversiones-materiales">Conversion de materiales</a>
             {% endif %}
 
             {% if user.rol in ['super_admin', 'admin'] %}
-                <a class="nav-drawer-link" href="/web/admin/proveedores">Proveedores</a>
-                <a class="nav-drawer-link" href="/web/admin/clientes">Clientes</a>
-                <a class="nav-drawer-link" href="/web/admin/comisionarios">Comisiones</a>
-                <a class="nav-drawer-link" href="/web/admin/inventario">Inventario</a>
-                <a class="nav-drawer-link" href="/web/admin/contabilidad">Contabilidad</a>
-                <a class="nav-drawer-link" href="/web/admin/corte-caja">Corte de Caja</a>
-                <a class="nav-drawer-link" href="/web/admin/cuentas">Cuentas</a>
-                <a class="nav-drawer-link" href="/web/admin/cuentas-scrap360">Cuentas Scrap360</a>
                 <a class="nav-drawer-link d-flex justify-content-between align-items-center" href="/web/admin/notas">
                     <span>Notas</span>
                     {% set badge_count = (notas_revision_count if notas_revision_count is defined else request.state.notas_revision_count) or 0 %}
@@ -76,6 +66,22 @@
                         <span class="badge bg-danger ms-2">{{ badge_count }}</span>
                     {% endif %}
                 </a>
+                {% if user.rol == 'super_admin' %}
+                    <a class="nav-drawer-link" href="/web/admin/materiales">Materiales</a>
+                {% endif %}
+                <a class="nav-drawer-link" href="/web/admin/proveedores">Proveedores</a>
+                <a class="nav-drawer-link" href="/web/admin/clientes">Clientes</a>
+                <a class="nav-drawer-link" href="/web/admin/comisionarios">Comisiones</a>
+                <a class="nav-drawer-link" href="/web/admin/inventario">Inventario</a>
+                <a class="nav-drawer-link" href="/web/admin/inventario/aumentar">Aumentar materiales</a>
+                {% if user.rol == 'super_admin' %}
+                    <a class="nav-drawer-link" href="/web/admin/conversiones-materiales">Conversion de materiales</a>
+                {% endif %}
+                <a class="nav-drawer-link" href="/web/admin/transferencias">Transferencias</a>
+                <a class="nav-drawer-link" href="/web/admin/contabilidad">Contabilidad</a>
+                <a class="nav-drawer-link" href="/web/admin/corte-caja">Corte de Caja</a>
+                <a class="nav-drawer-link" href="/web/admin/cuentas">Cuentas</a>
+                <a class="nav-drawer-link" href="/web/admin/cuentas-scrap360">Cuentas Scrap360</a>
             {% endif %}
 
             {% if user.rol == 'trabajador' %}
