@@ -132,6 +132,12 @@
     </div>
 </footer>
 
+<div id="floatingTableScrollbar" class="floating-table-scrollbar" hidden>
+    <div id="floatingTableScrollbarTrack" class="floating-table-scrollbar-track" aria-label="Scroll horizontal de tabla">
+        <div id="floatingTableScrollbarSpacer" class="floating-table-scrollbar-spacer"></div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
         integrity="sha384-p1HkL1rZgGSqtEtFPi0PfrxGX2YeliYg+6TSGT+bV39Y5n0jvfUlr8enE82D6a9x"
         crossorigin="anonymous"></script>
@@ -163,12 +169,121 @@
         });
     }
 
+    const floatingTableScrollbar = document.getElementById('floatingTableScrollbar');
+    const floatingTableScrollbarTrack = document.getElementById('floatingTableScrollbarTrack');
+    const floatingTableScrollbarSpacer = document.getElementById('floatingTableScrollbarSpacer');
+    let activeFloatingScrollArea = null;
+    let syncFromFloatingScrollbar = false;
+
+    function getFloatingScrollCandidates() {
+        return Array.from(document.querySelectorAll('.table-scroll-shell .table-responsive')).filter((area) => {
+            const shell = area.closest('.table-scroll-shell');
+            if (!shell) return false;
+
+            const hasOverflow = area.scrollWidth - area.clientWidth > 4;
+            if (!hasOverflow) return false;
+
+            const rect = shell.getBoundingClientRect();
+            const isVisible = rect.top < window.innerHeight - 48 && rect.bottom > 64;
+            const nativeScrollbarOffscreen = rect.top < 0 || rect.bottom > window.innerHeight - 32;
+            return isVisible && nativeScrollbarOffscreen;
+        });
+    }
+
+    function resolveFloatingScrollArea() {
+        const candidates = getFloatingScrollCandidates();
+        if (!candidates.length) {
+            return null;
+        }
+
+        const anchor = Math.min(Math.max(window.innerHeight * 0.35, 140), window.innerHeight - 140);
+        let bestArea = null;
+        let bestScore = Number.POSITIVE_INFINITY;
+
+        candidates.forEach((area) => {
+            const shell = area.closest('.table-scroll-shell');
+            const rect = shell.getBoundingClientRect();
+            const containsAnchor = rect.top <= anchor && rect.bottom >= anchor;
+            const distance = containsAnchor
+                ? 0
+                : Math.min(Math.abs(rect.top - anchor), Math.abs(rect.bottom - anchor)) + 200;
+            const extraPenalty = rect.top > anchor ? 50 : 0;
+            const score = distance + extraPenalty;
+
+            if (score < bestScore) {
+                bestScore = score;
+                bestArea = area;
+            }
+        });
+
+        return bestArea;
+    }
+
+    function hideFloatingScrollbar() {
+        activeFloatingScrollArea = null;
+        floatingTableScrollbar.hidden = true;
+    }
+
+    function syncFloatingScrollbarPosition() {
+        if (!activeFloatingScrollArea) {
+            hideFloatingScrollbar();
+            return;
+        }
+
+        const rect = activeFloatingScrollArea.getBoundingClientRect();
+        const clampedLeft = Math.max(12, rect.left);
+        const maxWidth = Math.max(160, window.innerWidth - clampedLeft - 12);
+        const width = Math.min(rect.width, maxWidth);
+
+        floatingTableScrollbar.style.left = `${clampedLeft}px`;
+        floatingTableScrollbar.style.width = `${width}px`;
+        floatingTableScrollbarSpacer.style.width = `${activeFloatingScrollArea.scrollWidth}px`;
+
+        if (!syncFromFloatingScrollbar) {
+            floatingTableScrollbarTrack.scrollLeft = activeFloatingScrollArea.scrollLeft;
+        }
+    }
+
+    function updateFloatingScrollbar() {
+        const nextArea = resolveFloatingScrollArea();
+        if (!nextArea) {
+            hideFloatingScrollbar();
+            return;
+        }
+
+        activeFloatingScrollArea = nextArea;
+        floatingTableScrollbar.hidden = false;
+        syncFloatingScrollbarPosition();
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.table-scroll-shell .table-responsive').forEach((area) => {
-            area.addEventListener('scroll', updateTableScrollCues, { passive: true });
+            area.addEventListener('scroll', () => {
+                updateTableScrollCues();
+                if (area === activeFloatingScrollArea && !syncFromFloatingScrollbar) {
+                    floatingTableScrollbarTrack.scrollLeft = area.scrollLeft;
+                }
+                updateFloatingScrollbar();
+            }, { passive: true });
         });
+
+        floatingTableScrollbarTrack.addEventListener('scroll', () => {
+            if (!activeFloatingScrollArea) return;
+            syncFromFloatingScrollbar = true;
+            activeFloatingScrollArea.scrollLeft = floatingTableScrollbarTrack.scrollLeft;
+            updateTableScrollCues();
+            window.requestAnimationFrame(() => {
+                syncFromFloatingScrollbar = false;
+            });
+        }, { passive: true });
+
         updateTableScrollCues();
-        window.addEventListener('resize', updateTableScrollCues);
+        updateFloatingScrollbar();
+        window.addEventListener('resize', () => {
+            updateTableScrollCues();
+            updateFloatingScrollbar();
+        });
+        window.addEventListener('scroll', updateFloatingScrollbar, { passive: true });
     });
 </script>
 </body>
