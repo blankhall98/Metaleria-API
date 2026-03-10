@@ -165,20 +165,45 @@ a:hover {
 .table-responsive {
     border: 1px solid rgba(148, 163, 184, 0.35);
     border-radius: 0.9rem;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
     background: #ffffff;
     box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
+    scrollbar-width: thin;
+    scrollbar-color: rgba(59, 130, 246, 0.45) rgba(148, 163, 184, 0.12);
+}
+.table-responsive > .table {
+    min-width: 100%;
 }
 .table-responsive.scroll-x {
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
 }
+.table-responsive::-webkit-scrollbar {
+    height: 10px;
+}
+.table-responsive::-webkit-scrollbar-track {
+    background: rgba(148, 163, 184, 0.12);
+    border-radius: 999px;
+}
+.table-responsive::-webkit-scrollbar-thumb {
+    background: linear-gradient(90deg, rgba(37, 99, 235, 0.55), rgba(59, 130, 246, 0.7));
+    border-radius: 999px;
+    border: 2px solid rgba(255, 255, 255, 0.75);
+}
+.table-responsive::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(90deg, rgba(29, 78, 216, 0.72), rgba(59, 130, 246, 0.82));
+}
 .table-responsive.scroll-x table {
     min-width: 980px;
 }
 .table-scroll-shell {
     position: relative;
+}
+.table-scroll-shell-auto .table-responsive.scroll-x table {
+    min-width: 100%;
 }
 .table-scroll-shell::before,
 .table-scroll-shell::after {

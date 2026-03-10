@@ -154,6 +154,36 @@
         }
     }
 
+    function ensureScrollableTableShells() {
+        document.querySelectorAll('.table-responsive').forEach((area) => {
+            area.classList.add('scroll-x');
+
+            if (area.closest('.table-scroll-shell')) {
+                const shell = area.closest('.table-scroll-shell');
+                if (!shell.querySelector('.table-scroll-hint')) {
+                    const hint = document.createElement('div');
+                    hint.className = 'table-scroll-hint';
+                    hint.textContent = area.dataset.scrollHint || 'Desliza lateralmente para revisar el contenido completo.';
+                    shell.appendChild(hint);
+                }
+                return;
+            }
+
+            const shell = document.createElement('div');
+            shell.className = 'table-scroll-shell table-scroll-shell-auto';
+            const parent = area.parentNode;
+            if (!parent) return;
+
+            parent.insertBefore(shell, area);
+            shell.appendChild(area);
+
+            const hint = document.createElement('div');
+            hint.className = 'table-scroll-hint';
+            hint.textContent = area.dataset.scrollHint || 'Desliza lateralmente para revisar el contenido completo.';
+            shell.appendChild(hint);
+        });
+    }
+
     function updateTableScrollCues() {
         document.querySelectorAll('.table-scroll-shell').forEach((shell) => {
             const area = shell.querySelector('.table-responsive');
@@ -257,6 +287,8 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
+        ensureScrollableTableShells();
+
         document.querySelectorAll('.table-scroll-shell .table-responsive').forEach((area) => {
             area.addEventListener('scroll', () => {
                 updateTableScrollCues();
