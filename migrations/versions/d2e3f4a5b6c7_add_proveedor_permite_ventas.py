@@ -17,6 +17,7 @@ depends_on = None
 
 def upgrade() -> None:
     bind = op.get_bind()
+    dialect = bind.dialect.name
 
     def inspector():
         return sa.inspect(bind)
@@ -35,11 +36,12 @@ def upgrade() -> None:
                 )
             )
 
+    enabled_literal = "1" if dialect == "sqlite" else "true"
     bind.execute(
         sa.text(
-            """
+            f"""
             UPDATE proveedores
-            SET permite_ventas = 1
+            SET permite_ventas = {enabled_literal}
             WHERE linked_cliente_id IS NOT NULL
                OR id IN (
                     SELECT linked_proveedor_id
