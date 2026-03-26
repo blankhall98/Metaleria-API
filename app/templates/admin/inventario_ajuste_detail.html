@@ -7,9 +7,17 @@
     <div>
         <p class="text-uppercase text-muted small mb-1">Inventario</p>
         <h1 class="h4 text-dark mb-1">Detalle de ajuste manual #{{ ajuste.id }}</h1>
-        <p class="text-muted mb-0">Vista auditable del ajuste y su posible reversa.</p>
+        <p class="text-muted mb-0">
+            Vista auditable del ajuste y su posible reversa.
+            {% if ajuste.nota_id %}
+                Ligado a la nota <a href="/web/admin/notas/{{ ajuste.nota_id }}">#{{ ajuste.nota_id }}</a>.
+            {% endif %}
+        </p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
+        {% if ajuste.nota_id %}
+            <a href="/web/admin/notas/{{ ajuste.nota_id }}#note-manual-adjustments" class="btn btn-outline-primary btn-sm">Volver a la nota</a>
+        {% endif %}
         <a href="/web/admin/inventario/movimientos" class="btn btn-outline-secondary btn-sm">Volver</a>
     </div>
 </div>
@@ -67,6 +75,17 @@
                 <span class="notes-kpi-label">Movimiento inventario</span>
                 <strong>{% if ajuste.movimiento %}#{{ ajuste.movimiento.id }}{% else %}-{% endif %}</strong>
                 <div class="notes-kpi-sub">Rastro tecnico</div>
+            </div>
+            <div class="notes-kpi-card tone-neutral">
+                <span class="notes-kpi-label">Nota vinculada</span>
+                <strong>{% if ajuste.nota_id %}#{{ ajuste.nota_id }}{% else %}-{% endif %}</strong>
+                <div class="notes-kpi-sub">
+                    {% if ajuste.nota_material %}
+                        Linea #{{ ajuste.nota_material.id }}
+                    {% else %}
+                        Ajuste general
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>

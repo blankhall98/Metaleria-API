@@ -71,6 +71,8 @@ class InventarioAjusteManual(Base):
     id = Column(Integer, primary_key=True, index=True)
     sucursal_id = Column(Integer, ForeignKey("sucursales.id"), nullable=False, index=True)
     material_id = Column(Integer, ForeignKey("materiales.id"), nullable=False, index=True)
+    nota_id = Column(Integer, ForeignKey("notas.id"), nullable=True, index=True)
+    nota_material_id = Column(Integer, ForeignKey("nota_materiales.id"), nullable=True, index=True)
     inventario_movimiento_id = Column(Integer, ForeignKey("inventario_movimientos.id"), nullable=True, index=True)
     usuario_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
 
@@ -87,6 +89,8 @@ class InventarioAjusteManual(Base):
 
     sucursal = relationship("Sucursal")
     material = relationship("Material")
+    nota = relationship("Nota")
+    nota_material = relationship("NotaMaterial")
     movimiento = relationship("InventarioMovimiento")
     usuario = relationship("User", foreign_keys=[usuario_id])
     reverted_by = relationship("User", foreign_keys=[reverted_by_user_id])

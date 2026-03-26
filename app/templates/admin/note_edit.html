@@ -12,6 +12,9 @@
             <p class="text-muted mb-0">{{ operation_label }} vinculada a {{ partner_label|lower }}: {{ partner_name }}</p>
         </div>
         <div class="d-flex gap-2 flex-wrap">
+            {% if note_state == 'APROBADA' %}
+                <a href="/web/admin/notas/{{ nota.id }}#note-manual-adjustments" class="btn btn-outline-primary btn-sm">Ajuste manual</a>
+            {% endif %}
             <a href="/web/admin/notas/{{ nota.id }}" class="btn btn-outline-secondary btn-sm">Volver a la nota</a>
         </div>
     </div>
@@ -198,6 +201,20 @@
                                 <a href="/web/admin/notas/{{ nota.id }}" class="btn btn-outline-secondary">Cancelar</a>
                             </div>
                         </div>
+                    </div>
+                </div>
+                <div class="card hover-lift note-side-card note-side-card--edit mt-3">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center gap-2 mb-3">
+                            <span class="chip-strong">Inventario</span>
+                            <span class="text-muted small">Ajuste manual por nota</span>
+                        </div>
+                        {% if note_state == 'APROBADA' %}
+                            <p class="text-muted small mb-3">Si necesitas corregir inventario operativo sin tocar montos, pagos o valuacion, usa el ajuste manual ligado a esta nota desde el detalle.</p>
+                            <a href="/web/admin/notas/{{ nota.id }}#note-manual-adjustments" class="btn btn-outline-primary w-100">Abrir ajuste manual de esta nota</a>
+                        {% else %}
+                            <p class="text-muted small mb-0">Los ajustes manuales ligados a la nota se habilitan cuando la nota ya esta aprobada. Esta pantalla se reserva para editar pesos, subpesajes y precios.</p>
+                        {% endif %}
                     </div>
                 </div>
             </div>

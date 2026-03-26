@@ -1829,6 +1829,79 @@ body.modal-open {
     gap: 1rem;
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
+.note-adjustments-card {
+    border: 1px solid rgba(59, 130, 246, 0.16);
+    background:
+        radial-gradient(circle at top right, rgba(59, 130, 246, 0.08), transparent 34%),
+        linear-gradient(135deg, #ffffff, #f8fbff);
+}
+.note-adjust-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+}
+.note-adjust-layout {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+    align-items: start;
+}
+.note-adjust-form,
+.note-adjust-preview {
+    border: 1px solid var(--border);
+    border-radius: 0.95rem;
+    background: #ffffff;
+    padding: 1rem;
+}
+.note-adjust-form-grid {
+    display: grid;
+    gap: 0.85rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.note-adjust-field--material,
+.note-adjust-field--comment {
+    grid-column: 1 / -1;
+}
+.note-adjust-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.9rem;
+}
+.note-adjust-preview {
+    background:
+        radial-gradient(circle at top right, rgba(22, 163, 74, 0.1), transparent 36%),
+        linear-gradient(135deg, #ffffff, #f8fafc);
+}
+.note-adjust-preview-title {
+    font-size: 0.82rem;
+    font-weight: 800;
+    color: var(--ink);
+    margin-bottom: 0.3rem;
+}
+.note-adjust-preview-copy,
+.note-adjust-preview-hint {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    line-height: 1.5;
+}
+.note-adjust-preview-grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin: 0.95rem 0;
+}
+.note-adjust-preview-item {
+    padding: 0.8rem 0.85rem;
+    border: 1px solid var(--border);
+    border-radius: 0.8rem;
+    background: #f8fafc;
+}
+.note-adjust-preview-item strong {
+    display: block;
+    margin-top: 0.18rem;
+    font-size: 1rem;
+    letter-spacing: -0.02em;
+}
 .note-editor-card .card-body,
 .note-detail-page--review .note-report-card .card-body {
     padding: 1.2rem 1.2rem 1rem;
@@ -1960,7 +2033,12 @@ body.modal-open {
     .notes-toolbar-grid,
     .notes-attention-grid,
     .note-workspace-grid,
-    .note-payment-panels {
+    .note-payment-panels,
+    .note-adjust-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .note-adjust-form-grid,
+    .note-adjust-preview-grid {
         grid-template-columns: minmax(0, 1fr);
     }
     .note-side-card {

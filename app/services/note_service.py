@@ -1122,10 +1122,13 @@ def ajustar_stock(
     cantidad_kg: Decimal,
     comentario: str | None,
     usuario_id: int | None,
+    nota_id: int | None = None,
+    nota_material_id: int | None = None,
     reversal_of_id: int | None = None,
 ) -> Inventario:
     """
-    Ajuste manual de inventario (positivo suma, negativo resta). Registra movimiento y log contable en 0.
+    Ajuste manual de inventario (positivo suma, negativo resta).
+    Puede ser general o ligado a una nota/material de nota especificos.
     """
     inv = _get_or_create_inventario(db, sucursal_id, material_id)
     saldo_actual = Decimal(str(inv.stock_actual or 0))
@@ -1138,8 +1141,8 @@ def ajustar_stock(
 
     mov = InventarioMovimiento(
         inventario_id=inv.id,
-        nota_id=None,
-        nota_material_id=None,
+        nota_id=nota_id,
+        nota_material_id=nota_material_id,
         tipo="ajuste",
         cantidad_kg=delta,
         saldo_resultante=nuevo_saldo,
@@ -1150,7 +1153,7 @@ def ajustar_stock(
     db.add(mov)
 
     movc = MovimientoContable(
-        nota_id=None,
+        nota_id=nota_id,
         sucursal_id=sucursal_id,
         usuario_id=usuario_id,
         tipo="ajuste",
@@ -1163,6 +1166,8 @@ def ajustar_stock(
     ajuste = InventarioAjusteManual(
         sucursal_id=sucursal_id,
         material_id=material_id,
+        nota_id=nota_id,
+        nota_material_id=nota_material_id,
         inventario_movimiento_id=mov.id,
         usuario_id=usuario_id,
         cantidad_kg=delta,
@@ -1212,6 +1217,8 @@ def reverse_manual_inventory_adjustment(
         cantidad_kg=delta_reversion,
         comentario=comment,
         usuario_id=usuario_id,
+        nota_id=ajuste.nota_id,
+        nota_material_id=ajuste.nota_material_id,
         reversal_of_id=ajuste.id,
     )
     db.refresh(ajuste)

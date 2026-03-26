@@ -29,6 +29,9 @@
                 <a href="/web/admin/notas/{{ nota.id }}/editar" class="btn btn-outline-primary btn-sm">Editar</a>
             {% endif %}
             <a href="/web/admin/notas/{{ nota.id }}/evidencias" class="btn btn-primary btn-sm note-evidence-btn">Evidencias</a>
+            {% if is_approved or note_adjustments %}
+                <a href="#note-manual-adjustments" class="btn btn-outline-primary btn-sm">Ajuste manual</a>
+            {% endif %}
             {% if nota.estado.value == 'APROBADA' and nota.tipo_operacion.value in ['compra', 'venta'] %}
                 <a href="/web/admin/notas/{{ nota.id }}/factura" class="btn btn-outline-primary btn-sm">Orden PDF</a>
             {% endif %}
@@ -53,6 +56,12 @@
     {% endif %}
     {% if pago_reverted %}
         <div class="alert alert-success py-2 small mb-3">Abono deshecho correctamente. Se revirtieron saldo, log contable y movimiento en Cuenta Scrap360 si existia.</div>
+    {% endif %}
+    {% if ajuste_manual_updated %}
+        <div class="alert alert-success py-2 small mb-3">Ajuste manual ligado a la nota registrado correctamente. La nota conserva sus montos; solo cambia el inventario auditado para esta nota.</div>
+    {% endif %}
+    {% if ajuste_manual_reverted %}
+        <div class="alert alert-success py-2 small mb-3">Ajuste manual revertido correctamente. Se genero la reversa auditada y el historial de la nota quedo actualizado.</div>
     {% endif %}
     {% if pago_inicial_updated %}
         <div class="alert alert-success py-2 small mb-3">Pago inicial actualizado correctamente.</div>
@@ -928,6 +937,167 @@
             </div>
         </div>
     {% endif %}
+    {% if is_approved or note_adjustments %}
+        <div class="card hover-lift mb-3 note-adjustments-card" id="note-manual-adjustments">
+            <div class="card-body">
+                <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2 mb-3">
+                    <div>
+                        <h2 class="h6 text-dark mb-1">Ajuste manual ligado a esta nota</h2>
+                        <p class="text-muted small mb-0">Corrige inventario operativo desde esta nota sin modificar totales, pagos o valuacion. El ajuste queda auditado y se puede revertir una sola vez.</p>
+                    </div>
+                    <div class="note-adjust-badges">
+                        <span class="badge bg-light text-dark border">{{ note_adjustments|length }} registros</span>
+                        <span class="badge bg-success">{{ note_adjustment_active_count }} activos</span>
+                        <span class="badge bg-secondary">{{ note_adjustment_reversion_count }} reversiones</span>
+                    </div>
+                </div>
+
+                {% if is_approved %}
+                    <div class="note-adjust-layout">
+                        <form method="post" action="/web/admin/notas/{{ nota.id }}/ajuste-manual" class="note-adjust-form">
+                            <div class="note-adjust-form-grid">
+                                <div class="note-adjust-field note-adjust-field--material">
+                                    <label class="form-label">Material de la nota</label>
+                                    <select class="form-select" name="ajuste_nota_material_id" id="note_adjust_material" required>
+                                        <option value="">Selecciona material</option>
+                                        {% for item in note_material_options %}
+                                            <option value="{{ item.nota_material_id }}"
+                                                    data-kg-neto="{{ '%.3f'|format(item.kg_neto or 0) }}"
+                                                    data-stock-actual="{{ '%.3f'|format(item.stock_actual or 0) }}"
+                                                    {% if form_ajuste_nota_material_id|string == item.nota_material_id|string %}selected{% endif %}>
+                                                {{ item.material_name }}
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                    <div class="form-text text-muted">Solo puedes ajustar materiales que ya pertenecen a esta nota.</div>
+                                </div>
+                                <div class="note-adjust-field">
+                                    <label class="form-label">Movimiento</label>
+                                    <select class="form-select" name="ajuste_operacion" id="note_adjust_operation">
+                                        <option value="aumentar" {% if form_ajuste_operacion == 'aumentar' %}selected{% endif %}>Aumentar stock</option>
+                                        <option value="disminuir" {% if form_ajuste_operacion == 'disminuir' %}selected{% endif %}>Disminuir stock</option>
+                                    </select>
+                                </div>
+                                <div class="note-adjust-field">
+                                    <label class="form-label">Cantidad (kg)</label>
+                                    <input class="form-control" type="number" step="0.001" min="0.001" name="ajuste_cantidad_kg" id="note_adjust_qty" value="{{ form_ajuste_cantidad or '' }}" placeholder="0.000" required>
+                                </div>
+                                <div class="note-adjust-field note-adjust-field--comment">
+                                    <label class="form-label">Comentario</label>
+                                    <input class="form-control" type="text" name="ajuste_comentario" value="{{ form_ajuste_comentario or '' }}" placeholder="Opcional. Ejemplo: diferencia detectada en patio.">
+                                </div>
+                            </div>
+                            <div class="note-adjust-actions">
+                                <button type="submit" class="btn btn-outline-primary">Registrar ajuste ligado a nota</button>
+                            </div>
+                        </form>
+
+                        <div class="note-adjust-preview">
+                            <div class="note-adjust-preview-title">Impacto estimado</div>
+                            <div class="note-adjust-preview-copy">Usa este panel para validar que el ajuste afecta el material correcto antes de guardarlo. No modifica montos, solo inventario y trazabilidad.</div>
+                            <div class="note-adjust-preview-grid">
+                                <div class="note-adjust-preview-item">
+                                    <span class="note-meta-label">Kg en nota</span>
+                                    <strong id="note_adjust_preview_kg">-</strong>
+                                </div>
+                                <div class="note-adjust-preview-item">
+                                    <span class="note-meta-label">Stock actual</span>
+                                    <strong id="note_adjust_preview_stock">-</strong>
+                                </div>
+                                <div class="note-adjust-preview-item">
+                                    <span class="note-meta-label">Stock estimado</span>
+                                    <strong id="note_adjust_preview_result">-</strong>
+                                </div>
+                            </div>
+                            <div class="note-adjust-preview-hint">Puedes aumentar o disminuir stock. Si la disminucion deja inventario negativo, el sistema la bloqueara.</div>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="note-inline-info mb-3">
+                        <div class="card-body px-0 py-0">
+                            <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
+                                <div>
+                                    <div class="fw-semibold">La nota ya no admite nuevos ajustes manuales</div>
+                                    <div class="text-muted small">Como la nota no esta aprobada, solo puedes auditar o revertir los ajustes historicos que ya quedaron vinculados a esta nota.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+
+                {% if note_adjustments %}
+                    <div class="table-scroll-shell mt-3">
+                        <div class="table-responsive scroll-x note-table-scroll">
+                            <table class="table table-sm align-middle mb-0 note-payments-table">
+                                <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Material</th>
+                                    <th>Estado</th>
+                                    <th class="text-end">Movimiento</th>
+                                    <th class="text-end">Stock anterior</th>
+                                    <th class="text-end">Stock resultante</th>
+                                    <th>Comentario</th>
+                                    <th class="text-end">Acciones</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% for ajuste in note_adjustments %}
+                                    <tr class="{{ 'is-reverted' if ajuste.reverted_at or ajuste.reversal_of_id else '' }}">
+                                        <td>{{ ajuste.created_at.strftime("%Y-%m-%d %H:%M") if ajuste.created_at else '-' }}</td>
+                                        <td>
+                                            <div class="fw-semibold">{{ ajuste.material.nombre if ajuste.material else ('Material #' ~ ajuste.material_id) }}</div>
+                                            <div class="text-muted small">
+                                                {% if ajuste.nota_material %}
+                                                    Linea de nota #{{ ajuste.nota_material.id }}
+                                                {% else %}
+                                                    Ligado a nota
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                        <td>
+                                            {% if ajuste.reversal_of_id %}
+                                                <span class="badge bg-light text-dark border">Reversion</span>
+                                            {% elif ajuste.reverted_at %}
+                                                <span class="badge bg-secondary">Revertido</span>
+                                            {% else %}
+                                                <span class="badge bg-success">Activo</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-end fw-semibold {{ 'text-success' if (ajuste.cantidad_kg or 0) >= 0 else 'text-danger' }}">
+                                            {{ '+' if (ajuste.cantidad_kg or 0) >= 0 else '' }}{{ "{:,.3f}".format(ajuste.cantidad_kg or 0) }} kg
+                                        </td>
+                                        <td class="text-end">{{ "{:,.3f}".format(ajuste.stock_anterior or 0) }} kg</td>
+                                        <td class="text-end">{{ "{:,.3f}".format(ajuste.stock_resultante or 0) }} kg</td>
+                                        <td class="small text-muted">{{ ajuste.comentario or '-' }}</td>
+                                        <td class="text-end">
+                                            <div class="d-inline-flex flex-wrap justify-content-end gap-2">
+                                                <a class="btn btn-sm btn-outline-secondary" href="/web/admin/inventario/ajustes/{{ ajuste.id }}">Detalle</a>
+                                                {% if not ajuste.reversal_of_id and not ajuste.reverted_at %}
+                                                    <form method="post" action="/web/admin/notas/{{ nota.id }}/ajuste-manual/{{ ajuste.id }}/revertir" class="d-inline" onsubmit="return confirm('Se generara una reversa exacta para este ajuste manual ligado a la nota. Deseas continuar?');">
+                                                        <button type="submit" class="btn btn-sm btn-outline-danger">Revertir</button>
+                                                    </form>
+                                                {% else %}
+                                                    <span class="text-muted small">Solo auditoria</span>
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para revisar stock anterior, stock resultante y acciones del ajuste.</div>
+                    </div>
+                {% else %}
+                    <div class="note-empty-state mt-3">
+                        <div class="note-empty-state-title">Aun no hay ajustes manuales ligados a esta nota.</div>
+                        <div class="text-muted small">Usa este modulo cuando necesites corregir inventario operativo de esta nota sin editar sus montos o sus pagos.</div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
     {% if devoluciones_parciales and not is_pending_review %}
         <div class="card hover-lift mb-3 note-payments-card">
             <div class="card-body">
@@ -1026,6 +1196,7 @@
                             <th class="text-end">Cantidad</th>
                             <th class="text-end">Saldo</th>
                             <th>Fecha</th>
+                            <th class="text-end">Detalle</th>
                         </tr>
                         </thead>
                         <tbody>
@@ -1034,13 +1205,27 @@
                             {% if mov.tipo == 'venta' %}
                                 {% set qty = qty * -1 %}
                             {% endif %}
+                            {% set linked_adjustment = note_adjustments_by_mov_id.get(mov.id) %}
                             <tr>
                                 <td>{{ mov.inventario.sucursal.nombre if mov.inventario and mov.inventario.sucursal else '-' }}</td>
                                 <td>{{ mov.inventario.material.nombre if mov.inventario and mov.inventario.material else '-' }}</td>
-                                <td class="text-uppercase">{{ mov.tipo }}</td>
+                                <td class="text-uppercase">
+                                    {% if linked_adjustment %}
+                                        ajuste manual
+                                    {% else %}
+                                        {{ mov.tipo }}
+                                    {% endif %}
+                                </td>
                                 <td class="text-end">{{ "{:,.2f}".format(qty) }} kg</td>
                                 <td class="text-end">{{ "{:,.2f}".format(mov.saldo_resultante or 0) }} kg</td>
                                 <td>{{ mov.created_at.strftime("%Y-%m-%d %H:%M") if mov.created_at else '-' }}</td>
+                                <td class="text-end">
+                                    {% if linked_adjustment %}
+                                        <a class="btn btn-sm btn-outline-secondary" href="/web/admin/inventario/ajustes/{{ linked_adjustment.id }}">Detalle</a>
+                                    {% else %}
+                                        <span class="text-muted small">-</span>
+                                    {% endif %}
+                                </td>
                             </tr>
                         {% endfor %}
                         </tbody>
@@ -1092,6 +1277,45 @@
                 hidden.value = comments.value || '';
             }
         }
+
+        const noteAdjustMaterial = document.getElementById('note_adjust_material');
+        const noteAdjustOperation = document.getElementById('note_adjust_operation');
+        const noteAdjustQty = document.getElementById('note_adjust_qty');
+        const noteAdjustPreviewKg = document.getElementById('note_adjust_preview_kg');
+        const noteAdjustPreviewStock = document.getElementById('note_adjust_preview_stock');
+        const noteAdjustPreviewResult = document.getElementById('note_adjust_preview_result');
+
+        function updateNoteAdjustmentPreview() {
+            if (!noteAdjustMaterial || !noteAdjustPreviewKg || !noteAdjustPreviewStock || !noteAdjustPreviewResult) return;
+            const option = noteAdjustMaterial.options[noteAdjustMaterial.selectedIndex];
+            if (!option || !option.value) {
+                noteAdjustPreviewKg.textContent = '-';
+                noteAdjustPreviewStock.textContent = '-';
+                noteAdjustPreviewResult.textContent = '-';
+                return;
+            }
+            const kgNeto = parseFloat(option.dataset.kgNeto || '0') || 0;
+            const stockActual = parseFloat(option.dataset.stockActual || '0') || 0;
+            const qty = parseFloat(noteAdjustQty && noteAdjustQty.value ? noteAdjustQty.value : '0') || 0;
+            const operation = noteAdjustOperation && noteAdjustOperation.value === 'disminuir' ? -1 : 1;
+            const result = stockActual + (qty * operation);
+            noteAdjustPreviewKg.textContent = `${kgNeto.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} kg`;
+            noteAdjustPreviewStock.textContent = `${stockActual.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} kg`;
+            noteAdjustPreviewResult.textContent = `${result.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} kg`;
+            noteAdjustPreviewResult.classList.toggle('text-danger', result < 0);
+            noteAdjustPreviewResult.classList.toggle('text-success', result >= 0);
+        }
+
+        if (noteAdjustMaterial) {
+            noteAdjustMaterial.addEventListener('change', updateNoteAdjustmentPreview);
+        }
+        if (noteAdjustOperation) {
+            noteAdjustOperation.addEventListener('change', updateNoteAdjustmentPreview);
+        }
+        if (noteAdjustQty) {
+            noteAdjustQty.addEventListener('input', updateNoteAdjustmentPreview);
+        }
+        updateNoteAdjustmentPreview();
 
         const metodoSelect = document.getElementById('metodo_pago_select');
         const cuentaInput = document.getElementById('cuenta_financiera_select');

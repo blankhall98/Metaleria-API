@@ -7478,6 +7478,22 @@ def _render_nota_detail(
     proveedores = db.query(Proveedor).filter(Proveedor.activo.is_(True)).order_by(Proveedor.nombre_completo).all()
     clientes = db.query(Cliente).filter(Cliente.activo.is_(True)).order_by(Cliente.nombre_completo).all()
     inv_movs = db.query(InventarioMovimiento).filter(InventarioMovimiento.nota_id == nota.id).all()
+    note_adjustments = (
+        db.query(InventarioAjusteManual)
+        .filter(InventarioAjusteManual.nota_id == nota.id)
+        .order_by(InventarioAjusteManual.created_at.desc(), InventarioAjusteManual.id.desc())
+        .all()
+    )
+    note_adjustment_mov_ids = {
+        adj.inventario_movimiento_id
+        for adj in note_adjustments
+        if adj.inventario_movimiento_id is not None
+    }
+    note_adjustments_by_mov_id = {
+        adj.inventario_movimiento_id: adj
+        for adj in note_adjustments
+        if adj.inventario_movimiento_id is not None
+    }
     pagos = (
         db.query(NotaPago)
         .filter(NotaPago.nota_id == nota.id)
@@ -7515,6 +7531,8 @@ def _render_nota_detail(
             cont_saldo += _movimiento_monto_firmado(mov, tipo_raw, tipo_op)
         inv_saldo = Decimal("0")
         for mov in inv_movs:
+            if mov.id in note_adjustment_mov_ids:
+                continue
             inv_saldo += _signed_inventario_qty(mov)
         devolucion_check = {
             "contabilidad_saldo": cont_saldo,
@@ -7585,6 +7603,33 @@ def _render_nota_detail(
                 transfer_related_sucursal = db.get(Sucursal, transfer_related.sucursal_id)
     cuentas_sucursal, cuentas_partner = _get_cuentas_for_nota(db, nota)
     cuentas_scrap360 = _get_scrap360_cuentas_for_nota(db, nota)
+    note_material_options: list[dict] = []
+    note_inventory_stock_map: dict[int, Decimal] = {}
+    material_ids = [m.material_id for m in nota.materiales if m.material_id]
+    if nota.sucursal_id and material_ids:
+        inv_rows = (
+            db.query(Inventario)
+            .filter(
+                Inventario.sucursal_id == nota.sucursal_id,
+                Inventario.material_id.in_(material_ids),
+            )
+            .all()
+        )
+        note_inventory_stock_map = {
+            inv.material_id: Decimal(str(inv.stock_actual or 0))
+            for inv in inv_rows
+        }
+    for nm in nota.materiales:
+        material_name = nm.material.nombre if nm.material else f"Material #{nm.material_id}"
+        note_material_options.append(
+            {
+                "nota_material_id": nm.id,
+                "material_id": nm.material_id,
+                "material_name": material_name,
+                "kg_neto": Decimal(str(nm.kg_neto or 0)),
+                "stock_actual": note_inventory_stock_map.get(nm.material_id, Decimal("0")),
+            }
+        )
     if partner_kind == "cliente":
         cuentas_partner_label = "Cliente"
     elif partner_kind == "proveedor":
@@ -7616,6 +7661,10 @@ def _render_nota_detail(
         "form_precio_unit_map": {},
         "form_subtotal_map": {},
         "form_precio_mode_map": {},
+        "form_ajuste_nota_material_id": None,
+        "form_ajuste_operacion": "aumentar",
+        "form_ajuste_cantidad": None,
+        "form_ajuste_comentario": None,
     }
     context = {
         "request": request,
@@ -7631,6 +7680,18 @@ def _render_nota_detail(
         "operation_label": operation_label,
         "tipos_cliente": list(TipoCliente),
         "inv_movs": inv_movs,
+        "note_adjustments": note_adjustments,
+        "note_adjustments_by_mov_id": note_adjustments_by_mov_id,
+        "note_adjustment_active_count": len(
+            [adj for adj in note_adjustments if not adj.reverted_at and not adj.reversal_of_id]
+        ),
+        "note_adjustment_reverted_count": len(
+            [adj for adj in note_adjustments if adj.reverted_at]
+        ),
+        "note_adjustment_reversion_count": len(
+            [adj for adj in note_adjustments if adj.reversal_of_id]
+        ),
+        "note_material_options": note_material_options,
         "pagos": pagos,
         "pago_inicial_total": pago_inicial_total,
         "price_map_json": price_map_json,
@@ -7653,6 +7714,8 @@ def _render_nota_detail(
         "cuentas_scrap360": cuentas_scrap360,
         "pago_updated": pago_updated,
         "pago_reverted": pago_reverted,
+        "ajuste_manual_updated": request.query_params.get("ajuste_manual") == "1",
+        "ajuste_manual_reverted": request.query_params.get("ajuste_manual_revertido") == "1",
         "pago_inicial_updated": pago_inicial_updated,
         "precios_updated": precios_updated,
         "edit_updated": edit_updated,
@@ -8646,6 +8709,192 @@ async def notas_deshacer_pago(
         )
 
     return RedirectResponse(url=f"/web/admin/notas/{nota_id}?pago_revertido=1", status_code=303)
+
+
+@router.post("/notas/{nota_id}/ajuste-manual")
+async def notas_ajuste_manual_post(
+    nota_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    nota = db.get(Nota, nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_nota_access(nota, allowed_suc_ids)
+    if nota.estado != NotaEstado.aprobada:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="Solo puedes registrar ajustes manuales en notas aprobadas.",
+        )
+
+    form = await request.form()
+    nota_material_raw = (form.get("ajuste_nota_material_id") or "").strip()
+    operacion = (form.get("ajuste_operacion") or "").strip().lower()
+    cantidad_raw = (form.get("ajuste_cantidad_kg") or "").strip()
+    comentario = (form.get("ajuste_comentario") or "").strip()
+    form_state = {
+        "form_ajuste_nota_material_id": nota_material_raw,
+        "form_ajuste_operacion": operacion or "aumentar",
+        "form_ajuste_cantidad": cantidad_raw,
+        "form_ajuste_comentario": comentario,
+    }
+
+    try:
+        nota_material_id = int(nota_material_raw)
+    except (TypeError, ValueError):
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="Selecciona un material valido dentro de la nota.",
+            form_state=form_state,
+        )
+
+    nota_material = (
+        db.query(NotaMaterial)
+        .filter(
+            NotaMaterial.id == nota_material_id,
+            NotaMaterial.nota_id == nota.id,
+        )
+        .first()
+    )
+    if not nota_material:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="El material seleccionado no pertenece a esta nota.",
+            form_state=form_state,
+        )
+
+    if operacion not in {"aumentar", "disminuir"}:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="Selecciona un tipo de ajuste valido.",
+            form_state=form_state,
+        )
+
+    try:
+        cantidad = Decimal(str(cantidad_raw))
+    except (InvalidOperation, TypeError):
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="La cantidad del ajuste es invalida.",
+            form_state=form_state,
+        )
+    if cantidad <= Decimal("0"):
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="La cantidad del ajuste debe ser mayor a cero.",
+            form_state=form_state,
+        )
+
+    delta = cantidad if operacion == "aumentar" else (cantidad * Decimal("-1"))
+    material_name = (
+        nota_material.material.nombre
+        if nota_material.material
+        else f"Material #{nota_material.material_id}"
+    )
+    comentario_final = comentario or (
+        f"Ajuste manual ligado a nota #{nota.id} · {material_name}"
+    )
+
+    try:
+        note_service.ajustar_stock(
+            db,
+            sucursal_id=nota.sucursal_id,
+            material_id=nota_material.material_id,
+            cantidad_kg=delta,
+            comentario=comentario_final,
+            usuario_id=current_user.get("id"),
+            nota_id=nota.id,
+            nota_material_id=nota_material.id,
+        )
+    except ValueError as exc:
+        db.rollback()
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error=str(exc),
+            form_state=form_state,
+        )
+
+    return RedirectResponse(
+        url=f"/web/admin/notas/{nota_id}?ajuste_manual=1#note-manual-adjustments",
+        status_code=303,
+    )
+
+
+@router.post("/notas/{nota_id}/ajuste-manual/{ajuste_id}/revertir")
+async def notas_ajuste_manual_revertir(
+    nota_id: int,
+    ajuste_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    nota = db.get(Nota, nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_nota_access(nota, allowed_suc_ids)
+
+    ajuste = (
+        db.query(InventarioAjusteManual)
+        .filter(
+            InventarioAjusteManual.id == ajuste_id,
+            InventarioAjusteManual.nota_id == nota.id,
+        )
+        .first()
+    )
+    if not ajuste:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="El ajuste manual ligado a esta nota no fue encontrado.",
+        )
+
+    try:
+        note_service.reverse_manual_inventory_adjustment(
+            db,
+            ajuste,
+            usuario_id=current_user.get("id"),
+            comentario=f"Reversion ajuste manual nota #{nota.id} · ajuste #{ajuste.id}",
+        )
+    except ValueError as exc:
+        db.rollback()
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error=str(exc),
+        )
+
+    return RedirectResponse(
+        url=f"/web/admin/notas/{nota_id}?ajuste_manual_revertido=1#note-manual-adjustments",
+        status_code=303,
+    )
 
 
 @router.post("/notas/{nota_id}/pago-inicial")
