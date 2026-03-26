@@ -7751,6 +7751,8 @@ def _render_nota_edit(
     form_precio_unit_map: dict[int, str] | None = None,
     form_subtotal_map: dict[int, str] | None = None,
     form_precio_mode_map: dict[int, str] | None = None,
+    form_kg_neto_map: dict[int, str] | None = None,
+    form_kg_desc_map: dict[int, str] | None = None,
     saved: bool = False,
 ):
     sucursal = db.get(Sucursal, nota.sucursal_id) if nota.sucursal_id else None
@@ -7829,6 +7831,8 @@ def _render_nota_edit(
             "form_precio_unit_map": form_precio_unit_map or {},
             "form_subtotal_map": form_subtotal_map or {},
             "form_precio_mode_map": form_precio_mode_map or {},
+            "form_kg_neto_map": form_kg_neto_map or {},
+            "form_kg_desc_map": form_kg_desc_map or {},
             "saved": saved,
             "error": error,
         },
@@ -8038,6 +8042,24 @@ async def notas_edit_post(
     form = await request.form()
     comentario_edicion = (form.get("comentario_edicion") or "").strip() or None
     (
+        kg_neto_override_map,
+        kg_desc_override_map,
+        form_kg_neto_map,
+        form_kg_desc_map,
+        kg_error,
+    ) = _parse_kg_overrides(form, nota)
+    if kg_error:
+        return _render_nota_edit(
+            request,
+            db,
+            current_user,
+            nota,
+            error=kg_error,
+            comentario_edicion=comentario_edicion,
+            form_kg_neto_map=form_kg_neto_map,
+            form_kg_desc_map=form_kg_desc_map,
+        )
+    (
         precio_override_map,
         form_precio_unit_map,
         form_subtotal_map,
@@ -8052,6 +8074,8 @@ async def notas_edit_post(
             nota,
             error=precio_error,
             comentario_edicion=comentario_edicion,
+            form_kg_neto_map=form_kg_neto_map,
+            form_kg_desc_map=form_kg_desc_map,
             form_precio_unit_map=form_precio_unit_map,
             form_subtotal_map=form_subtotal_map,
             form_precio_mode_map=form_precio_mode_map,
@@ -8085,17 +8109,29 @@ async def notas_edit_post(
                     subpesaje_map[sp.id] = (peso, desc)
             else:
                 kg_bruto = parse_decimal(form.get(f"kg_bruto_{nm.id}"), "Kg bruto")
-                kg_desc = parse_decimal(
-                    form.get(f"kg_desc_{nm.id}"),
-                    "Kg descuento",
-                    default=Decimal("0"),
-                )
+                kg_desc = kg_desc_override_map.get(nm.id, Decimal(str(nm.kg_descuento or 0)))
+                kg_neto = kg_neto_override_map.get(nm.id, Decimal(str(nm.kg_neto or 0)))
+                kg_mode = (form.get(f"kg_mode_{nm.id}") or "").strip().lower()
+                if kg_mode not in ("net", "desc"):
+                    if nm.id in kg_neto_override_map and nm.id not in kg_desc_override_map:
+                        kg_mode = "net"
+                    else:
+                        kg_mode = "desc"
+
                 if kg_bruto <= 0:
                     raise ValueError("El kg bruto debe ser mayor a 0.")
-                if kg_desc < 0:
-                    raise ValueError("El kg descuento no puede ser negativo.")
-                if kg_desc > kg_bruto:
-                    raise ValueError("El kg descuento no puede ser mayor al kg bruto.")
+                if kg_desc < 0 or kg_neto < 0:
+                    raise ValueError("Ni el kg neto ni el descuento pueden ser negativos.")
+
+                if kg_mode == "net":
+                    if kg_neto > kg_bruto:
+                        raise ValueError("El kg neto no puede ser mayor al kg bruto.")
+                    kg_desc = kg_bruto - kg_neto
+                else:
+                    if kg_desc > kg_bruto:
+                        raise ValueError("El kg descuento no puede ser mayor al kg bruto.")
+                    kg_neto = kg_bruto - kg_desc
+
                 kg_override_map[nm.id] = (kg_bruto, kg_desc)
 
         note_service.edit_note_by_superadmin(
@@ -8117,6 +8153,8 @@ async def notas_edit_post(
             nota,
             error=str(exc),
             comentario_edicion=comentario_edicion,
+            form_kg_neto_map=form_kg_neto_map,
+            form_kg_desc_map=form_kg_desc_map,
             form_precio_unit_map=form_precio_unit_map,
             form_subtotal_map=form_subtotal_map,
             form_precio_mode_map=form_precio_mode_map,

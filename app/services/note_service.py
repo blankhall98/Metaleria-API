@@ -2040,9 +2040,6 @@ def edit_note_by_superadmin(
     nota.updated_at = datetime.utcnow()
 
     new_total = Decimal(str(nota.total_monto or 0))
-    pagado_actual = Decimal(str(nota.monto_pagado or 0))
-    if new_total < pagado_actual:
-        raise ValueError("El total no puede ser menor al monto pagado.")
 
     if nota.estado == NotaEstado.aprobada:
         comment_base = f"Edicion nota #{nota.id}"

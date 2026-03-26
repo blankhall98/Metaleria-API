@@ -132,9 +132,9 @@
                                                     {% for sp in m.subpesajes %}
                                                         <div class="input-group input-group-sm">
                                                             <span class="input-group-text">Peso</span>
-                                                            <input class="form-control" type="number" step="0.001" min="0.001" name="sp_peso_{{ sp.id }}" value="{{ '%.3f'|format(sp.peso_kg or 0) }}" required>
+                                                            <input class="form-control note-sp-peso-input" type="number" step="0.001" min="0.001" name="sp_peso_{{ sp.id }}" value="{{ '%.3f'|format(sp.peso_kg or 0) }}" required>
                                                             <span class="input-group-text">Desc</span>
-                                                            <input class="form-control" type="number" step="0.001" min="0" name="sp_desc_{{ sp.id }}" value="{{ '%.3f'|format(sp.descuento_kg or 0) }}" required>
+                                                            <input class="form-control note-sp-desc-input" type="number" step="0.001" min="0" name="sp_desc_{{ sp.id }}" value="{{ '%.3f'|format(sp.descuento_kg or 0) }}" required>
                                                             {% if sp.foto_url %}
                                                                 <a class="btn btn-outline-secondary btn-sm" href="{{ sp.foto_url }}" target="_blank" rel="noopener">Foto</a>
                                                             {% else %}
@@ -159,9 +159,19 @@
                                             <input class="form-control form-control-sm text-end kg-bruto-input" type="number" step="0.001" min="0" name="kg_bruto_{{ m.id }}" value="{{ '%.3f'|format(m.kg_bruto or 0) }}" {% if m.subpesajes %}disabled{% endif %}>
                                         </td>
                                         <td class="text-end">
-                                            <input class="form-control form-control-sm text-end kg-desc-input" type="number" step="0.001" min="0" name="kg_desc_{{ m.id }}" value="{{ '%.3f'|format(m.kg_descuento or 0) }}" {% if m.subpesajes %}disabled{% endif %}>
+                                            {% set kg_desc_override = form_kg_desc_map.get(m.id) if form_kg_desc_map is defined else None %}
+                                            <input class="form-control form-control-sm text-end kg-desc-input" type="number" step="0.001" min="0" name="kg_desc_{{ m.id }}" value="{{ kg_desc_override if kg_desc_override is not none else ('%.3f'|format(m.kg_descuento or 0)) }}" {% if m.subpesajes %}disabled{% endif %}>
                                         </td>
-                                        <td class="text-end">{{ "{:,.3f}".format(m.kg_neto or 0) }}</td>
+                                        <td class="text-end">
+                                            {% if not m.subpesajes %}
+                                                {% set kg_neto_override = form_kg_neto_map.get(m.id) if form_kg_neto_map is defined else None %}
+                                                <input class="form-control form-control-sm text-end note-kg-neto-input" type="number" step="0.001" min="0" name="kg_neto_{{ m.id }}" value="{{ kg_neto_override if kg_neto_override is not none else ('%.3f'|format(m.kg_neto or 0)) }}">
+                                                <input type="hidden" name="kg_mode_{{ m.id }}" class="note-kg-mode" value="{% if form_kg_neto_map and form_kg_neto_map.get(m.id) is not none %}net{% else %}desc{% endif %}">
+                                                <div class="form-text text-muted">Si cambias neto, el descuento se balancea automaticamente.</div>
+                                            {% else %}
+                                                <span class="note-row-kg-neto-display">{{ "{:,.3f}".format(m.kg_neto or 0) }}</span>
+                                            {% endif %}
+                                        </td>
                                         {% set unit_override = form_precio_unit_map.get(m.id) if form_precio_unit_map is defined else None %}
                                         {% set subtotal_override = form_subtotal_map.get(m.id) if form_subtotal_map is defined else None %}
                                         {% set mode_override = form_precio_mode_map.get(m.id) if form_precio_mode_map is defined else None %}
@@ -190,9 +200,23 @@
                             <span class="chip-strong">Guardar</span>
                             <span class="text-muted small">Impacto administrativo y contable</span>
                         </div>
+                        <div class="note-edit-impact-grid mb-3">
+                            <div class="note-adjust-preview-item">
+                                <span class="note-meta-label">Monto pagado</span>
+                                <strong>${{ "{:,.2f}".format(nota.monto_pagado or 0) }}</strong>
+                            </div>
+                            <div class="note-adjust-preview-item">
+                                <span class="note-meta-label">Saldo pendiente</span>
+                                <strong id="note-edit-balance-value">${{ "{:,.2f}".format(saldo_pendiente or 0) }}</strong>
+                            </div>
+                            <div class="note-adjust-preview-item">
+                                <span class="note-meta-label">Saldo a favor</span>
+                                <strong id="note-edit-favor-value">${{ "{:,.2f}".format(saldo_a_favor or 0) }}</strong>
+                            </div>
+                        </div>
                         <label class="form-label">Comentario de edicion</label>
                         <textarea class="form-control" name="comentario_edicion" rows="5" placeholder="Explica por que se modifica la nota.">{{ comentario_edicion }}</textarea>
-                        <div class="form-text text-muted">Si la nota ya estaba aprobada, los cambios ajustan inventario y log contable.</div>
+                        <div class="form-text text-muted">Si la nota ya estaba aprobada, los cambios ajustan inventario y log contable. Si el nuevo total queda por debajo de lo ya pagado, el excedente se conserva como saldo a favor.</div>
 
                         <div class="note-actions mt-3">
                             <div class="note-actions-title">Acciones</div>
@@ -224,6 +248,7 @@
 <script>
     const ivaIncluido = {{ 'true' if nota.iva_incluido else 'false' }};
     const ivaPct = {{ "%.2f"|format(iva_pct or 0) }};
+    const currentPaid = {{ "%.2f"|format(nota.monto_pagado or 0) }};
 
     function formatNumber(value, decimals) {
         const safe = Number(value || 0);
@@ -246,12 +271,51 @@
 
     function getRowKgNeto(row) {
         if (!row) return 0;
+        const netInput = row.querySelector('.note-kg-neto-input');
+        if (netInput && !netInput.disabled) {
+            return parseNumber(netInput.value);
+        }
+        const spPesoInputs = row.querySelectorAll('.note-sp-peso-input');
+        const spDescInputs = row.querySelectorAll('.note-sp-desc-input');
+        if (spPesoInputs.length) {
+            let bruto = 0;
+            let desc = 0;
+            spPesoInputs.forEach((input) => {
+                bruto += parseNumber(input.value);
+            });
+            spDescInputs.forEach((input) => {
+                desc += parseNumber(input.value);
+            });
+            return Math.max(bruto - desc, 0);
+        }
         const kgBrutoInput = row.querySelector('.kg-bruto-input');
         const kgDescInput = row.querySelector('.kg-desc-input');
         if (kgBrutoInput && kgDescInput && !kgBrutoInput.disabled) {
             return parseNumber(kgBrutoInput.value) - parseNumber(kgDescInput.value);
         }
         return parseNumber(row.dataset.kgNeto || '0');
+    }
+
+    function updateBalancePreview(total) {
+        const balanceEl = document.getElementById('note-edit-balance-value');
+        const favorEl = document.getElementById('note-edit-favor-value');
+        if (!balanceEl || !favorEl) return;
+        const pending = Math.max(total - currentPaid, 0);
+        const favor = Math.max(currentPaid - total, 0);
+        balanceEl.textContent = formatMoney(pending);
+        favorEl.textContent = formatMoney(favor);
+        balanceEl.classList.toggle('text-danger', pending > 0);
+        balanceEl.classList.toggle('text-success', pending === 0);
+        favorEl.classList.toggle('text-primary', favor > 0);
+    }
+
+    function updateRowKgDisplay(row, kgNeto) {
+        if (!row) return;
+        row.dataset.kgNeto = (kgNeto || 0).toFixed(3);
+        const display = row.querySelector('.note-row-kg-neto-display');
+        if (display) {
+            display.textContent = formatNumber(kgNeto || 0, 3);
+        }
     }
 
     function updateTotals() {
@@ -270,6 +334,7 @@
         subtotalEl.textContent = formatMoney(baseTotal);
         ivaEl.textContent = formatMoney(ivaMonto);
         totalEl.textContent = formatMoney(total);
+        updateBalancePreview(total);
     }
 
     function syncRowFromUnit(inputEl) {
@@ -304,8 +369,44 @@
         updateTotals();
     }
 
+    function syncKgFields(row, preferredMode) {
+        if (!row) return;
+        const kgBrutoInput = row.querySelector('.kg-bruto-input');
+        const kgDescInput = row.querySelector('.kg-desc-input');
+        const kgNetoInput = row.querySelector('.note-kg-neto-input');
+        const kgModeInput = row.querySelector('.note-kg-mode');
+        if (!kgBrutoInput || kgBrutoInput.disabled || !kgDescInput || !kgNetoInput) {
+            syncRowFromKgInput(row);
+            return;
+        }
+        const kgBruto = Math.max(parseNumber(kgBrutoInput.value), 0);
+        let kgDesc = Math.max(parseNumber(kgDescInput.value), 0);
+        let kgNeto = Math.max(parseNumber(kgNetoInput.value), 0);
+        const mode = preferredMode || (kgModeInput ? kgModeInput.value : 'desc') || 'desc';
+
+        if (mode === 'net') {
+            if (kgNeto > kgBruto) {
+                kgNeto = kgBruto;
+            }
+            kgDesc = Math.max(kgBruto - kgNeto, 0);
+        } else {
+            if (kgDesc > kgBruto) {
+                kgDesc = kgBruto;
+            }
+            kgNeto = Math.max(kgBruto - kgDesc, 0);
+        }
+
+        kgDescInput.value = kgDesc.toFixed(3);
+        kgNetoInput.value = kgNeto.toFixed(3);
+        if (kgModeInput) {
+            kgModeInput.value = mode;
+        }
+        updateRowKgDisplay(row, kgNeto);
+        syncRowFromKgInput(row);
+    }
+
     function syncRowFromKgInput(inputEl) {
-        const row = inputEl.closest('tr');
+        const row = inputEl.closest ? inputEl.closest('tr') : inputEl;
         if (!row) return;
         const modeInput = row.querySelector('.note-precio-mode');
         const mode = modeInput ? modeInput.value : 'unit';
@@ -322,16 +423,36 @@
         }
     }
 
+    function syncRowFromSubpesajes(inputEl) {
+        const row = inputEl.closest('tr');
+        if (!row) return;
+        const kgNeto = getRowKgNeto(row);
+        updateRowKgDisplay(row, kgNeto);
+        syncRowFromKgInput(row);
+    }
+
     document.querySelectorAll('.note-unit-input').forEach((input) => {
         input.addEventListener('input', () => syncRowFromUnit(input));
     });
     document.querySelectorAll('.note-subtotal-input').forEach((input) => {
         input.addEventListener('input', () => syncRowFromSubtotal(input));
     });
-    document.querySelectorAll('.kg-bruto-input, .kg-desc-input').forEach((input) => {
-        input.addEventListener('input', () => syncRowFromKgInput(input));
+    document.querySelectorAll('.kg-bruto-input').forEach((input) => {
+        input.addEventListener('input', () => syncKgFields(input.closest('tr')));
+    });
+    document.querySelectorAll('.kg-desc-input').forEach((input) => {
+        input.addEventListener('input', () => syncKgFields(input.closest('tr'), 'desc'));
+    });
+    document.querySelectorAll('.note-kg-neto-input').forEach((input) => {
+        input.addEventListener('input', () => syncKgFields(input.closest('tr'), 'net'));
+    });
+    document.querySelectorAll('.note-sp-peso-input, .note-sp-desc-input').forEach((input) => {
+        input.addEventListener('input', () => syncRowFromSubpesajes(input));
     });
 
+    document.querySelectorAll('.note-materials-table tbody tr').forEach((row) => {
+        updateRowKgDisplay(row, getRowKgNeto(row));
+    });
     updateTotals();
 </script>
 {% endblock %}

@@ -1902,6 +1902,11 @@ body.modal-open {
     font-size: 1rem;
     letter-spacing: -0.02em;
 }
+.note-edit-impact-grid {
+    display: grid;
+    gap: 0.7rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
 .note-editor-card .card-body,
 .note-detail-page--review .note-report-card .card-body {
     padding: 1.2rem 1.2rem 1rem;
@@ -2038,7 +2043,8 @@ body.modal-open {
         grid-template-columns: minmax(0, 1fr);
     }
     .note-adjust-form-grid,
-    .note-adjust-preview-grid {
+    .note-adjust-preview-grid,
+    .note-edit-impact-grid {
         grid-template-columns: minmax(0, 1fr);
     }
     .note-side-card {
