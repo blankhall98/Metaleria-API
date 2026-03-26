@@ -17,7 +17,7 @@
         {% set payment_badge = 'Pagada' %}
     {% endif %}
 {% endif %}
-<div class="note-detail-page">
+<div class="note-detail-page note-detail-page--review">
     <div class="page-header note-page-header">
         <div>
             <p class="text-uppercase text-muted small mb-1">Revision y control</p>
@@ -318,6 +318,16 @@
                                     <p class="text-muted small mb-0">Ajusta pesos, descuentos y precios antes de aprobar. La nota se recalcula en tiempo real.</p>
                                 </div>
                             </div>
+                            <div class="note-table-assist mb-3">
+                                <div>
+                                    <div class="note-table-assist-title">Mesa de revision</div>
+                                    <div class="note-table-assist-copy">La tabla de materiales prioriza lectura horizontal en escritorio. Puedes arrastrar la tabla o usar `Shift + rueda` para revisar sin perder contexto.</div>
+                                </div>
+                                <div class="note-table-assist-pills">
+                                    <span class="pill">↔ Arrastrar</span>
+                                    <span class="pill">Shift + rueda</span>
+                                </div>
+                            </div>
                             <div class="table-scroll-shell">
                                 <div class="table-responsive scroll-x note-table-scroll">
                                     <table class="table table-hover table-sm align-middle mb-0 note-materials-table"
@@ -435,7 +445,7 @@
                                     </tbody>
                                     </table>
                                 </div>
-                                <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para revisar pesos, precios y subtotales.</div>
+                                <div class="table-scroll-hint">Arrastra con el mouse, usa Shift + rueda o desliza lateralmente para revisar pesos, precios y subtotales.</div>
                             </div>
                         </div>
                     </div>
@@ -585,6 +595,16 @@
                         {% endif %}
                     </div>
                 </div>
+                <div class="note-table-assist mb-3">
+                    <div>
+                        <div class="note-table-assist-title">Lectura completa de materiales</div>
+                        <div class="note-table-assist-copy">Los datos se mantienen anchos para evitar montos o kilos recortados. El primer bloque queda fijo para facilitar la lectura al desplazarte.</div>
+                    </div>
+                    <div class="note-table-assist-pills">
+                        <span class="pill">Primer bloque fijo</span>
+                        <span class="pill">↔ Arrastrar</span>
+                    </div>
+                </div>
                 <div class="table-scroll-shell">
                     <div class="table-responsive scroll-x note-table-scroll">
                         <table class="table table-hover table-sm align-middle mb-0 note-materials-table">
@@ -639,7 +659,7 @@
                         </tbody>
                         </table>
                     </div>
-                    <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para revisar el detalle completo de materiales.</div>
+                    <div class="table-scroll-hint">Arrastra con el mouse, usa Shift + rueda o desliza lateralmente para revisar el detalle completo de materiales.</div>
                 </div>
             </div>
         </div>

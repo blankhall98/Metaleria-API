@@ -106,7 +106,8 @@
 </div>
 <div id="navOverlay" class="nav-overlay" onclick="toggleDrawer(false)"></div>
 
-<main class="page-shell">
+{% set current_path = request.url.path if request and request.url else '' %}
+<main class="page-shell {% if current_path.startswith('/web/admin/notas') or current_path.startswith('/web/worker/notes') %}page-shell-notes{% endif %}">
     {% block content %}{% endblock %}
 </main>
 
@@ -310,6 +311,23 @@
                 area.classList.add('is-dragging');
                 event.preventDefault();
             });
+
+            area.addEventListener('wheel', (event) => {
+                if (area.scrollWidth - area.clientWidth <= 4) return;
+                const horizontalIntent = Math.abs(event.deltaX) > Math.abs(event.deltaY);
+                if (!event.shiftKey && !horizontalIntent) return;
+
+                const delta = horizontalIntent ? event.deltaX : event.deltaY;
+                if (!delta) return;
+
+                const previous = area.scrollLeft;
+                area.scrollLeft += delta;
+                if (area.scrollLeft !== previous) {
+                    event.preventDefault();
+                    updateTableScrollCues();
+                    updateFloatingScrollbar();
+                }
+            }, { passive: false });
 
             area.addEventListener('scroll', () => {
                 updateTableScrollCues();

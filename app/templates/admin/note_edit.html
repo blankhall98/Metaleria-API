@@ -4,7 +4,7 @@
 
 {% block content %}
 {% set note_state = nota.estado.value %}
-<div class="note-detail-page">
+<div class="note-detail-page note-detail-page--edit">
     <div class="page-header note-page-header">
         <div>
             <p class="text-uppercase text-muted small mb-1">Edicion administrativa</p>
@@ -77,15 +77,26 @@
         </div>
     </div>
 
-    <form method="post" id="noteEditForm">
+    <form method="post" id="noteEditForm" class="note-edit-form">
         <div class="note-workspace-grid">
             <div class="note-main-column">
-                <div class="card hover-lift mb-3 note-report-card">
+                <div class="card hover-lift mb-3 note-report-card note-editor-card">
                     <div class="card-body">
                         <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
                             <div>
                                 <h2 class="h6 text-dark mb-1">Materiales editables</h2>
                                 <p class="text-muted small mb-0">Puedes corregir subpesajes, kg, precio unitario o subtotal. Los totales se recalculan automaticamente.</p>
+                            </div>
+                        </div>
+                        <div class="note-table-assist mb-3">
+                            <div>
+                                <div class="note-table-assist-title">Editor horizontal de materiales</div>
+                                <div class="note-table-assist-copy">Este bloque ahora prioriza ancho util en escritorio. Puedes recorrerlo arrastrando en cualquier espacio vacio, usando `Shift + rueda`, o con la barra flotante inferior.</div>
+                            </div>
+                            <div class="note-table-assist-pills">
+                                <span class="pill">↔ Arrastrar</span>
+                                <span class="pill">Shift + rueda</span>
+                                <span class="pill">Campos sin recorte</span>
                             </div>
                         </div>
                         <div class="table-scroll-shell">
@@ -163,14 +174,14 @@
                                 </tbody>
                                 </table>
                             </div>
-                            <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para editar subpesajes, kilos y precios.</div>
+                            <div class="table-scroll-hint">Arrastra con el mouse, usa Shift + rueda o desliza lateralmente para editar subpesajes, kilos y precios.</div>
                         </div>
                     </div>
                 </div>
             </div>
 
             <div class="note-side-column">
-                <div class="card hover-lift note-side-card">
+                <div class="card hover-lift note-side-card note-side-card--edit">
                     <div class="card-body">
                         <div class="d-flex align-items-center gap-2 mb-3">
                             <span class="chip-strong">Guardar</span>

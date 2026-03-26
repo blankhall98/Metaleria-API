@@ -239,6 +239,16 @@
             </div>
 
             <div class="table-scroll-shell">
+                <div class="note-table-assist note-table-assist--inline mb-3">
+                    <div>
+                        <div class="note-table-assist-title">Explorador horizontal de notas</div>
+                        <div class="note-table-assist-copy">La tabla conserva todas las columnas visibles sin comprimir importes ni acciones. Puedes arrastrar, usar `Shift + rueda` o la barra flotante inferior.</div>
+                    </div>
+                    <div class="note-table-assist-pills">
+                        <span class="pill">↔ Arrastrar</span>
+                        <span class="pill">Shift + rueda</span>
+                    </div>
+                </div>
                 <div class="table-responsive scroll-x note-table-scroll">
                     <table class="table table-hover table-sm align-middle mb-0 notes-state-table">
                     <thead>
@@ -355,7 +365,7 @@
                     </tbody>
                     </table>
                 </div>
-                <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para ver todas las columnas.</div>
+                <div class="table-scroll-hint">Arrastra con el mouse, usa Shift + rueda o desliza lateralmente para ver todas las columnas.</div>
             </div>
 
             {% if notas_estado|length == 0 %}

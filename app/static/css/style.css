@@ -82,6 +82,11 @@ a:hover {
     margin: 0 auto;
     padding: 1rem 1.25rem 2rem;
 }
+.page-shell-notes {
+    max-width: min(1680px, calc(100vw - 28px));
+    padding-left: clamp(1rem, 2vw, 1.5rem);
+    padding-right: clamp(1rem, 2vw, 1.5rem);
+}
 
 .page-header {
     display: flex;
@@ -1550,6 +1555,20 @@ body.modal-open {
 .notes-state-table {
     min-width: 1320px;
 }
+.notes-state-table th:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    background: #f8fafc;
+    box-shadow: 8px 0 14px rgba(148, 163, 184, 0.08);
+}
+.notes-state-table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: inherit;
+    box-shadow: 8px 0 14px rgba(148, 163, 184, 0.06);
+}
 .notes-state-table th:last-child,
 .notes-state-table td:last-child {
     min-width: 180px;
@@ -1567,7 +1586,7 @@ body.modal-open {
 .notes-toolbar-grid {
     display: grid;
     gap: 1rem;
-    grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+    grid-template-columns: minmax(0, 1.35fr) minmax(340px, 0.8fr);
     align-items: start;
 }
 .notes-search-panel {
@@ -1773,11 +1792,25 @@ body.modal-open {
         radial-gradient(circle at top right, rgba(22, 163, 74, 0.1), transparent 34%),
         linear-gradient(135deg, #ffffff, #f0fdf4);
 }
+.note-detail-page {
+    display: grid;
+    gap: 1rem;
+}
+.note-page-header {
+    align-items: flex-start;
+}
 .note-workspace-grid {
     display: grid;
     gap: 1rem;
-    grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.85fr);
+    grid-template-columns: minmax(0, 1fr) clamp(320px, 24vw, 400px);
     align-items: start;
+}
+.note-detail-page--edit .note-workspace-grid {
+    grid-template-columns: minmax(0, 1fr) clamp(320px, 23vw, 390px);
+    gap: 1.25rem;
+}
+.note-detail-page--review .note-workspace-grid {
+    grid-template-columns: minmax(0, 1fr) clamp(320px, 25vw, 410px);
 }
 .note-main-column,
 .note-side-column {
@@ -1788,10 +1821,51 @@ body.modal-open {
     position: sticky;
     top: 88px;
 }
+.note-side-card--edit {
+    top: 96px;
+}
 .note-payment-panels {
     display: grid;
     gap: 1rem;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.note-editor-card .card-body,
+.note-detail-page--review .note-report-card .card-body {
+    padding: 1.2rem 1.2rem 1rem;
+}
+.note-table-assist {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.9rem 1rem;
+    border: 1px solid rgba(59, 130, 246, 0.16);
+    border-radius: 0.95rem;
+    background:
+        radial-gradient(circle at top right, rgba(59, 130, 246, 0.1), transparent 38%),
+        linear-gradient(135deg, #ffffff, #f8fbff);
+}
+.note-table-assist--inline {
+    margin-bottom: 0.85rem;
+}
+.note-table-assist-title {
+    font-size: 0.83rem;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+    color: var(--ink);
+    margin-bottom: 0.2rem;
+}
+.note-table-assist-copy {
+    max-width: 760px;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    line-height: 1.5;
+}
+.note-table-assist-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    justify-content: flex-end;
 }
 .note-form-card-title {
     font-size: 0.78rem;
@@ -1830,6 +1904,20 @@ body.modal-open {
     min-width: 220px;
     white-space: normal;
 }
+.note-materials-table th:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    background: #f8fafc;
+    box-shadow: 8px 0 14px rgba(148, 163, 184, 0.08);
+}
+.note-materials-table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: inherit;
+    box-shadow: 8px 0 14px rgba(148, 163, 184, 0.06);
+}
 .note-materials-table th:nth-child(2),
 .note-materials-table td:nth-child(2) {
     min-width: 360px;
@@ -1854,6 +1942,10 @@ body.modal-open {
 .note-materials-table .form-select {
     min-width: 8.25rem;
 }
+.note-materials-table .form-control[type="number"] {
+    text-overflow: clip;
+    font-variant-numeric: tabular-nums;
+}
 .note-edit-subpesajes .input-group {
     min-width: 20rem;
 }
@@ -1873,6 +1965,13 @@ body.modal-open {
     }
     .note-side-card {
         position: static;
+    }
+    .note-table-assist {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .note-table-assist-pills {
+        justify-content: flex-start;
     }
 }
 @media (max-width: 767.98px) {
@@ -2025,6 +2124,13 @@ body.modal-open {
 @media (max-width: 768px) {
     .page-shell {
         padding: 1rem;
+    }
+
+    .page-shell-notes {
+        max-width: none;
+        width: 100%;
+        padding-left: 1rem;
+        padding-right: 1rem;
     }
 
     .table-responsive {
