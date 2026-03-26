@@ -17,6 +17,37 @@
         {% set payment_badge = 'Pagada' %}
     {% endif %}
 {% endif %}
+{% set next_step_title = 'Resumen operativo' %}
+{% set next_step_copy = 'Revisa el estado general de la nota y navega a la seccion que necesitas.' %}
+{% set next_step_href = '#note-summary' %}
+{% set next_step_button = 'Ir al resumen' %}
+{% set history_href = '#note-payments' %}
+{% if devoluciones_parciales %}
+    {% set history_href = '#note-history-partial' %}
+{% elif devoluciones_totales %}
+    {% set history_href = '#note-history-total' %}
+{% endif %}
+{% if is_pending_review %}
+    {% set next_step_title = 'Siguiente paso recomendado: revisar y aprobar' %}
+    {% set next_step_copy = 'Confirma kilos, descuentos, precios y forma de pago antes de aprobar o devolver la nota.' %}
+    {% set next_step_href = '#note-review-approval' %}
+    {% set next_step_button = 'Ir a aprobacion' %}
+{% elif is_approved and saldo_pendiente > 0 %}
+    {% set next_step_title = 'Siguiente paso recomendado: registrar pago o abono' %}
+    {% set next_step_copy = 'La nota sigue con saldo pendiente. Puedes corregir el pago inicial o agregar un nuevo abono.' %}
+    {% set next_step_href = '#note-payments' %}
+    {% set next_step_button = 'Ir a pagos' %}
+{% elif is_approved and saldo_a_favor > 0 %}
+    {% set next_step_title = 'Siguiente paso recomendado: revisar saldo a favor' %}
+    {% set next_step_copy = 'Hubo sobrepago o una devolucion redujo el total. Revisa pagos y devoluciones antes de seguir.' %}
+    {% set next_step_href = '#note-payments' %}
+    {% set next_step_button = 'Ir a pagos' %}
+{% elif is_cancelled and devolucion_total_activa %}
+    {% set next_step_title = 'Nota en devolucion total' %}
+    {% set next_step_copy = 'La nota ya fue devuelta por completo. Si necesitas restaurarla, usa la reversa auditada.' %}
+    {% set next_step_href = '#note-returns' %}
+    {% set next_step_button = 'Ir a devoluciones' %}
+{% endif %}
 <div class="note-detail-page note-detail-page--review">
     <div class="page-header note-page-header">
         <div>
@@ -76,7 +107,37 @@
         <div class="alert alert-success py-2 small mb-3">La devolucion total fue revertida. La nota regreso a estado aprobada con sus efectos contables e inventario restaurados.</div>
     {% endif %}
 
-    <div class="card hover-lift mb-3 note-hero-card">
+    <div class="card hover-lift mb-3">
+        <div class="card-body">
+            <div class="note-flow-card">
+                <div>
+                    <div class="note-flow-title">{{ next_step_title }}</div>
+                    <div class="text-muted small">{{ next_step_copy }}</div>
+                </div>
+                <a href="{{ next_step_href }}" class="btn btn-outline-primary btn-sm">{{ next_step_button }}</a>
+            </div>
+            <div class="ops-inline-toolbar mt-3">
+                <a href="#note-summary" class="ops-inline-pill active">Resumen</a>
+                {% if is_pending_review %}
+                    <a href="#note-review-approval" class="ops-inline-pill">Aprobacion</a>
+                {% endif %}
+                {% if is_approved or saldo_a_favor > 0 %}
+                    <a href="#note-payments" class="ops-inline-pill">Pagos</a>
+                {% endif %}
+                {% if is_approved or is_cancelled or devoluciones_parciales or devoluciones_totales %}
+                    <a href="#note-returns" class="ops-inline-pill">Devoluciones</a>
+                {% endif %}
+                {% if is_approved or note_adjustments %}
+                    <a href="#note-manual-adjustments" class="ops-inline-pill">Ajustes</a>
+                {% endif %}
+                {% if devoluciones_parciales or devoluciones_totales or pagos %}
+                    <a href="{{ history_href }}" class="ops-inline-pill">Historial</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="card hover-lift mb-3 note-hero-card" id="note-summary">
         <div class="card-body">
             <div class="note-hero-header">
                 <div class="note-hero-copy">
@@ -263,7 +324,7 @@
     {% endif %}
 
     {% if devoluciones_totales %}
-        <div class="card hover-lift mb-3 note-payments-card">
+        <div class="card hover-lift mb-3 note-payments-card" id="note-history-total">
             <div class="card-body">
                 <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
                     <div>
@@ -319,7 +380,7 @@
         <form method="post" action="/web/admin/notas/{{ nota.id }}/aprobar" id="approveForm" class="note-review-workspace">
             <div class="note-workspace-grid">
                 <div class="note-main-column">
-                    <div class="card hover-lift mb-3 note-report-card">
+                    <div class="card hover-lift mb-3 note-report-card" id="note-review-approval">
                         <div class="card-body">
                             <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
                                 <div>
@@ -676,7 +737,7 @@
     {% if is_approved %}
         <div class="note-workspace-grid">
             <div class="note-main-column">
-                <div class="card hover-lift mb-3">
+                <div class="card hover-lift mb-3" id="note-returns">
                     <div class="card-body">
                         <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
                             <div>
@@ -755,7 +816,7 @@
                     </div>
                 </div>
 
-                <div class="card hover-lift mb-3 note-payments-card">
+                <div class="card hover-lift mb-3 note-payments-card" id="note-payments">
                     <div class="card-body">
                         <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
                             <div>
@@ -1099,7 +1160,7 @@
         </div>
     {% endif %}
     {% if devoluciones_parciales and not is_pending_review %}
-        <div class="card hover-lift mb-3 note-payments-card">
+        <div class="card hover-lift mb-3 note-payments-card" id="note-history-partial">
             <div class="card-body">
                 <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
                     <div>

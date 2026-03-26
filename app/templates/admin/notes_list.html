@@ -23,6 +23,15 @@
         </div>
     {% endif %}
 
+    <div class="ops-inline-toolbar sticky-tools mb-3">
+        <a href="/web/admin/notas?estado=EN_REVISION#tabla-principal" class="ops-inline-pill">Revision inmediata</a>
+        <a href="/web/admin/notas?pago=PENDIENTES#tabla-principal" class="ops-inline-pill">Pendientes por saldar</a>
+        <a href="/web/admin/notas?pago=PAGADAS#tabla-principal" class="ops-inline-pill">Pagadas</a>
+        <a href="#notes-deadline-panel" class="ops-inline-pill">Vencidas y por vencer</a>
+        <a href="/web/admin/proveedores?modo=COMPRA_VENTA" class="ops-inline-pill">Proveedores compra y venta</a>
+        <a href="/web/admin/contabilidad" class="ops-inline-pill">Log contable</a>
+    </div>
+
     <div class="card hover-lift mb-3 notes-toolbar-card">
         <div class="card-body">
             <div class="notes-toolbar-grid">
@@ -110,7 +119,7 @@
     </div>
 
     <div class="notes-attention-grid mb-4">
-        <div class="card hover-lift">
+        <div class="card hover-lift" id="notes-review-panel">
             <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
                     <div>
@@ -150,7 +159,7 @@
             </div>
         </div>
 
-        <div class="card hover-lift">
+        <div class="card hover-lift" id="notes-deadline-panel">
             <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
                     <div>

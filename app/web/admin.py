@@ -3441,6 +3441,9 @@ async def proveedores_list(
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
     params = request.query_params
+    modo_current = (params.get("modo") or "TODOS").strip().upper()
+    if modo_current not in {"TODOS", "COMPRA_VENTA", "CON_SALDO"}:
+        modo_current = "TODOS"
     delete_ok = params.get("deleted") == "1"
     delete_error = (params.get("delete_error") or "").strip()
     query = db.query(Proveedor)
@@ -3523,6 +3526,20 @@ async def proveedores_list(
             }
         )
 
+    total_proveedores = len(proveedores_view)
+    compra_venta_count = sum(1 for row in proveedores_view if row["direct_enabled"])
+    con_saldo_count = sum(1 for row in proveedores_view if abs(Decimal(str(row["saldo_neto"] or 0))) > Decimal("0.009"))
+    legado_count = sum(1 for row in proveedores_view if row["linked_cliente"])
+
+    if modo_current == "COMPRA_VENTA":
+        proveedores_view = [row for row in proveedores_view if row["direct_enabled"]]
+    elif modo_current == "CON_SALDO":
+        proveedores_view = [
+            row
+            for row in proveedores_view
+            if abs(Decimal(str(row["saldo_neto"] or 0))) > Decimal("0.009")
+        ]
+
     return templates.TemplateResponse(
         "admin/proveedores_list.html",
         {
@@ -3534,6 +3551,11 @@ async def proveedores_list(
             "sucursales": sucursales,
             "sucursal_id": sucursal_id,
             "sucursal_error": sucursal_error,
+            "modo_current": modo_current,
+            "total_proveedores": total_proveedores,
+            "compra_venta_count": compra_venta_count,
+            "con_saldo_count": con_saldo_count,
+            "legado_count": legado_count,
             "delete_ok": delete_ok,
             "delete_error": delete_error,
         },

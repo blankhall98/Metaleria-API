@@ -3,6 +3,7 @@
 {% block title %}Record {{ partner_label }} {{ partner.nombre_completo }}{% endblock %}
 
 {% block content %}
+{% set owner_key = 'cliente:' ~ partner.id if partner_base == 'clientes' else 'proveedor:' ~ partner.id %}
 <div class="record-page">
     <div class="page-header">
         <div>
@@ -29,7 +30,6 @@
         </div>
         <div class="d-flex gap-2">
             <a href="/web/admin/{{ partner_base }}" class="btn btn-outline-secondary btn-sm">Volver</a>
-            {% set owner_key = 'cliente:' ~ partner.id if partner_base == 'clientes' else 'proveedor:' ~ partner.id %}
             <a href="/web/admin/cuentas?owner_key={{ owner_key }}" class="btn btn-outline-primary btn-sm">Cuentas</a>
             <a href="/web/admin/{{ partner_base }}/{{ partner.id }}/editar" class="btn btn-outline-primary btn-sm">Editar</a>
             {% if not partner_is_internal and not linked_partner and partner_base != 'proveedores' %}
@@ -58,6 +58,14 @@
             {{ link_error }}
         </div>
     {% endif %}
+
+    <div class="ops-inline-toolbar sticky-tools mb-3">
+        <a href="#partner-summary" class="ops-inline-pill active">Resumen</a>
+        <a href="#partner-ledger" class="ops-inline-pill">Estado de cuenta</a>
+        <a href="#partner-notes" class="ops-inline-pill">Notas</a>
+        <a href="#partner-payments" class="ops-inline-pill">Pagos</a>
+        <a href="/web/admin/cuentas?owner_key={{ owner_key }}" class="ops-inline-pill">Cuentas</a>
+    </div>
 
     {% if unified_enabled %}
         <div class="card hover-lift mb-3 partner-unified-banner">
@@ -103,7 +111,7 @@
         </div>
     {% endif %}
 
-    <div class="card hover-lift mb-3">
+    <div class="card hover-lift mb-3" id="partner-summary">
         <div class="card-body">
             <div class="d-flex flex-column flex-xl-row gap-4">
                 <div class="flex-grow-1">
@@ -286,7 +294,7 @@
     </div>
     </div>
 
-    <div class="card hover-lift mb-3">
+    <div class="card hover-lift mb-3" id="partner-ledger">
         <div class="card-body">
             <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2">
                 <div>
@@ -326,7 +334,7 @@
         </div>
     </div>
 
-    <div class="card hover-lift mb-3">
+    <div class="card hover-lift mb-3" id="partner-notes">
         <div class="card-body">
             <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2">
                 <div>
@@ -515,7 +523,7 @@
         </div>
     </div>
 
-    <div class="card hover-lift">
+    <div class="card hover-lift" id="partner-payments">
         <div class="card-body">
             <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2">
                 <div>

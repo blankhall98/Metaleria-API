@@ -7,10 +7,30 @@
     <div>
         <p class="text-uppercase text-muted small mb-1">Relaciones</p>
         <h1 class="h4 text-white mb-0">Proveedores</h1>
+        <div class="text-muted small mt-1">Busqueda, saldo neto y proveedores que tambien compran material.</div>
     </div>
     <a href="/web/admin/proveedores/nuevo" class="btn btn-primary btn-sm">
         Nuevo proveedor
     </a>
+</div>
+
+<div class="ops-kpi-strip mb-3">
+    <div class="ops-kpi-pill">
+        <span class="ops-kpi-label">Total</span>
+        <strong>{{ total_proveedores }}</strong>
+    </div>
+    <div class="ops-kpi-pill">
+        <span class="ops-kpi-label">Compra y venta</span>
+        <strong>{{ compra_venta_count }}</strong>
+    </div>
+    <div class="ops-kpi-pill">
+        <span class="ops-kpi-label">Con saldo neto</span>
+        <strong>{{ con_saldo_count }}</strong>
+    </div>
+    <div class="ops-kpi-pill">
+        <span class="ops-kpi-label">Legado</span>
+        <strong>{{ legado_count }}</strong>
+    </div>
 </div>
 
 <form method="get" class="row g-2 mb-3">
@@ -31,10 +51,17 @@
             {% endfor %}
         </select>
     </div>
+    <div class="col-sm-8 col-md-3">
+        <select class="form-select" name="modo">
+            <option value="TODOS" {% if modo_current == 'TODOS' %}selected{% endif %}>Todos los proveedores</option>
+            <option value="COMPRA_VENTA" {% if modo_current == 'COMPRA_VENTA' %}selected{% endif %}>Solo compra y venta</option>
+            <option value="CON_SALDO" {% if modo_current == 'CON_SALDO' %}selected{% endif %}>Solo con saldo neto</option>
+        </select>
+    </div>
     <div class="col-auto">
         <button class="btn btn-outline-secondary btn-sm" type="submit">Buscar</button>
     </div>
-    {% if q or sucursal_id %}
+    {% if q or sucursal_id or modo_current != 'TODOS' %}
         <div class="col-auto">
             <a class="btn btn-outline-secondary btn-sm" href="/web/admin/proveedores">Limpiar</a>
         </div>
@@ -52,6 +79,12 @@
         {% if delete_error %}
             <div class="alert alert-danger py-2 small mb-3">{{ delete_error }}</div>
         {% endif %}
+        <div class="ops-inline-toolbar mb-3">
+            <a href="/web/admin/proveedores?modo=TODOS{% if q %}&q={{ q }}{% endif %}{% if sucursal_id %}&sucursal_id={{ sucursal_id }}{% endif %}" class="ops-inline-pill {{ 'active' if modo_current == 'TODOS' else '' }}">Todos</a>
+            <a href="/web/admin/proveedores?modo=COMPRA_VENTA{% if q %}&q={{ q }}{% endif %}{% if sucursal_id %}&sucursal_id={{ sucursal_id }}{% endif %}" class="ops-inline-pill {{ 'active' if modo_current == 'COMPRA_VENTA' else '' }}">Compra y venta</a>
+            <a href="/web/admin/proveedores?modo=CON_SALDO{% if q %}&q={{ q }}{% endif %}{% if sucursal_id %}&sucursal_id={{ sucursal_id }}{% endif %}" class="ops-inline-pill {{ 'active' if modo_current == 'CON_SALDO' else '' }}">Con saldo</a>
+            <a href="/web/admin/contabilidad" class="ops-inline-pill">Log contable</a>
+        </div>
         <div class="table-responsive">
             <table class="table table-hover table-sm align-middle mb-0">
                 <thead>
