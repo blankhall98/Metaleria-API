@@ -206,8 +206,11 @@ def update_note_partner(
         raise HTTPException(status_code=400, detail="Tipo de operacion no permitido.")
     if nota.tipo_operacion == TipoOperacion.compra and not data.proveedor_id:
         raise HTTPException(status_code=400, detail="Proveedor requerido para compras.")
-    if nota.tipo_operacion == TipoOperacion.venta and not data.cliente_id:
-        raise HTTPException(status_code=400, detail="Cliente requerido para ventas.")
+    if nota.tipo_operacion == TipoOperacion.venta:
+        if data.proveedor_id and data.cliente_id:
+            raise HTTPException(status_code=400, detail="Selecciona solo una contraparte para la venta.")
+        if not data.proveedor_id and not data.cliente_id:
+            raise HTTPException(status_code=400, detail="Cliente o proveedor requerido para ventas.")
 
     nota = note_service.attach_partner(
         db,

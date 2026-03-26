@@ -117,14 +117,14 @@
             {% if is_partner %}
                 <div class="note-meta-item">
                     <span class="note-meta-label">
-                        {{ 'Pendiente por pagar' if owner_kind == 'proveedor' else 'Pendiente por cobrar' }}
+                        {{ 'Pendiente neto con proveedor' if owner_kind == 'proveedor' else 'Pendiente por cobrar' }}
                     </span>
                     <strong class="text-danger">${{ "{:,.2f}".format(pendiente_total or 0) }}</strong>
                 </div>
                 {% if saldo_favor_total and saldo_favor_total > 0 %}
                     <div class="note-meta-item">
                         <span class="note-meta-label">
-                            {{ 'Saldo a favor proveedor' if owner_kind == 'proveedor' else 'Saldo a favor cliente' }}
+                            {{ 'Saldo a favor de la empresa' if owner_kind == 'proveedor' else 'Saldo a favor cliente' }}
                         </span>
                         <strong class="text-success">${{ "{:,.2f}".format(saldo_favor_total) }}</strong>
                     </div>
@@ -367,12 +367,10 @@
                             <tbody>
                             {% for pago in pagos_fuera_cuenta %}
                                 {% set nota = pago.nota %}
-                                {% if nota and nota.tipo_operacion.value == 'venta' %}
-                                    {% set partner = clientes_map.get(nota.cliente_id) %}
-                                {% elif nota and nota.tipo_operacion.value == 'compra' %}
+                                {% if nota and nota.proveedor_id %}
                                     {% set partner = proveedores_map.get(nota.proveedor_id) %}
-                                {% elif nota %}
-                                    {% set partner = proveedores_map.get(nota.proveedor_id) or clientes_map.get(nota.cliente_id) %}
+                                {% elif nota and nota.cliente_id %}
+                                    {% set partner = clientes_map.get(nota.cliente_id) %}
                                 {% else %}
                                     {% set partner = None %}
                                 {% endif %}
@@ -575,12 +573,12 @@
                 {% for row in nota_rows %}
                     {% set nota = row.nota %}
                     {% set suc = sucursales_map.get(nota.sucursal_id) %}
-                    {% if nota.tipo_operacion.value == 'venta' %}
-                        {% set partner = clientes_map.get(nota.cliente_id) %}
-                    {% elif nota.tipo_operacion.value == 'compra' %}
+                    {% if nota.proveedor_id %}
                         {% set partner = proveedores_map.get(nota.proveedor_id) %}
+                    {% elif nota.cliente_id %}
+                        {% set partner = clientes_map.get(nota.cliente_id) %}
                     {% else %}
-                        {% set partner = proveedores_map.get(nota.proveedor_id) or clientes_map.get(nota.cliente_id) %}
+                        {% set partner = None %}
                     {% endif %}
                     <tr>
                         <td>

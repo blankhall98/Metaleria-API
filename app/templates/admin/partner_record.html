@@ -10,14 +10,20 @@
             <h1 class="h4 text-dark mb-0">Record {{ partner_label }}: {{ partner.nombre_completo }}</h1>
             <div class="d-flex flex-wrap gap-2 mt-2">
                 <span class="partner-role-badge">{{ partner_label }}</span>
-                {% if unified_enabled and linked_partner %}
+                {% if partner_base == 'proveedores' and provider_direct_sales_enabled %}
+                    <span class="partner-role-badge dual">Compra y venta</span>
+                {% elif unified_enabled and linked_partner %}
                     <span class="partner-role-badge dual">Tambien {{ linked_partner_label|lower }}</span>
                 {% endif %}
             </div>
             <div class="text-muted small">ID {{ partner.id }} &middot; {{ record_scope_label if unified_enabled else tipo_operacion_label }}</div>
-            {% if unified_enabled and linked_partner %}
+            {% if linked_partner %}
                 <div class="text-muted small">
                     Unificado con {{ linked_partner_label }}: {{ linked_partner.nombre_completo }} (ID {{ linked_partner.id }})
+                </div>
+            {% elif partner_base == 'proveedores' and provider_direct_sales_enabled %}
+                <div class="text-muted small">
+                    Este proveedor tambien compra material directamente y netea compras y ventas en el mismo record.
                 </div>
             {% endif %}
         </div>
@@ -26,13 +32,8 @@
             {% set owner_key = 'cliente:' ~ partner.id if partner_base == 'clientes' else 'proveedor:' ~ partner.id %}
             <a href="/web/admin/cuentas?owner_key={{ owner_key }}" class="btn btn-outline-primary btn-sm">Cuentas</a>
             <a href="/web/admin/{{ partner_base }}/{{ partner.id }}/editar" class="btn btn-outline-primary btn-sm">Editar</a>
-            {% if not partner_is_internal and not linked_partner %}
-                {% if partner_base == 'proveedores' %}
-                    <form method="post" action="/web/admin/proveedores/{{ partner.id }}/crear-cliente" class="d-inline">
-                        <input type="hidden" name="next_url" value="{{ request.url.path }}">
-                        <button class="btn btn-outline-success btn-sm" type="submit">Agregar o vincular como cliente</button>
-                    </form>
-                {% else %}
+            {% if not partner_is_internal and not linked_partner and partner_base != 'proveedores' %}
+                {% if partner_base == 'clientes' %}
                     <form method="post" action="/web/admin/clientes/{{ partner.id }}/crear-proveedor" class="d-inline">
                         <input type="hidden" name="next_url" value="{{ request.url.path }}">
                         <button class="btn btn-outline-success btn-sm" type="submit">Agregar o vincular como proveedor</button>
@@ -58,22 +59,32 @@
         </div>
     {% endif %}
 
-    {% if unified_enabled and linked_partner %}
+    {% if unified_enabled %}
         <div class="card hover-lift mb-3 partner-unified-banner">
             <div class="card-body">
                 <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center">
                     <div>
                         <div class="d-flex flex-wrap gap-2 mb-2">
                             <span class="partner-role-badge">{{ partner_label }}</span>
-                            <span class="partner-role-badge dual">{{ linked_partner_label }}</span>
+                            {% if partner_base == 'proveedores' and provider_direct_sales_enabled %}
+                                <span class="partner-role-badge dual">Compra y venta</span>
+                            {% elif linked_partner %}
+                                <span class="partner-role-badge dual">{{ linked_partner_label }}</span>
+                            {% endif %}
                         </div>
                         <h2 class="h5 mb-1">Saldo neto unificado</h2>
                         <div class="text-muted small">
-                            Esta vista integra compras, ventas y ajustes del mismo partner en sus dos roles.
+                            Esta vista integra compras, ventas y ajustes del mismo partner.
                         </div>
-                        <div class="text-muted small mt-1">
-                            Partner vinculado: {{ linked_partner.nombre_completo }} (ID {{ linked_partner.id }})
-                        </div>
+                        {% if linked_partner %}
+                            <div class="text-muted small mt-1">
+                                Partner vinculado: {{ linked_partner.nombre_completo }} (ID {{ linked_partner.id }})
+                            </div>
+                        {% elif partner_base == 'proveedores' and provider_direct_sales_enabled %}
+                            <div class="text-muted small mt-1">
+                                Las ventas se registran directamente contra este proveedor, sin crear un cliente adicional.
+                            </div>
+                        {% endif %}
                     </div>
                     <div class="partner-balance-hero">
                         {% if summary.saldo_neto > 0 %}
@@ -140,7 +151,9 @@
                             <span class="note-meta-label">Roles</span>
                             <div class="d-flex flex-wrap gap-1">
                                 <span class="partner-role-badge">{{ partner_label }}</span>
-                                {% if unified_enabled and linked_partner %}
+                                {% if partner_base == 'proveedores' and provider_direct_sales_enabled %}
+                                    <span class="partner-role-badge dual">Compra y venta</span>
+                                {% elif unified_enabled and linked_partner %}
                                     <span class="partner-role-badge dual">{{ linked_partner_label }}</span>
                                 {% endif %}
                             </div>
@@ -150,6 +163,8 @@
                             <strong>
                                 {% if linked_partner %}
                                     {{ linked_partner.nombre_completo }} (ID {{ linked_partner.id }})
+                                {% elif partner_base == 'proveedores' and provider_direct_sales_enabled %}
+                                    Opera compras y ventas en el mismo perfil
                                 {% else %}
                                     -
                                 {% endif %}
@@ -442,8 +457,10 @@
                                 <td>
                                     {% if nota.tipo_operacion.value == 'compra' %}
                                         <span class="partner-role-badge">Compra al proveedor</span>
+                                    {% elif nota.proveedor_id %}
+                                        <span class="partner-role-badge dual">Venta al proveedor</span>
                                     {% else %}
-                                        <span class="partner-role-badge dual">Venta como cliente</span>
+                                        <span class="partner-role-badge unified">Venta legado</span>
                                     {% endif %}
                                 </td>
                             {% endif %}
@@ -552,8 +569,10 @@
                                 <td>
                                     {% if nota and nota.tipo_operacion.value == 'compra' %}
                                         <span class="partner-role-badge">Compra</span>
+                                    {% elif nota and nota.tipo_operacion.value == 'venta' and nota.proveedor_id %}
+                                        <span class="partner-role-badge dual">Venta directa</span>
                                     {% elif nota and nota.tipo_operacion.value == 'venta' %}
-                                        <span class="partner-role-badge dual">Venta</span>
+                                        <span class="partner-role-badge unified">Venta legado</span>
                                     {% else %}
                                         <span class="text-muted">-</span>
                                     {% endif %}

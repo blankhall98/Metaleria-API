@@ -52,9 +52,9 @@ def _safe_filename(value: str) -> str:
 
 
 def _nota_partner_key(nota: Nota) -> tuple[str | None, int | None]:
-    if nota.tipo_operacion == TipoOperacion.compra:
+    if nota.proveedor_id:
         return "proveedor", nota.proveedor_id
-    if nota.tipo_operacion == TipoOperacion.venta:
+    if nota.cliente_id:
         return "cliente", nota.cliente_id
     return None, None
 
@@ -381,7 +381,11 @@ def build_report_data(
         else:
             total_facturado_ventas += total
             total_pagado_ventas += pagado
-            partner = cli_map.get(nota.cliente_id)
+            partner_kind, partner_id = _nota_partner_key(nota)
+            if partner_kind == "proveedor":
+                partner = prov_map.get(partner_id)
+            else:
+                partner = cli_map.get(partner_id)
         if saldo > Decimal("0"):
             folio = note_service.format_folio(
                 sucursal_id=nota.sucursal_id,

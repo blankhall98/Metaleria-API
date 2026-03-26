@@ -76,14 +76,24 @@
                             <div class="fw-semibold">{{ p.nombre_completo }}</div>
                             <div class="d-flex flex-wrap gap-1 mt-1">
                                 <span class="partner-role-badge">Proveedor</span>
+                                {% if row.direct_enabled %}
+                                    <span class="partner-role-badge dual prominent">Compra y venta</span>
+                                {% endif %}
                                 {% if row.linked_cliente %}
-                                    <span class="partner-role-badge dual prominent">Rol dual</span>
-                                    <span class="partner-role-badge unified">Cliente vinculado</span>
+                                    <span class="partner-role-badge unified">Cliente legado vinculado</span>
                                 {% endif %}
                             </div>
-                            {% if row.linked_cliente %}
+                            {% if row.direct_enabled %}
                                 <div class="text-muted small mt-1">
-                                    Vinculado con cliente ID {{ row.linked_cliente.id }}
+                                    {% if row.ventas_directas_count > 0 %}
+                                        {{ row.ventas_directas_count }} venta{{ '' if row.ventas_directas_count == 1 else 's' }} directa{{ '' if row.ventas_directas_count == 1 else 's' }} registrada{{ '' if row.ventas_directas_count == 1 else 's' }}.
+                                    {% else %}
+                                        Ventas directas habilitadas para este proveedor.
+                                    {% endif %}
+                                </div>
+                            {% elif row.linked_cliente %}
+                                <div class="text-muted small mt-1">
+                                    Vinculado con cliente legado ID {{ row.linked_cliente.id }}
                                 </div>
                             {% endif %}
                         </td>
@@ -106,8 +116,8 @@
                             {% else %}
                                 <span class="text-success fw-semibold">-${{ "{:,.2f}".format(-row.saldo_neto) }}</span>
                             {% endif %}
-                            {% if row.linked_cliente %}
-                                <div class="text-muted small mt-1">Saldo neto unificado</div>
+                            {% if row.direct_enabled or row.linked_cliente %}
+                                <div class="text-muted small mt-1">Saldo neto compra/venta</div>
                             {% endif %}
                         </td>
                         <td>

@@ -267,14 +267,18 @@ def _partner_payment_signed(mov: MovimientoContable) -> Decimal:
     return abs(base)
 
 def _nota_partner_key(nota: Nota) -> tuple[str | None, int | None]:
-    if nota.tipo_operacion == TipoOperacion.compra:
+    if nota.proveedor_id:
         return "proveedor", nota.proveedor_id
-    if nota.tipo_operacion == TipoOperacion.venta:
+    if nota.cliente_id:
         return "cliente", nota.cliente_id
     return None, None
 
 
 def _partner_note_sign(partner_type: str | None, nota: Nota) -> Decimal:
+    if partner_type == "proveedor":
+        return Decimal("-1") if nota.tipo_operacion == TipoOperacion.venta else Decimal("1")
+    if partner_type == "cliente":
+        return Decimal("1") if nota.tipo_operacion == TipoOperacion.venta else Decimal("-1")
     return Decimal("1")
 
 
@@ -392,7 +396,7 @@ def _build_partner_ledger(
         tipo_ops = [TipoOperacion.venta]
         notes_query = db.query(Nota).filter(Nota.cliente_id == partner_id)
     else:
-        tipo_ops = [TipoOperacion.compra]
+        tipo_ops = [TipoOperacion.compra, TipoOperacion.venta]
         notes_query = db.query(Nota).filter(Nota.proveedor_id == partner_id)
 
     notes_query = notes_query.filter(
@@ -597,17 +601,18 @@ def _build_unified_partner_ledger(
     cliente_id: int | None,
     allowed_suc_ids: list[int] | None,
 ) -> list[dict]:
-    notas: list[Nota] = []
+    notas_map: dict[int, Nota] = {}
     if proveedor_id:
         notes_query = db.query(Nota).filter(
             Nota.proveedor_id == proveedor_id,
-            Nota.tipo_operacion == TipoOperacion.compra,
+            Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]),
         )
         notes_query = notes_query.filter(
             Nota.estado.in_([NotaEstado.aprobada, NotaEstado.cancelada]),
         )
         notes_query = _apply_sucursal_filter(notes_query, allowed_suc_ids, None, Nota.sucursal_id)
-        notas.extend(notes_query.all())
+        for nota in notes_query.all():
+            notas_map[nota.id] = nota
     if cliente_id:
         notes_query = db.query(Nota).filter(
             Nota.cliente_id == cliente_id,
@@ -617,7 +622,10 @@ def _build_unified_partner_ledger(
             Nota.estado.in_([NotaEstado.aprobada, NotaEstado.cancelada]),
         )
         notes_query = _apply_sucursal_filter(notes_query, allowed_suc_ids, None, Nota.sucursal_id)
-        notas.extend(notes_query.all())
+        for nota in notes_query.all():
+            notas_map.setdefault(nota.id, nota)
+
+    notas = list(notas_map.values())
 
     ajustes: list[tuple[AjusteSaldoPartner, int]] = []
     if proveedor_id:
@@ -1049,6 +1057,62 @@ def _get_formally_linked_proveedor(db: Session, cliente: Cliente) -> Proveedor |
         if linked:
             return linked
     return db.query(Proveedor).filter(Proveedor.linked_cliente_id == cliente.id).first()
+
+
+def _collect_proveedor_sales_bundle(
+    db: Session,
+    *,
+    proveedor: Proveedor,
+    allowed_suc_ids: list[int] | None,
+    sucursal_id: int | None = None,
+) -> dict:
+    linked_cliente = None
+    if not _is_internal_partner_name(db, proveedor.nombre_completo):
+        linked_cliente = _get_formally_linked_cliente(db, proveedor)
+        if linked_cliente and _is_internal_partner_name(db, linked_cliente.nombre_completo):
+            linked_cliente = None
+
+    ventas_directas_query = db.query(Nota).filter(
+        Nota.proveedor_id == proveedor.id,
+        Nota.tipo_operacion == TipoOperacion.venta,
+    )
+    ventas_directas_query = _apply_sucursal_filter(
+        ventas_directas_query,
+        allowed_suc_ids,
+        sucursal_id,
+        Nota.sucursal_id,
+    )
+    ventas_directas = ventas_directas_query.order_by(Nota.created_at.desc()).all()
+
+    ventas_legado: list[Nota] = []
+    if linked_cliente:
+        ventas_legado_query = db.query(Nota).filter(
+            Nota.cliente_id == linked_cliente.id,
+            Nota.tipo_operacion == TipoOperacion.venta,
+        )
+        ventas_legado_query = _apply_sucursal_filter(
+            ventas_legado_query,
+            allowed_suc_ids,
+            sucursal_id,
+            Nota.sucursal_id,
+        )
+        ventas_legado = ventas_legado_query.order_by(Nota.created_at.desc()).all()
+
+    ventas_map = {nota.id: nota for nota in ventas_directas}
+    for nota in ventas_legado:
+        ventas_map.setdefault(nota.id, nota)
+    ventas = sorted(
+        ventas_map.values(),
+        key=lambda nota: nota.created_at or datetime.min,
+        reverse=True,
+    )
+    return {
+        "linked_cliente": linked_cliente,
+        "ventas": ventas,
+        "ventas_directas": ventas_directas,
+        "ventas_legado": ventas_legado,
+        "direct_enabled": bool(getattr(proveedor, "permite_ventas", False)) or bool(ventas_directas),
+    }
 
 
 def _get_linked_cliente(db: Session, proveedor: Proveedor) -> Cliente | None:
@@ -2022,6 +2086,8 @@ def _build_partner_record_context(
     partner_is_internal = _is_internal_partner_name(db, partner.nombre_completo)
     linked_partner = None
     linked_partner_label = None
+    provider_direct_sales_enabled = False
+    provider_direct_sales_count = 0
     unified_summary = None
     unified_ledger_rows = None
     unified_ledger_final = Decimal("0")
@@ -2057,26 +2123,45 @@ def _build_partner_record_context(
         ajuste_contra_label = "Saldo en contra del cliente (el cliente debe pagar)"
     record_scope_label = tipo_operacion_label
     payments_scope_label = tipo_operacion_label
+    compras: list[Nota] = []
+    ventas: list[Nota] = []
+    prov_id: int | None = None
+    cli_id: int | None = None
 
     if not partner_is_internal:
         if partner_type == "proveedor":
-            linked_partner = _get_formally_linked_cliente(db, partner)
-            if linked_partner and _is_internal_partner_name(db, linked_partner.nombre_completo):
-                linked_partner = None
+            provider_bundle = _collect_proveedor_sales_bundle(
+                db,
+                proveedor=partner,
+                allowed_suc_ids=allowed_suc_ids,
+            )
+            linked_partner = provider_bundle["linked_cliente"]
             linked_partner_label = "Cliente"
+            provider_direct_sales_enabled = bool(provider_bundle["direct_enabled"])
+            provider_direct_sales_count = len(provider_bundle["ventas_directas"])
         else:
             linked_partner = _get_formally_linked_proveedor(db, partner)
             if linked_partner and _is_internal_partner_name(db, linked_partner.nombre_completo):
                 linked_partner = None
             linked_partner_label = "Proveedor"
 
-    if linked_partner:
+    if partner_type == "proveedor":
         compras_query = db.query(Nota).filter(
-            Nota.proveedor_id == (partner.id if partner_type == "proveedor" else linked_partner.id),
+            Nota.proveedor_id == partner.id,
+            Nota.tipo_operacion == TipoOperacion.compra,
+        )
+        compras_query = _apply_sucursal_filter(compras_query, allowed_suc_ids, None, Nota.sucursal_id)
+        compras = compras_query.order_by(Nota.created_at.desc()).all()
+        ventas = provider_bundle["ventas"] if not partner_is_internal else []
+        prov_id = partner.id
+        cli_id = linked_partner.id if linked_partner else None
+    elif linked_partner:
+        compras_query = db.query(Nota).filter(
+            Nota.proveedor_id == linked_partner.id,
             Nota.tipo_operacion == TipoOperacion.compra,
         )
         ventas_query = db.query(Nota).filter(
-            Nota.cliente_id == (partner.id if partner_type == "cliente" else linked_partner.id),
+            Nota.cliente_id == partner.id,
             Nota.tipo_operacion == TipoOperacion.venta,
         )
         if allowed_suc_ids:
@@ -2084,18 +2169,24 @@ def _build_partner_record_context(
             ventas_query = ventas_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
         compras = compras_query.order_by(Nota.created_at.desc()).all()
         ventas = ventas_query.order_by(Nota.created_at.desc()).all()
-        prov_id = partner.id if partner_type == "proveedor" else linked_partner.id
-        cli_id = partner.id if partner_type == "cliente" else linked_partner.id
+        prov_id = linked_partner.id
+        cli_id = partner.id
+
+    if (partner_type == "proveedor" and (ventas or provider_direct_sales_enabled or linked_partner)) or (
+        partner_type == "cliente" and linked_partner
+    ):
         ajustes_proveedor = _get_partner_adjustments_total(
             db,
             partner_type="proveedor",
             partner_id=prov_id,
         )
-        ajustes_cliente = _get_partner_adjustments_total(
-            db,
-            partner_type="cliente",
-            partner_id=cli_id,
-        )
+        ajustes_cliente = Decimal("0")
+        if cli_id:
+            ajustes_cliente = _get_partner_adjustments_total(
+                db,
+                partner_type="cliente",
+                partner_id=cli_id,
+            )
         unified_summary = _aggregate_unified_partner_summary(
             compras=compras,
             ventas=ventas,
@@ -2144,7 +2235,7 @@ def _build_partner_record_context(
 
     record_notes = notas
     record_partner_type = partner_type
-    if unified_summary and linked_partner:
+    if unified_summary:
         summary = unified_summary
         ledger_rows = unified_ledger_rows or []
         ledger_final = unified_ledger_final
@@ -2237,6 +2328,8 @@ def _build_partner_record_context(
         "linked_partner_label": linked_partner_label,
         "unified_enabled": bool(unified_summary),
         "partner_is_internal": partner_is_internal,
+        "provider_direct_sales_enabled": provider_direct_sales_enabled,
+        "provider_direct_sales_count": provider_direct_sales_count,
     }
 
 
@@ -3264,6 +3357,7 @@ def _render_proveedor_form(
     linked_cliente_id: int | None,
     sucursales: list[Sucursal],
     sucursal_id_selected: int | None,
+    permite_ventas_selected: bool = False,
     counterpart_suggestion: dict | None = None,
     link_ok: bool = False,
     link_msg: str | None = None,
@@ -3284,6 +3378,7 @@ def _render_proveedor_form(
             "linked_cliente_id": linked_cliente_id,
             "sucursales": sucursales,
             "sucursal_id_selected": sucursal_id_selected,
+            "permite_ventas_selected": permite_ventas_selected,
             "counterpart_suggestion": counterpart_suggestion,
             "link_ok": link_ok,
             "link_msg": link_msg,
@@ -3376,11 +3471,13 @@ async def proveedores_list(
     proveedores = query.order_by(Proveedor.nombre_completo).all()
     proveedores_view = []
     for proveedor in proveedores:
-        linked_cliente = None
-        if not _is_internal_partner_name(db, proveedor.nombre_completo):
-            linked_cliente = _get_formally_linked_cliente(db, proveedor)
-            if linked_cliente and _is_internal_partner_name(db, linked_cliente.nombre_completo):
-                linked_cliente = None
+        bundle = _collect_proveedor_sales_bundle(
+            db,
+            proveedor=proveedor,
+            allowed_suc_ids=allowed_suc_ids,
+            sucursal_id=sucursal_id,
+        )
+        linked_cliente = bundle["linked_cliente"]
 
         compras_query = db.query(Nota).filter(
             Nota.proveedor_id == proveedor.id,
@@ -3394,19 +3491,7 @@ async def proveedores_list(
         )
         compras = compras_query.order_by(Nota.created_at.desc()).all()
 
-        ventas = []
-        if linked_cliente:
-            ventas_query = db.query(Nota).filter(
-                Nota.cliente_id == linked_cliente.id,
-                Nota.tipo_operacion == TipoOperacion.venta,
-            )
-            ventas_query = _apply_sucursal_filter(
-                ventas_query,
-                allowed_suc_ids,
-                sucursal_id,
-                Nota.sucursal_id,
-            )
-            ventas = ventas_query.order_by(Nota.created_at.desc()).all()
+        ventas = bundle["ventas"]
 
         ajustes_proveedor = _get_partner_adjustments_total(
             db,
@@ -3432,6 +3517,9 @@ async def proveedores_list(
                 "proveedor": proveedor,
                 "linked_cliente": linked_cliente,
                 "saldo_neto": unified_summary["saldo_neto"],
+                "direct_enabled": bool(bundle["direct_enabled"]),
+                "ventas_directas_count": len(bundle["ventas_directas"]),
+                "ventas_total_count": len(ventas),
             }
         )
 
@@ -3518,6 +3606,7 @@ async def proveedor_new_get(
         linked_cliente_id=None,
         sucursales=sucursales,
         sucursal_id_selected=default_sucursal_id,
+        permite_ventas_selected=False,
     )
 
 
@@ -3528,6 +3617,7 @@ async def proveedor_new_post(
     telefono: str = Form(""),
     correo_electronico: str = Form(""),
     placas: str = Form(""),
+    permite_ventas: str | None = Form(None),
     linked_cliente_id: str | None = Form(None),
     sucursal_id: str | None = Form(None),
     db: Session = Depends(get_db),
@@ -3551,6 +3641,7 @@ async def proveedor_new_post(
     telefono = telefono.strip()
     correo_electronico = correo_electronico.strip()
     placas_list = _parse_placas(placas)
+    permite_ventas_selected = bool(permite_ventas)
     linked_id = _parse_optional_int(linked_cliente_id)
     linked_cliente = db.get(Cliente, linked_id) if linked_id else None
 
@@ -3565,6 +3656,7 @@ async def proveedor_new_post(
             linked_cliente_id=linked_id,
             sucursales=sucursales,
             sucursal_id_selected=sucursal_id_selected,
+            permite_ventas_selected=permite_ventas_selected,
             status_code=400,
         )
     if not sucursal_id_selected:
@@ -3578,6 +3670,7 @@ async def proveedor_new_post(
             linked_cliente_id=linked_id,
             sucursales=sucursales,
             sucursal_id_selected=sucursal_id_selected,
+            permite_ventas_selected=permite_ventas_selected,
             status_code=400,
         )
 
@@ -3592,6 +3685,7 @@ async def proveedor_new_post(
             linked_cliente_id=linked_id,
             sucursales=sucursales,
             sucursal_id_selected=sucursal_id_selected,
+            permite_ventas_selected=permite_ventas_selected,
             status_code=400,
         )
     if linked_cliente and _is_internal_partner_name(db, linked_cliente.nombre_completo):
@@ -3605,6 +3699,7 @@ async def proveedor_new_post(
             linked_cliente_id=linked_id,
             sucursales=sucursales,
             sucursal_id_selected=sucursal_id_selected,
+            permite_ventas_selected=permite_ventas_selected,
             status_code=400,
         )
     if linked_cliente and linked_cliente.sucursal_id != sucursal_id_selected:
@@ -3618,6 +3713,7 @@ async def proveedor_new_post(
             linked_cliente_id=linked_id,
             sucursales=sucursales,
             sucursal_id_selected=sucursal_id_selected,
+            permite_ventas_selected=permite_ventas_selected,
             status_code=400,
         )
 
@@ -3632,6 +3728,7 @@ async def proveedor_new_post(
             linked_cliente_id=linked_id,
             sucursales=sucursales,
             sucursal_id_selected=sucursal_id_selected,
+            permite_ventas_selected=permite_ventas_selected,
             status_code=400,
         )
 
@@ -3657,6 +3754,7 @@ async def proveedor_new_post(
         correo_electronico=correo_electronico or None,
         placas=placas_list[0] if placas_list else None,
         activo=True,
+        permite_ventas=permite_ventas_selected,
     )
     db.add(proveedor)
     db.flush()
@@ -3675,6 +3773,7 @@ async def proveedor_new_post(
                 linked_cliente_id=linked_id,
                 sucursales=sucursales,
                 sucursal_id_selected=sucursal_id_selected,
+                permite_ventas_selected=permite_ventas_selected,
                 status_code=400,
             )
     db.commit()
@@ -3723,6 +3822,7 @@ async def proveedor_edit_get(
         linked_cliente_id=linked_cliente.id if linked_cliente else proveedor.linked_cliente_id,
         sucursales=sucursales,
         sucursal_id_selected=proveedor.sucursal_id,
+        permite_ventas_selected=bool(getattr(proveedor, "permite_ventas", False)),
         counterpart_suggestion=counterpart_suggestion,
         link_ok=link_ok,
         link_msg=link_msg,
@@ -3740,6 +3840,7 @@ async def proveedor_edit_post(
     correo_electronico: str = Form(""),
     placas: str = Form(""),
     activo: str | None = Form(None),
+    permite_ventas: str | None = Form(None),
     linked_cliente_id: str | None = Form(None),
     sucursal_id: str | None = Form(None),
     db: Session = Depends(get_db),
@@ -3767,6 +3868,7 @@ async def proveedor_edit_post(
     telefono = telefono.strip()
     correo_electronico = correo_electronico.strip()
     placas_list = _parse_placas(placas)
+    permite_ventas_selected = bool(permite_ventas)
     existing_linked_cliente = _get_formally_linked_cliente(db, proveedor)
     linked_id = existing_linked_cliente.id if existing_linked_cliente else _parse_optional_int(linked_cliente_id)
     linked_cliente = db.get(Cliente, linked_id) if linked_id else None
@@ -3782,6 +3884,7 @@ async def proveedor_edit_post(
             linked_cliente_id=linked_id,
             sucursales=sucursales,
             sucursal_id_selected=sucursal_id_selected,
+            permite_ventas_selected=permite_ventas_selected,
             status_code=400,
         )
     if not sucursal_id_selected:
@@ -3795,6 +3898,7 @@ async def proveedor_edit_post(
             linked_cliente_id=linked_id,
             sucursales=sucursales,
             sucursal_id_selected=sucursal_id_selected,
+            permite_ventas_selected=permite_ventas_selected,
             status_code=400,
         )
 
@@ -3809,6 +3913,7 @@ async def proveedor_edit_post(
             linked_cliente_id=linked_id,
             sucursales=sucursales,
             sucursal_id_selected=sucursal_id_selected,
+            permite_ventas_selected=permite_ventas_selected,
             status_code=400,
         )
     if linked_cliente and _is_internal_partner_name(db, linked_cliente.nombre_completo):
@@ -3822,6 +3927,7 @@ async def proveedor_edit_post(
             linked_cliente_id=linked_id,
             sucursales=sucursales,
             sucursal_id_selected=sucursal_id_selected,
+            permite_ventas_selected=permite_ventas_selected,
             status_code=400,
         )
     if linked_cliente and linked_cliente.sucursal_id != sucursal_id_selected:
@@ -3835,6 +3941,7 @@ async def proveedor_edit_post(
             linked_cliente_id=linked_id,
             sucursales=sucursales,
             sucursal_id_selected=sucursal_id_selected,
+            permite_ventas_selected=permite_ventas_selected,
             status_code=400,
         )
 
@@ -3849,6 +3956,7 @@ async def proveedor_edit_post(
             linked_cliente_id=linked_id,
             sucursales=sucursales,
             sucursal_id_selected=sucursal_id_selected,
+            permite_ventas_selected=permite_ventas_selected,
             status_code=400,
         )
 
@@ -3873,6 +3981,7 @@ async def proveedor_edit_post(
     proveedor.correo_electronico = correo_electronico or None
     proveedor.placas = placas_list[0] if placas_list else None
     proveedor.activo = bool(activo)
+    proveedor.permite_ventas = permite_ventas_selected
 
     _set_proveedor_placas(db, proveedor, placas_list)
     if linked_cliente:
@@ -3890,6 +3999,7 @@ async def proveedor_edit_post(
                 linked_cliente_id=linked_id,
                 sucursales=sucursales,
                 sucursal_id_selected=sucursal_id_selected,
+                permite_ventas_selected=permite_ventas_selected,
                 status_code=400,
             )
     db.commit()
@@ -6164,7 +6274,7 @@ async def cuenta_detail(
 
     tipo_filters: list[TipoOperacion] | None = None
     if owner_kind == "proveedor":
-        tipo_filters = [TipoOperacion.compra]
+        tipo_filters = [TipoOperacion.compra, TipoOperacion.venta]
     elif owner_kind == "cliente":
         tipo_filters = [TipoOperacion.venta]
 
@@ -10004,14 +10114,11 @@ async def contabilidad_list(
         otras_sucursales = set()
         for nota in notas_scope:
             nombre = None
-            if nota.tipo_operacion == TipoOperacion.venta:
-                nombre = clientes_map.get(nota.cliente_id)
-            elif nota.tipo_operacion == TipoOperacion.compra:
-                partner_kind, partner_id = _nota_partner_key(nota)
-                if partner_kind == "cliente":
-                    nombre = clientes_map.get(partner_id)
-                else:
-                    nombre = proveedores_map.get(partner_id)
+            partner_kind, partner_id = _nota_partner_key(nota)
+            if partner_kind == "cliente":
+                nombre = clientes_map.get(partner_id)
+            elif partner_kind == "proveedor":
+                nombre = proveedores_map.get(partner_id)
             if _is_internal_partner(nombre):
                 continue
             if nota.sucursal_id and nota.sucursal_id != sucursal_id:
@@ -10041,7 +10148,8 @@ async def contabilidad_list(
         pagado = Decimal(str(nota.monto_pagado or 0))
         diff = total - pagado
         if nota.tipo_operacion == TipoOperacion.venta:
-            nombre = clientes_map.get(nota.cliente_id)
+            partner_kind, partner_id = _nota_partner_key(nota)
+            nombre = clientes_map.get(partner_id) if partner_kind == "cliente" else proveedores_map.get(partner_id)
             if _is_internal_partner(nombre):
                 continue
             notas_consideradas += 1
@@ -10237,71 +10345,91 @@ async def contabilidad_list(
                 if not partner:
                     partner_error = "Proveedor no encontrado."
                 else:
-                    linked_cliente = None
-                    if not _is_internal_partner_name(db, partner.nombre_completo):
-                        linked_cliente = _get_formally_linked_cliente(db, partner)
-                        if linked_cliente and _is_internal_partner_name(db, linked_cliente.nombre_completo):
-                            linked_cliente = None
-                    notas_p = (
+                    compras_q = (
                         db.query(Nota)
                         .filter(
                             Nota.proveedor_id == partner_id,
                             Nota.tipo_operacion == TipoOperacion.compra,
                         )
                     )
-                    notas_p = _apply_sucursal_filter(notas_p, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
-                    notas_p = notas_p.order_by(Nota.created_at.desc()).all()
-                    folio_map = _build_folio_map(notas_p)
-                    record_rows = _build_partner_record_rows(notas_p, folio_map, partner_type="proveedor")
-                    ajustes_delta = _get_partner_adjustments_total(
+                    compras_q = _apply_sucursal_filter(compras_q, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
+                    compras = compras_q.order_by(Nota.created_at.desc()).all()
+
+                    provider_bundle = _collect_proveedor_sales_bundle(
+                        db,
+                        proveedor=partner,
+                        allowed_suc_ids=allowed_suc_ids,
+                        sucursal_id=sucursal_id,
+                    )
+                    linked_cliente = provider_bundle["linked_cliente"]
+                    ventas = provider_bundle["ventas"]
+                    provider_direct_sales_enabled = bool(provider_bundle["direct_enabled"])
+                    provider_direct_sales_count = len(provider_bundle["ventas_directas"])
+
+                    ajustes_proveedor = _get_partner_adjustments_total(
                         db,
                         partner_type="proveedor",
                         partner_id=partner_id,
                     )
-                    summary = _aggregate_partner_record_summary(
-                        notas_p,
-                        partner_type="proveedor",
-                        ajustes_delta=ajustes_delta,
-                    )
-                    unified_enabled = False
+                    ajustes_cliente = Decimal("0")
                     if linked_cliente:
-                        ventas_q = (
-                            db.query(Nota)
-                            .filter(
-                                Nota.cliente_id == linked_cliente.id,
-                                Nota.tipo_operacion == TipoOperacion.venta,
-                            )
-                        )
-                        ventas_q = _apply_sucursal_filter(ventas_q, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
-                        ventas = ventas_q.order_by(Nota.created_at.desc()).all()
                         ajustes_cliente = _get_partner_adjustments_total(
                             db,
                             partner_type="cliente",
                             partner_id=linked_cliente.id,
                         )
+
+                    unified_enabled = bool(ventas or provider_direct_sales_enabled or linked_cliente)
+                    if unified_enabled:
                         summary = _aggregate_unified_partner_summary(
-                            compras=notas_p,
+                            compras=compras,
                             ventas=ventas,
-                            ajustes_proveedor=ajustes_delta,
+                            ajustes_proveedor=ajustes_proveedor,
                             ajustes_cliente=ajustes_cliente,
                         )
-                        unified_enabled = True
-                    pagos_p = (
-                        db.query(NotaPago)
-                        .join(Nota, NotaPago.nota_id == Nota.id)
-                        .filter(
-                            Nota.proveedor_id == partner_id,
-                            Nota.tipo_operacion == TipoOperacion.compra,
+                        record_notes = sorted(
+                            compras + ventas,
+                            key=lambda nota: nota.created_at or datetime.min,
+                            reverse=True,
                         )
-                    )
-                    pagos_p = _apply_sucursal_filter(pagos_p, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
-                    pagos_p = pagos_p.order_by(NotaPago.created_at.desc()).all()
+                        folio_map = _build_folio_map(record_notes)
+                        record_rows = _build_partner_record_rows(record_notes, folio_map, partner_type=None)
+                        note_ids = [nota.id for nota in record_notes]
+                        if note_ids:
+                            pagos_p = (
+                                db.query(NotaPago)
+                                .join(Nota, NotaPago.nota_id == Nota.id)
+                                .filter(Nota.id.in_(note_ids))
+                                .order_by(NotaPago.created_at.desc())
+                                .all()
+                            )
+                        else:
+                            pagos_p = []
+                    else:
+                        folio_map = _build_folio_map(compras)
+                        record_rows = _build_partner_record_rows(compras, folio_map, partner_type="proveedor")
+                        summary = _aggregate_partner_record_summary(
+                            compras,
+                            partner_type="proveedor",
+                            ajustes_delta=ajustes_proveedor,
+                        )
+                        pagos_p = (
+                            db.query(NotaPago)
+                            .join(Nota, NotaPago.nota_id == Nota.id)
+                            .filter(
+                                Nota.proveedor_id == partner_id,
+                                Nota.tipo_operacion == TipoOperacion.compra,
+                            )
+                        )
+                        pagos_p = _apply_sucursal_filter(pagos_p, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
+                        pagos_p = pagos_p.order_by(NotaPago.created_at.desc()).all()
+
                     partner_context = {
                         "partner": partner,
                         "partner_label": "Proveedor",
-                        "tipo_operacion_label": "Compras",
+                        "tipo_operacion_label": "Compras y ventas" if unified_enabled else "Compras",
                         "record_rows": record_rows,
-                        "record_total_count": len(notas_p),
+                        "record_total_count": len(record_rows),
                         "summary": summary,
                         "pagos": pagos_p,
                         "folio_map": folio_map,
@@ -10313,6 +10441,8 @@ async def contabilidad_list(
                         "unified_enabled": unified_enabled,
                         "linked_partner": linked_cliente,
                         "linked_partner_label": "Cliente",
+                        "provider_direct_sales_enabled": provider_direct_sales_enabled,
+                        "provider_direct_sales_count": provider_direct_sales_count,
                     }
             else:
                 partner_error = "Seleccion invalida."

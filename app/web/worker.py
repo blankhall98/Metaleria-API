@@ -57,7 +57,7 @@ def _get_price_map(db: Session) -> dict:
     return mapping
 
 
-def _get_worker_partners(db: Session, current_user: dict) -> tuple[list[Proveedor], list[Cliente]]:
+def _get_worker_partners(db: Session, current_user: dict) -> tuple[list[Proveedor], list[Proveedor], list[Cliente]]:
     sucursal_id = current_user.get("sucursal_id")
     proveedores_q = db.query(Proveedor).filter(Proveedor.activo.is_(True))
     clientes_q = db.query(Cliente).filter(Cliente.activo.is_(True))
@@ -65,8 +65,9 @@ def _get_worker_partners(db: Session, current_user: dict) -> tuple[list[Proveedo
         proveedores_q = proveedores_q.filter(Proveedor.sucursal_id == sucursal_id)
         clientes_q = clientes_q.filter(Cliente.sucursal_id == sucursal_id)
     proveedores = proveedores_q.order_by(Proveedor.nombre_completo).all()
+    proveedores_venta = [p for p in proveedores if bool(getattr(p, "permite_ventas", False))]
     clientes = clientes_q.order_by(Cliente.nombre_completo).all()
-    return proveedores, clientes
+    return proveedores, proveedores_venta, clientes
 
 
 def _validate_worker_partner_selection(
@@ -77,7 +78,9 @@ def _validate_worker_partner_selection(
     cliente_id: str | None,
     sucursal_id: int | None,
 ) -> None:
-    if tipo_operacion == TipoOperacion.compra and proveedor_id:
+    if tipo_operacion == TipoOperacion.compra:
+        if not proveedor_id:
+            return
         try:
             pid = int(proveedor_id)
         except (TypeError, ValueError):
@@ -87,16 +90,52 @@ def _validate_worker_partner_selection(
             raise ValueError("Proveedor invalido.")
         if sucursal_id and proveedor.sucursal_id != sucursal_id:
             raise ValueError("El proveedor no pertenece a tu sucursal.")
-    if tipo_operacion == TipoOperacion.venta and cliente_id:
-        try:
-            cid = int(cliente_id)
-        except (TypeError, ValueError):
-            raise ValueError("Cliente invalido.")
-        cliente = db.get(Cliente, cid)
-        if not cliente or not cliente.activo:
-            raise ValueError("Cliente invalido.")
-        if sucursal_id and cliente.sucursal_id != sucursal_id:
-            raise ValueError("El cliente no pertenece a tu sucursal.")
+        return
+    if tipo_operacion == TipoOperacion.venta:
+        if proveedor_id and cliente_id:
+            raise ValueError("Selecciona solo una contraparte para la venta.")
+        if proveedor_id:
+            try:
+                pid = int(proveedor_id)
+            except (TypeError, ValueError):
+                raise ValueError("Proveedor invalido.")
+            proveedor = db.get(Proveedor, pid)
+            if not proveedor or not proveedor.activo:
+                raise ValueError("Proveedor invalido.")
+            if sucursal_id and proveedor.sucursal_id != sucursal_id:
+                raise ValueError("El proveedor no pertenece a tu sucursal.")
+            if not bool(getattr(proveedor, "permite_ventas", False)):
+                raise ValueError("Este proveedor no esta habilitado para compras directas.")
+            return
+        if cliente_id:
+            try:
+                cid = int(cliente_id)
+            except (TypeError, ValueError):
+                raise ValueError("Cliente invalido.")
+            cliente = db.get(Cliente, cid)
+            if not cliente or not cliente.activo:
+                raise ValueError("Cliente invalido.")
+            if sucursal_id and cliente.sucursal_id != sucursal_id:
+                raise ValueError("El cliente no pertenece a tu sucursal.")
+
+
+def _normalize_worker_partner_selection(
+    *,
+    tipo_operacion: TipoOperacion,
+    venta_partner_kind: str | None,
+    proveedor_compra_id: str | None,
+    proveedor_venta_id: str | None,
+    cliente_id: str | None,
+) -> tuple[str | None, str | None, str]:
+    partner_kind = "proveedor" if (venta_partner_kind or "").strip().lower() == "proveedor" else "cliente"
+    proveedor_raw = (proveedor_compra_id or "").strip()
+    cliente_raw = (cliente_id or "").strip()
+    proveedor_venta_raw = (proveedor_venta_id or "").strip()
+    if tipo_operacion == TipoOperacion.compra:
+        return (proveedor_raw or None), None, "proveedor"
+    if partner_kind == "proveedor":
+        return (proveedor_venta_raw or None), None, "proveedor"
+    return None, (cliente_raw or None), "cliente"
 
 
 @router.get("/notes")
@@ -132,15 +171,23 @@ async def notes_list(
     )
 
 
-@router.get("/notes/nueva")
-async def notes_new_get(
+def _render_worker_note_form(
     request: Request,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(require_worker),
+    current_user: dict,
+    *,
+    materiales: list[Material],
+    proveedores: list[Proveedor],
+    proveedores_venta: list[Proveedor],
+    clientes: list[Cliente],
+    price_map: dict,
+    error: str | None = None,
+    status_code: int = 200,
+    form_title: str | None = None,
+    action_url: str | None = None,
+    submit_label: str | None = None,
+    initial_state: dict | None = None,
+    review_comment: str | None = None,
 ):
-    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
-    proveedores, clientes = _get_worker_partners(db, current_user)
-    price_map = _get_price_map(db)
     return templates.TemplateResponse(
         "worker/notes_form.html",
         {
@@ -149,11 +196,38 @@ async def notes_new_get(
             "user": current_user,
             "materiales": materiales,
             "proveedores": proveedores,
+            "proveedores_venta": proveedores_venta,
             "clientes": clientes,
-            "error": None,
+            "error": error,
             "price_map": price_map,
             "max_mb": settings.FIREBASE_MAX_MB,
+            "form_title": form_title,
+            "action_url": action_url,
+            "submit_label": submit_label,
+            "initial_note_json": json.dumps(initial_state or {}, ensure_ascii=True),
+            "review_comment": review_comment or "",
         },
+        status_code=status_code,
+    )
+
+
+@router.get("/notes/nueva")
+async def notes_new_get(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_worker),
+):
+    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
+    proveedores, proveedores_venta, clientes = _get_worker_partners(db, current_user)
+    price_map = _get_price_map(db)
+    return _render_worker_note_form(
+        request,
+        current_user,
+        materiales=materiales,
+        proveedores=proveedores,
+        proveedores_venta=proveedores_venta,
+        clientes=clientes,
+        price_map=price_map,
     )
 
 
@@ -240,9 +314,12 @@ def _build_worker_note_initial_state(nota: Nota) -> dict:
         )
 
     extra_evidencias = [ev.url for ev in sorted(list(nota.evidencias_extra or []), key=lambda e: e.id or 0) if ev.url]
+    venta_partner_kind = "proveedor" if nota.tipo_operacion == TipoOperacion.venta and nota.proveedor_id else "cliente"
     return {
         "tipo_operacion": nota.tipo_operacion.value if nota.tipo_operacion else "compra",
-        "proveedor_id": nota.proveedor_id or "",
+        "venta_partner_kind": venta_partner_kind,
+        "proveedor_compra_id": nota.proveedor_id if nota.tipo_operacion == TipoOperacion.compra and nota.proveedor_id else "",
+        "proveedor_venta_id": nota.proveedor_id if nota.tipo_operacion == TipoOperacion.venta and nota.proveedor_id else "",
         "cliente_id": nota.cliente_id or "",
         "comentarios_trabajador": nota.comentarios_trabajador or "",
         "materiales": materiales,
@@ -254,7 +331,9 @@ def _build_worker_note_initial_state(nota: Nota) -> dict:
 async def notes_new_post(
     request: Request,
     tipo_operacion: str = Form(...),
-    proveedor_id: str = Form(""),
+    venta_partner_kind: str = Form("cliente"),
+    proveedor_compra_id: str = Form(""),
+    proveedor_venta_id: str = Form(""),
     cliente_id: str = Form(""),
     material_id: List[str] = Form([]),
     kg_bruto: List[str] = Form([]),
@@ -267,178 +346,87 @@ async def notes_new_post(
     current_user: dict = Depends(require_worker),
 ):
     materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
-    proveedores, clientes = _get_worker_partners(db, current_user)
+    proveedores, proveedores_venta, clientes = _get_worker_partners(db, current_user)
     price_map = _get_price_map(db)
+    initial_state = {
+        "tipo_operacion": tipo_operacion or "compra",
+        "venta_partner_kind": venta_partner_kind or "cliente",
+        "proveedor_compra_id": proveedor_compra_id or "",
+        "proveedor_venta_id": proveedor_venta_id or "",
+        "cliente_id": cliente_id or "",
+        "comentarios_trabajador": comentarios_trabajador or "",
+        "materiales": [],
+        "extra_evidencias": [],
+    }
+
+    def render_error(message: str):
+        return _render_worker_note_form(
+            request,
+            current_user,
+            materiales=materiales,
+            proveedores=proveedores,
+            proveedores_venta=proveedores_venta,
+            clientes=clientes,
+            price_map=price_map,
+            error=message,
+            status_code=400,
+            initial_state=initial_state,
+        )
 
     try:
         tipo_op = TipoOperacion(tipo_operacion)
     except ValueError:
-        return templates.TemplateResponse(
-            "worker/notes_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "materiales": materiales,
-                "proveedores": proveedores,
-                "clientes": clientes,
-                "error": "Tipo de operación inválido.",
-                "price_map": price_map,
-            "max_mb": settings.FIREBASE_MAX_MB,
-            },
-            status_code=400,
-        )
+        return render_error("Tipo de operacion invalido.")
     if tipo_op not in (TipoOperacion.compra, TipoOperacion.venta):
-        return templates.TemplateResponse(
-            "worker/notes_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "materiales": materiales,
-                "proveedores": proveedores,
-                "clientes": clientes,
-                "error": "Tipo de operacion no permitido.",
-                "price_map": price_map,
-                "max_mb": settings.FIREBASE_MAX_MB,
-            },
-            status_code=400,
-        )
+        return render_error("Tipo de operacion no permitido.")
 
     try:
         materiales_payload = _parse_materials_from_form(material_id, kg_bruto, kg_descuento, subpesajes, tipo_cliente)
-    except ValueError as e:
-        return templates.TemplateResponse(
-            "worker/notes_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "materiales": materiales,
-                "proveedores": proveedores,
-                "clientes": clientes,
-                "error": str(e),
-                "price_map": price_map,
-            "max_mb": settings.FIREBASE_MAX_MB,
-            },
-            status_code=400,
-        )
-
+        initial_state["materiales"] = materiales_payload
+    except ValueError as exc:
+        return render_error(str(exc))
     if not materiales_payload:
-        return templates.TemplateResponse(
-            "worker/notes_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "materiales": materiales,
-                "proveedores": proveedores,
-                "clientes": clientes,
-                "error": "Debes agregar al menos un material con peso.",
-                "price_map": price_map,
-            "max_mb": settings.FIREBASE_MAX_MB,
-            },
-            status_code=400,
-        )
+        return render_error("Debes agregar al menos un material con peso.")
 
     extra_evidencias_payload: list[str] = []
     if extra_evidencias:
         try:
             loaded = json.loads(extra_evidencias)
         except json.JSONDecodeError:
-            return templates.TemplateResponse(
-                "worker/notes_form.html",
-                {
-                    "request": request,
-                    "env": settings.ENV,
-                    "user": current_user,
-                    "materiales": materiales,
-                    "proveedores": proveedores,
-                    "clientes": clientes,
-                    "error": "Formato de evidencia extra invalido.",
-                    "price_map": price_map,
-                    "max_mb": settings.FIREBASE_MAX_MB,
-                },
-                status_code=400,
-            )
-        if isinstance(loaded, list):
-            extra_evidencias_payload = [str(u) for u in loaded if u]
-        else:
-            return templates.TemplateResponse(
-                "worker/notes_form.html",
-                {
-                    "request": request,
-                    "env": settings.ENV,
-                    "user": current_user,
-                    "materiales": materiales,
-                    "proveedores": proveedores,
-                    "clientes": clientes,
-                    "error": "Formato de evidencia extra invalido.",
-                    "price_map": price_map,
-                    "max_mb": settings.FIREBASE_MAX_MB,
-                },
-                status_code=400,
-            )
+            return render_error("Formato de evidencia extra invalido.")
+        if not isinstance(loaded, list):
+            return render_error("Formato de evidencia extra invalido.")
+        extra_evidencias_payload = [str(url) for url in loaded if url]
+        initial_state["extra_evidencias"] = extra_evidencias_payload
+
+    proveedor_id, cliente_id_normalized, venta_partner_kind = _normalize_worker_partner_selection(
+        tipo_operacion=tipo_op,
+        venta_partner_kind=venta_partner_kind,
+        proveedor_compra_id=proveedor_compra_id,
+        proveedor_venta_id=proveedor_venta_id,
+        cliente_id=cliente_id,
+    )
+    initial_state["venta_partner_kind"] = venta_partner_kind
+    initial_state["proveedor_compra_id"] = proveedor_id if tipo_op == TipoOperacion.compra else ""
+    initial_state["proveedor_venta_id"] = proveedor_id if tipo_op == TipoOperacion.venta and venta_partner_kind == "proveedor" else ""
+    initial_state["cliente_id"] = cliente_id_normalized or ""
 
     if tipo_op == TipoOperacion.compra and not proveedor_id:
-        return templates.TemplateResponse(
-            "worker/notes_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "materiales": materiales,
-                "proveedores": proveedores,
-                "clientes": clientes,
-                "error": "Selecciona un proveedor para la compra.",
-                "price_map": price_map,
-            "max_mb": settings.FIREBASE_MAX_MB,
-            },
-            status_code=400,
-        )
-    if tipo_op == TipoOperacion.venta and not cliente_id:
-        return templates.TemplateResponse(
-            "worker/notes_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "materiales": materiales,
-                "proveedores": proveedores,
-                "clientes": clientes,
-                "error": "Selecciona un cliente para la venta.",
-                "price_map": price_map,
-            "max_mb": settings.FIREBASE_MAX_MB,
-            },
-            status_code=400,
-        )
+        return render_error("Selecciona un proveedor para la compra.")
+    if tipo_op == TipoOperacion.venta and venta_partner_kind == "cliente" and not cliente_id_normalized:
+        return render_error("Selecciona un cliente para la venta.")
+    if tipo_op == TipoOperacion.venta and venta_partner_kind == "proveedor" and not proveedor_id:
+        return render_error("Selecciona un proveedor para la venta.")
+
     try:
         _validate_worker_partner_selection(
             db,
             tipo_operacion=tipo_op,
             proveedor_id=proveedor_id,
-            cliente_id=cliente_id,
+            cliente_id=cliente_id_normalized,
             sucursal_id=current_user.get("sucursal_id"),
         )
-    except ValueError as e:
-        return templates.TemplateResponse(
-            "worker/notes_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "materiales": materiales,
-                "proveedores": proveedores,
-                "clientes": clientes,
-                "error": str(e),
-                "price_map": price_map,
-                "max_mb": settings.FIREBASE_MAX_MB,
-            },
-            status_code=400,
-        )
-
-    try:
-        nota = note_service.create_draft_note(
+        note_service.create_draft_note(
             db,
             sucursal_id=current_user.get("sucursal_id"),
             trabajador_id=current_user.get("id"),
@@ -446,25 +434,11 @@ async def notes_new_post(
             materiales_payload=materiales_payload,
             comentarios_trabajador=comentarios_trabajador,
             proveedor_id=int(proveedor_id) if proveedor_id else None,
-            cliente_id=int(cliente_id) if cliente_id else None,
+            cliente_id=int(cliente_id_normalized) if cliente_id_normalized else None,
             extra_evidencias_payload=extra_evidencias_payload,
         )
-    except ValueError as e:
-        return templates.TemplateResponse(
-            "worker/notes_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "materiales": materiales,
-                "proveedores": proveedores,
-                "clientes": clientes,
-                "error": str(e),
-                "price_map": price_map,
-            "max_mb": settings.FIREBASE_MAX_MB,
-            },
-            status_code=400,
-        )
+    except ValueError as exc:
+        return render_error(str(exc))
 
     return RedirectResponse(url="/web/worker/notes", status_code=303)
 
@@ -487,28 +461,23 @@ async def notes_edit_get(
         return RedirectResponse(url="/web/worker/notes?success=2", status_code=303)
 
     materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
-    proveedores, clientes = _get_worker_partners(db, current_user)
+    proveedores, proveedores_venta, clientes = _get_worker_partners(db, current_user)
     price_map = _get_price_map(db)
     initial_state = _build_worker_note_initial_state(nota)
 
-    return templates.TemplateResponse(
-        "worker/notes_form.html",
-        {
-            "request": request,
-            "env": settings.ENV,
-            "user": current_user,
-            "materiales": materiales,
-            "proveedores": proveedores,
-            "clientes": clientes,
-            "error": None,
-            "price_map": price_map,
-            "max_mb": settings.FIREBASE_MAX_MB,
-            "form_title": "Editar nota",
-            "action_url": f"/web/worker/notes/{nota.id}/editar",
-            "submit_label": "Guardar cambios",
-            "initial_note_json": json.dumps(initial_state, ensure_ascii=True),
-            "review_comment": nota.comentarios_admin or "",
-        },
+    return _render_worker_note_form(
+        request,
+        current_user,
+        materiales=materiales,
+        proveedores=proveedores,
+        proveedores_venta=proveedores_venta,
+        clientes=clientes,
+        price_map=price_map,
+        form_title="Editar nota",
+        action_url=f"/web/worker/notes/{nota.id}/editar",
+        submit_label="Guardar cambios",
+        initial_state=initial_state,
+        review_comment=nota.comentarios_admin or "",
     )
 
 
@@ -517,7 +486,9 @@ async def notes_edit_post(
     nota_id: int,
     request: Request,
     tipo_operacion: str = Form(...),
-    proveedor_id: str = Form(""),
+    venta_partner_kind: str = Form("cliente"),
+    proveedor_compra_id: str = Form(""),
+    proveedor_venta_id: str = Form(""),
     cliente_id: str = Form(""),
     material_id: List[str] = Form([]),
     kg_bruto: List[str] = Form([]),
@@ -540,177 +511,83 @@ async def notes_edit_post(
         return RedirectResponse(url="/web/worker/notes?success=2", status_code=303)
 
     materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
-    proveedores, clientes = _get_worker_partners(db, current_user)
+    proveedores, proveedores_venta, clientes = _get_worker_partners(db, current_user)
     price_map = _get_price_map(db)
+    initial_state = _build_worker_note_initial_state(nota)
+
+    def render_error(message: str):
+        return _render_worker_note_form(
+            request,
+            current_user,
+            materiales=materiales,
+            proveedores=proveedores,
+            proveedores_venta=proveedores_venta,
+            clientes=clientes,
+            price_map=price_map,
+            error=message,
+            status_code=400,
+            form_title="Editar nota",
+            action_url=f"/web/worker/notes/{nota.id}/editar",
+            submit_label="Guardar cambios",
+            initial_state=initial_state,
+            review_comment=nota.comentarios_admin or "",
+        )
 
     try:
         tipo_op = TipoOperacion(tipo_operacion)
     except ValueError:
-        tipo_op = None
+        return render_error("Tipo de operacion invalido.")
     if tipo_op not in (TipoOperacion.compra, TipoOperacion.venta):
-        return templates.TemplateResponse(
-            "worker/notes_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "materiales": materiales,
-                "proveedores": proveedores,
-                "clientes": clientes,
-                "error": "Tipo de operacion invalido.",
-                "price_map": price_map,
-                "max_mb": settings.FIREBASE_MAX_MB,
-                "form_title": "Editar nota",
-                "action_url": f"/web/worker/notes/{nota.id}/editar",
-                "submit_label": "Guardar cambios",
-                "initial_note_json": json.dumps(_build_worker_note_initial_state(nota), ensure_ascii=True),
-            },
-            status_code=400,
-        )
+        return render_error("Tipo de operacion no permitido.")
 
     try:
         materiales_payload = _parse_materials_from_form(material_id, kg_bruto, kg_descuento, subpesajes, tipo_cliente)
-    except ValueError as e:
-        return templates.TemplateResponse(
-            "worker/notes_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "materiales": materiales,
-                "proveedores": proveedores,
-                "clientes": clientes,
-                "error": str(e),
-                "price_map": price_map,
-                "max_mb": settings.FIREBASE_MAX_MB,
-                "form_title": "Editar nota",
-                "action_url": f"/web/worker/notes/{nota.id}/editar",
-                "submit_label": "Guardar cambios",
-                "initial_note_json": json.dumps(_build_worker_note_initial_state(nota), ensure_ascii=True),
-            },
-            status_code=400,
-        )
-
+        initial_state["materiales"] = materiales_payload
+    except ValueError as exc:
+        return render_error(str(exc))
     if not materiales_payload:
-        return templates.TemplateResponse(
-            "worker/notes_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "materiales": materiales,
-                "proveedores": proveedores,
-                "clientes": clientes,
-                "error": "Debes agregar al menos un material con peso.",
-                "price_map": price_map,
-                "max_mb": settings.FIREBASE_MAX_MB,
-                "form_title": "Editar nota",
-                "action_url": f"/web/worker/notes/{nota.id}/editar",
-                "submit_label": "Guardar cambios",
-                "initial_note_json": json.dumps(_build_worker_note_initial_state(nota), ensure_ascii=True),
-            },
-            status_code=400,
-        )
+        return render_error("Debes agregar al menos un material con peso.")
 
     extra_evidencias_payload: list[str] = []
     if extra_evidencias:
         try:
             loaded = json.loads(extra_evidencias)
         except json.JSONDecodeError:
-            loaded = None
-        if isinstance(loaded, list):
-            extra_evidencias_payload = [str(u) for u in loaded if u]
-        else:
-            return templates.TemplateResponse(
-                "worker/notes_form.html",
-                {
-                    "request": request,
-                    "env": settings.ENV,
-                    "user": current_user,
-                    "materiales": materiales,
-                    "proveedores": proveedores,
-                    "clientes": clientes,
-                    "error": "Formato de evidencia extra invalido.",
-                    "price_map": price_map,
-                    "max_mb": settings.FIREBASE_MAX_MB,
-                    "form_title": "Editar nota",
-                    "action_url": f"/web/worker/notes/{nota.id}/editar",
-                    "submit_label": "Guardar cambios",
-                    "initial_note_json": json.dumps(_build_worker_note_initial_state(nota), ensure_ascii=True),
-                },
-                status_code=400,
-            )
+            return render_error("Formato de evidencia extra invalido.")
+        if not isinstance(loaded, list):
+            return render_error("Formato de evidencia extra invalido.")
+        extra_evidencias_payload = [str(url) for url in loaded if url]
+        initial_state["extra_evidencias"] = extra_evidencias_payload
+
+    proveedor_id, cliente_id_normalized, venta_partner_kind = _normalize_worker_partner_selection(
+        tipo_operacion=tipo_op,
+        venta_partner_kind=venta_partner_kind,
+        proveedor_compra_id=proveedor_compra_id,
+        proveedor_venta_id=proveedor_venta_id,
+        cliente_id=cliente_id,
+    )
+    initial_state["tipo_operacion"] = tipo_op.value
+    initial_state["venta_partner_kind"] = venta_partner_kind
+    initial_state["proveedor_compra_id"] = proveedor_id if tipo_op == TipoOperacion.compra else ""
+    initial_state["proveedor_venta_id"] = proveedor_id if tipo_op == TipoOperacion.venta and venta_partner_kind == "proveedor" else ""
+    initial_state["cliente_id"] = cliente_id_normalized or ""
+    initial_state["comentarios_trabajador"] = comentarios_trabajador or ""
 
     if tipo_op == TipoOperacion.compra and not proveedor_id:
-        return templates.TemplateResponse(
-            "worker/notes_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "materiales": materiales,
-                "proveedores": proveedores,
-                "clientes": clientes,
-                "error": "Selecciona un proveedor para la compra.",
-                "price_map": price_map,
-                "max_mb": settings.FIREBASE_MAX_MB,
-                "form_title": "Editar nota",
-                "action_url": f"/web/worker/notes/{nota.id}/editar",
-                "submit_label": "Guardar cambios",
-                "initial_note_json": json.dumps(_build_worker_note_initial_state(nota), ensure_ascii=True),
-            },
-            status_code=400,
-        )
-    if tipo_op == TipoOperacion.venta and not cliente_id:
-        return templates.TemplateResponse(
-            "worker/notes_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "materiales": materiales,
-                "proveedores": proveedores,
-                "clientes": clientes,
-                "error": "Selecciona un cliente para la venta.",
-                "price_map": price_map,
-                "max_mb": settings.FIREBASE_MAX_MB,
-                "form_title": "Editar nota",
-                "action_url": f"/web/worker/notes/{nota.id}/editar",
-                "submit_label": "Guardar cambios",
-                "initial_note_json": json.dumps(_build_worker_note_initial_state(nota), ensure_ascii=True),
-            },
-            status_code=400,
-        )
+        return render_error("Selecciona un proveedor para la compra.")
+    if tipo_op == TipoOperacion.venta and venta_partner_kind == "cliente" and not cliente_id_normalized:
+        return render_error("Selecciona un cliente para la venta.")
+    if tipo_op == TipoOperacion.venta and venta_partner_kind == "proveedor" and not proveedor_id:
+        return render_error("Selecciona un proveedor para la venta.")
+
     try:
         _validate_worker_partner_selection(
             db,
             tipo_operacion=tipo_op,
             proveedor_id=proveedor_id,
-            cliente_id=cliente_id,
+            cliente_id=cliente_id_normalized,
             sucursal_id=current_user.get("sucursal_id"),
         )
-    except ValueError as e:
-        return templates.TemplateResponse(
-            "worker/notes_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "materiales": materiales,
-                "proveedores": proveedores,
-                "clientes": clientes,
-                "error": str(e),
-                "price_map": price_map,
-                "max_mb": settings.FIREBASE_MAX_MB,
-                "form_title": "Editar nota",
-                "action_url": f"/web/worker/notes/{nota.id}/editar",
-                "submit_label": "Guardar cambios",
-                "initial_note_json": json.dumps(_build_worker_note_initial_state(nota), ensure_ascii=True),
-            },
-            status_code=400,
-        )
-
-    try:
         note_service.update_worker_note(
             db,
             nota,
@@ -718,29 +595,11 @@ async def notes_edit_post(
             materiales_payload=materiales_payload,
             comentarios_trabajador=comentarios_trabajador,
             proveedor_id=int(proveedor_id) if proveedor_id else None,
-            cliente_id=int(cliente_id) if cliente_id else None,
+            cliente_id=int(cliente_id_normalized) if cliente_id_normalized else None,
             extra_evidencias_payload=extra_evidencias_payload,
         )
-    except ValueError as e:
-        return templates.TemplateResponse(
-            "worker/notes_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "materiales": materiales,
-                "proveedores": proveedores,
-                "clientes": clientes,
-                "error": str(e),
-                "price_map": price_map,
-                "max_mb": settings.FIREBASE_MAX_MB,
-                "form_title": "Editar nota",
-                "action_url": f"/web/worker/notes/{nota.id}/editar",
-                "submit_label": "Guardar cambios",
-                "initial_note_json": json.dumps(_build_worker_note_initial_state(nota), ensure_ascii=True),
-            },
-            status_code=400,
-        )
+    except ValueError as exc:
+        return render_error(str(exc))
 
     return RedirectResponse(url="/web/worker/notes?success=3", status_code=303)
 
@@ -790,26 +649,14 @@ async def notes_evidencias(
     sucursal = db.get(Sucursal, nota.sucursal_id) if nota.sucursal_id else None
     partner_name = "-"
     partner_label = "Partner"
-    if nota.tipo_operacion == TipoOperacion.venta:
-        partner_label = "Cliente"
-        cliente = db.get(Cliente, nota.cliente_id) if nota.cliente_id else None
-        partner_name = cliente.nombre_completo if cliente else "-"
-    elif nota.tipo_operacion == TipoOperacion.compra:
+    proveedor = db.get(Proveedor, nota.proveedor_id) if nota.proveedor_id else None
+    cliente = db.get(Cliente, nota.cliente_id) if nota.cliente_id else None
+    if proveedor:
         partner_label = "Proveedor"
-        proveedor = db.get(Proveedor, nota.proveedor_id) if nota.proveedor_id else None
-        partner_name = proveedor.nombre_completo if proveedor else "-"
-    else:
-        proveedor = db.get(Proveedor, nota.proveedor_id) if nota.proveedor_id else None
-        cliente = db.get(Cliente, nota.cliente_id) if nota.cliente_id else None
-        if proveedor:
-            partner_label = "Proveedor"
-            partner_name = proveedor.nombre_completo
-        elif cliente:
-            partner_label = "Cliente"
-            partner_name = cliente.nombre_completo
-        else:
-            partner_label = "Partner"
-            partner_name = "-"
+        partner_name = proveedor.nombre_completo
+    elif cliente:
+        partner_label = "Cliente"
+        partner_name = cliente.nombre_completo
 
     evidence_groups = build_evidence_groups(nota)
     total_sub = sum(len(g["subpesajes"]) for g in evidence_groups)

@@ -55,9 +55,9 @@ def _partial_return_contable_amount(nota: Nota, monto_devolucion: Decimal, *, re
 
 
 def _nota_partner_key(nota: Nota) -> tuple[str | None, int | None]:
-    if nota.tipo_operacion == TipoOperacion.compra:
+    if nota.proveedor_id:
         return "proveedor", nota.proveedor_id
-    if nota.tipo_operacion == TipoOperacion.venta:
+    if nota.cliente_id:
         return "cliente", nota.cliente_id
     return None, None
 
@@ -290,10 +290,11 @@ def _resolve_cuenta_id(db: Session, nota: Nota, raw: str | None) -> int | None:
     conds = []
     if nota.sucursal_id:
         conds.append(Cuenta.sucursal_id == nota.sucursal_id)
-    if _is_compra_like(nota.tipo_operacion) and nota.proveedor_id:
-        conds.append(Cuenta.proveedor_id == nota.proveedor_id)
-    elif nota.tipo_operacion == TipoOperacion.venta and nota.cliente_id:
-        conds.append(Cuenta.cliente_id == nota.cliente_id)
+    partner_kind, partner_id = _nota_partner_key(nota)
+    if partner_kind == "proveedor" and partner_id:
+        conds.append(Cuenta.proveedor_id == partner_id)
+    elif partner_kind == "cliente" and partner_id:
+        conds.append(Cuenta.cliente_id == partner_id)
     if not conds:
         return None
     allowed = (
@@ -341,18 +342,45 @@ def _validate_partner_for_nota_sucursal(
     proveedor_id: int | None,
     cliente_id: int | None,
 ) -> None:
-    if tipo_operacion == TipoOperacion.compra and proveedor_id:
+    if tipo_operacion == TipoOperacion.compra:
+        if cliente_id:
+            raise ValueError("Una compra no puede vincularse a un cliente.")
+        if not proveedor_id:
+            return
         proveedor = db.get(Proveedor, proveedor_id)
         if not proveedor:
             raise ValueError("Proveedor no encontrado.")
+        if not proveedor.activo:
+            raise ValueError("Proveedor invalido.")
         if proveedor.sucursal_id != sucursal_id:
             raise ValueError("El proveedor no pertenece a la sucursal de la nota.")
-    if tipo_operacion == TipoOperacion.venta and cliente_id:
-        cliente = db.get(Cliente, cliente_id)
-        if not cliente:
-            raise ValueError("Cliente no encontrado.")
-        if cliente.sucursal_id != sucursal_id:
-            raise ValueError("El cliente no pertenece a la sucursal de la nota.")
+        return
+
+    if tipo_operacion == TipoOperacion.venta:
+        if proveedor_id and cliente_id:
+            raise ValueError("Selecciona solo una contraparte para la venta.")
+        if not proveedor_id and not cliente_id:
+            raise ValueError("Debes seleccionar un cliente o proveedor para la venta.")
+        if proveedor_id:
+            proveedor = db.get(Proveedor, proveedor_id)
+            if not proveedor:
+                raise ValueError("Proveedor no encontrado.")
+            if not proveedor.activo:
+                raise ValueError("Proveedor invalido.")
+            if proveedor.sucursal_id != sucursal_id:
+                raise ValueError("El proveedor no pertenece a la sucursal de la nota.")
+            if not bool(getattr(proveedor, "permite_ventas", False)):
+                raise ValueError("Este proveedor no esta habilitado para ventas directas.")
+            return
+        if cliente_id:
+            cliente = db.get(Cliente, cliente_id)
+            if not cliente:
+                raise ValueError("Cliente no encontrado.")
+            if not cliente.activo:
+                raise ValueError("Cliente invalido.")
+            if cliente.sucursal_id != sucursal_id:
+                raise ValueError("El cliente no pertenece a la sucursal de la nota.")
+            return
 
 
 def _validate_cuenta_for_nota(db: Session, nota: Nota, cuenta_id: int) -> Cuenta:
@@ -361,9 +389,10 @@ def _validate_cuenta_for_nota(db: Session, nota: Nota, cuenta_id: int) -> Cuenta
         raise ValueError("La cuenta seleccionada no existe o esta inactiva.")
     if cuenta.sucursal_id and cuenta.sucursal_id == nota.sucursal_id:
         return cuenta
-    if _is_compra_like(nota.tipo_operacion) and cuenta.proveedor_id == nota.proveedor_id:
+    partner_kind, partner_id = _nota_partner_key(nota)
+    if partner_kind == "proveedor" and cuenta.proveedor_id == partner_id:
         return cuenta
-    elif nota.tipo_operacion == TipoOperacion.venta and cuenta.cliente_id == nota.cliente_id:
+    elif partner_kind == "cliente" and cuenta.cliente_id == partner_id:
         return cuenta
     raise ValueError("La cuenta seleccionada no esta vinculada a esta nota.")
 
@@ -550,8 +579,10 @@ def create_draft_note(
     # Asignar partner si viene
     if tipo_operacion == TipoOperacion.compra:
         nota.proveedor_id = proveedor_id
+        nota.cliente_id = None
     else:
-        nota.cliente_id = cliente_id
+        nota.proveedor_id = proveedor_id if proveedor_id and not cliente_id else None
+        nota.cliente_id = cliente_id if cliente_id else None
     db.add(nota)
     db.flush()
 
@@ -668,8 +699,8 @@ def update_worker_note(
         nota.proveedor_id = proveedor_id
         nota.cliente_id = None
     else:
-        nota.cliente_id = cliente_id
-        nota.proveedor_id = None
+        nota.proveedor_id = proveedor_id if proveedor_id and not cliente_id else None
+        nota.cliente_id = cliente_id if cliente_id else None
 
     nota.materiales.clear()
     db.flush()
@@ -1934,8 +1965,8 @@ def attach_partner(
         nota.proveedor_id = proveedor_id
         nota.cliente_id = None
     elif nota.tipo_operacion == TipoOperacion.venta:
-        nota.cliente_id = cliente_id
-        nota.proveedor_id = None
+        nota.proveedor_id = proveedor_id if proveedor_id and not cliente_id else None
+        nota.cliente_id = cliente_id if cliente_id else None
     else:
         raise ValueError("Tipo de operacion no soportado.")
     db.add(nota)

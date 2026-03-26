@@ -62,10 +62,12 @@
                         <div class="alert alert-danger py-2 small mt-3 mb-0">{{ folio_error }}</div>
                     {% endif %}
                     {% if folio_result %}
-                        {% if folio_result.tipo_operacion.value == 'venta' %}
-                            {% set result_partner = clientes.get(folio_result.cliente_id).nombre_completo if folio_result.cliente_id and clientes.get(folio_result.cliente_id) else '-' %}
+                        {% if folio_result.proveedor_id and proveedores.get(folio_result.proveedor_id) %}
+                            {% set result_partner = proveedores.get(folio_result.proveedor_id).nombre_completo %}
+                        {% elif folio_result.cliente_id and clientes.get(folio_result.cliente_id) %}
+                            {% set result_partner = clientes.get(folio_result.cliente_id).nombre_completo %}
                         {% else %}
-                            {% set result_partner = proveedores.get(folio_result.proveedor_id).nombre_completo if folio_result.proveedor_id and proveedores.get(folio_result.proveedor_id) else '-' %}
+                            {% set result_partner = '-' %}
                         {% endif %}
                         <div class="notes-result-card mt-3">
                             <div>
@@ -120,10 +122,12 @@
                 {% if notas_revision %}
                     <div class="notes-mini-list">
                         {% for n in notas_revision[:5] %}
-                            {% if n.tipo_operacion.value == 'venta' %}
-                                {% set partner_name = clientes.get(n.cliente_id).nombre_completo if n.cliente_id and clientes.get(n.cliente_id) else '-' %}
+                            {% if n.proveedor_id and proveedores.get(n.proveedor_id) %}
+                                {% set partner_name = proveedores.get(n.proveedor_id).nombre_completo %}
+                            {% elif n.cliente_id and clientes.get(n.cliente_id) %}
+                                {% set partner_name = clientes.get(n.cliente_id).nombre_completo %}
                             {% else %}
-                                {% set partner_name = proveedores.get(n.proveedor_id).nombre_completo if n.proveedor_id and proveedores.get(n.proveedor_id) else '-' %}
+                                {% set partner_name = '-' %}
                             {% endif %}
                             <a class="notes-mini-item" href="/web/admin/notas/{{ n.id }}">
                                 <div>
@@ -174,10 +178,12 @@
                 </div>
                 {% if notas_vencidas %}
                     {% set urgent = notas_vencidas[0].nota %}
-                    {% if urgent.tipo_operacion.value == 'venta' %}
-                        {% set urgent_partner = clientes.get(urgent.cliente_id).nombre_completo if urgent.cliente_id and clientes.get(urgent.cliente_id) else '-' %}
+                    {% if urgent.proveedor_id and proveedores.get(urgent.proveedor_id) %}
+                        {% set urgent_partner = proveedores.get(urgent.proveedor_id).nombre_completo %}
+                    {% elif urgent.cliente_id and clientes.get(urgent.cliente_id) %}
+                        {% set urgent_partner = clientes.get(urgent.cliente_id).nombre_completo %}
                     {% else %}
-                        {% set urgent_partner = proveedores.get(urgent.proveedor_id).nombre_completo if urgent.proveedor_id and proveedores.get(urgent.proveedor_id) else '-' %}
+                        {% set urgent_partner = '-' %}
                     {% endif %}
                     <div class="notes-result-card mt-3">
                         <div>
@@ -274,10 +280,12 @@
                         {% set saldo = total - pagado %}
                         {% set saldo_pendiente = saldo if saldo > 0 else 0 %}
                         {% set saldo_favor = pagado - total if pagado > total else 0 %}
-                        {% if n.tipo_operacion.value == 'venta' %}
-                            {% set partner_name = clientes.get(n.cliente_id).nombre_completo if n.cliente_id and clientes.get(n.cliente_id) else '-' %}
+                        {% if n.proveedor_id and proveedores.get(n.proveedor_id) %}
+                            {% set partner_name = proveedores.get(n.proveedor_id).nombre_completo %}
+                        {% elif n.cliente_id and clientes.get(n.cliente_id) %}
+                            {% set partner_name = clientes.get(n.cliente_id).nombre_completo %}
                         {% else %}
-                            {% set partner_name = proveedores.get(n.proveedor_id).nombre_completo if n.proveedor_id and proveedores.get(n.proveedor_id) else '-' %}
+                            {% set partner_name = '-' %}
                         {% endif %}
                         {% set sucursal_name = sucursales.get(n.sucursal_id).nombre if n.sucursal_id and sucursales.get(n.sucursal_id) else '-' %}
                         <tr>
@@ -289,6 +297,11 @@
                                 <span class="notes-op-chip {{ 'buy' if n.tipo_operacion.value == 'compra' else 'sale' }}">
                                     {{ n.tipo_operacion.value|capitalize }}
                                 </span>
+                                {% if n.tipo_operacion.value == 'venta' %}
+                                    <div class="text-muted small mt-1">
+                                        {{ 'A proveedor' if n.proveedor_id else 'A cliente' }}
+                                    </div>
+                                {% endif %}
                             </td>
                             <td>
                                 <div class="fw-semibold">{{ partner_name }}</div>

@@ -129,8 +129,15 @@ def build_invoice_pdf(db: Session, nota: Nota, generated_at: datetime | None = N
     generated_at = generated_at or datetime.utcnow()
     issue_date = generated_at.strftime("%Y-%m-%d %H:%M")
 
-    partner_label = "Proveedor" if nota.tipo_operacion == TipoOperacion.compra else "Cliente"
-    partner = proveedor if nota.tipo_operacion == TipoOperacion.compra else cliente
+    if nota.proveedor_id and proveedor:
+        partner_label = "Proveedor"
+        partner = proveedor
+    elif nota.cliente_id and cliente:
+        partner_label = "Cliente"
+        partner = cliente
+    else:
+        partner_label = "Partner"
+        partner = proveedor or cliente
     partner_name = partner.nombre_completo if partner else "-"
     partner_phone = partner.telefono if partner else None
     partner_email = partner.correo_electronico if partner else None

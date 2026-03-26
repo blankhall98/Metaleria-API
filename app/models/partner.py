@@ -23,6 +23,7 @@ class Proveedor(Base):
 
     # Activo / inactivo en catálogo
     activo = Column(Boolean, nullable=False, default=True)
+    permite_ventas = Column(Boolean, nullable=False, default=False)
 
     # Vinculo explicito con cliente (si aplica)
     linked_cliente_id = Column(Integer, ForeignKey("clientes.id"), nullable=True, unique=True, index=True)

@@ -80,7 +80,7 @@
                     <optgroup label="Proveedores">
                         {% for p in proveedores %}
                             {% set key = "proveedor:" ~ p.id %}
-                            <option value="{{ key }}" {% if partner_key == key %}selected{% endif %}>{{ p.nombre_completo }}</option>
+                            <option value="{{ key }}" {% if partner_key == key %}selected{% endif %}>{{ p.nombre_completo }}{% if p.permite_ventas %} · compra y venta{% endif %}</option>
                         {% endfor %}
                     </optgroup>
                 </select>
@@ -104,11 +104,23 @@
                 <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2">
                     <div>
                         <div class="text-uppercase text-muted small mb-1">{{ partner_context.partner_label }}</div>
-                        <div class="fw-semibold">{{ partner_context.partner.nombre_completo }}</div>
+                        <div class="fw-semibold">
+                            {{ partner_context.partner.nombre_completo }}
+                            {% if partner_context.partner_label == 'Proveedor' and partner_context.provider_direct_sales_enabled %}
+                                <span class="badge bg-primary ms-2">Compra y venta</span>
+                            {% endif %}
+                        </div>
                         <div class="text-muted small">ID {{ partner_context.partner.id }} &middot; {{ partner_context.tipo_operacion_label }}</div>
                         {% if partner_context.unified_enabled and partner_context.linked_partner %}
                             <div class="text-muted small">
                                 Unificado con {{ partner_context.linked_partner_label }}: {{ partner_context.linked_partner.nombre_completo }} (ID {{ partner_context.linked_partner.id }})
+                            </div>
+                        {% elif partner_context.partner_label == 'Proveedor' and partner_context.provider_direct_sales_enabled %}
+                            <div class="text-muted small">
+                                Este proveedor tambien compra material directamente en el mismo perfil.
+                                {% if partner_context.provider_direct_sales_count %}
+                                    Ventas directas registradas: {{ partner_context.provider_direct_sales_count }}.
+                                {% endif %}
                             </div>
                         {% endif %}
                     </div>
@@ -220,6 +232,7 @@
                         <thead>
                         <tr>
                             <th>Folio</th>
+                            <th>Operacion</th>
                             <th>Estado</th>
                             <th>Fecha</th>
                             <th>Sucursal</th>
@@ -238,6 +251,11 @@
                                 <td>
                                     <div class="fw-semibold">{{ row.folio }}</div>
                                     <div class="text-muted small">#{{ nota.id }}</div>
+                                </td>
+                                <td>
+                                    <span class="notes-op-chip {{ 'buy' if nota.tipo_operacion.value == 'compra' else 'sale' }}">
+                                        {{ nota.tipo_operacion.value|capitalize }}
+                                    </span>
                                 </td>
                                 <td>
                                     {% if nota.estado.value == 'BORRADOR' %}

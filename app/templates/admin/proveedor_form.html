@@ -57,7 +57,7 @@
                 </div>
 
                 <div class="col-md-6">
-                    <label class="form-label" for="telefono">Teléfono</label>
+                    <label class="form-label" for="telefono">Telefono</label>
                     <input
                         class="form-control"
                         type="text"
@@ -79,11 +79,33 @@
                         {% endfor %}
                     </select>
                 </div>
+                <div class="col-md-6">
+                    {% set ventas_directas_checked = permite_ventas_selected or (proveedor and proveedor.permite_ventas) %}
+                    <div class="card border-0 bg-light h-100">
+                        <div class="card-body py-3">
+                            <div class="form-check form-switch mb-2">
+                                <input
+                                    class="form-check-input"
+                                    type="checkbox"
+                                    id="permite_ventas"
+                                    name="permite_ventas"
+                                    {% if ventas_directas_checked %}checked{% endif %}
+                                >
+                                <label class="form-check-label fw-semibold" for="permite_ventas">
+                                    Permitir ventas directas a este proveedor
+                                </label>
+                            </div>
+                            <div class="text-muted small">
+                                Usa este flujo cuando el mismo proveedor tambien compra material. Las ventas se netean en este mismo record y no requieren crear un cliente espejo.
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="row g-3">
                 <div class="col-md-6">
-                    <label class="form-label" for="correo_electronico">Correo electrónico</label>
+                    <label class="form-label" for="correo_electronico">Correo electronico</label>
                     <input
                         class="form-control"
                         type="email"
@@ -106,43 +128,34 @@
             </div>
 
             {% if proveedor %}
-                <div class="partner-match-card {% if counterpart_suggestion and counterpart_suggestion.is_linked %}is-linked{% endif %}">
-                    <input type="hidden" name="next_url" value="/web/admin/proveedores/{{ proveedor.id }}/editar">
-                    {% if counterpart_suggestion and counterpart_suggestion.is_linked %}
-                        <div>
-                            <div class="partner-match-title">Este proveedor tambien opera como cliente</div>
-                            <div class="text-muted small">
-                                Cliente ID {{ counterpart_suggestion.candidate.id }} · {{ counterpart_suggestion.candidate.nombre_completo }}
+                <div class="partner-match-card {% if proveedor.permite_ventas %}is-linked{% endif %}">
+                    <div>
+                        <div class="partner-match-title">Un solo proveedor con compra y venta</div>
+                        <div class="text-muted small">
+                            El flujo recomendado es operar compras y ventas directas sobre este mismo proveedor para que el saldo se netee automaticamente.
+                        </div>
+                        {% if proveedor.permite_ventas %}
+                            <div class="text-muted small mt-1">
+                                Ventas directas activas. Las notas de venta nuevas podran apuntar a este proveedor.
                             </div>
-                            <div class="text-muted small mt-1">{{ counterpart_suggestion.message }}</div>
-                        </div>
-                        <div class="d-flex gap-2 flex-wrap">
-                            <a href="/web/admin/clientes/{{ counterpart_suggestion.candidate.id }}/record" class="btn btn-outline-primary btn-sm">Ver cliente</a>
-                        </div>
-                    {% elif counterpart_suggestion %}
-                        <div>
-                            <div class="partner-match-title">Cliente sugerido para vincular</div>
-                            <div class="text-muted small">
-                                Cliente ID {{ counterpart_suggestion.candidate.id }} · {{ counterpart_suggestion.candidate.nombre_completo }}
+                        {% endif %}
+                        {% if counterpart_suggestion and counterpart_suggestion.is_linked %}
+                            <div class="text-muted small mt-2">
+                                Existe un cliente legado vinculado: ID {{ counterpart_suggestion.candidate.id }} · {{ counterpart_suggestion.candidate.nombre_completo }}.
                             </div>
-                            <div class="text-muted small mt-1">{{ counterpart_suggestion.reason }}</div>
-                            <div class="text-muted small mt-1">{{ counterpart_suggestion.message }}</div>
-                        </div>
-                        <div class="d-flex gap-2 flex-wrap">
-                            {% if counterpart_suggestion.can_link %}
-                                <button class="btn btn-outline-success btn-sm" type="submit" formaction="/web/admin/proveedores/{{ proveedor.id }}/crear-cliente" formmethod="post" formnovalidate>Vincular cliente existente</button>
-                            {% endif %}
-                            <a href="/web/admin/clientes/{{ counterpart_suggestion.candidate.id }}/record" class="btn btn-outline-primary btn-sm">Ver cliente</a>
-                        </div>
-                    {% else %}
-                        <div>
-                            <div class="partner-match-title">Agregar como cliente</div>
-                            <div class="text-muted small">
-                                Si aun no existe la contraparte, el sistema la crea automaticamente. Si ya existe una coincidencia clara, la vincula sin duplicar.
+                        {% elif counterpart_suggestion %}
+                            <div class="text-muted small mt-2">
+                                Se detecto una contraparte historica posible: ID {{ counterpart_suggestion.candidate.id }} · {{ counterpart_suggestion.candidate.nombre_completo }}.
+                                Ese vinculo puede conservarse por historial, pero ya no es necesario para ventas nuevas.
                             </div>
-                        </div>
-                        <button class="btn btn-outline-success btn-sm" type="submit" formaction="/web/admin/proveedores/{{ proveedor.id }}/crear-cliente" formmethod="post" formnovalidate>Agregar como cliente</button>
-                    {% endif %}
+                        {% endif %}
+                    </div>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <a href="/web/admin/proveedores/{{ proveedor.id }}/record" class="btn btn-outline-primary btn-sm">Ver saldo neto</a>
+                        {% if counterpart_suggestion and counterpart_suggestion.is_linked %}
+                            <a href="/web/admin/clientes/{{ counterpart_suggestion.candidate.id }}/record" class="btn btn-outline-secondary btn-sm">Ver cliente legado</a>
+                        {% endif %}
+                    </div>
                 </div>
             {% endif %}
 
@@ -228,4 +241,3 @@
     })();
 </script>
 {% endblock %}
-

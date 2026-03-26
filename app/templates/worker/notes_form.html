@@ -44,24 +44,40 @@
                             </select>
                         </div>
                     </div>
-                    <div class="col-lg-8">
+                    <div class="col-lg-4" id="venta-partner-kind-wrap">
                         <div class="note-step-panel">
-                            <label class="form-label">Partner</label>
-                            <div class="d-flex flex-column flex-md-row gap-2">
-                                <select class="form-select" id="proveedor_id" name="proveedor_id">
-                                    <option value="">Proveedor (compra)</option>
+                            <label class="form-label" for="venta_partner_kind">En venta, registrar como</label>
+                            <select class="form-select" id="venta_partner_kind" name="venta_partner_kind" onchange="togglePartner(); updateSteps();">
+                                <option value="cliente">Cliente</option>
+                                <option value="proveedor">Proveedor</option>
+                            </select>
+                            <small class="text-muted">Usa proveedor solo si ese proveedor tambi&eacute;n compra material y su saldo debe netearse en su mismo record.</small>
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="note-step-panel">
+                            <label class="form-label" id="partner_select_label">Partner</label>
+                            <div class="d-grid gap-2">
+                                <select class="form-select" id="proveedor_compra_id" name="proveedor_compra_id">
+                                    <option value="">Proveedor para compra</option>
                                     {% for p in proveedores %}
                                         <option value="{{ p.id }}">{{ p.nombre_completo }}</option>
                                     {% endfor %}
                                 </select>
+                                <select class="form-select" id="proveedor_venta_id" name="proveedor_venta_id">
+                                    <option value="">Proveedor comprador</option>
+                                    {% for p in proveedores_venta | default(proveedores) %}
+                                        <option value="{{ p.id }}">{{ p.nombre_completo }}{% if p.permite_ventas %} · compra y venta{% endif %}</option>
+                                    {% endfor %}
+                                </select>
                                 <select class="form-select" id="cliente_id" name="cliente_id">
-                                    <option value="">Cliente (venta)</option>
+                                    <option value="">Cliente comprador</option>
                                     {% for c in clientes %}
                                         <option value="{{ c.id }}">{{ c.nombre_completo }}</option>
                                     {% endfor %}
                                 </select>
                             </div>
-                            <small class="text-muted">Solo selecciona uno segun la operacion.</small>
+                            <small class="text-muted" id="partner_help_text">Selecciona la contraparte correcta seg&uacute;n la operaci&oacute;n.</small>
                         </div>
                     </div>
                 </div>
@@ -510,16 +526,53 @@
     }
     function togglePartner() {
         const tipo = document.getElementById('tipo_operacion').value;
-        const proveedorSel = document.getElementById('proveedor_id');
+        const ventaPartnerKindSel = document.getElementById('venta_partner_kind');
+        const ventaPartnerWrap = document.getElementById('venta-partner-kind-wrap');
+        const proveedorCompraSel = document.getElementById('proveedor_compra_id');
+        const proveedorVentaSel = document.getElementById('proveedor_venta_id');
         const clienteSel = document.getElementById('cliente_id');
+        const partnerLabel = document.getElementById('partner_select_label');
+        const partnerHelp = document.getElementById('partner_help_text');
+        const ventaPartnerKind = ventaPartnerKindSel ? ventaPartnerKindSel.value : 'cliente';
         if (tipo === 'compra') {
-            proveedorSel.removeAttribute('disabled');
-            clienteSel.setAttribute('disabled', 'disabled');
-            clienteSel.value = '';
+            if (ventaPartnerWrap) ventaPartnerWrap.classList.add('d-none');
+            if (proveedorCompraSel) proveedorCompraSel.removeAttribute('disabled');
+            if (proveedorVentaSel) {
+                proveedorVentaSel.setAttribute('disabled', 'disabled');
+                proveedorVentaSel.value = '';
+            }
+            if (clienteSel) {
+                clienteSel.setAttribute('disabled', 'disabled');
+                clienteSel.value = '';
+            }
+            if (partnerLabel) partnerLabel.textContent = 'Proveedor';
+            if (partnerHelp) partnerHelp.textContent = 'Selecciona el proveedor que le vende material a la metaleria.';
+        } else if (ventaPartnerKind === 'proveedor') {
+            if (ventaPartnerWrap) ventaPartnerWrap.classList.remove('d-none');
+            if (proveedorCompraSel) {
+                proveedorCompraSel.setAttribute('disabled', 'disabled');
+                proveedorCompraSel.value = '';
+            }
+            if (proveedorVentaSel) proveedorVentaSel.removeAttribute('disabled');
+            if (clienteSel) {
+                clienteSel.setAttribute('disabled', 'disabled');
+                clienteSel.value = '';
+            }
+            if (partnerLabel) partnerLabel.textContent = 'Proveedor comprador';
+            if (partnerHelp) partnerHelp.textContent = 'La venta se registrar\u00e1 contra este proveedor y su saldo se netear\u00e1 en el mismo record.';
         } else {
+            if (ventaPartnerWrap) ventaPartnerWrap.classList.remove('d-none');
+            if (proveedorCompraSel) {
+                proveedorCompraSel.setAttribute('disabled', 'disabled');
+                proveedorCompraSel.value = '';
+            }
+            if (proveedorVentaSel) {
+                proveedorVentaSel.setAttribute('disabled', 'disabled');
+                proveedorVentaSel.value = '';
+            }
             clienteSel.removeAttribute('disabled');
-            proveedorSel.setAttribute('disabled', 'disabled');
-            proveedorSel.value = '';
+            if (partnerLabel) partnerLabel.textContent = 'Cliente comprador';
+            if (partnerHelp) partnerHelp.textContent = 'Selecciona el cliente al que se le vende material.';
         }
     }
     function setEvidenceInputUrl(inputEl, url) {
@@ -608,11 +661,17 @@
         if (tipoSel && INITIAL_NOTE.tipo_operacion) {
             tipoSel.value = String(INITIAL_NOTE.tipo_operacion);
         }
+        const ventaKindSel = document.getElementById('venta_partner_kind');
+        if (ventaKindSel && INITIAL_NOTE.venta_partner_kind) {
+            ventaKindSel.value = String(INITIAL_NOTE.venta_partner_kind);
+        }
         togglePartner();
 
-        const provSel = document.getElementById('proveedor_id');
+        const provCompraSel = document.getElementById('proveedor_compra_id');
+        const provVentaSel = document.getElementById('proveedor_venta_id');
         const cliSel = document.getElementById('cliente_id');
-        if (provSel && INITIAL_NOTE.proveedor_id) provSel.value = String(INITIAL_NOTE.proveedor_id);
+        if (provCompraSel && INITIAL_NOTE.proveedor_compra_id) provCompraSel.value = String(INITIAL_NOTE.proveedor_compra_id);
+        if (provVentaSel && INITIAL_NOTE.proveedor_venta_id) provVentaSel.value = String(INITIAL_NOTE.proveedor_venta_id);
         if (cliSel && INITIAL_NOTE.cliente_id) cliSel.value = String(INITIAL_NOTE.cliente_id);
 
         const comments = document.getElementById('comentarios_trabajador');
@@ -820,10 +879,15 @@
     }
     function isStep1Valid() {
         const tipo = document.getElementById('tipo_operacion').value;
-        const prov = document.getElementById('proveedor_id').value;
+        const ventaPartnerKind = document.getElementById('venta_partner_kind').value;
+        const provCompra = document.getElementById('proveedor_compra_id').value;
+        const provVenta = document.getElementById('proveedor_venta_id').value;
         const cli = document.getElementById('cliente_id').value;
         if (tipo === 'compra') {
-            return prov !== '';
+            return provCompra !== '';
+        }
+        if (ventaPartnerKind === 'proveedor') {
+            return provVenta !== '';
         }
         return cli !== '';
     }
