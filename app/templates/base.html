@@ -163,7 +163,7 @@
                 if (!shell.querySelector('.table-scroll-hint')) {
                     const hint = document.createElement('div');
                     hint.className = 'table-scroll-hint';
-                    hint.textContent = area.dataset.scrollHint || 'Desliza lateralmente para revisar el contenido completo.';
+                    hint.textContent = area.dataset.scrollHint || 'Arrastra con el mouse o desliza lateralmente para revisar el contenido completo.';
                     shell.appendChild(hint);
                 }
                 return;
@@ -179,7 +179,7 @@
 
             const hint = document.createElement('div');
             hint.className = 'table-scroll-hint';
-            hint.textContent = area.dataset.scrollHint || 'Desliza lateralmente para revisar el contenido completo.';
+            hint.textContent = area.dataset.scrollHint || 'Arrastra con el mouse o desliza lateralmente para revisar el contenido completo.';
             shell.appendChild(hint);
         });
     }
@@ -204,6 +204,7 @@
     const floatingTableScrollbarSpacer = document.getElementById('floatingTableScrollbarSpacer');
     let activeFloatingScrollArea = null;
     let syncFromFloatingScrollbar = false;
+    let dragScrollState = null;
 
     function getFloatingScrollCandidates() {
         return Array.from(document.querySelectorAll('.table-scroll-shell .table-responsive')).filter((area) => {
@@ -286,10 +287,30 @@
         syncFloatingScrollbarPosition();
     }
 
+    function stopTableDragScroll() {
+        if (!dragScrollState) return;
+        dragScrollState.area.classList.remove('is-dragging');
+        dragScrollState = null;
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         ensureScrollableTableShells();
 
         document.querySelectorAll('.table-scroll-shell .table-responsive').forEach((area) => {
+            area.addEventListener('mousedown', (event) => {
+                if (event.button !== 0) return;
+                if (area.scrollWidth - area.clientWidth <= 4) return;
+                if (event.target.closest('input, select, textarea, button, a, label, option')) return;
+
+                dragScrollState = {
+                    area,
+                    startX: event.clientX,
+                    startScrollLeft: area.scrollLeft,
+                };
+                area.classList.add('is-dragging');
+                event.preventDefault();
+            });
+
             area.addEventListener('scroll', () => {
                 updateTableScrollCues();
                 if (area === activeFloatingScrollArea && !syncFromFloatingScrollbar) {
@@ -316,6 +337,13 @@
             updateFloatingScrollbar();
         });
         window.addEventListener('scroll', updateFloatingScrollbar, { passive: true });
+        window.addEventListener('mousemove', (event) => {
+            if (!dragScrollState) return;
+            const deltaX = event.clientX - dragScrollState.startX;
+            dragScrollState.area.scrollLeft = dragScrollState.startScrollLeft - deltaX;
+        });
+        window.addEventListener('mouseup', stopTableDragScroll);
+        window.addEventListener('mouseleave', stopTableDragScroll);
     });
 </script>
 </body>

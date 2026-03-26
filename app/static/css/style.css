@@ -175,11 +175,30 @@ a:hover {
 }
 .table-responsive > .table {
     min-width: 100%;
+    width: max-content;
 }
 .table-responsive.scroll-x {
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
+}
+.table-responsive th {
+    white-space: nowrap;
+}
+.table-responsive td .form-control,
+.table-responsive td .form-select {
+    min-width: 7.25rem;
+}
+.table-responsive td .input-group {
+    min-width: 18rem;
+    flex-wrap: nowrap;
+}
+.table-responsive td .input-group-text,
+.table-responsive td .btn,
+.table-responsive td .badge,
+.table-responsive td .pill {
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 .table-responsive::-webkit-scrollbar {
     height: 10px;
@@ -197,13 +216,15 @@ a:hover {
     background: linear-gradient(90deg, rgba(29, 78, 216, 0.72), rgba(59, 130, 246, 0.82));
 }
 .table-responsive.scroll-x table {
-    min-width: 980px;
+    min-width: 100%;
+    width: max-content;
 }
 .table-scroll-shell {
     position: relative;
 }
 .table-scroll-shell-auto .table-responsive.scroll-x table {
     min-width: 100%;
+    width: max-content;
 }
 .table-scroll-shell::before,
 .table-scroll-shell::after {
@@ -238,6 +259,17 @@ a:hover {
     overflow-y: hidden;
     scrollbar-width: thin;
     scrollbar-color: rgba(59, 130, 246, 0.45) rgba(148, 163, 184, 0.12);
+}
+.table-scroll-shell.is-scrollable .table-responsive {
+    cursor: grab;
+}
+.table-scroll-shell .table-responsive.is-dragging {
+    cursor: grabbing;
+    user-select: none;
+    scroll-behavior: auto;
+}
+.table-scroll-shell .table-responsive.is-dragging * {
+    user-select: none;
 }
 .table-scroll-shell .table-responsive::-webkit-scrollbar {
     height: 10px;
@@ -1274,16 +1306,16 @@ body.modal-open {
     min-width: 1360px;
 }
 .note-materials-table {
-    min-width: 980px;
+    min-width: 1520px;
 }
 .note-return-table {
-    min-width: 980px;
+    min-width: 1180px;
 }
 .note-payments-table {
-    min-width: 1120px;
+    min-width: 1260px;
 }
 .note-aux-table {
-    min-width: 860px;
+    min-width: 980px;
 }
 .note-report-card .form-label {
     font-size: 0.72rem;
@@ -1789,9 +1821,48 @@ body.modal-open {
 .note-payments-table tr.is-reverted {
     background: #f8fafc;
 }
+.note-materials-table th,
+.note-materials-table td {
+    white-space: nowrap;
+}
+.note-materials-table th:first-child,
+.note-materials-table td:first-child {
+    min-width: 220px;
+    white-space: normal;
+}
+.note-materials-table th:nth-child(2),
+.note-materials-table td:nth-child(2) {
+    min-width: 360px;
+}
+.note-materials-table th:nth-child(3),
+.note-materials-table td:nth-child(3) {
+    min-width: 130px;
+}
+.note-materials-table th:nth-child(4),
+.note-materials-table td:nth-child(4),
+.note-materials-table th:nth-child(5),
+.note-materials-table td:nth-child(5),
+.note-materials-table th:nth-child(6),
+.note-materials-table td:nth-child(6),
+.note-materials-table th:nth-child(7),
+.note-materials-table td:nth-child(7),
+.note-materials-table th:nth-child(8),
+.note-materials-table td:nth-child(8) {
+    min-width: 140px;
+}
+.note-materials-table .form-control,
+.note-materials-table .form-select {
+    min-width: 8.25rem;
+}
+.note-edit-subpesajes .input-group {
+    min-width: 20rem;
+}
 .note-edit-subpesajes .input-group-text {
     min-width: 54px;
     justify-content: center;
+}
+.note-edit-subpesajes .form-control {
+    min-width: 5rem;
 }
 @media (max-width: 991.98px) {
     .notes-toolbar-grid,
