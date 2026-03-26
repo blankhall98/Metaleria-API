@@ -314,16 +314,21 @@ def _get_partner_adjustments(
     *,
     partner_type: str,
     partner_id: int,
+    allowed_suc_ids: list[int] | None = None,
+    sucursal_id: int | None = None,
 ) -> list[AjusteSaldoPartner]:
-    return (
-        db.query(AjusteSaldoPartner)
-        .filter(
-            AjusteSaldoPartner.partner_type == partner_type,
-            AjusteSaldoPartner.partner_id == partner_id,
-        )
-        .order_by(AjusteSaldoPartner.created_at.asc())
-        .all()
+    query = db.query(AjusteSaldoPartner).filter(
+        AjusteSaldoPartner.partner_type == partner_type,
+        AjusteSaldoPartner.partner_id == partner_id,
     )
+    if allowed_suc_ids is not None:
+        if sucursal_id:
+            query = query.filter(AjusteSaldoPartner.sucursal_id == sucursal_id)
+        else:
+            query = query.filter(AjusteSaldoPartner.sucursal_id.in_(allowed_suc_ids))
+    elif sucursal_id:
+        query = query.filter(AjusteSaldoPartner.sucursal_id == sucursal_id)
+    return query.order_by(AjusteSaldoPartner.created_at.asc()).all()
 
 
 def _apply_movimiento_sucursal_filter(
@@ -380,8 +385,16 @@ def _get_partner_adjustments_total(
     *,
     partner_type: str,
     partner_id: int,
+    allowed_suc_ids: list[int] | None = None,
+    sucursal_id: int | None = None,
 ) -> Decimal:
-    ajustes = _get_partner_adjustments(db, partner_type=partner_type, partner_id=partner_id)
+    ajustes = _get_partner_adjustments(
+        db,
+        partner_type=partner_type,
+        partner_id=partner_id,
+        allowed_suc_ids=allowed_suc_ids,
+        sucursal_id=sucursal_id,
+    )
     return _sum_partner_adjustments(ajustes)
 
 
@@ -405,7 +418,12 @@ def _build_partner_ledger(
     )
     notes_query = _apply_sucursal_filter(notes_query, allowed_suc_ids, None, Nota.sucursal_id)
     notas = notes_query.all()
-    ajustes = _get_partner_adjustments(db, partner_type=partner_type, partner_id=partner_id)
+    ajustes = _get_partner_adjustments(
+        db,
+        partner_type=partner_type,
+        partner_id=partner_id,
+        allowed_suc_ids=allowed_suc_ids,
+    )
     if not notas and not ajustes:
         return []
 
@@ -630,11 +648,27 @@ def _build_unified_partner_ledger(
     ajustes: list[tuple[AjusteSaldoPartner, int]] = []
     if proveedor_id:
         ajustes.extend(
-            [(a, 1) for a in _get_partner_adjustments(db, partner_type="proveedor", partner_id=proveedor_id)]
+            [
+                (a, 1)
+                for a in _get_partner_adjustments(
+                    db,
+                    partner_type="proveedor",
+                    partner_id=proveedor_id,
+                    allowed_suc_ids=allowed_suc_ids,
+                )
+            ]
         )
     if cliente_id:
         ajustes.extend(
-            [(a, -1) for a in _get_partner_adjustments(db, partner_type="cliente", partner_id=cliente_id)]
+            [
+                (a, -1)
+                for a in _get_partner_adjustments(
+                    db,
+                    partner_type="cliente",
+                    partner_id=cliente_id,
+                    allowed_suc_ids=allowed_suc_ids,
+                )
+            ]
         )
 
     if not notas and not ajustes:
@@ -2179,6 +2213,7 @@ def _build_partner_record_context(
             db,
             partner_type="proveedor",
             partner_id=prov_id,
+            allowed_suc_ids=allowed_suc_ids,
         )
         ajustes_cliente = Decimal("0")
         if cli_id:
@@ -2186,6 +2221,7 @@ def _build_partner_record_context(
                 db,
                 partner_type="cliente",
                 partner_id=cli_id,
+                allowed_suc_ids=allowed_suc_ids,
             )
         unified_summary = _aggregate_unified_partner_summary(
             compras=compras,
@@ -2219,6 +2255,7 @@ def _build_partner_record_context(
         db,
         partner_type=partner_type,
         partner_id=partner.id,
+        allowed_suc_ids=allowed_suc_ids,
     )
     summary = _aggregate_partner_record_summary(
         notas,
@@ -3500,6 +3537,8 @@ async def proveedores_list(
             db,
             partner_type="proveedor",
             partner_id=proveedor.id,
+            allowed_suc_ids=allowed_suc_ids,
+            sucursal_id=sucursal_id,
         )
         ajustes_cliente = Decimal("0")
         if linked_cliente:
@@ -3507,6 +3546,8 @@ async def proveedores_list(
                 db,
                 partner_type="cliente",
                 partner_id=linked_cliente.id,
+                allowed_suc_ids=allowed_suc_ids,
+                sucursal_id=sucursal_id,
             )
 
         unified_summary = _aggregate_unified_partner_summary(
@@ -4204,6 +4245,7 @@ async def proveedor_ajuste_saldo(
     ajuste = AjusteSaldoPartner(
         partner_type="proveedor",
         partner_id=proveedor_id,
+        sucursal_id=proveedor.sucursal_id,
         monto=delta,
         comentario=comentario,
         usuario_id=current_user.get("id"),
@@ -4293,6 +4335,8 @@ async def clientes_list(
             db,
             partner_type="cliente",
             partner_id=cliente.id,
+            allowed_suc_ids=allowed_suc_ids,
+            sucursal_id=sucursal_id,
         )
         ajustes_proveedor = Decimal("0")
         if linked_proveedor:
@@ -4300,6 +4344,8 @@ async def clientes_list(
                 db,
                 partner_type="proveedor",
                 partner_id=linked_proveedor.id,
+                allowed_suc_ids=allowed_suc_ids,
+                sucursal_id=sucursal_id,
             )
 
         unified_summary = _aggregate_unified_partner_summary(
@@ -4954,6 +5000,7 @@ async def cliente_ajuste_saldo(
     ajuste = AjusteSaldoPartner(
         partner_type="cliente",
         partner_id=cliente_id,
+        sucursal_id=cliente.sucursal_id,
         monto=delta,
         comentario=comentario,
         usuario_id=current_user.get("id"),
@@ -10197,37 +10244,40 @@ async def contabilidad_list(
             else:
                 saldo_favor_empresa += -diff
 
-    include_global_ajustes = (not sucursal_filter_active) or solo_sucursal_en_uso
-    if include_global_ajustes:
-        ajustes_clientes = (
-            db.query(AjusteSaldoPartner)
-            .filter(AjusteSaldoPartner.partner_type == "cliente")
-            .all()
-        )
-        for ajuste in ajustes_clientes:
-            nombre = clientes_map.get(ajuste.partner_id)
-            if _is_internal_partner(nombre):
-                continue
-            delta = Decimal(str(ajuste.monto or 0))
-            if delta >= Decimal("0"):
-                total_por_cobrar += delta
-            else:
-                saldo_favor_clientes += -delta
+    def _apply_ajuste_sucursal_filter(query):
+        if allowed_suc_ids is not None:
+            if sucursal_id:
+                return query.filter(AjusteSaldoPartner.sucursal_id == sucursal_id)
+            return query.filter(AjusteSaldoPartner.sucursal_id.in_(allowed_suc_ids))
+        if sucursal_id:
+            return query.filter(AjusteSaldoPartner.sucursal_id == sucursal_id)
+        return query
 
-        ajustes_proveedores = (
-            db.query(AjusteSaldoPartner)
-            .filter(AjusteSaldoPartner.partner_type == "proveedor")
-            .all()
-        )
-        for ajuste in ajustes_proveedores:
-            nombre = proveedores_map.get(ajuste.partner_id)
-            if _is_internal_partner(nombre):
-                continue
-            delta = Decimal(str(ajuste.monto or 0))
-            if delta >= Decimal("0"):
-                total_por_pagar += delta
-            else:
-                saldo_favor_empresa += -delta
+    ajustes_clientes = _apply_ajuste_sucursal_filter(
+        db.query(AjusteSaldoPartner).filter(AjusteSaldoPartner.partner_type == "cliente")
+    ).all()
+    for ajuste in ajustes_clientes:
+        nombre = clientes_map.get(ajuste.partner_id)
+        if _is_internal_partner(nombre):
+            continue
+        delta = Decimal(str(ajuste.monto or 0))
+        if delta >= Decimal("0"):
+            total_por_cobrar += delta
+        else:
+            saldo_favor_clientes += -delta
+
+    ajustes_proveedores = _apply_ajuste_sucursal_filter(
+        db.query(AjusteSaldoPartner).filter(AjusteSaldoPartner.partner_type == "proveedor")
+    ).all()
+    for ajuste in ajustes_proveedores:
+        nombre = proveedores_map.get(ajuste.partner_id)
+        if _is_internal_partner(nombre):
+            continue
+        delta = Decimal(str(ajuste.monto or 0))
+        if delta >= Decimal("0"):
+            total_por_pagar += delta
+        else:
+            saldo_favor_empresa += -delta
 
     comisiones_pendientes = Decimal("0")
     comisiones_query = db.query(ComisionarioNota).filter(ComisionarioNota.estado == ComisionarioNotaEstado.aprobada)
@@ -10300,6 +10350,8 @@ async def contabilidad_list(
                         db,
                         partner_type="cliente",
                         partner_id=partner_id,
+                        allowed_suc_ids=allowed_suc_ids,
+                        sucursal_id=sucursal_id,
                     )
                     summary = _aggregate_partner_record_summary(
                         notas_p,
@@ -10326,6 +10378,8 @@ async def contabilidad_list(
                             db,
                             partner_type="proveedor",
                             partner_id=linked_partner.id,
+                            allowed_suc_ids=allowed_suc_ids,
+                            sucursal_id=sucursal_id,
                         )
                         summary = _aggregate_unified_partner_summary(
                             compras=compras,
@@ -10392,6 +10446,8 @@ async def contabilidad_list(
                         db,
                         partner_type="proveedor",
                         partner_id=partner_id,
+                        allowed_suc_ids=allowed_suc_ids,
+                        sucursal_id=sucursal_id,
                     )
                     ajustes_cliente = Decimal("0")
                     if linked_cliente:
@@ -10399,6 +10455,8 @@ async def contabilidad_list(
                             db,
                             partner_type="cliente",
                             partner_id=linked_cliente.id,
+                            allowed_suc_ids=allowed_suc_ids,
+                            sucursal_id=sucursal_id,
                         )
 
                     unified_enabled = bool(ventas or provider_direct_sales_enabled or linked_cliente)

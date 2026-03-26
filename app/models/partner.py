@@ -82,9 +82,11 @@ class AjusteSaldoPartner(Base):
     id = Column(Integer, primary_key=True, index=True)
     partner_type = Column(String(20), nullable=False, index=True)  # cliente | proveedor
     partner_id = Column(Integer, nullable=False, index=True)
+    sucursal_id = Column(Integer, ForeignKey("sucursales.id"), nullable=True, index=True)
     monto = Column(Numeric(12, 2), nullable=False, default=0)
     comentario = Column(String(255), nullable=True)
     usuario_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
+    sucursal = relationship("Sucursal")
     usuario = relationship("User")
