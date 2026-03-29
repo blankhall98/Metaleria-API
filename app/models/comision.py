@@ -45,7 +45,7 @@ class ComisionarioNota(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     comisionario_id = Column(Integer, ForeignKey("comisionarios.id"), nullable=False, index=True)
-    sucursal_id = Column(Integer, ForeignKey("sucursales.id"), nullable=True, index=True)
+    sucursal_id = Column(Integer, ForeignKey("sucursales.id"), nullable=False, index=True)
     admin_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
 
     estado = Column(

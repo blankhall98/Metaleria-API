@@ -5379,7 +5379,7 @@ async def comisionario_nota_new_get(
             "materiales": materiales,
             "form_rows": [{}],
             "form_comisionario_id": preselect_id or "",
-            "form_sucursal_id": "",
+            "form_sucursal_id": str(sucursales[0].id) if len(sucursales) == 1 else "",
             "form_comentario": "",
             "error": None,
         },
@@ -5429,14 +5429,14 @@ async def comisionario_nota_new_post(
     except ValueError:
         return render_error("Comisionario invalido.", [])
 
-    sucursal_id = None
-    if sucursal_raw:
-        try:
-            sucursal_id = int(sucursal_raw)
-        except ValueError:
-            return render_error("Sucursal invalida.", [])
-        if allowed_suc_ids and sucursal_id not in allowed_suc_ids:
-            return render_error("Sucursal no autorizada.", [])
+    if not sucursal_raw:
+        return render_error("Selecciona una sucursal.", [])
+    try:
+        sucursal_id = int(sucursal_raw)
+    except ValueError:
+        return render_error("Sucursal invalida.", [])
+    if allowed_suc_ids and sucursal_id not in allowed_suc_ids:
+        return render_error("Sucursal no autorizada.", [])
 
     materiales_rows, err = _parse_comisionario_materiales(form)
     if err:
@@ -10116,7 +10116,6 @@ async def contabilidad_list(
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     params = request.query_params
-    sucursal_filter_active = bool(params.get("sucursal_id"))
     sucursal_id = None
     if params.get("sucursal_id"):
         try:
@@ -10150,8 +10149,6 @@ async def contabilidad_list(
     proveedores_map = {p.id: p.nombre_completo for p in proveedores}
     clientes_map = {c.id: c.nombre_completo for c in clientes}
 
-    solo_sucursal_en_uso = False
-
     notas_query = db.query(Nota).filter(Nota.estado == NotaEstado.aprobada)
     notas_query = _apply_sucursal_filter(notas_query, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
     notas_aprobadas = notas_query.all()
@@ -10170,47 +10167,6 @@ async def contabilidad_list(
             return False
         suc_name = nombre.replace("Sucursal ", "", 1).strip()
         return suc_name in sucursal_names
-
-    if sucursal_filter_active and sucursal_id:
-        notas_scope_query = db.query(Nota).filter(Nota.estado == NotaEstado.aprobada)
-        notas_scope_query = _apply_sucursal_filter(
-            notas_scope_query,
-            allowed_suc_ids,
-            None,
-            Nota.sucursal_id,
-        )
-        notas_scope = notas_scope_query.all()
-        otras_sucursales = set()
-        for nota in notas_scope:
-            nombre = None
-            partner_kind, partner_id = _nota_partner_key(nota)
-            if partner_kind == "cliente":
-                nombre = clientes_map.get(partner_id)
-            elif partner_kind == "proveedor":
-                nombre = proveedores_map.get(partner_id)
-            if _is_internal_partner(nombre):
-                continue
-            if nota.sucursal_id and nota.sucursal_id != sucursal_id:
-                otras_sucursales.add(nota.sucursal_id)
-                break
-
-        solo_sucursal_en_uso = len(otras_sucursales) == 0
-        if solo_sucursal_en_uso:
-            comisiones_scope = (
-                db.query(ComisionarioNota)
-                .filter(ComisionarioNota.estado == ComisionarioNotaEstado.aprobada)
-            )
-            if allowed_suc_ids is not None:
-                comisiones_scope = comisiones_scope.filter(
-                    or_(
-                        ComisionarioNota.sucursal_id.in_(allowed_suc_ids),
-                        ComisionarioNota.sucursal_id.is_(None),
-                    )
-                )
-            for nota in comisiones_scope.all():
-                if nota.sucursal_id and nota.sucursal_id != sucursal_id:
-                    solo_sucursal_en_uso = False
-                    break
 
     for nota in notas_aprobadas:
         total = Decimal(str(nota.total_monto or 0))
@@ -10283,27 +10239,11 @@ async def contabilidad_list(
     comisiones_query = db.query(ComisionarioNota).filter(ComisionarioNota.estado == ComisionarioNotaEstado.aprobada)
     if allowed_suc_ids is not None:
         if sucursal_id:
-            if solo_sucursal_en_uso:
-                comisiones_query = comisiones_query.filter(
-                    or_(
-                        ComisionarioNota.sucursal_id == sucursal_id,
-                        ComisionarioNota.sucursal_id.is_(None),
-                    )
-                )
-            else:
-                comisiones_query = comisiones_query.filter(ComisionarioNota.sucursal_id == sucursal_id)
+            comisiones_query = comisiones_query.filter(ComisionarioNota.sucursal_id == sucursal_id)
         else:
             comisiones_query = comisiones_query.filter(ComisionarioNota.sucursal_id.in_(allowed_suc_ids))
     elif sucursal_id:
-        if solo_sucursal_en_uso:
-            comisiones_query = comisiones_query.filter(
-                or_(
-                    ComisionarioNota.sucursal_id == sucursal_id,
-                    ComisionarioNota.sucursal_id.is_(None),
-                )
-            )
-        else:
-            comisiones_query = comisiones_query.filter(ComisionarioNota.sucursal_id == sucursal_id)
+        comisiones_query = comisiones_query.filter(ComisionarioNota.sucursal_id == sucursal_id)
     for nota in comisiones_query.all():
         total = Decimal(str(nota.total_monto or 0))
         pagado = Decimal(str(nota.monto_pagado or 0))

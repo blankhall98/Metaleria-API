@@ -117,6 +117,8 @@ def create_comisionario_nota(
     comisionario = db.get(Comisionario, comisionario_id)
     if not comisionario:
         raise ValueError("Comisionario no encontrado.")
+    if not sucursal_id:
+        raise ValueError("Debes seleccionar una sucursal para la nota de comisionario.")
     if not materiales_payload:
         raise ValueError("Debes agregar al menos un material.")
 

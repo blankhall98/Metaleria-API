@@ -31,9 +31,9 @@
                     </select>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label">Sucursal (opcional)</label>
-                    <select class="form-select" name="sucursal_id">
-                        <option value="">Sin sucursal</option>
+                    <label class="form-label">Sucursal</label>
+                    <select class="form-select" name="sucursal_id" required>
+                        <option value="">Selecciona sucursal</option>
                         {% for s in sucursales %}
                             <option value="{{ s.id }}" {% if form_sucursal_id|string == s.id|string %}selected{% endif %}>{{ s.nombre }}</option>
                         {% endfor %}
