@@ -58,51 +58,6 @@
 
 {% if user %}
     {% if user.rol != 'trabajador' %}
-        <div class="card hover-lift mb-4">
-            <div class="card-body">
-                <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3 mb-3">
-                    <div>
-                        <p class="text-uppercase text-muted small mb-1">Uso diario</p>
-                        <h2 class="h5 text-dark mb-1">Operaciones frecuentes</h2>
-                        <p class="text-muted small mb-0">Atajos directos a las acciones que normalmente se ejecutan varias veces al dia.</p>
-                    </div>
-                </div>
-                <div class="ops-shortcut-grid">
-                    {% set badge_count = (notas_revision_count if notas_revision_count is defined else request.state.notas_revision_count) or 0 %}
-                    <a href="/web/admin/notas?estado=EN_REVISION#tabla-principal" class="ops-shortcut-card">
-                        <span class="ops-shortcut-label">Revision de notas</span>
-                        <strong>{{ badge_count }}</strong>
-                        <div class="ops-shortcut-copy">Pendientes de validar</div>
-                    </a>
-                    <a href="/web/admin/notas?pago=PENDIENTES#tabla-principal" class="ops-shortcut-card">
-                        <span class="ops-shortcut-label">Cobranza y pagos</span>
-                        <strong>Notas</strong>
-                        <div class="ops-shortcut-copy">Abre solo pendientes por saldar</div>
-                    </a>
-                    <a href="/web/admin/proveedores?modo=COMPRA_VENTA" class="ops-shortcut-card">
-                        <span class="ops-shortcut-label">Proveedores compra y venta</span>
-                        <strong>Neteo</strong>
-                        <div class="ops-shortcut-copy">Ver partners que compran y venden</div>
-                    </a>
-                    <a href="/web/admin/proveedores/nuevo" class="ops-shortcut-card">
-                        <span class="ops-shortcut-label">Alta rapida</span>
-                        <strong>Proveedor</strong>
-                        <div class="ops-shortcut-copy">Crear nuevo perfil operativo</div>
-                    </a>
-                    <a href="/web/admin/inventario/aumentar" class="ops-shortcut-card">
-                        <span class="ops-shortcut-label">Inventario</span>
-                        <strong>Ajuste</strong>
-                        <div class="ops-shortcut-copy">Aumentar o disminuir material</div>
-                    </a>
-                    <a href="/web/admin/corte-caja" class="ops-shortcut-card">
-                        <span class="ops-shortcut-label">Corte de caja</span>
-                        <strong>Diario</strong>
-                        <div class="ops-shortcut-copy">Registrar movimientos y cierre</div>
-                    </a>
-                </div>
-            </div>
-        </div>
-
         <div class="card soft mb-4">
             <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
@@ -263,6 +218,67 @@
                 </div>
             </div>
         </div>
+
+        <section class="ops-shortcut-panel mb-4">
+            <div class="ops-shortcut-panel__head">
+                <div>
+                    <p class="ops-shortcut-panel__eyebrow mb-1">Uso diario</p>
+                    <h2 class="ops-shortcut-panel__title mb-1">Operaciones frecuentes</h2>
+                    <p class="ops-shortcut-panel__copy mb-0">Atajos directos para las tareas que normalmente se ejecutan varias veces durante el dia.</p>
+                </div>
+            </div>
+            <div class="ops-shortcut-grid">
+                {% set badge_count = (notas_revision_count if notas_revision_count is defined else request.state.notas_revision_count) or 0 %}
+                <a href="/web/admin/notas?estado=EN_REVISION#tabla-principal" class="ops-shortcut-card">
+                    <div class="ops-shortcut-topline">
+                        <span class="ops-shortcut-icon">&#x1F50E;</span>
+                        <span class="ops-shortcut-label">Revision de notas</span>
+                    </div>
+                    <strong>{{ badge_count }}</strong>
+                    <div class="ops-shortcut-copy">Pendientes de validar</div>
+                </a>
+                <a href="/web/admin/notas?pago=PENDIENTES#tabla-principal" class="ops-shortcut-card">
+                    <div class="ops-shortcut-topline">
+                        <span class="ops-shortcut-icon">&#x1F4B8;</span>
+                        <span class="ops-shortcut-label">Cobranza y pagos</span>
+                    </div>
+                    <strong>Notas</strong>
+                    <div class="ops-shortcut-copy">Abre solo pendientes por saldar</div>
+                </a>
+                <a href="/web/admin/proveedores?modo=COMPRA_VENTA" class="ops-shortcut-card">
+                    <div class="ops-shortcut-topline">
+                        <span class="ops-shortcut-icon">&#x21C4;</span>
+                        <span class="ops-shortcut-label">Proveedores compra y venta</span>
+                    </div>
+                    <strong>Neteo</strong>
+                    <div class="ops-shortcut-copy">Ver partners que compran y venden</div>
+                </a>
+                <a href="/web/admin/proveedores/nuevo" class="ops-shortcut-card">
+                    <div class="ops-shortcut-topline">
+                        <span class="ops-shortcut-icon">&#x2795;</span>
+                        <span class="ops-shortcut-label">Alta rapida</span>
+                    </div>
+                    <strong>Proveedor</strong>
+                    <div class="ops-shortcut-copy">Crear nuevo perfil operativo</div>
+                </a>
+                <a href="/web/admin/inventario/aumentar" class="ops-shortcut-card">
+                    <div class="ops-shortcut-topline">
+                        <span class="ops-shortcut-icon">&#x1F4E6;</span>
+                        <span class="ops-shortcut-label">Inventario</span>
+                    </div>
+                    <strong>Ajuste</strong>
+                    <div class="ops-shortcut-copy">Aumentar o disminuir material</div>
+                </a>
+                <a href="/web/admin/corte-caja" class="ops-shortcut-card">
+                    <div class="ops-shortcut-topline">
+                        <span class="ops-shortcut-icon">&#x1F4B5;</span>
+                        <span class="ops-shortcut-label">Corte de caja</span>
+                    </div>
+                    <strong>Diario</strong>
+                    <div class="ops-shortcut-copy">Registrar movimientos y cierre</div>
+                </a>
+            </div>
+        </section>
 
     {% endif %}
 {% endif %}
