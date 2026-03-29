@@ -19,13 +19,15 @@
     {% endif %}
     {% if error %}
         {% if error == 'tipo' %}
-            <div class="alert alert-danger py-2 small">Solo se permiten imagenes.</div>
+            <div class="alert alert-danger py-2 small">El archivo no parece ser una imagen valida.</div>
         {% elif error == 'peso' %}
             <div class="alert alert-danger py-2 small">La imagen supera el limite de {{ max_mb }}MB.</div>
+        {% elif error == 'vacio' %}
+            <div class="alert alert-danger py-2 small">La imagen llego vacia. Intenta elegirla de nuevo.</div>
         {% elif error == 'estado' %}
             <div class="alert alert-danger py-2 small">No puedes subir evidencia en este estado.</div>
         {% else %}
-            <div class="alert alert-danger py-2 small">No se pudo subir la evidencia.</div>
+            <div class="alert alert-danger py-2 small">No se pudo subir la evidencia al almacenamiento. Intenta de nuevo.</div>
         {% endif %}
     {% endif %}
     {% if not can_upload %}

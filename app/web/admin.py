@@ -1,6 +1,7 @@
 # app/web/admin.py
 import io
 import json
+import logging
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Form, UploadFile, File
@@ -73,10 +74,11 @@ from app.services import (
     comision_service,
 )
 from app.services.evidence_service import build_evidence_groups
-from app.services.firebase_storage import upload_image
+from app.services.firebase_storage import resolve_image_content_type, upload_image
 
 templates = Jinja2Templates(directory="app/templates")
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/web/admin", tags=["web-admin"])
 
@@ -8365,15 +8367,51 @@ async def notas_subpesaje_upload(
     if not subpesaje:
         raise HTTPException(status_code=404, detail="Subpesaje no encontrado.")
 
-    if not file.content_type or not file.content_type.startswith("image/"):
+    content = await file.read()
+    resolved_content_type = resolve_image_content_type(file.filename, file.content_type)
+    if not resolved_content_type:
+        logger.warning(
+            "Admin evidence upload rejected: invalid content type",
+            extra={
+                "user_id": current_user["id"],
+                "nota_id": nota_id,
+                "subpesaje_id": subpesaje_id,
+                "filename": file.filename,
+                "content_type": file.content_type,
+            },
+        )
         return RedirectResponse(
             url=f"/web/admin/notas/{nota_id}/evidencias?error=tipo",
             status_code=303,
         )
-
-    content = await file.read()
+    if not content:
+        logger.warning(
+            "Admin evidence upload rejected: empty file",
+            extra={
+                "user_id": current_user["id"],
+                "nota_id": nota_id,
+                "subpesaje_id": subpesaje_id,
+                "filename": file.filename,
+            },
+        )
+        return RedirectResponse(
+            url=f"/web/admin/notas/{nota_id}/evidencias?error=vacio",
+            status_code=303,
+        )
     max_bytes = settings.FIREBASE_MAX_MB * 1024 * 1024
     if len(content) > max_bytes:
+        logger.warning(
+            "Admin evidence upload rejected: file too large",
+            extra={
+                "user_id": current_user["id"],
+                "nota_id": nota_id,
+                "subpesaje_id": subpesaje_id,
+                "filename": file.filename,
+                "content_type": resolved_content_type,
+                "size_bytes": len(content),
+                "max_bytes": max_bytes,
+            },
+        )
         return RedirectResponse(
             url=f"/web/admin/notas/{nota_id}/evidencias?error=peso",
             status_code=303,
@@ -8383,10 +8421,21 @@ async def notas_subpesaje_upload(
         url = upload_image(
             content=content,
             filename=file.filename or "evidencia",
-            content_type=file.content_type,
+            content_type=resolved_content_type,
             folder=f"evidencias/nota_{nota_id}/sub_{subpesaje_id}",
         )
     except Exception:
+        logger.exception(
+            "Admin evidence upload failed",
+            extra={
+                "user_id": current_user["id"],
+                "nota_id": nota_id,
+                "subpesaje_id": subpesaje_id,
+                "filename": file.filename,
+                "content_type": resolved_content_type,
+                "size_bytes": len(content),
+            },
+        )
         return RedirectResponse(
             url=f"/web/admin/notas/{nota_id}/evidencias?error=upload",
             status_code=303,

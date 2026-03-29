@@ -1,5 +1,7 @@
 # app/services/firebase_storage.py
 import json
+import logging
+import mimetypes
 import os
 import re
 import uuid
@@ -12,6 +14,27 @@ from app.core.config import get_settings
 
 
 _BUCKET = None
+logger = logging.getLogger(__name__)
+
+_IMAGE_MIME_TO_EXT = {
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/pjpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/heic": ".heic",
+    "image/heif": ".heif",
+    "image/avif": ".avif",
+}
+_IMAGE_EXT_TO_MIME = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".heic": "image/heic",
+    ".heif": "image/heif",
+    ".avif": "image/avif",
+}
 
 
 def _ensure_bucket():
@@ -52,17 +75,26 @@ def _ensure_bucket():
     return _BUCKET
 
 
+def resolve_image_content_type(filename: str | None, content_type: str | None) -> str | None:
+    normalized = (content_type or "").split(";")[0].strip().lower()
+    if normalized.startswith("image/"):
+        return normalized
+
+    ext = Path(filename or "").suffix.lower()
+    if ext in _IMAGE_EXT_TO_MIME:
+        return _IMAGE_EXT_TO_MIME[ext]
+
+    guessed, _ = mimetypes.guess_type(filename or "")
+    guessed = (guessed or "").lower()
+    if guessed.startswith("image/"):
+        return guessed
+    return None
+
+
 def _safe_filename(filename: str, content_type: str | None) -> str:
     name, ext = os.path.splitext(filename or "")
     if not ext and content_type:
-        if content_type == "image/jpeg":
-            ext = ".jpg"
-        elif content_type == "image/png":
-            ext = ".png"
-        elif content_type == "image/webp":
-            ext = ".webp"
-        else:
-            ext = ""
+        ext = _IMAGE_MIME_TO_EXT.get(content_type.lower(), mimetypes.guess_extension(content_type.lower()) or "")
     safe_base = re.sub(r"[^a-zA-Z0-9_-]+", "-", name).strip("-") or "evidencia"
     return f"{safe_base}{ext.lower()}"
 

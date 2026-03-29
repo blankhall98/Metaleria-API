@@ -419,7 +419,7 @@
             inputEl.dataset.error = '1';
             inputEl.dataset.url = '';
             setEvidenceLabel(inputEl.closest('.input-group'), 'Error al subir', 'error');
-            showEvidenceAlert('No se pudo subir la evidencia. Intenta de nuevo.', 'danger');
+            showEvidenceAlert(err && err.message ? err.message : 'No se pudo subir la evidencia. Intenta de nuevo.', 'danger');
         } finally {
             inputEl.dataset.uploading = '';
             pendingUploads = Math.max(0, pendingUploads - 1);
@@ -509,7 +509,7 @@
                 extraEvidenceUrls.push(data.url);
                 renderExtraEvidence();
             } catch (err) {
-                showEvidenceAlert('No se pudo subir la evidencia extra. Intenta de nuevo.', 'danger');
+                showEvidenceAlert(err && err.message ? err.message : 'No se pudo subir la evidencia extra. Intenta de nuevo.', 'danger');
             } finally {
                 pendingUploads = Math.max(0, pendingUploads - 1);
                 updateSteps();
