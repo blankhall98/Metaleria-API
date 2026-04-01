@@ -515,6 +515,10 @@
                                     <div class="mt-1">
                                         <span class="badge bg-info text-dark">Ajuste parcial aplicado</span>
                                     </div>
+                                {% elif row.ajuste_saldo_nota %}
+                                    <div class="mt-1">
+                                        <span class="badge bg-light text-dark border">Saldo ajustado en nota</span>
+                                    </div>
                                 {% endif %}
                             </td>
                             <td>{{ nota.created_at|datetime_local if nota.created_at else '-' }}</td>
@@ -533,6 +537,11 @@
                                         {% if row.saldo_pendiente_original > row.saldo_pendiente %}
                                             <div class="text-muted small">Saldo original: ${{ "{:,.2f}".format(row.saldo_pendiente_original or 0) }}</div>
                                         {% endif %}
+                                    {% endif %}
+                                    {% if row.ajuste_saldo_nota > 0 %}
+                                        <div class="text-muted small">Ajuste nota: +${{ "{:,.2f}".format(row.ajuste_saldo_nota or 0) }}</div>
+                                    {% elif row.ajuste_saldo_nota < 0 %}
+                                        <div class="text-muted small">Ajuste nota: -${{ "{:,.2f}".format(-(row.ajuste_saldo_nota or 0)) }}</div>
                                     {% endif %}
                                 {% else %}
                                     <span class="text-muted">-</span>

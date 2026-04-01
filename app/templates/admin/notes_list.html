@@ -347,6 +347,7 @@
                         {% if saldo_pendiente < 0 %}{% set saldo_pendiente = 0 %}{% endif %}
                         {% set saldo_favor = balance.saldo_favor if balance else (((n.monto_pagado or 0) - (n.total_monto or 0)) if (n.monto_pagado or 0) > (n.total_monto or 0) else 0) %}
                         {% set ajuste_aplicado = balance.ajuste_aplicado if balance else 0 %}
+                        {% set ajuste_saldo_nota = balance.ajuste_saldo_nota if balance else 0 %}
                         {% if n.proveedor_id and proveedores.get(n.proveedor_id) %}
                             {% set partner_name = proveedores.get(n.proveedor_id).nombre_completo %}
                         {% elif n.cliente_id and clientes.get(n.cliente_id) %}
@@ -396,6 +397,8 @@
                                     {% endif %}
                                     {% if ajuste_aplicado > 0 %}
                                         <div class="text-muted small mt-1">Cubierta por ajuste</div>
+                                    {% elif ajuste_saldo_nota != 0 %}
+                                        <div class="text-muted small mt-1">Saldo ajustado en nota</div>
                                     {% endif %}
                                 {% else %}
                                     <span class="badge bg-light text-dark border">N/A</span>
@@ -413,6 +416,11 @@
                                             ${{ "{:,.2f}".format(saldo_pendiente) }}
                                         </div>
                                         <div class="text-muted small">{{ 'Por saldar' if saldo_pendiente > 0 else 'En cero' }}</div>
+                                        {% if ajuste_saldo_nota > 0 %}
+                                            <div class="text-muted small">Ajuste nota: +${{ "{:,.2f}".format(ajuste_saldo_nota) }}</div>
+                                        {% elif ajuste_saldo_nota < 0 %}
+                                            <div class="text-muted small">Ajuste nota: -${{ "{:,.2f}".format(-ajuste_saldo_nota) }}</div>
+                                        {% endif %}
                                         {% if ajuste_aplicado > 0 %}
                                             <div class="text-muted small">Ajuste aplicado: ${{ "{:,.2f}".format(ajuste_aplicado) }}</div>
                                         {% endif %}

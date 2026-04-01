@@ -254,8 +254,11 @@
                             <span class="text-muted small">Ajuste manual por nota</span>
                         </div>
                         {% if note_state == 'APROBADA' %}
-                            <p class="text-muted small mb-3">Si necesitas corregir inventario operativo sin tocar montos, pagos o valuacion, usa el ajuste manual ligado a esta nota desde el detalle.</p>
-                            <a href="/web/admin/notas/{{ nota.id }}#note-manual-adjustments" class="btn btn-outline-primary w-100">Abrir ajuste manual de esta nota</a>
+                            <p class="text-muted small mb-2">Si necesitas corregir inventario operativo sin tocar montos, pagos o valuacion, usa el ajuste manual ligado a esta nota desde el detalle.</p>
+                            <div class="d-grid gap-2">
+                                <a href="/web/admin/notas/{{ nota.id }}#note-manual-adjustments" class="btn btn-outline-primary w-100">Abrir ajuste manual de inventario</a>
+                                <a href="/web/admin/notas/{{ nota.id }}#note-balance-adjustments" class="btn btn-outline-secondary w-100">Abrir ajuste de saldo</a>
+                            </div>
                         {% else %}
                             <p class="text-muted small mb-0">Los ajustes manuales ligados a la nota se habilitan cuando la nota ya esta aprobada. Esta pantalla se reserva para editar pesos, subpesajes y precios.</p>
                         {% endif %}
@@ -269,6 +272,7 @@
     const ivaIncluido = {{ 'true' if nota.iva_incluido else 'false' }};
     const ivaPct = {{ "%.2f"|format(iva_pct or 0) }};
     const currentPaid = {{ "%.2f"|format(nota.monto_pagado or 0) }};
+    const currentNoteBalanceAdjustment = {{ "%.2f"|format(note_balance_adjustment_total or 0) }};
 
     function formatNumber(value, decimals) {
         const safe = Number(value || 0);
@@ -320,8 +324,9 @@
         const balanceEl = document.getElementById('note-edit-balance-value');
         const favorEl = document.getElementById('note-edit-favor-value');
         if (!balanceEl || !favorEl) return;
-        const pending = Math.max(total - currentPaid, 0);
-        const favor = Math.max(currentPaid - total, 0);
+        const effectiveTotal = total + currentNoteBalanceAdjustment;
+        const pending = Math.max(effectiveTotal - currentPaid, 0);
+        const favor = Math.max(currentPaid - effectiveTotal, 0);
         balanceEl.textContent = formatMoney(pending);
         favorEl.textContent = formatMoney(favor);
         balanceEl.classList.toggle('text-danger', pending > 0);

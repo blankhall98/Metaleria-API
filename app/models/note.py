@@ -77,6 +77,11 @@ class Nota(Base):
 
     materiales = relationship("NotaMaterial", back_populates="nota", cascade="all, delete-orphan")
     pagos = relationship("NotaPago", back_populates="nota", cascade="all, delete-orphan")
+    saldo_ajustes = relationship(
+        "NotaAjusteSaldo",
+        back_populates="nota",
+        cascade="all, delete-orphan",
+    )
     original = relationship("NotaOriginal", back_populates="nota", uselist=False, cascade="all, delete-orphan")
     cuenta = relationship("Cuenta", foreign_keys=[cuenta_financiera_id])
     evidencias_extra = relationship(
@@ -170,6 +175,32 @@ class NotaPago(Base):
     usuario = relationship("User")
     cuenta = relationship("Cuenta")
     cuenta_scrap360 = relationship("CuentaScrap360")
+
+
+class NotaAjusteSaldo(Base):
+    __tablename__ = "nota_ajustes_saldo"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nota_id = Column(Integer, ForeignKey("notas.id"), nullable=False, index=True)
+    usuario_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+
+    # Delta aplicado al saldo de la nota:
+    # negativo reduce saldo pendiente / aumenta saldo a favor
+    # positivo aumenta saldo pendiente / reduce saldo a favor
+    monto_delta = Column(Numeric(12, 2), nullable=False, default=0)
+    saldo_anterior = Column(Numeric(12, 2), nullable=False, default=0)
+    saldo_resultante = Column(Numeric(12, 2), nullable=False, default=0)
+    comentario = Column(String(255), nullable=True)
+
+    reversal_of_id = Column(Integer, ForeignKey("nota_ajustes_saldo.id"), nullable=True, index=True)
+    reverted_at = Column(DateTime, nullable=True)
+    reverted_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    comentario_reversion = Column(String(255), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    nota = relationship("Nota", back_populates="saldo_ajustes", foreign_keys=[nota_id])
+    usuario = relationship("User", foreign_keys=[usuario_id])
+    reverted_by = relationship("User", foreign_keys=[reverted_by_user_id])
 
 
 class NotaDevolucionParcial(Base):

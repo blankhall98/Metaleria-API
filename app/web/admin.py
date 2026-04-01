@@ -44,6 +44,7 @@ from app.models import (
     NotaMaterial,
     Subpesaje,
     NotaPago,
+    NotaAjusteSaldo,
     ConversionMaterial,
     ConversionMaterialReversion,
     Cuenta,
@@ -296,19 +297,58 @@ def _signed_partner_amounts(
     return total * sign, pagado * sign
 
 
-def _raw_note_payment_balance(nota: Nota) -> dict[str, Decimal]:
+def _raw_note_payment_balance(
+    nota: Nota,
+    *,
+    note_adjustment_delta: Decimal | None = None,
+) -> dict[str, Decimal]:
     total = Decimal(str(nota.total_monto or 0))
     pagado = Decimal(str(nota.monto_pagado or 0))
-    saldo = total - pagado
+    ajuste_delta = Decimal(str(note_adjustment_delta or 0))
+    saldo = total - pagado + ajuste_delta
     saldo_pendiente = saldo if saldo > Decimal("0") else Decimal("0")
     saldo_favor = -saldo if saldo < Decimal("0") else Decimal("0")
     return {
         "total": total,
         "pagado": pagado,
+        "ajuste_saldo_nota": ajuste_delta,
+        "total_efectivo": total + ajuste_delta,
         "saldo": saldo,
         "saldo_pendiente": saldo_pendiente,
         "saldo_favor": saldo_favor,
     }
+
+
+def _get_note_balance_adjustment_totals_map(
+    db: Session,
+    note_ids: list[int],
+) -> dict[int, Decimal]:
+    totals: dict[int, Decimal] = {int(note_id): Decimal("0") for note_id in note_ids if note_id}
+    if not totals:
+        return totals
+    rows = (
+        db.query(
+            NotaAjusteSaldo.nota_id,
+            func.coalesce(func.sum(NotaAjusteSaldo.monto_delta), 0),
+        )
+        .filter(NotaAjusteSaldo.nota_id.in_(sorted(totals.keys())))
+        .group_by(NotaAjusteSaldo.nota_id)
+        .all()
+    )
+    for nota_id, total in rows:
+        totals[int(nota_id)] = Decimal(str(total or 0))
+    return totals
+
+
+def _note_balance_adjustment_signed(
+    nota: Nota,
+    *,
+    note_delta: Decimal | None,
+    partner_type: str | None,
+) -> Decimal:
+    delta = Decimal(str(note_delta or 0))
+    sign = _partner_note_sign(partner_type, nota)
+    return delta * sign
 
 
 def _get_partner_adjustment_totals_map(
@@ -368,11 +408,22 @@ def _build_effective_note_balance_map(
     balances: dict[int, dict[str, Decimal | bool]] = {}
     approved_notes: list[Nota] = []
     partner_keys: set[tuple[str, int]] = set()
+    note_adjustment_totals = _get_note_balance_adjustment_totals_map(
+        db,
+        [nota.id for nota in notas if nota.id],
+    )
 
     for nota in notas:
-        raw = _raw_note_payment_balance(nota)
+        raw_without_adjustment = _raw_note_payment_balance(nota)
+        raw = _raw_note_payment_balance(
+            nota,
+            note_adjustment_delta=note_adjustment_totals.get(nota.id, Decimal("0")),
+        )
         balances[nota.id] = {
             **raw,
+            "saldo_original": raw_without_adjustment["saldo"],
+            "saldo_pendiente_original": raw_without_adjustment["saldo_pendiente"],
+            "saldo_favor_original": raw_without_adjustment["saldo_favor"],
             "ajuste_aplicado": Decimal("0"),
             "saldo_cubierto_por_ajuste": False,
             "saldo_parcialmente_cubierto": False,
@@ -587,6 +638,7 @@ def _build_partner_ledger(
     base_movs = {}
     reversos = []
     pagos = []
+    note_balance_adjustments: list[NotaAjusteSaldo] = []
     if note_ids:
         base_movs = {
             mov.nota_id: mov
@@ -609,6 +661,12 @@ def _build_partner_ledger(
             db.query(NotaPago)
             .filter(NotaPago.nota_id.in_(note_ids))
             .order_by(NotaPago.created_at.asc())
+            .all()
+        )
+        note_balance_adjustments = (
+            db.query(NotaAjusteSaldo)
+            .filter(NotaAjusteSaldo.nota_id.in_(note_ids))
+            .order_by(NotaAjusteSaldo.created_at.asc(), NotaAjusteSaldo.id.asc())
             .all()
         )
 
@@ -658,6 +716,35 @@ def _build_partner_ledger(
                 "metodo": pago.metodo_pago or "-",
                 "cuenta": cuenta_label,
                 "comentario": pago.comentario or "",
+            }
+        )
+
+    for ajuste_nota in note_balance_adjustments:
+        nota = next((n for n in notas if n.id == ajuste_nota.nota_id), None)
+        if not nota:
+            continue
+        delta = _note_balance_adjustment_signed(
+            nota,
+            note_delta=Decimal(str(ajuste_nota.monto_delta or 0)),
+            partner_type=partner_type,
+        )
+        cargo = delta if delta >= 0 else Decimal("0")
+        abono = Decimal("0") if delta >= 0 else -delta
+        tipo_label = "Ajuste saldo nota"
+        if ajuste_nota.reversal_of_id:
+            tipo_label = "Reversion ajuste saldo"
+        events.append(
+            {
+                "fecha": ajuste_nota.created_at,
+                "orden": 1,
+                "tipo": tipo_label,
+                "nota_id": ajuste_nota.nota_id,
+                "folio": folio_map.get(ajuste_nota.nota_id) or f"#{ajuste_nota.nota_id}",
+                "cargo": cargo,
+                "abono": abono,
+                "metodo": "-",
+                "cuenta": "-",
+                "comentario": ajuste_nota.comentario or "",
             }
         )
 
@@ -834,6 +921,7 @@ def _build_unified_partner_ledger(
     base_movs = {}
     reversos = []
     pagos = []
+    note_balance_adjustments: list[NotaAjusteSaldo] = []
     if note_ids:
         base_movs = {
             mov.nota_id: mov
@@ -856,6 +944,12 @@ def _build_unified_partner_ledger(
             db.query(NotaPago)
             .filter(NotaPago.nota_id.in_(note_ids))
             .order_by(NotaPago.created_at.asc())
+            .all()
+        )
+        note_balance_adjustments = (
+            db.query(NotaAjusteSaldo)
+            .filter(NotaAjusteSaldo.nota_id.in_(note_ids))
+            .order_by(NotaAjusteSaldo.created_at.asc(), NotaAjusteSaldo.id.asc())
             .all()
         )
 
@@ -909,6 +1003,32 @@ def _build_unified_partner_ledger(
                 "metodo": pago.metodo_pago or "-",
                 "cuenta": cuenta_label,
                 "comentario": pago.comentario or "",
+            }
+        )
+
+    for ajuste_nota in note_balance_adjustments:
+        nota = next((n for n in notas if n.id == ajuste_nota.nota_id), None)
+        if not nota:
+            continue
+        sign = note_signs.get(ajuste_nota.nota_id, Decimal("1"))
+        delta = Decimal(str(ajuste_nota.monto_delta or 0)) * sign
+        cargo = delta if delta >= 0 else Decimal("0")
+        abono = Decimal("0") if delta >= 0 else -delta
+        tipo_label = "Ajuste saldo nota"
+        if ajuste_nota.reversal_of_id:
+            tipo_label = "Reversion ajuste saldo"
+        events.append(
+            {
+                "fecha": ajuste_nota.created_at,
+                "orden": 1,
+                "tipo": tipo_label,
+                "nota_id": ajuste_nota.nota_id,
+                "folio": folio_map.get(ajuste_nota.nota_id) or f"#{ajuste_nota.nota_id}",
+                "cargo": cargo,
+                "abono": abono,
+                "metodo": "-",
+                "cuenta": "-",
+                "comentario": ajuste_nota.comentario or "",
             }
         )
 
@@ -1029,6 +1149,7 @@ def _aggregate_unified_partner_summary(
     ventas: list[Nota],
     ajustes_proveedor: Decimal,
     ajustes_cliente: Decimal,
+    note_adjustment_totals: dict[int, Decimal] | None = None,
 ) -> dict:
     summary = {
         "total_notas": len(compras) + len(ventas),
@@ -1044,10 +1165,13 @@ def _aggregate_unified_partner_summary(
         "saldo_cobrar": Decimal("0"),
         "ajustes_proveedor": ajustes_proveedor,
         "ajustes_cliente": ajustes_cliente,
+        "ajustes_nota_compras": Decimal("0"),
+        "ajustes_nota_ventas": Decimal("0"),
         "saldo_neto": Decimal("0"),
         "saldo_neto_pendiente": Decimal("0"),
         "saldo_neto_favor": Decimal("0"),
     }
+    note_adjustment_totals = note_adjustment_totals or {}
 
     for nota in compras:
         if nota.estado == NotaEstado.aprobada:
@@ -1056,6 +1180,9 @@ def _aggregate_unified_partner_summary(
             pagado = Decimal(str(nota.monto_pagado or 0))
             summary["total_compras"] += total
             summary["total_pagado_compras"] += pagado
+            summary["ajustes_nota_compras"] += Decimal(
+                str(note_adjustment_totals.get(nota.id, Decimal("0")) or 0)
+            )
         elif nota.estado == NotaEstado.en_revision:
             summary["notas_revision"] += 1
         elif nota.estado == NotaEstado.borrador:
@@ -1070,6 +1197,9 @@ def _aggregate_unified_partner_summary(
             pagado = Decimal(str(nota.monto_pagado or 0))
             summary["total_ventas"] += total
             summary["total_cobrado_ventas"] += pagado
+            summary["ajustes_nota_ventas"] += Decimal(
+                str(note_adjustment_totals.get(nota.id, Decimal("0")) or 0)
+            )
         elif nota.estado == NotaEstado.en_revision:
             summary["notas_revision"] += 1
         elif nota.estado == NotaEstado.borrador:
@@ -1077,8 +1207,16 @@ def _aggregate_unified_partner_summary(
         elif nota.estado == NotaEstado.cancelada:
             summary["notas_canceladas"] += 1
 
-    summary["saldo_pagar"] = summary["total_compras"] - summary["total_pagado_compras"]
-    summary["saldo_cobrar"] = summary["total_ventas"] - summary["total_cobrado_ventas"]
+    summary["saldo_pagar"] = (
+        summary["total_compras"]
+        - summary["total_pagado_compras"]
+        + summary["ajustes_nota_compras"]
+    )
+    summary["saldo_cobrar"] = (
+        summary["total_ventas"]
+        - summary["total_cobrado_ventas"]
+        + summary["ajustes_nota_ventas"]
+    )
 
     neto = (summary["saldo_pagar"] + ajustes_proveedor) - (summary["saldo_cobrar"] + ajustes_cliente)
     summary["saldo_neto"] = neto
@@ -1892,12 +2030,20 @@ def _build_partner_record_rows(
     notas: list[Nota],
     folio_map: dict[int, str],
     partner_type: str | None = None,
+    note_adjustment_totals: dict[int, Decimal] | None = None,
 ) -> list[dict]:
     rows: list[dict] = []
+    note_adjustment_totals = note_adjustment_totals or {}
     for nota in notas:
         total, pagado = _signed_partner_amounts(nota, partner_type)
         saldo_aplicable = nota.estado == NotaEstado.aprobada
-        saldo = (total - pagado) if saldo_aplicable else Decimal("0")
+        note_delta_signed = _note_balance_adjustment_signed(
+            nota,
+            note_delta=note_adjustment_totals.get(nota.id, Decimal("0")),
+            partner_type=partner_type,
+        )
+        saldo_original = (total - pagado) if saldo_aplicable else Decimal("0")
+        saldo = (saldo_original + note_delta_signed) if saldo_aplicable else Decimal("0")
         saldo_pendiente = saldo if saldo > Decimal("0") else Decimal("0")
         saldo_favor = -saldo if saldo < Decimal("0") else Decimal("0")
         rows.append(
@@ -1909,9 +2055,10 @@ def _build_partner_record_rows(
                 "saldo": saldo,
                 "saldo_pendiente": saldo_pendiente,
                 "saldo_favor": saldo_favor,
-                "saldo_original": saldo,
-                "saldo_pendiente_original": saldo_pendiente,
-                "saldo_favor_original": saldo_favor,
+                "saldo_original": saldo_original,
+                "saldo_pendiente_original": saldo_original if saldo_original > Decimal("0") else Decimal("0"),
+                "saldo_favor_original": -saldo_original if saldo_original < Decimal("0") else Decimal("0"),
+                "ajuste_saldo_nota": note_delta_signed,
                 "ajuste_aplicado": Decimal("0"),
                 "saldo_cubierto_por_ajuste": False,
                 "saldo_parcialmente_cubierto": False,
@@ -2286,6 +2433,7 @@ def _aggregate_partner_record_summary(
     notas: list[Nota],
     partner_type: str | None = None,
     ajustes_delta: Decimal | None = None,
+    note_adjustment_totals: dict[int, Decimal] | None = None,
 ) -> dict:
     summary = {
         "total_notas": len(notas),
@@ -2298,13 +2446,21 @@ def _aggregate_partner_record_summary(
         "saldo_pendiente": Decimal("0"),
         "saldo_favor": Decimal("0"),
     }
+    note_adjustment_totals = note_adjustment_totals or {}
+    note_adjustments_signed_total = Decimal("0")
     for nota in notas:
         if nota.estado == NotaEstado.aprobada:
             summary["notas_aprobadas"] += 1
             total, pagado = _signed_partner_amounts(nota, partner_type)
             summary["total_facturado"] += total
             summary["total_pagado"] += pagado
-            saldo = total - pagado
+            note_delta_signed = _note_balance_adjustment_signed(
+                nota,
+                note_delta=note_adjustment_totals.get(nota.id, Decimal("0")),
+                partner_type=partner_type,
+            )
+            note_adjustments_signed_total += note_delta_signed
+            saldo = total - pagado + note_delta_signed
             if saldo > Decimal("0"):
                 summary["saldo_pendiente"] += saldo
             elif saldo < Decimal("0"):
@@ -2317,6 +2473,7 @@ def _aggregate_partner_record_summary(
             summary["notas_canceladas"] += 1
     delta = ajustes_delta if ajustes_delta is not None else Decimal("0")
     summary["ajustes_delta"] = delta
+    summary["ajustes_nota_delta"] = note_adjustments_signed_total
     if delta > Decimal("0"):
         summary["saldo_pendiente"] += delta
     elif delta < Decimal("0"):
@@ -2612,7 +2769,16 @@ def _build_partner_record_context(
         pagos = pagos_query.order_by(NotaPago.created_at.desc()).all()
 
     folio_map = _build_folio_map(record_notes)
-    all_rows = _build_partner_record_rows(record_notes, folio_map, partner_type=record_partner_type)
+    note_adjustment_totals = _get_note_balance_adjustment_totals_map(
+        db,
+        [nota.id for nota in record_notes if nota.id],
+    )
+    all_rows = _build_partner_record_rows(
+        record_notes,
+        folio_map,
+        partner_type=record_partner_type,
+        note_adjustment_totals=note_adjustment_totals,
+    )
     coverage_summary = {
         "credito_total": Decimal("0"),
         "credito_aplicado": Decimal("0"),
@@ -2622,6 +2788,20 @@ def _build_partner_record_context(
         coverage_summary = _apply_partner_adjustment_coverage(
             all_rows,
             ajustes_delta=ajustes_delta,
+        )
+        summary = _aggregate_partner_record_summary(
+            notas,
+            partner_type=partner_type,
+            ajustes_delta=ajustes_delta,
+            note_adjustment_totals=note_adjustment_totals,
+        )
+    elif unified_summary:
+        summary = _aggregate_unified_partner_summary(
+            compras=compras,
+            ventas=ventas,
+            ajustes_proveedor=ajustes_proveedor,
+            ajustes_cliente=ajustes_cliente,
+            note_adjustment_totals=note_adjustment_totals,
         )
     rows = _filter_partner_record_rows_by_query(all_rows, q)
 
@@ -8070,6 +8250,12 @@ def _render_nota_detail(
         .order_by(InventarioAjusteManual.created_at.desc(), InventarioAjusteManual.id.desc())
         .all()
     )
+    note_balance_adjustments = (
+        db.query(NotaAjusteSaldo)
+        .filter(NotaAjusteSaldo.nota_id == nota.id)
+        .order_by(NotaAjusteSaldo.created_at.desc(), NotaAjusteSaldo.id.desc())
+        .all()
+    )
     note_adjustment_mov_ids = {
         adj.inventario_movimiento_id
         for adj in note_adjustments
@@ -8157,12 +8343,13 @@ def _render_nota_detail(
             price_map.get(mat_key, {}),
             ensure_ascii=True,
         )
-    saldo_pendiente = Decimal(str(nota.total_monto or 0)) - Decimal(str(nota.monto_pagado or 0))
-    if saldo_pendiente < Decimal("0"):
-        saldo_pendiente = Decimal("0")
-    saldo_a_favor = Decimal(str(nota.monto_pagado or 0)) - Decimal(str(nota.total_monto or 0))
-    if saldo_a_favor < Decimal("0"):
-        saldo_a_favor = Decimal("0")
+    note_balance_adjustment_total = _get_note_balance_adjustment_totals_map(db, [nota.id]).get(nota.id, Decimal("0"))
+    balance_view = _raw_note_payment_balance(
+        nota,
+        note_adjustment_delta=note_balance_adjustment_total,
+    )
+    saldo_pendiente = Decimal(str(balance_view["saldo_pendiente"]))
+    saldo_a_favor = Decimal(str(balance_view["saldo_favor"]))
     pagos_activos = [p for p in pagos if Decimal(str(p.monto or 0)) > Decimal("0")]
     pagos_revertidos = [p for p in pagos if Decimal(str(p.monto or 0)) <= Decimal("0")]
     pagos_activos_total = sum((Decimal(str(p.monto or 0)) for p in pagos_activos), Decimal("0"))
@@ -8252,6 +8439,9 @@ def _render_nota_detail(
         "form_ajuste_operacion": "aumentar",
         "form_ajuste_cantidad": None,
         "form_ajuste_comentario": None,
+        "form_ajuste_saldo_tipo": "reducir",
+        "form_ajuste_saldo_monto": None,
+        "form_ajuste_saldo_comentario": None,
     }
     context = {
         "request": request,
@@ -8268,6 +8458,7 @@ def _render_nota_detail(
         "tipos_cliente": list(TipoCliente),
         "inv_movs": inv_movs,
         "note_adjustments": note_adjustments,
+        "note_balance_adjustments": note_balance_adjustments,
         "note_adjustments_by_mov_id": note_adjustments_by_mov_id,
         "note_adjustment_active_count": len(
             [adj for adj in note_adjustments if not adj.reverted_at and not adj.reversal_of_id]
@@ -8277,6 +8468,16 @@ def _render_nota_detail(
         ),
         "note_adjustment_reversion_count": len(
             [adj for adj in note_adjustments if adj.reversal_of_id]
+        ),
+        "note_balance_adjustment_total": note_balance_adjustment_total,
+        "note_balance_adjustment_active_count": len(
+            [adj for adj in note_balance_adjustments if not adj.reverted_at and not adj.reversal_of_id]
+        ),
+        "note_balance_adjustment_reverted_count": len(
+            [adj for adj in note_balance_adjustments if adj.reverted_at]
+        ),
+        "note_balance_adjustment_reversion_count": len(
+            [adj for adj in note_balance_adjustments if adj.reversal_of_id]
         ),
         "note_material_options": note_material_options,
         "pagos": pagos,
@@ -8303,6 +8504,8 @@ def _render_nota_detail(
         "pago_reverted": pago_reverted,
         "ajuste_manual_updated": request.query_params.get("ajuste_manual") == "1",
         "ajuste_manual_reverted": request.query_params.get("ajuste_manual_revertido") == "1",
+        "ajuste_saldo_updated": request.query_params.get("ajuste_saldo") == "1",
+        "ajuste_saldo_reverted": request.query_params.get("ajuste_saldo_revertido") == "1",
         "pago_inicial_updated": pago_inicial_updated,
         "precios_updated": precios_updated,
         "edit_updated": edit_updated,
@@ -8364,12 +8567,13 @@ def _render_nota_edit(
         operation_label = "Venta"
     else:
         operation_label = nota.tipo_operacion.value.capitalize() if nota.tipo_operacion else "Nota"
-    saldo_pendiente = Decimal(str(nota.total_monto or 0)) - Decimal(str(nota.monto_pagado or 0))
-    if saldo_pendiente < Decimal("0"):
-        saldo_pendiente = Decimal("0")
-    saldo_a_favor = Decimal(str(nota.monto_pagado or 0)) - Decimal(str(nota.total_monto or 0))
-    if saldo_a_favor < Decimal("0"):
-        saldo_a_favor = Decimal("0")
+    note_balance_adjustment_total = _get_note_balance_adjustment_totals_map(db, [nota.id]).get(nota.id, Decimal("0"))
+    balance_view = _raw_note_payment_balance(
+        nota,
+        note_adjustment_delta=note_balance_adjustment_total,
+    )
+    saldo_pendiente = Decimal(str(balance_view["saldo_pendiente"]))
+    saldo_a_favor = Decimal(str(balance_view["saldo_favor"]))
     iva_monto = Decimal(str(nota.iva_monto or 0))
     total_monto = Decimal(str(nota.total_monto or 0))
     subtotal_sin_iva = total_monto - iva_monto if iva_monto else total_monto
@@ -8409,6 +8613,7 @@ def _render_nota_edit(
             "tipos_cliente": list(TipoCliente),
             "saldo_pendiente": saldo_pendiente,
             "saldo_a_favor": saldo_a_favor,
+            "note_balance_adjustment_total": note_balance_adjustment_total,
             "subtotal_sin_iva": subtotal_sin_iva,
             "iva_monto": iva_monto,
             "iva_pct": iva_pct,
@@ -9570,6 +9775,156 @@ async def notas_ajuste_manual_revertir(
 
     return RedirectResponse(
         url=f"/web/admin/notas/{nota_id}?ajuste_manual_revertido=1#note-manual-adjustments",
+        status_code=303,
+    )
+
+
+@router.post("/notas/{nota_id}/ajuste-saldo")
+async def notas_ajuste_saldo_post(
+    nota_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    nota = db.get(Nota, nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_nota_access(nota, allowed_suc_ids)
+    if nota.estado != NotaEstado.aprobada:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="Solo puedes ajustar saldo en notas aprobadas.",
+        )
+
+    form = await request.form()
+    ajuste_tipo = (form.get("ajuste_saldo_tipo") or "").strip().lower()
+    monto_raw = (form.get("ajuste_saldo_monto") or "").strip()
+    comentario = (form.get("ajuste_saldo_comentario") or "").strip()
+    form_state = {
+        "form_ajuste_saldo_tipo": ajuste_tipo or "reducir",
+        "form_ajuste_saldo_monto": monto_raw,
+        "form_ajuste_saldo_comentario": comentario,
+    }
+
+    if ajuste_tipo not in {"reducir", "aumentar"}:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="Selecciona un tipo de ajuste de saldo valido.",
+            form_state=form_state,
+        )
+    try:
+        monto_val = Decimal(str(monto_raw))
+    except (InvalidOperation, TypeError):
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="El monto del ajuste de saldo es invalido.",
+            form_state=form_state,
+        )
+    if monto_val <= Decimal("0"):
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="El monto del ajuste de saldo debe ser mayor a cero.",
+            form_state=form_state,
+        )
+    if not comentario:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="Debes indicar un comentario para el ajuste de saldo.",
+            form_state=form_state,
+        )
+
+    delta = -monto_val if ajuste_tipo == "reducir" else monto_val
+    try:
+        note_service.adjust_note_balance(
+            db,
+            nota,
+            monto_delta=delta,
+            usuario_id=current_user.get("id"),
+            comentario=comentario,
+        )
+    except ValueError as exc:
+        db.rollback()
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error=str(exc),
+            form_state=form_state,
+        )
+
+    return RedirectResponse(
+        url=f"/web/admin/notas/{nota_id}?ajuste_saldo=1#note-balance-adjustments",
+        status_code=303,
+    )
+
+
+@router.post("/notas/{nota_id}/ajuste-saldo/{ajuste_id}/revertir")
+async def notas_ajuste_saldo_revertir(
+    nota_id: int,
+    ajuste_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    nota = db.get(Nota, nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_nota_access(nota, allowed_suc_ids)
+
+    ajuste = (
+        db.query(NotaAjusteSaldo)
+        .filter(
+            NotaAjusteSaldo.id == ajuste_id,
+            NotaAjusteSaldo.nota_id == nota.id,
+        )
+        .first()
+    )
+    if not ajuste:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="El ajuste de saldo ligado a esta nota no fue encontrado.",
+        )
+
+    try:
+        note_service.reverse_note_balance_adjustment(
+            db,
+            ajuste,
+            usuario_id=current_user.get("id"),
+            comentario=f"Reversion ajuste saldo nota #{nota.id} · ajuste #{ajuste.id}",
+        )
+    except ValueError as exc:
+        db.rollback()
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error=str(exc),
+        )
+
+    return RedirectResponse(
+        url=f"/web/admin/notas/{nota_id}?ajuste_saldo_revertido=1#note-balance-adjustments",
         status_code=303,
     )
 
@@ -10746,7 +11101,16 @@ async def contabilidad_list(
                     notas_p = _apply_sucursal_filter(notas_p, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
                     notas_p = notas_p.order_by(Nota.created_at.desc()).all()
                     folio_map = _build_folio_map(notas_p)
-                    record_rows = _build_partner_record_rows(notas_p, folio_map, partner_type="cliente")
+                    note_adjustment_totals = _get_note_balance_adjustment_totals_map(
+                        db,
+                        [nota.id for nota in notas_p if nota.id],
+                    )
+                    record_rows = _build_partner_record_rows(
+                        notas_p,
+                        folio_map,
+                        partner_type="cliente",
+                        note_adjustment_totals=note_adjustment_totals,
+                    )
                     ajustes_delta = _get_partner_adjustments_total(
                         db,
                         partner_type="cliente",
@@ -10758,6 +11122,7 @@ async def contabilidad_list(
                         notas_p,
                         partner_type="cliente",
                         ajustes_delta=ajustes_delta,
+                        note_adjustment_totals=note_adjustment_totals,
                     )
                     unified_enabled = False
                     linked_partner = None
@@ -10775,6 +11140,10 @@ async def contabilidad_list(
                         )
                         compras_q = _apply_sucursal_filter(compras_q, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
                         compras = compras_q.order_by(Nota.created_at.desc()).all()
+                        unified_note_adjustments = _get_note_balance_adjustment_totals_map(
+                            db,
+                            [nota.id for nota in (compras + notas_p) if nota.id],
+                        )
                         ajustes_proveedor = _get_partner_adjustments_total(
                             db,
                             partner_type="proveedor",
@@ -10787,6 +11156,7 @@ async def contabilidad_list(
                             ventas=notas_p,
                             ajustes_proveedor=ajustes_proveedor,
                             ajustes_cliente=ajustes_delta,
+                            note_adjustment_totals=unified_note_adjustments,
                         )
                         unified_enabled = True
                     pagos_p = (
@@ -10867,6 +11237,10 @@ async def contabilidad_list(
                             ventas=ventas,
                             ajustes_proveedor=ajustes_proveedor,
                             ajustes_cliente=ajustes_cliente,
+                            note_adjustment_totals=_get_note_balance_adjustment_totals_map(
+                                db,
+                                [nota.id for nota in (compras + ventas) if nota.id],
+                            ),
                         )
                         record_notes = sorted(
                             compras + ventas,
@@ -10874,7 +11248,15 @@ async def contabilidad_list(
                             reverse=True,
                         )
                         folio_map = _build_folio_map(record_notes)
-                        record_rows = _build_partner_record_rows(record_notes, folio_map, partner_type=None)
+                        record_rows = _build_partner_record_rows(
+                            record_notes,
+                            folio_map,
+                            partner_type=None,
+                            note_adjustment_totals=_get_note_balance_adjustment_totals_map(
+                                db,
+                                [nota.id for nota in record_notes if nota.id],
+                            ),
+                        )
                         note_ids = [nota.id for nota in record_notes]
                         if note_ids:
                             pagos_p = (
@@ -10888,11 +11270,21 @@ async def contabilidad_list(
                             pagos_p = []
                     else:
                         folio_map = _build_folio_map(compras)
-                        record_rows = _build_partner_record_rows(compras, folio_map, partner_type="proveedor")
+                        note_adjustment_totals = _get_note_balance_adjustment_totals_map(
+                            db,
+                            [nota.id for nota in compras if nota.id],
+                        )
+                        record_rows = _build_partner_record_rows(
+                            compras,
+                            folio_map,
+                            partner_type="proveedor",
+                            note_adjustment_totals=note_adjustment_totals,
+                        )
                         summary = _aggregate_partner_record_summary(
                             compras,
                             partner_type="proveedor",
                             ajustes_delta=ajustes_proveedor,
+                            note_adjustment_totals=note_adjustment_totals,
                         )
                         pagos_p = (
                             db.query(NotaPago)

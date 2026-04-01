@@ -20,6 +20,7 @@ from app.models import (
     InventarioMovimiento,
     MovimientoContable,
     NotaPago,
+    NotaAjusteSaldo,
     NotaOriginal,
     NotaEvidenciaExtra,
     Cuenta,
@@ -247,18 +248,55 @@ def _next_folio_seq(
     return int(max_seq) + 1
 
 
-def _normalize_pago_incremental(nota: Nota, monto_pagado: Decimal | None) -> Decimal:
+def _normalize_pago_incremental(
+    db: Session,
+    nota: Nota,
+    monto_pagado: Decimal | None,
+) -> Decimal:
     pagado = Decimal(str(monto_pagado or 0))
     if pagado <= Decimal("0"):
         raise ValueError("El monto del pago debe ser mayor a 0.")
-    total = Decimal(str(nota.total_monto or 0))
-    acumulado = Decimal(str(nota.monto_pagado or 0))
-    saldo = total - acumulado
+    snapshot = _effective_note_balance_snapshot(db, nota)
+    saldo = Decimal(str(snapshot["saldo_pendiente"]))
     if saldo < Decimal("0"):
         saldo = Decimal("0")
     if pagado > saldo:
         raise ValueError("El pago excede el saldo pendiente de la nota.")
     return pagado
+
+
+def _get_note_balance_adjustment_total(
+    db: Session,
+    *,
+    nota_id: int,
+) -> Decimal:
+    total = (
+        db.query(func.coalesce(func.sum(NotaAjusteSaldo.monto_delta), 0))
+        .filter(NotaAjusteSaldo.nota_id == nota_id)
+        .scalar()
+    )
+    return Decimal(str(total or 0))
+
+
+def _effective_note_balance_snapshot(
+    db: Session,
+    nota: Nota,
+) -> dict[str, Decimal]:
+    total = Decimal(str(nota.total_monto or 0))
+    pagado = Decimal(str(nota.monto_pagado or 0))
+    ajuste_delta = _get_note_balance_adjustment_total(db, nota_id=nota.id)
+    saldo = total - pagado + ajuste_delta
+    saldo_pendiente = saldo if saldo > Decimal("0") else Decimal("0")
+    saldo_favor = -saldo if saldo < Decimal("0") else Decimal("0")
+    return {
+        "total": total,
+        "pagado": pagado,
+        "ajuste_delta": ajuste_delta,
+        "saldo": saldo,
+        "saldo_pendiente": saldo_pendiente,
+        "saldo_favor": saldo_favor,
+        "total_efectivo": total + ajuste_delta,
+    }
 
 
 def _parse_cuenta_id(raw: str | None) -> int | None:
@@ -906,7 +944,7 @@ def add_payment(
         raise ValueError("Solo puedes registrar pagos en notas aprobadas.")
     if nota.tipo_operacion not in (TipoOperacion.compra, TipoOperacion.venta):
         raise ValueError("Tipo de operacion no soportado para pagos.")
-    monto = _normalize_pago_incremental(nota, monto_pagado)
+    monto = _normalize_pago_incremental(db, nota, monto_pagado)
     metodo = (metodo_pago or nota.metodo_pago or "").strip().lower() or None
     cuenta_id: int | None = None
     cuenta_label: str | None = None
@@ -1055,9 +1093,12 @@ def adjust_initial_payment(
         raise ValueError("Solo puedes ajustar pagos en notas aprobadas.")
     if monto_objetivo < Decimal("0"):
         raise ValueError("El monto objetivo no puede ser negativo.")
-    total = Decimal(str(nota.total_monto or 0))
-    if monto_objetivo > total:
-        raise ValueError("El pago inicial no puede exceder el total de la nota.")
+    snapshot = _effective_note_balance_snapshot(db, nota)
+    total_efectivo = Decimal(str(snapshot["total_efectivo"]))
+    if total_efectivo < Decimal("0"):
+        total_efectivo = Decimal("0")
+    if monto_objetivo > total_efectivo:
+        raise ValueError("El pago inicial no puede exceder el saldo efectivo de la nota.")
 
     pagos_iniciales = (
         db.query(NotaPago)
@@ -1069,6 +1110,11 @@ def adjust_initial_payment(
         .all()
     )
     actual = sum((Decimal(str(p.monto or 0)) for p in pagos_iniciales), Decimal("0"))
+    otros_pagos = Decimal(str(nota.monto_pagado or 0)) - actual
+    if otros_pagos < Decimal("0"):
+        otros_pagos = Decimal("0")
+    if monto_objetivo + otros_pagos > total_efectivo:
+        raise ValueError("El pago inicial ajustado excede el saldo efectivo disponible.")
     delta = monto_objetivo - actual
     if delta == 0:
         return
@@ -1251,6 +1297,83 @@ def reverse_manual_inventory_adjustment(
         usuario_id=usuario_id,
         nota_id=ajuste.nota_id,
         nota_material_id=ajuste.nota_material_id,
+        reversal_of_id=ajuste.id,
+    )
+    db.refresh(ajuste)
+    return ajuste
+
+
+def adjust_note_balance(
+    db: Session,
+    nota: Nota,
+    *,
+    monto_delta: Decimal,
+    usuario_id: int | None = None,
+    comentario: str | None = None,
+    reversal_of_id: int | None = None,
+) -> NotaAjusteSaldo:
+    if nota.estado != NotaEstado.aprobada:
+        raise ValueError("Solo puedes ajustar saldo en notas aprobadas.")
+    delta = Decimal(str(monto_delta or 0))
+    if delta == Decimal("0"):
+        raise ValueError("El ajuste de saldo no puede ser cero.")
+
+    snapshot = _effective_note_balance_snapshot(db, nota)
+    saldo_anterior = Decimal(str(snapshot["saldo"]))
+    saldo_resultante = saldo_anterior + delta
+
+    ajuste = NotaAjusteSaldo(
+        nota_id=nota.id,
+        usuario_id=usuario_id,
+        monto_delta=delta,
+        saldo_anterior=saldo_anterior,
+        saldo_resultante=saldo_resultante,
+        comentario=comentario or "Ajuste de saldo ligado a nota",
+        reversal_of_id=reversal_of_id,
+    )
+    db.add(ajuste)
+
+    if reversal_of_id:
+        original = db.get(NotaAjusteSaldo, reversal_of_id)
+        if original:
+            original.reverted_at = datetime.utcnow()
+            original.reverted_by_user_id = usuario_id
+            original.comentario_reversion = comentario or f"Reversion ajuste saldo #{reversal_of_id}"
+            db.add(original)
+
+    nota.updated_at = datetime.utcnow()
+    db.add(nota)
+    db.commit()
+    db.refresh(ajuste)
+    db.refresh(nota)
+    return ajuste
+
+
+def reverse_note_balance_adjustment(
+    db: Session,
+    ajuste: NotaAjusteSaldo,
+    *,
+    usuario_id: int | None = None,
+    comentario: str | None = None,
+) -> NotaAjusteSaldo:
+    if ajuste.reversal_of_id:
+        raise ValueError("No puedes revertir una reversion de saldo.")
+    if ajuste.reverted_at:
+        raise ValueError("Este ajuste de saldo ya fue revertido.")
+    nota = db.get(Nota, ajuste.nota_id)
+    if not nota:
+        raise ValueError("La nota del ajuste ya no existe.")
+    if nota.estado != NotaEstado.aprobada:
+        raise ValueError("Solo puedes revertir ajustes de saldo en notas aprobadas.")
+
+    delta_reversion = -Decimal(str(ajuste.monto_delta or 0))
+    comment = comentario or f"Reversion ajuste saldo nota #{nota.id} · ajuste #{ajuste.id}"
+    adjust_note_balance(
+        db,
+        nota,
+        monto_delta=delta_reversion,
+        usuario_id=usuario_id,
+        comentario=comment,
         reversal_of_id=ajuste.id,
     )
     db.refresh(ajuste)
