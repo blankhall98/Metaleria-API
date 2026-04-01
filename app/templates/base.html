@@ -19,7 +19,9 @@
 
     <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
 </head>
-<body>
+{% set current_path = request.url.path if request and request.url else '' %}
+{% set show_mobile_dock = user and user.rol in ['super_admin', 'admin', 'trabajador'] %}
+<body class="{% if show_mobile_dock %}app-has-mobile-dock {% endif %}{% if user %}role-{{ user.rol }}{% else %}role-guest{% endif %}">
 <nav class="navbar mb-4">
     <div class="container-fluid">
         <a class="navbar-brand d-flex align-items-center fw-bold" href="/web">
@@ -36,7 +38,8 @@
                 </span>
             {% endif %}
             <button class="btn btn-outline-secondary btn-sm menu-trigger" type="button" aria-label="Abrir menú" onclick="toggleDrawer(true)">
-                &#9776;
+                <span class="menu-trigger-icon">&#9776;</span>
+                <span class="menu-trigger-text d-none d-sm-inline">Men&uacute;</span>
             </button>
         </div>
     </div>
@@ -106,7 +109,50 @@
 </div>
 <div id="navOverlay" class="nav-overlay" onclick="toggleDrawer(false)"></div>
 
-{% set current_path = request.url.path if request and request.url else '' %}
+{% if user and user.rol in ['super_admin', 'admin'] %}
+    <nav class="mobile-dock mobile-dock--admin" aria-label="Navegaci&oacute;n m&oacute;vil administrativa">
+        <a class="mobile-dock-link {% if current_path == '/web' %}active{% endif %}" href="/web">
+            <span class="mobile-dock-icon">&#8962;</span>
+            <span class="mobile-dock-label">Inicio</span>
+        </a>
+        <a class="mobile-dock-link {% if current_path.startswith('/web/admin/notas') %}active{% endif %}" href="/web/admin/notas">
+            <span class="mobile-dock-icon">&#9998;</span>
+            <span class="mobile-dock-label">Notas</span>
+        </a>
+        <a class="mobile-dock-link {% if current_path.startswith('/web/admin/proveedores') or current_path.startswith('/web/admin/clientes') %}active{% endif %}" href="/web/admin/proveedores">
+            <span class="mobile-dock-icon">&#128101;</span>
+            <span class="mobile-dock-label">Partners</span>
+        </a>
+        <a class="mobile-dock-link {% if current_path.startswith('/web/admin/inventario') %}active{% endif %}" href="/web/admin/inventario">
+            <span class="mobile-dock-icon">&#128230;</span>
+            <span class="mobile-dock-label">Inventario</span>
+        </a>
+        <button class="mobile-dock-link mobile-dock-link--menu" type="button" onclick="toggleDrawer(true)" aria-label="Abrir men&uacute;">
+            <span class="mobile-dock-icon">&#9776;</span>
+            <span class="mobile-dock-label">Men&uacute;</span>
+        </button>
+    </nav>
+{% elif user and user.rol == 'trabajador' %}
+    <nav class="mobile-dock mobile-dock--worker" aria-label="Navegaci&oacute;n m&oacute;vil del trabajador">
+        <a class="mobile-dock-link {% if current_path == '/web' %}active{% endif %}" href="/web">
+            <span class="mobile-dock-icon">&#8962;</span>
+            <span class="mobile-dock-label">Inicio</span>
+        </a>
+        <a class="mobile-dock-link {% if current_path.startswith('/web/worker/notes') and not current_path.endswith('/nueva') %}active{% endif %}" href="/web/worker/notes">
+            <span class="mobile-dock-icon">&#9998;</span>
+            <span class="mobile-dock-label">Mis notas</span>
+        </a>
+        <a class="mobile-dock-link {% if current_path.endswith('/web/worker/notes/nueva') or current_path.endswith('/notes/nueva') %}active{% endif %}" href="/web/worker/notes/nueva">
+            <span class="mobile-dock-icon">&#65291;</span>
+            <span class="mobile-dock-label">Nueva</span>
+        </a>
+        <button class="mobile-dock-link mobile-dock-link--menu" type="button" onclick="toggleDrawer(true)" aria-label="Abrir men&uacute;">
+            <span class="mobile-dock-icon">&#9776;</span>
+            <span class="mobile-dock-label">Men&uacute;</span>
+        </button>
+    </nav>
+{% endif %}
+
 <main class="page-shell {% if current_path.startswith('/web/admin/notas') or current_path.startswith('/web/worker/notes') %}page-shell-notes{% endif %}">
     {% block content %}{% endblock %}
 </main>
@@ -146,6 +192,7 @@
     function toggleDrawer(open) {
         const drawer = document.getElementById('navDrawer');
         const overlay = document.getElementById('navOverlay');
+        document.body.classList.toggle('drawer-open', !!open);
         if (open) {
             drawer.classList.add('open');
             overlay.classList.add('open');
@@ -296,6 +343,14 @@
 
     document.addEventListener('DOMContentLoaded', () => {
         ensureScrollableTableShells();
+        document.querySelectorAll('.nav-drawer a').forEach((link) => {
+            link.addEventListener('click', () => toggleDrawer(false));
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                toggleDrawer(false);
+            }
+        });
 
         document.querySelectorAll('.table-scroll-shell .table-responsive').forEach((area) => {
             area.addEventListener('mousedown', (event) => {
