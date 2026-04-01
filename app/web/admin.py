@@ -8194,24 +8194,27 @@ async def notas_factura(
         raise HTTPException(status_code=400, detail="La nota debe estar aprobada.")
     if nota.tipo_operacion not in (TipoOperacion.compra, TipoOperacion.venta):
         raise HTTPException(status_code=400, detail="La nota no genera factura.")
-    if nota.factura_url and nota.factura_generada_at and nota.updated_at:
-        if nota.factura_generada_at >= nota.updated_at:
-            return RedirectResponse(url=nota.factura_url, status_code=302)
 
     pdf_bytes, filename = invoice_service.build_invoice_pdf(db, nota)
     if current_user.get("rol") == UserRole.super_admin.value:
         try:
-            factura_url = invoice_service.upload_invoice_pdf(pdf_bytes, filename, nota.id)
-            if factura_url:
-                nota.factura_url = factura_url
-                nota.factura_generada_at = datetime.utcnow()
-                db.add(nota)
-                db.commit()
-                return RedirectResponse(url=factura_url, status_code=302)
+            needs_upload = not (
+                nota.factura_url
+                and nota.factura_generada_at
+                and nota.updated_at
+                and nota.factura_generada_at >= nota.updated_at
+            )
+            if needs_upload:
+                factura_url = invoice_service.upload_invoice_pdf(pdf_bytes, filename, nota.id)
+                if factura_url:
+                    nota.factura_url = factura_url
+                    nota.factura_generada_at = datetime.utcnow()
+                    db.add(nota)
+                    db.commit()
         except Exception:
             db.rollback()
 
-    headers = {"Content-Disposition": f"attachment; filename={filename}"}
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return StreamingResponse(io.BytesIO(pdf_bytes), media_type="application/pdf", headers=headers)
 
 

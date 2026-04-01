@@ -113,6 +113,19 @@ def _safe_filename(value: str) -> str:
     return slug or "factura"
 
 
+def _build_invoice_filename(
+    *,
+    nota: Nota,
+    folio_label: str,
+    partner_name: str | None,
+) -> str:
+    prefix = "orden_compra" if nota.tipo_operacion == TipoOperacion.compra else "orden_venta"
+    partner_slug = _safe_filename(partner_name or "")
+    if partner_slug and partner_slug != "factura":
+        return f"{prefix}_{_safe_filename(folio_label)}_{partner_slug}.pdf"
+    return f"{prefix}_{_safe_filename(folio_label)}.pdf"
+
+
 def build_invoice_pdf(db: Session, nota: Nota, generated_at: datetime | None = None) -> tuple[bytes, str]:
     if nota.tipo_operacion not in (TipoOperacion.compra, TipoOperacion.venta):
         raise ValueError("Este tipo de nota no genera factura.")
@@ -144,7 +157,7 @@ def build_invoice_pdf(db: Session, nota: Nota, generated_at: datetime | None = N
     partner_email = partner.correo_electronico if partner else None
 
     tipo_label = "Compra" if nota.tipo_operacion == TipoOperacion.compra else "Venta"
-    header_title = "ORDEN DE COMPRA"
+    header_title = "ORDEN DE COMPRA" if nota.tipo_operacion == TipoOperacion.compra else "ORDEN DE VENTA"
     sucursal_name = sucursal.nombre if sucursal else "-"
     sucursal_address = sucursal.direccion if sucursal and sucursal.direccion else "-"
     folio_label = folio or f"nota-{nota.id}"
@@ -296,7 +309,11 @@ def build_invoice_pdf(db: Session, nota: Nota, generated_at: datetime | None = N
     pdf.text(left, footer_y - 14, "Documento generado por sistema. Este PDF es un comprobante interno.", size=8)
 
     pdf_bytes = pdf.render()
-    filename = f"orden_compra_{_safe_filename(folio_label)}.pdf"
+    filename = _build_invoice_filename(
+        nota=nota,
+        folio_label=folio_label,
+        partner_name=partner_name,
+    )
     return pdf_bytes, filename
 
 
