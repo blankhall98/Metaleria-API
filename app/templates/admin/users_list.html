@@ -25,6 +25,16 @@
                 Usuario actualizado correctamente.
             </div>
         {% endif %}
+        {% if delete_ok %}
+            <div class="alert alert-success py-2 small mb-3">
+                Usuario eliminado correctamente.
+            </div>
+        {% endif %}
+        {% if delete_error %}
+            <div class="alert alert-danger py-2 small mb-3">
+                {{ delete_error }}
+            </div>
+        {% endif %}
         <form class="row g-2 align-items-end mb-3" method="get">
             <div class="col-md-4">
                 <label class="form-label">Sucursal</label>
@@ -52,6 +62,7 @@
                 </thead>
                 <tbody>
                 {% for u in usuarios %}
+                    {% set delete_meta = user_delete_meta.get(u.id, {}) %}
                     <tr>
                         <td>{{ u.id }}</td>
                         <td>{{ u.username }}</td>
@@ -86,7 +97,16 @@
                         </td>
                     
                         <td class="text-end">
-                            <a href="/web/admin/users/{{ u.id }}/editar" class="btn btn-outline-primary btn-sm">Editar</a>
+                            <div class="d-inline-flex gap-2 align-items-center flex-wrap justify-content-end">
+                                <a href="/web/admin/users/{{ u.id }}/editar" class="btn btn-outline-primary btn-sm">Editar</a>
+                                {% if delete_meta.can_delete %}
+                                    <form method="post" action="/web/admin/users/{{ u.id }}/eliminar" onsubmit="return confirm('¿Eliminar este usuario? Esta acción no se puede deshacer.');">
+                                        <button class="btn btn-outline-danger btn-sm" type="submit">Eliminar</button>
+                                    </form>
+                                {% else %}
+                                    <span class="text-muted small">{{ delete_meta.reason }}</span>
+                                {% endif %}
+                            </div>
                         </td>
                     </tr>
                 {% endfor %}

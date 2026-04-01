@@ -27,6 +27,7 @@ from app.models import (
     SucursalStatus,
     Material,
     TablaPrecio,
+    PriceChangeLog,
     TipoOperacion,
     TipoCliente,
     Proveedor,
@@ -3061,6 +3062,135 @@ def _is_read_only_admin_user(current_user: dict | None) -> bool:
     return bool(current_user) and current_user.get("rol") == UserRole.visor.value
 
 
+def _user_delete_block_reason(
+    db: Session,
+    *,
+    target_user: User,
+    current_user_id: int | None,
+) -> str | None:
+    if current_user_id and target_user.id == current_user_id:
+        return "No puedes eliminar tu propio usuario."
+    if target_user.super_admin_original:
+        return "No se puede eliminar el super admin original."
+    if target_user.rol == UserRole.super_admin:
+        remaining_superadmins = (
+            db.query(User)
+            .filter(User.rol == UserRole.super_admin, User.id != target_user.id)
+            .count()
+        )
+        if remaining_superadmins == 0:
+            return "Debe existir al menos un super admin en el sistema."
+    worker_notes = db.query(Nota).filter(Nota.trabajador_id == target_user.id).count()
+    if worker_notes:
+        return f"No se puede eliminar: tiene {worker_notes} notas registradas como trabajador."
+    return None
+
+
+def _detach_user_references(db: Session, *, user_id: int) -> None:
+    db.query(PriceChangeLog).filter(PriceChangeLog.user_id == user_id).update(
+        {"user_id": None},
+        synchronize_session=False,
+    )
+    db.query(AjusteSaldoPartner).filter(AjusteSaldoPartner.usuario_id == user_id).update(
+        {"usuario_id": None},
+        synchronize_session=False,
+    )
+    db.query(Nota).filter(Nota.admin_id == user_id).update(
+        {"admin_id": None},
+        synchronize_session=False,
+    )
+    db.query(NotaEvidenciaExtra).filter(NotaEvidenciaExtra.uploaded_by_id == user_id).update(
+        {"uploaded_by_id": None},
+        synchronize_session=False,
+    )
+    db.query(NotaPago).filter(NotaPago.usuario_id == user_id).update(
+        {"usuario_id": None},
+        synchronize_session=False,
+    )
+    db.query(NotaAjusteSaldo).filter(NotaAjusteSaldo.usuario_id == user_id).update(
+        {"usuario_id": None},
+        synchronize_session=False,
+    )
+    db.query(NotaAjusteSaldo).filter(NotaAjusteSaldo.reverted_by_user_id == user_id).update(
+        {"reverted_by_user_id": None},
+        synchronize_session=False,
+    )
+    db.query(NotaDevolucionParcial).filter(NotaDevolucionParcial.usuario_id == user_id).update(
+        {"usuario_id": None},
+        synchronize_session=False,
+    )
+    db.query(NotaDevolucionParcialLinea).filter(
+        NotaDevolucionParcialLinea.reverted_by_user_id == user_id
+    ).update(
+        {"reverted_by_user_id": None},
+        synchronize_session=False,
+    )
+    db.query(NotaDevolucionTotal).filter(NotaDevolucionTotal.usuario_id == user_id).update(
+        {"usuario_id": None},
+        synchronize_session=False,
+    )
+    db.query(NotaDevolucionTotal).filter(NotaDevolucionTotal.reverted_by_user_id == user_id).update(
+        {"reverted_by_user_id": None},
+        synchronize_session=False,
+    )
+    db.query(InventarioMovimiento).filter(InventarioMovimiento.usuario_id == user_id).update(
+        {"usuario_id": None},
+        synchronize_session=False,
+    )
+    db.query(MovimientoContable).filter(MovimientoContable.usuario_id == user_id).update(
+        {"usuario_id": None},
+        synchronize_session=False,
+    )
+    db.query(InventarioAjusteManual).filter(InventarioAjusteManual.usuario_id == user_id).update(
+        {"usuario_id": None},
+        synchronize_session=False,
+    )
+    db.query(InventarioAjusteManual).filter(
+        InventarioAjusteManual.reverted_by_user_id == user_id
+    ).update(
+        {"reverted_by_user_id": None},
+        synchronize_session=False,
+    )
+    db.query(CorteCaja).filter(CorteCaja.abierto_por_id == user_id).update(
+        {"abierto_por_id": None},
+        synchronize_session=False,
+    )
+    db.query(CorteCaja).filter(CorteCaja.cerrado_por_id == user_id).update(
+        {"cerrado_por_id": None},
+        synchronize_session=False,
+    )
+    db.query(CorteCajaGasto).filter(CorteCajaGasto.usuario_id == user_id).update(
+        {"usuario_id": None},
+        synchronize_session=False,
+    )
+    db.query(CorteCajaMovimiento).filter(CorteCajaMovimiento.usuario_id == user_id).update(
+        {"usuario_id": None},
+        synchronize_session=False,
+    )
+    db.query(CuentaScrap360Movimiento).filter(CuentaScrap360Movimiento.usuario_id == user_id).update(
+        {"usuario_id": None},
+        synchronize_session=False,
+    )
+    db.query(ConversionMaterial).filter(ConversionMaterial.usuario_id == user_id).update(
+        {"usuario_id": None},
+        synchronize_session=False,
+    )
+    db.query(ConversionMaterialReversion).filter(
+        ConversionMaterialReversion.usuario_id == user_id
+    ).update(
+        {"usuario_id": None},
+        synchronize_session=False,
+    )
+    db.query(ComisionarioNota).filter(ComisionarioNota.admin_id == user_id).update(
+        {"admin_id": None},
+        synchronize_session=False,
+    )
+    db.query(ComisionarioPago).filter(ComisionarioPago.usuario_id == user_id).update(
+        {"usuario_id": None},
+        synchronize_session=False,
+    )
+
+
 # ---------- SUCURSALES ----------
 
 
@@ -3324,6 +3454,8 @@ async def users_list(
     current_user: dict = Depends(require_superadmin),
 ):
     updated = request.query_params.get("updated") == "1"
+    delete_ok = request.query_params.get("deleted") == "1"
+    delete_error = (request.query_params.get("delete_error") or "").strip() or None
     sucursal_id = request.query_params.get("sucursal_id")
     try:
         sucursal_id_int = int(sucursal_id) if sucursal_id else None
@@ -3338,6 +3470,17 @@ async def users_list(
         usuarios = usuarios.filter(User.sucursal_id == sucursal_id_int)
     usuarios = usuarios.all()
     sucursales = {s.id: s for s in db.query(Sucursal).all()}
+    user_delete_meta = {}
+    for u in usuarios:
+        reason = _user_delete_block_reason(
+            db,
+            target_user=u,
+            current_user_id=current_user.get("id"),
+        )
+        user_delete_meta[u.id] = {
+            "can_delete": reason is None,
+            "reason": reason,
+        }
 
     return templates.TemplateResponse(
         "admin/users_list.html",
@@ -3349,6 +3492,9 @@ async def users_list(
             "sucursales_map": sucursales,
             "sucursal_id": sucursal_id_int,
             "updated": updated,
+            "delete_ok": delete_ok,
+            "delete_error": delete_error,
+            "user_delete_meta": user_delete_meta,
         },
     )
 
@@ -3649,6 +3795,36 @@ async def user_edit_post(
     db.commit()
 
     return RedirectResponse(url="/web/admin/users?updated=1", status_code=303)
+
+
+@router.post("/users/{user_id}/eliminar")
+async def user_delete(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+
+    block_reason = _user_delete_block_reason(
+        db,
+        target_user=user,
+        current_user_id=current_user.get("id"),
+    )
+    if block_reason:
+        return RedirectResponse(
+            url=f"/web/admin/users?{urlencode({'delete_error': block_reason})}",
+            status_code=303,
+        )
+
+    if user.rol == UserRole.admin:
+        user.sucursales_admin = []
+    _detach_user_references(db, user_id=user.id)
+    db.flush()
+    db.delete(user)
+    db.commit()
+    return RedirectResponse(url="/web/admin/users?deleted=1", status_code=303)
 
 
 # ---------- MATERIALES ----------
