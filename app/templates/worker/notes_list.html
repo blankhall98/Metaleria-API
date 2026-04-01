@@ -28,6 +28,7 @@
                 <tr>
                     <th>Folio</th>
                     <th>Operacion</th>
+                    <th>Proveedor / cliente</th>
                     <th>Estado</th>
                     <th>Total kg</th>
                     <th>Total $</th>
@@ -42,6 +43,13 @@
                             <div class="fw-semibold">{{ folio_map.get(n.id, '-') }}</div>
                         </td>
                         <td>{{ n.tipo_operacion.value|capitalize }}</td>
+                        <td>
+                            {% set partner = partner_map.get(n.id, {}) %}
+                            <div class="fw-semibold">{{ partner.get('name', '-') }}</div>
+                            {% if partner.get('kind') %}
+                                <div class="text-muted small">{{ partner.get('kind') }}</div>
+                            {% endif %}
+                        </td>
                         <td>
                             {% if n.estado.value == 'BORRADOR' %}
                                 <span class="badge bg-secondary">Borrador</span>
@@ -79,10 +87,15 @@
         <div class="d-md-none d-grid gap-2">
             {% for n in notas %}
                 <div class="card soft p-3">
+                    {% set partner = partner_map.get(n.id, {}) %}
                     <div class="d-flex justify-content-between align-items-start mb-2">
                         <div>
                             <div class="text-muted small">Folio {{ folio_map.get(n.id, '-') }}</div>
                             <div class="fw-bold">{{ n.tipo_operacion.value|capitalize }}</div>
+                            <div class="mt-2">
+                                <div class="text-muted small">{{ partner.get('kind', 'Proveedor / cliente') }}</div>
+                                <div class="fw-semibold">{{ partner.get('name', '-') }}</div>
+                            </div>
                         </div>
                         <div>
                             {% if n.estado.value == 'BORRADOR' %}

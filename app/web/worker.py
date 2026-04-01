@@ -140,6 +140,39 @@ def _normalize_worker_partner_selection(
     return None, (cliente_raw or None), "cliente"
 
 
+def _build_worker_note_partner_map(db: Session, notas: list[Nota]) -> dict[int, dict[str, str]]:
+    proveedor_ids = sorted({nota.proveedor_id for nota in notas if nota.proveedor_id})
+    cliente_ids = sorted({nota.cliente_id for nota in notas if nota.cliente_id})
+    proveedores_map = {
+        proveedor.id: proveedor
+        for proveedor in db.query(Proveedor).filter(Proveedor.id.in_(proveedor_ids)).all()
+    } if proveedor_ids else {}
+    clientes_map = {
+        cliente.id: cliente
+        for cliente in db.query(Cliente).filter(Cliente.id.in_(cliente_ids)).all()
+    } if cliente_ids else {}
+
+    partner_map: dict[int, dict[str, str]] = {}
+    for nota in notas:
+        partner_name = "-"
+        partner_kind = ""
+        if nota.proveedor_id:
+            proveedor = proveedores_map.get(nota.proveedor_id)
+            if proveedor:
+                partner_name = proveedor.nombre_completo
+                partner_kind = "Proveedor"
+        elif nota.cliente_id:
+            cliente = clientes_map.get(nota.cliente_id)
+            if cliente:
+                partner_name = cliente.nombre_completo
+                partner_kind = "Cliente"
+        partner_map[nota.id] = {
+            "name": partner_name,
+            "kind": partner_kind,
+        }
+    return partner_map
+
+
 @router.get("/notes")
 async def notes_list(
     request: Request,
@@ -160,6 +193,7 @@ async def notes_list(
             folio_seq=nota.folio_seq,
         )
         folio_map[nota.id] = folio or "-"
+    partner_map = _build_worker_note_partner_map(db, notas)
     return templates.TemplateResponse(
         "worker/notes_list.html",
         {
@@ -168,6 +202,7 @@ async def notes_list(
             "user": current_user,
             "notas": notas,
             "folio_map": folio_map,
+            "partner_map": partner_map,
             "success": request.query_params.get("success"),
         },
     )
