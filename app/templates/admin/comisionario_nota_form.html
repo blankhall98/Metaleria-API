@@ -21,23 +21,32 @@
             <div class="row g-3">
                 <div class="col-md-6">
                     <label class="form-label">Comisionario</label>
-                    <select class="form-select" name="comisionario_id" required>
+                    <select class="form-select" id="comisionarioSelect" name="comisionario_id" required>
                         <option value="">Selecciona comisionario</option>
                         {% for c in comisionarios %}
-                            <option value="{{ c.id }}" {% if form_comisionario_id|string == c.id|string %}selected{% endif %}>
-                                {{ c.nombre_completo }}
+                            <option
+                                value="{{ c.id }}"
+                                data-sucursal-id="{{ c.sucursal_id }}"
+                                data-sucursal-label="{{ c.sucursal.nombre if c.sucursal else '' }}"
+                                {% if form_comisionario_id|string == c.id|string %}selected{% endif %}
+                            >
+                                {{ c.nombre_completo }}{% if c.sucursal %} · {{ c.sucursal.nombre }}{% endif %}
                             </option>
                         {% endfor %}
                     </select>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label">Sucursal</label>
-                    <select class="form-select" name="sucursal_id" required>
-                        <option value="">Selecciona sucursal</option>
-                        {% for s in sucursales %}
-                            <option value="{{ s.id }}" {% if form_sucursal_id|string == s.id|string %}selected{% endif %}>{{ s.nombre }}</option>
-                        {% endfor %}
-                    </select>
+                    <label class="form-label">Sucursal contable</label>
+                    <input
+                        class="form-control"
+                        id="comisionarioSucursalLabel"
+                        type="text"
+                        value="{% for s in sucursales %}{% if form_sucursal_id|string == s.id|string %}{{ s.nombre }}{% endif %}{% endfor %}"
+                        placeholder="Se asigna automaticamente desde el comisionario"
+                        readonly
+                    >
+                    <input type="hidden" id="comisionarioSucursalId" name="sucursal_id" value="{{ form_sucursal_id }}">
+                    <div class="form-text">La nota impactara el saldo de la sucursal asignada al comisionario.</div>
                 </div>
             </div>
 
@@ -134,6 +143,9 @@
         const addBtn = document.getElementById('addRowBtn');
         const totalKgEl = document.getElementById('totalKg');
         const totalMontoEl = document.getElementById('totalMonto');
+        const comisionarioSelect = document.getElementById('comisionarioSelect');
+        const sucursalIdInput = document.getElementById('comisionarioSucursalId');
+        const sucursalLabelInput = document.getElementById('comisionarioSucursalLabel');
 
         function parseNumber(val) {
             const num = parseFloat(val);
@@ -184,6 +196,17 @@
             }
         }
 
+        function updateComisionarioSucursal() {
+            if (!comisionarioSelect || !sucursalIdInput || !sucursalLabelInput) {
+                return;
+            }
+            const selected = comisionarioSelect.options[comisionarioSelect.selectedIndex];
+            const sucursalId = selected?.dataset?.sucursalId || '';
+            const sucursalLabel = selected?.dataset?.sucursalLabel || '';
+            sucursalIdInput.value = sucursalId;
+            sucursalLabelInput.value = sucursalLabel;
+        }
+
         if (addBtn && template) {
             addBtn.addEventListener('click', () => {
                 const clone = template.content.firstElementChild.cloneNode(true);
@@ -194,6 +217,10 @@
         }
 
         rowsContainer.querySelectorAll('tr').forEach((row) => attachRowListeners(row));
+        if (comisionarioSelect) {
+            comisionarioSelect.addEventListener('change', updateComisionarioSucursal);
+        }
+        updateComisionarioSucursal();
         updateTotals();
     })();
 </script>

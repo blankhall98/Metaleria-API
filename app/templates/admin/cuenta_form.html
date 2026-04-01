@@ -106,7 +106,9 @@
                         <optgroup label="Comisionarios">
                             {% for c in comisionarios %}
                                 {% set key = "comisionario:" ~ c.id %}
-                                <option value="{{ key }}" {% if owner_key == key %}selected{% endif %}>{{ c.nombre_completo }}</option>
+                                <option value="{{ key }}" {% if owner_key == key %}selected{% endif %}>
+                                    {{ c.nombre_completo }}{% if c.sucursal %} · {{ c.sucursal.nombre }}{% endif %}
+                                </option>
                             {% endfor %}
                         </optgroup>
                     </select>

@@ -44,6 +44,11 @@
                             <strong>{{ comisionario.correo_electronico or '-' }}</strong>
                         </div>
                         <div class="note-meta-item">
+                            <span class="note-meta-label">Sucursal asignada</span>
+                            <strong>{{ comisionario.sucursal.nombre if comisionario.sucursal else '-' }}</strong>
+                            <div class="note-meta-sub">Nuevas notas y saldos se registran en esta sucursal.</div>
+                        </div>
+                        <div class="note-meta-item">
                             <span class="note-meta-label">Estado</span>
                             <span class="badge {{ 'bg-success' if comisionario.activo else 'bg-secondary' }}">
                                 {{ 'Activo' if comisionario.activo else 'Inactivo' }}

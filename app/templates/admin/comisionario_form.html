@@ -21,6 +21,12 @@
     </div>
 {% endif %}
 
+{% set nombre_val = form_data.get('nombre_completo') if form_data else (comisionario.nombre_completo if comisionario else '') %}
+{% set telefono_val = form_data.get('telefono') if form_data else (comisionario.telefono if comisionario and comisionario.telefono else '') %}
+{% set correo_val = form_data.get('correo_electronico') if form_data else (comisionario.correo_electronico if comisionario and comisionario.correo_electronico else '') %}
+{% set sucursal_val = form_data.get('sucursal_id') if form_data else (comisionario.sucursal_id if comisionario else '') %}
+{% set activo_val = form_data.get('activo') if form_data else (comisionario.activo if comisionario else True) %}
+
 <div class="card hover-lift">
     <div class="card-body">
         <form
@@ -37,7 +43,7 @@
                         id="nombre_completo"
                         name="nombre_completo"
                         required
-                        value="{{ comisionario.nombre_completo if comisionario else '' }}"
+                        value="{{ nombre_val }}"
                     >
                 </div>
 
@@ -48,7 +54,7 @@
                         type="text"
                         id="telefono"
                         name="telefono"
-                        value="{{ comisionario.telefono if comisionario and comisionario.telefono else '' }}"
+                        value="{{ telefono_val }}"
                     >
                 </div>
             </div>
@@ -61,8 +67,28 @@
                         type="email"
                         id="correo_electronico"
                         name="correo_electronico"
-                        value="{{ comisionario.correo_electronico if comisionario and comisionario.correo_electronico else '' }}"
+                        value="{{ correo_val }}"
                     >
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="sucursal_id">Sucursal</label>
+                    <select class="form-select" id="sucursal_id" name="sucursal_id" required>
+                        <option value="">Selecciona sucursal</option>
+                        {% for sucursal in sucursales %}
+                            <option value="{{ sucursal.id }}" {% if sucursal_val|string == sucursal.id|string %}selected{% endif %}>
+                                {{ sucursal.nombre }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">Las notas y saldos de este comisionario se registraran en esta sucursal.</div>
+                </div>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-12">
+                    <div class="surface-muted rounded-4 p-3 small text-muted">
+                        Usa una sucursal fija por comisionario para que el saldo pendiente impacte correctamente la contabilidad de esa sede.
+                    </div>
                 </div>
             </div>
 
@@ -73,7 +99,7 @@
                         type="checkbox"
                         id="activo"
                         name="activo"
-                        {% if comisionario.activo %}checked{% endif %}
+                        {% if activo_val %}checked{% endif %}
                     >
                     <label class="form-check-label" for="activo">
                         Comisionario activo

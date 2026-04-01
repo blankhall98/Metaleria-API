@@ -14,7 +14,7 @@
 </div>
 
 <form method="get" class="row g-2 mb-3">
-    <div class="col-sm-8 col-md-6">
+    <div class="col-lg-5 col-md-6">
         <input
             type="text"
             class="form-control"
@@ -23,8 +23,21 @@
             value="{{ q }}"
         >
     </div>
-    <div class="col-auto">
+    <div class="col-lg-4 col-md-6">
+        <select class="form-select" name="sucursal_id">
+            <option value="">Todas las sucursales</option>
+            {% for sucursal in sucursales %}
+                <option value="{{ sucursal.id }}" {% if sucursal_id and sucursal_id == sucursal.id %}selected{% endif %}>
+                    {{ sucursal.nombre }}
+                </option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-auto d-flex gap-2">
         <button class="btn btn-outline-secondary btn-sm" type="submit">Buscar</button>
+        {% if q or sucursal_id %}
+            <a href="/web/admin/comisionarios" class="btn btn-outline-secondary btn-sm">Limpiar</a>
+        {% endif %}
     </div>
 </form>
 
@@ -42,6 +55,7 @@
                 <tr>
                     <th>ID</th>
                     <th>Nombre</th>
+                    <th>Sucursal</th>
                     <th>Telefono</th>
                     <th>Correo</th>
                     <th>Activo</th>
@@ -52,7 +66,13 @@
                 {% for c in comisionarios %}
                     <tr>
                         <td>{{ c.id }}</td>
-                        <td>{{ c.nombre_completo }}</td>
+                        <td>
+                            <div class="fw-semibold">{{ c.nombre_completo }}</div>
+                            <div class="text-muted small">Impacta saldos de {{ c.sucursal.nombre if c.sucursal else '-' }}</div>
+                        </td>
+                        <td>
+                            <span class="badge bg-light text-dark border">{{ c.sucursal.nombre if c.sucursal else '-' }}</span>
+                        </td>
                         <td>{{ c.telefono or "-" }}</td>
                         <td>{{ c.correo_electronico or "-" }}</td>
                         <td>

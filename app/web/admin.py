@@ -2329,7 +2329,7 @@ def _render_cuenta_form(
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
     clientes = db.query(Cliente).order_by(Cliente.nombre_completo).all()
     proveedores = db.query(Proveedor).order_by(Proveedor.nombre_completo).all()
-    comisionarios = db.query(Comisionario).order_by(Comisionario.nombre_completo).all()
+    comisionarios = _get_accessible_comisionarios(db, current_user)
     return templates.TemplateResponse(
         "admin/cuenta_form.html",
         {
@@ -2519,6 +2519,22 @@ def _filter_sucursales_for_admin(
     if allowed_ids is None:
         return sucursales
     return [s for s in sucursales if s.id in allowed_ids]
+
+
+def _get_accessible_comisionarios(
+    db: Session,
+    current_user: dict,
+    *,
+    activos_solamente: bool = False,
+):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    query = db.query(Comisionario)
+    if allowed_suc_ids is not None:
+        query = query.filter(Comisionario.sucursal_id.in_(allowed_suc_ids))
+    if activos_solamente:
+        query = query.filter(Comisionario.activo.is_(True))
+    return query.order_by(Comisionario.nombre_completo).all()
+
 
 def _apply_sucursal_filter(query, allowed_ids: list[int] | None, sucursal_id: int | None, field):
     if allowed_ids is not None:
@@ -5548,7 +5564,17 @@ async def comisionarios_list(
     params = request.query_params
     delete_ok = params.get("deleted") == "1"
     delete_error = (params.get("delete_error") or "").strip()
+    sucursal_id = None
+    if params.get("sucursal_id"):
+        try:
+            sucursal_id = int(params.get("sucursal_id"))
+        except ValueError:
+            sucursal_id = None
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     query = db.query(Comisionario)
+    query = _apply_sucursal_filter(query, allowed_suc_ids, sucursal_id, Comisionario.sucursal_id)
     if q:
         term = f"%{q.strip()}%"
         query = query.filter(
@@ -5566,7 +5592,9 @@ async def comisionarios_list(
             "env": settings.ENV,
             "user": current_user,
             "comisionarios": comisionarios,
+            "sucursales": sucursales,
             "q": q or "",
+            "sucursal_id": sucursal_id,
             "delete_ok": delete_ok,
             "delete_error": delete_error,
         },
@@ -5600,22 +5628,48 @@ async def comisionario_delete(
     return RedirectResponse(url="/web/admin/comisionarios?deleted=1", status_code=303)
 
 
-@router.get("/comisionarios/nuevo")
-async def comisionario_new_get(
+def _render_comisionario_form(
     request: Request,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(require_admin_or_superadmin),
+    db: Session,
+    current_user: dict,
+    *,
+    comisionario: Comisionario | None,
+    error: str | None = None,
+    form_data: dict | None = None,
 ):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
+    form_data = form_data or {}
+    if "sucursal_id" not in form_data:
+        if comisionario and comisionario.sucursal_id:
+            form_data["sucursal_id"] = str(comisionario.sucursal_id)
+        elif len(sucursales) == 1:
+            form_data["sucursal_id"] = str(sucursales[0].id)
+        else:
+            form_data["sucursal_id"] = ""
     return templates.TemplateResponse(
         "admin/comisionario_form.html",
         {
             "request": request,
             "env": settings.ENV,
             "user": current_user,
-            "comisionario": None,
-            "error": None,
+            "comisionario": comisionario,
+            "sucursales": sucursales,
+            "error": error,
+            "form_data": form_data,
         },
+        status_code=400 if error else 200,
     )
+
+
+@router.get("/comisionarios/nuevo")
+async def comisionario_new_get(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    return _render_comisionario_form(request, db, current_user, comisionario=None)
 
 
 @router.post("/comisionarios/nuevo")
@@ -5624,29 +5678,74 @@ async def comisionario_new_post(
     nombre_completo: str = Form(...),
     telefono: str = Form(""),
     correo_electronico: str = Form(""),
+    sucursal_id: str = Form(""),
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
     nombre_completo = nombre_completo.strip()
     telefono = telefono.strip()
     correo_electronico = correo_electronico.strip()
+    sucursal_raw = sucursal_id.strip()
+    form_data = {
+        "nombre_completo": nombre_completo,
+        "telefono": telefono,
+        "correo_electronico": correo_electronico,
+        "sucursal_id": sucursal_raw,
+    }
     if not nombre_completo:
-        return templates.TemplateResponse(
-            "admin/comisionario_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "comisionario": None,
-                "error": "El nombre del comisionario es obligatorio.",
-            },
-            status_code=400,
+        return _render_comisionario_form(
+            request,
+            db,
+            current_user,
+            comisionario=None,
+            error="El nombre del comisionario es obligatorio.",
+            form_data=form_data,
+        )
+    if not sucursal_raw:
+        return _render_comisionario_form(
+            request,
+            db,
+            current_user,
+            comisionario=None,
+            error="Selecciona la sucursal del comisionario.",
+            form_data=form_data,
+        )
+    try:
+        sucursal_id_int = int(sucursal_raw)
+    except ValueError:
+        return _render_comisionario_form(
+            request,
+            db,
+            current_user,
+            comisionario=None,
+            error="Sucursal invalida.",
+            form_data=form_data,
+        )
+    if not db.get(Sucursal, sucursal_id_int):
+        return _render_comisionario_form(
+            request,
+            db,
+            current_user,
+            comisionario=None,
+            error="Sucursal invalida.",
+            form_data=form_data,
+        )
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    if allowed_suc_ids is not None and sucursal_id_int not in allowed_suc_ids:
+        return _render_comisionario_form(
+            request,
+            db,
+            current_user,
+            comisionario=None,
+            error="Sucursal no autorizada.",
+            form_data=form_data,
         )
 
     comisionario = Comisionario(
         nombre_completo=nombre_completo,
         telefono=telefono or None,
         correo_electronico=correo_electronico or None,
+        sucursal_id=sucursal_id_int,
         activo=True,
     )
     db.add(comisionario)
@@ -5664,16 +5763,10 @@ async def comisionario_edit_get(
     comisionario = db.get(Comisionario, comisionario_id)
     if not comisionario:
         raise HTTPException(status_code=404, detail="Comisionario no encontrado.")
-    return templates.TemplateResponse(
-        "admin/comisionario_form.html",
-        {
-            "request": request,
-            "env": settings.ENV,
-            "user": current_user,
-            "comisionario": comisionario,
-            "error": None,
-        },
-    )
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    if allowed_suc_ids is not None and comisionario.sucursal_id not in allowed_suc_ids:
+        raise HTTPException(status_code=403, detail="Sucursal no autorizada.")
+    return _render_comisionario_form(request, db, current_user, comisionario=comisionario)
 
 
 @router.post("/comisionarios/{comisionario_id}/editar")
@@ -5683,6 +5776,7 @@ async def comisionario_edit_post(
     nombre_completo: str = Form(...),
     telefono: str = Form(""),
     correo_electronico: str = Form(""),
+    sucursal_id: str = Form(""),
     activo: str = Form(""),
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_admin_or_superadmin),
@@ -5693,22 +5787,69 @@ async def comisionario_edit_post(
     nombre_completo = nombre_completo.strip()
     telefono = telefono.strip()
     correo_electronico = correo_electronico.strip()
+    sucursal_raw = sucursal_id.strip()
+    form_data = {
+        "nombre_completo": nombre_completo,
+        "telefono": telefono,
+        "correo_electronico": correo_electronico,
+        "sucursal_id": sucursal_raw,
+        "activo": bool(activo),
+    }
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    if allowed_suc_ids is not None and comisionario.sucursal_id not in allowed_suc_ids:
+        raise HTTPException(status_code=403, detail="Sucursal no autorizada.")
     if not nombre_completo:
-        return templates.TemplateResponse(
-            "admin/comisionario_form.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "comisionario": comisionario,
-                "error": "El nombre del comisionario es obligatorio.",
-            },
-            status_code=400,
+        return _render_comisionario_form(
+            request,
+            db,
+            current_user,
+            comisionario=comisionario,
+            error="El nombre del comisionario es obligatorio.",
+            form_data=form_data,
+        )
+    if not sucursal_raw:
+        return _render_comisionario_form(
+            request,
+            db,
+            current_user,
+            comisionario=comisionario,
+            error="Selecciona la sucursal del comisionario.",
+            form_data=form_data,
+        )
+    try:
+        sucursal_id_int = int(sucursal_raw)
+    except ValueError:
+        return _render_comisionario_form(
+            request,
+            db,
+            current_user,
+            comisionario=comisionario,
+            error="Sucursal invalida.",
+            form_data=form_data,
+        )
+    if not db.get(Sucursal, sucursal_id_int):
+        return _render_comisionario_form(
+            request,
+            db,
+            current_user,
+            comisionario=comisionario,
+            error="Sucursal invalida.",
+            form_data=form_data,
+        )
+    if allowed_suc_ids is not None and sucursal_id_int not in allowed_suc_ids:
+        return _render_comisionario_form(
+            request,
+            db,
+            current_user,
+            comisionario=comisionario,
+            error="Sucursal no autorizada.",
+            form_data=form_data,
         )
 
     comisionario.nombre_completo = nombre_completo
     comisionario.telefono = telefono or None
     comisionario.correo_electronico = correo_electronico or None
+    comisionario.sucursal_id = sucursal_id_int
     comisionario.activo = bool(activo)
     comisionario.updated_at = datetime.utcnow()
     db.add(comisionario)
@@ -5729,6 +5870,8 @@ async def comisionario_record(
         raise HTTPException(status_code=404, detail="Comisionario no encontrado.")
 
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    if allowed_suc_ids is not None and comisionario.sucursal_id not in allowed_suc_ids:
+        raise HTTPException(status_code=403, detail="Sucursal no autorizada.")
     notas_query = db.query(ComisionarioNota).filter(ComisionarioNota.comisionario_id == comisionario_id)
     if allowed_suc_ids:
         notas_query = notas_query.filter(
@@ -5815,7 +5958,7 @@ async def comisionario_notas_list(
     if q:
         notas = _filter_comisionario_notas(notas, q)
 
-    comisionarios = db.query(Comisionario).order_by(Comisionario.nombre_completo).all()
+    comisionarios = _get_accessible_comisionarios(db, current_user)
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     comisionarios_map = {c.id: c.nombre_completo for c in comisionarios}
@@ -5881,7 +6024,7 @@ async def comisionario_nota_new_get(
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
-    comisionarios = db.query(Comisionario).order_by(Comisionario.nombre_completo).all()
+    comisionarios = _get_accessible_comisionarios(db, current_user, activos_solamente=True)
     materiales = db.query(Material).order_by(Material.nombre).all()
     preselect_id = None
     if request.query_params.get("comisionario_id"):
@@ -5889,6 +6032,7 @@ async def comisionario_nota_new_get(
             preselect_id = int(request.query_params.get("comisionario_id"))
         except ValueError:
             preselect_id = None
+    selected_comisionario = next((c for c in comisionarios if c.id == preselect_id), None)
     return templates.TemplateResponse(
         "admin/comisionario_nota_form.html",
         {
@@ -5900,7 +6044,7 @@ async def comisionario_nota_new_get(
             "materiales": materiales,
             "form_rows": [{}],
             "form_comisionario_id": preselect_id or "",
-            "form_sucursal_id": str(sucursales[0].id) if len(sucursales) == 1 else "",
+            "form_sucursal_id": str(selected_comisionario.sucursal_id) if selected_comisionario else "",
             "form_comentario": "",
             "error": None,
         },
@@ -5921,7 +6065,7 @@ async def comisionario_nota_new_post(
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
-    comisionarios = db.query(Comisionario).order_by(Comisionario.nombre_completo).all()
+    comisionarios = _get_accessible_comisionarios(db, current_user, activos_solamente=True)
     materiales = db.query(Material).order_by(Material.nombre).all()
 
     def render_error(msg: str, rows: list[dict]):
@@ -5949,15 +6093,23 @@ async def comisionario_nota_new_post(
         comisionario_id = int(comisionario_raw)
     except ValueError:
         return render_error("Comisionario invalido.", [])
+    comisionario = next((c for c in comisionarios if c.id == comisionario_id), None)
+    if not comisionario:
+        return render_error("Comisionario invalido o no autorizado.", [])
 
-    if not sucursal_raw:
-        return render_error("Selecciona una sucursal.", [])
-    try:
-        sucursal_id = int(sucursal_raw)
-    except ValueError:
-        return render_error("Sucursal invalida.", [])
-    if allowed_suc_ids and sucursal_id not in allowed_suc_ids:
+    expected_sucursal_id = comisionario.sucursal_id
+    if not expected_sucursal_id:
+        return render_error("El comisionario no tiene sucursal asignada.", [])
+    if allowed_suc_ids and expected_sucursal_id not in allowed_suc_ids:
         return render_error("Sucursal no autorizada.", [])
+    if sucursal_raw:
+        try:
+            selected_sucursal_id = int(sucursal_raw)
+        except ValueError:
+            return render_error("Sucursal invalida.", [])
+        if selected_sucursal_id != expected_sucursal_id:
+            return render_error("La nota debe registrarse en la sucursal asignada al comisionario.", [])
+    sucursal_raw = str(expected_sucursal_id)
 
     materiales_rows, err = _parse_comisionario_materiales(form)
     if err:
@@ -5967,7 +6119,7 @@ async def comisionario_nota_new_post(
         nota = comision_service.create_comisionario_nota(
             db,
             comisionario_id=comisionario_id,
-            sucursal_id=sucursal_id,
+            sucursal_id=expected_sucursal_id,
             admin_id=current_user.get("id"),
             comentario=comentario,
             materiales_payload=materiales_rows,
@@ -6218,7 +6370,7 @@ async def cuentas_list(
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
     clientes = db.query(Cliente).order_by(Cliente.nombre_completo).all()
     proveedores = db.query(Proveedor).order_by(Proveedor.nombre_completo).all()
-    comisionarios = db.query(Comisionario).order_by(Comisionario.nombre_completo).all()
+    comisionarios = _get_accessible_comisionarios(db, current_user)
     sucursales_map = {s.id: s.nombre for s in sucursales}
     clientes_map = {c.id: c.nombre_completo for c in clientes}
     proveedores_map = {p.id: p.nombre_completo for p in proveedores}

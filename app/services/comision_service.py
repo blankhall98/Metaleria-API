@@ -119,6 +119,8 @@ def create_comisionario_nota(
         raise ValueError("Comisionario no encontrado.")
     if not sucursal_id:
         raise ValueError("Debes seleccionar una sucursal para la nota de comisionario.")
+    if comisionario.sucursal_id and int(sucursal_id) != int(comisionario.sucursal_id):
+        raise ValueError("La nota debe registrarse en la sucursal asignada al comisionario.")
     if not materiales_payload:
         raise ValueError("Debes agregar al menos un material.")
 

@@ -25,11 +25,13 @@ class Comisionario(Base):
     nombre_completo = Column(String(200), nullable=False, index=True)
     telefono = Column(String(50), nullable=True, index=True)
     correo_electronico = Column(String(200), nullable=True, index=True)
+    sucursal_id = Column(Integer, ForeignKey("sucursales.id"), nullable=False, index=True)
     activo = Column(Boolean, nullable=False, default=True)
 
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    sucursal = relationship("Sucursal")
     cuentas = relationship("Cuenta", back_populates="comisionario")
     notas = relationship("ComisionarioNota", back_populates="comisionario", cascade="all, delete-orphan")
 
