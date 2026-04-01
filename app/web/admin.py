@@ -9134,7 +9134,10 @@ async def notas_factura(
         except Exception:
             db.rollback()
 
-    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    disposition = "attachment"
+    if (request.query_params.get("inline") or "").strip() == "1":
+        disposition = "inline"
+    headers = {"Content-Disposition": f'{disposition}; filename="{filename}"'}
     return StreamingResponse(io.BytesIO(pdf_bytes), media_type="application/pdf", headers=headers)
 
 
@@ -9449,6 +9452,8 @@ async def notas_aprobar(
 
     form = await request.form()
     comentarios_admin = (form.get("comentarios_admin") or "").strip()
+    auto_open_pdf = (form.get("auto_open_pdf") or "").strip() == "1"
+    print_window = (form.get("print_window") or "").strip()
     fecha_caducidad_pago_raw = (form.get("fecha_caducidad_pago") or "").strip()
     metodo_pago = (form.get("metodo_pago") or "").strip().lower()
     cuenta_financiera = (form.get("cuenta_financiera") or "").strip()
@@ -9693,6 +9698,19 @@ async def notas_aprobar(
                 db.commit()
         except Exception:
             db.rollback()
+
+    if (
+        current_user.get("rol") == UserRole.super_admin.value
+        and auto_open_pdf
+        and nota.tipo_operacion in (TipoOperacion.compra, TipoOperacion.venta)
+    ):
+        params = {"approved": "1", "auto_open_pdf": "1"}
+        if print_window:
+            params["print_window"] = print_window[:80]
+        return RedirectResponse(
+            url=f"/web/admin/notas/{nota.id}?{urlencode(params)}",
+            status_code=303,
+        )
 
     return RedirectResponse(url="/web/admin/notas?approved=1", status_code=303)
 

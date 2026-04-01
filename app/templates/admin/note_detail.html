@@ -6,6 +6,9 @@
 {% set can_manage_note = can_manage_note if can_manage_note is defined else true %}
 {% set can_edit_note = can_edit_note if can_edit_note is defined else false %}
 {% set note_state = nota.estado.value %}
+{% set approved_query = request.query_params.get("approved") == "1" %}
+{% set auto_open_pdf_query = request.query_params.get("auto_open_pdf") == "1" %}
+{% set print_window_name = request.query_params.get("print_window") or ("scrap360-note-print-" ~ nota.id) %}
 {% set is_pending_review = note_state in ['BORRADOR', 'EN_REVISION'] %}
 {% set is_approved = note_state == 'APROBADA' %}
 {% set is_cancelled = note_state == 'CANCELADA' %}
@@ -80,6 +83,9 @@
 
     {% if error %}
         <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
+    {% endif %}
+    {% if approved_query %}
+        <div class="alert alert-success py-2 small mb-3">La nota fue aprobada correctamente.{% if auto_open_pdf_query and user.rol == 'super_admin' %} El PDF se abrio en una pestaña lista para imprimir.{% endif %}</div>
     {% endif %}
     {% if edit_updated %}
         <div class="alert alert-success py-2 small mb-3">Edicion guardada correctamente.</div>
@@ -652,7 +658,9 @@
                             <div class="note-actions mt-3">
                                 <div class="note-actions-title">Acciones de aprobacion</div>
                                 <div class="note-actions-row">
-                                    <button type="submit" class="btn btn-primary note-action-primary">Aprobar nota</button>
+                                    <input type="hidden" name="auto_open_pdf" value="0">
+                                    <input type="hidden" name="print_window" value="">
+                                    <button type="submit" id="approveNoteButton" class="btn btn-primary note-action-primary">Aprobar nota</button>
                                     <button type="submit"
                                             class="btn btn-outline-primary"
                                             formaction="/web/admin/notas/{{ nota.id }}/precios"
@@ -1639,6 +1647,45 @@
         const cuentaInput = document.getElementById('cuenta_financiera_select');
         const cuentaScrapInput = document.getElementById('cuenta_scrap360_select');
         const pagoInput = document.querySelector('#approveForm input[name="monto_pagado"]');
+        const approveForm = document.getElementById('approveForm');
+        const approveButton = document.getElementById('approveNoteButton');
+        const autoOpenPdfInput = approveForm ? approveForm.querySelector('input[name="auto_open_pdf"]') : null;
+        const printWindowInput = approveForm ? approveForm.querySelector('input[name="print_window"]') : null;
+        const isSuperAdminApproveFlow = {{ 'true' if user.rol == 'super_admin' else 'false' }};
+        const autoOpenPdfAfterApprove = {{ 'true' if auto_open_pdf_query and user.rol == 'super_admin' and nota.estado.value == 'APROBADA' and nota.tipo_operacion.value in ['compra', 'venta'] else 'false' }};
+        const printWindowName = {{ print_window_name|tojson }};
+
+        if (approveForm && autoOpenPdfInput) {
+            autoOpenPdfInput.value = '0';
+            approveForm.addEventListener('submit', (event) => {
+                const submitter = event.submitter;
+                const shouldPreparePrintWindow = isSuperAdminApproveFlow && submitter && submitter.id === 'approveNoteButton';
+                if (!shouldPreparePrintWindow) {
+                    autoOpenPdfInput.value = '0';
+                    if (printWindowInput) {
+                        printWindowInput.value = '';
+                    }
+                    return;
+                }
+                autoOpenPdfInput.value = '1';
+                if (printWindowInput) {
+                    printWindowInput.value = printWindowName;
+                }
+                window.open('about:blank', printWindowName);
+            });
+        }
+
+        if (autoOpenPdfAfterApprove) {
+            const pdfUrl = `/web/admin/notas/{{ nota.id }}/factura?inline=1`;
+            const printWindow = window.open(pdfUrl, printWindowName);
+            if (printWindow) {
+                printWindow.focus();
+            }
+            const cleanUrl = new URL(window.location.href);
+            cleanUrl.searchParams.delete('auto_open_pdf');
+            cleanUrl.searchParams.delete('print_window');
+            window.history.replaceState({}, document.title, cleanUrl.toString());
+        }
 
         function toggleCuenta() {
             if (!metodoSelect || !cuentaInput) return;
