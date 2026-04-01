@@ -49,11 +49,19 @@
                     <option value="conversion" {% if tipo == 'conversion' %}selected{% endif %}>Conversion</option>
                 </select>
             </div>
+            <div class="col-lg-2 col-md-4">
+                <label class="form-label">Desde</label>
+                <input class="form-control" type="date" name="from" value="{{ date_from }}">
+            </div>
+            <div class="col-lg-2 col-md-4">
+                <label class="form-label">Hasta</label>
+                <input class="form-control" type="date" name="to" value="{{ date_to }}">
+            </div>
             <div class="col-md-2 d-grid">
                 <button class="btn btn-outline-primary">Filtrar</button>
             </div>
             {% if can_export_inventory %}
-                <div class="col-md-3 d-grid">
+                <div class="col-lg-3 col-md-6 d-grid">
                     <div class="d-flex gap-2">
                         <select class="form-select" id="invExportFormat">
                             <option value="csv">CSV</option>
@@ -65,6 +73,107 @@
                 </div>
             {% endif %}
         </form>
+        {% if date_error %}
+            <div class="alert alert-warning py-2 small mt-3 mb-0">{{ date_error }}</div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-lg-4">
+        <div class="card hover-lift h-100">
+            <div class="card-body">
+                <p class="text-uppercase text-muted small mb-2">Compras en rango</p>
+                <div class="d-flex align-items-end justify-content-between gap-3">
+                    <div>
+                        <div class="h4 text-white mb-1">{{ "{:,.2f}".format(compra_total_kg or 0) }} kg</div>
+                        <div class="text-muted small">{{ date_scope_label }}</div>
+                    </div>
+                    <span class="badge bg-soft-success text-success">Compras</span>
+                </div>
+                <div class="text-muted small mt-3">
+                    {% if selected_material %}
+                        Material analizado: <strong class="text-white">{{ selected_material.nombre }}</strong>
+                    {% else %}
+                        Material analizado: <strong class="text-white">Todos</strong>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card hover-lift h-100">
+            <div class="card-body">
+                <p class="text-uppercase text-muted small mb-2">Notas de compra</p>
+                <div class="h4 text-white mb-1">{{ compra_total_notas }}</div>
+                <div class="text-muted small">Notas distintas encontradas en el rango.</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card hover-lift h-100">
+            <div class="card-body">
+                <p class="text-uppercase text-muted small mb-2">Movimientos de compra</p>
+                <div class="h4 text-white mb-1">{{ compra_total_movimientos }}</div>
+                <div class="text-muted small">Entradas de inventario de tipo compra consideradas.</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card hover-lift mb-3">
+    <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <div>
+                <h2 class="h5 text-white mb-1">Notas de compra del rango</h2>
+                <p class="text-muted small mb-0">Resumen por nota para identificar cuanto material se compro en las fechas filtradas.</p>
+            </div>
+            <div class="text-muted small">
+                {{ compra_total_notas }} notas · {{ "{:,.2f}".format(compra_total_kg or 0) }} kg
+            </div>
+        </div>
+        <div class="table-scroll-shell">
+            <div class="table-responsive scroll-x note-table-scroll">
+                <table class="table table-hover table-sm align-middle mb-0">
+                    <thead>
+                    <tr>
+                        <th>Folio</th>
+                        <th>Fecha</th>
+                        <th>Proveedor</th>
+                        <th>Sucursal</th>
+                        <th>Material(es)</th>
+                        <th>Cantidad comprada</th>
+                        <th class="text-end"></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for row in compra_notas_rows %}
+                        <tr>
+                            <td><span class="fw-semibold">{{ row.folio }}</span></td>
+                            <td>{{ row.fecha|datetime_local if row.fecha else '-' }}</td>
+                            <td>{{ row.proveedor }}</td>
+                            <td>{{ row.sucursal }}</td>
+                            <td>
+                                {% if row.materiales %}
+                                    {{ row.materiales|join(', ') }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td class="fw-semibold">{{ "{:,.2f}".format(row.cantidad_kg or 0) }} kg</td>
+                            <td class="text-end">
+                                <a class="btn btn-sm btn-outline-secondary" href="/web/admin/notas/{{ row.nota_id }}">Ver nota</a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para revisar las notas incluidas y el total comprado por material.</div>
+        </div>
+        {% if compra_notas_rows|length == 0 %}
+            <p class="text-muted small mt-3 mb-0">No hay compras registradas con ese material y rango de fechas.</p>
+        {% endif %}
     </div>
 </div>
 

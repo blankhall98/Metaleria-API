@@ -12,11 +12,11 @@ from sqlalchemy import or_, func, and_
 from sqlalchemy.exc import IntegrityError
 from urllib.parse import urlencode
 from decimal import Decimal, InvalidOperation
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, time, timedelta, timezone
 from typing import Iterable, List
 
 from app.core.config import get_settings
-from app.core.datetime_utils import format_date_local, format_datetime_local, to_local_datetime
+from app.core.datetime_utils import format_date_local, format_datetime_local, get_app_timezone, to_local_datetime
 from app.core.security import hash_password
 from app.db.deps import get_db
 from app.models import (
@@ -2556,6 +2556,8 @@ def _build_inventario_movimientos_query(
     sucursal_id: int | None,
     material_id: int | None,
     tipo: str | None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
 ):
     query = (
         db.query(InventarioMovimiento)
@@ -2572,7 +2574,44 @@ def _build_inventario_movimientos_query(
         query = query.filter(Inventario.material_id == material_id)
     if tipo:
         query = query.filter(InventarioMovimiento.tipo == tipo)
+    if created_from:
+        query = query.filter(InventarioMovimiento.created_at >= created_from)
+    if created_to:
+        query = query.filter(InventarioMovimiento.created_at < created_to)
     return query
+
+
+def _parse_inventory_date_param(value: str | None) -> date | None:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _inventory_local_date_range_to_utc(
+    date_from: date | None,
+    date_to: date | None,
+) -> tuple[datetime | None, datetime | None]:
+    if not date_from and not date_to:
+        return None, None
+    tz = get_app_timezone()
+    start_utc = None
+    end_utc = None
+    if date_from:
+        start_utc = (
+            datetime.combine(date_from, time.min, tzinfo=tz)
+            .astimezone(timezone.utc)
+            .replace(tzinfo=None)
+        )
+    if date_to:
+        end_utc = (
+            datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=tz)
+            .astimezone(timezone.utc)
+            .replace(tzinfo=None)
+        )
+    return start_utc, end_utc
 
 
 def _build_partner_record_context(
@@ -13425,6 +13464,18 @@ async def inventario_movimientos(
         except ValueError:
             material_id = None
     tipo = params.get("tipo") or None
+    date_from_raw = (params.get("from") or "").strip()
+    date_to_raw = (params.get("to") or "").strip()
+    date_from = _parse_inventory_date_param(date_from_raw)
+    date_to = _parse_inventory_date_param(date_to_raw)
+    date_error = None
+    if date_from_raw and date_from is None:
+        date_error = "La fecha inicial no es valida."
+    elif date_to_raw and date_to is None:
+        date_error = "La fecha final no es valida."
+    if date_from and date_to and date_from > date_to:
+        date_from, date_to = date_to, date_from
+    created_from, created_to = _inventory_local_date_range_to_utc(date_from, date_to)
 
     query = _build_inventario_movimientos_query(
         db,
@@ -13432,6 +13483,8 @@ async def inventario_movimientos(
         sucursal_id=sucursal_id,
         material_id=material_id,
         tipo=tipo,
+        created_from=created_from,
+        created_to=created_to,
     )
     movimientos = query.order_by(InventarioMovimiento.created_at.desc()).limit(200).all()
     mov_ids = [mov.id for mov in movimientos]
@@ -13447,6 +13500,85 @@ async def inventario_movimientos(
     for mov in movimientos:
         total_firmado += float(_signed_inventario_qty(mov))
 
+    compra_summary_query = _build_inventario_movimientos_query(
+        db,
+        allowed_suc_ids=allowed_suc_ids,
+        sucursal_id=sucursal_id,
+        material_id=material_id,
+        tipo="compra",
+        created_from=created_from,
+        created_to=created_to,
+    )
+    compra_movimientos = compra_summary_query.order_by(InventarioMovimiento.created_at.desc()).limit(2000).all()
+    compra_total_kg = Decimal("0")
+    compra_rows_map: dict[int, dict] = {}
+    compra_note_ids: list[int] = []
+    for mov in compra_movimientos:
+        qty = _signed_inventario_qty(mov) or Decimal("0")
+        compra_total_kg += qty
+        if mov.nota_id:
+            if mov.nota_id not in compra_rows_map:
+                compra_rows_map[mov.nota_id] = {
+                    "nota_id": mov.nota_id,
+                    "cantidad_kg": Decimal("0"),
+                    "fecha": mov.created_at,
+                    "latest_fecha": mov.created_at,
+                    "sucursal": mov.inventario.sucursal.nombre if mov.inventario and mov.inventario.sucursal else "-",
+                    "materiales": set(),
+                }
+                compra_note_ids.append(mov.nota_id)
+            row = compra_rows_map[mov.nota_id]
+            row["cantidad_kg"] += qty
+            if mov.created_at and (row["fecha"] is None or mov.created_at < row["fecha"]):
+                row["fecha"] = mov.created_at
+            if mov.created_at and (row["latest_fecha"] is None or mov.created_at > row["latest_fecha"]):
+                row["latest_fecha"] = mov.created_at
+            if mov.inventario and mov.inventario.material:
+                row["materiales"].add(mov.inventario.material.nombre)
+
+    compra_note_map: dict[int, Nota] = {}
+    compra_proveedores: dict[int, Proveedor] = {}
+    compra_folio_map: dict[int, str] = {}
+    if compra_note_ids:
+        compra_notas = db.query(Nota).filter(Nota.id.in_(compra_note_ids)).all()
+        compra_note_map = {nota.id: nota for nota in compra_notas}
+        prov_ids = {nota.proveedor_id for nota in compra_notas if nota.proveedor_id}
+        if prov_ids:
+            compra_proveedores = {
+                proveedor.id: proveedor
+                for proveedor in db.query(Proveedor).filter(Proveedor.id.in_(prov_ids)).all()
+            }
+        compra_folio_map = _build_folio_map(compra_notas)
+
+    compra_notas_rows = []
+    for nota_id, row in sorted(
+        compra_rows_map.items(),
+        key=lambda item: item[1]["latest_fecha"] or datetime.min,
+        reverse=True,
+    ):
+        nota = compra_note_map.get(nota_id)
+        proveedor = compra_proveedores.get(nota.proveedor_id) if nota and nota.proveedor_id else None
+        compra_notas_rows.append(
+            {
+                "nota_id": nota_id,
+                "folio": compra_folio_map.get(nota_id) or f"#{nota_id}",
+                "fecha": row["fecha"],
+                "sucursal": row["sucursal"],
+                "proveedor": proveedor.nombre_completo if proveedor else "-",
+                "cantidad_kg": row["cantidad_kg"],
+                "materiales": sorted(row["materiales"]),
+            }
+        )
+
+    selected_material = next((m for m in materiales if material_id and m.id == material_id), None)
+    date_scope_label = "Todo el historial"
+    if date_from and date_to:
+        date_scope_label = f"{format_date_local(date_from)} al {format_date_local(date_to)}"
+    elif date_from:
+        date_scope_label = f"Desde {format_date_local(date_from)}"
+    elif date_to:
+        date_scope_label = f"Hasta {format_date_local(date_to)}"
+
     return templates.TemplateResponse(
         "admin/inventario_movimientos.html",
         {
@@ -13459,7 +13591,16 @@ async def inventario_movimientos(
             "sucursal_id": sucursal_id,
             "material_id": material_id,
             "tipo": tipo or "",
+            "date_from": format_date_local(date_from) if date_from else "",
+            "date_to": format_date_local(date_to) if date_to else "",
+            "date_error": date_error,
+            "selected_material": selected_material,
+            "date_scope_label": date_scope_label,
             "total_firmado": total_firmado,
+            "compra_total_kg": compra_total_kg,
+            "compra_total_notas": len(compra_notas_rows),
+            "compra_total_movimientos": len(compra_movimientos),
+            "compra_notas_rows": compra_notas_rows,
             "ajustes_by_mov_id": ajustes_by_mov_id,
             "can_manage_inventory": not _is_read_only_admin_user(current_user),
             "can_export_inventory": not _is_read_only_admin_user(current_user),
@@ -13579,6 +13720,11 @@ async def inventario_movimientos_export(
         except ValueError:
             material_id = None
     tipo = params.get("tipo") or None
+    date_from = _parse_inventory_date_param((params.get("from") or "").strip())
+    date_to = _parse_inventory_date_param((params.get("to") or "").strip())
+    if date_from and date_to and date_from > date_to:
+        date_from, date_to = date_to, date_from
+    created_from, created_to = _inventory_local_date_range_to_utc(date_from, date_to)
     fmt = params.get("format") or "csv"
 
     query = _build_inventario_movimientos_query(
@@ -13587,6 +13733,8 @@ async def inventario_movimientos_export(
         sucursal_id=sucursal_id,
         material_id=material_id,
         tipo=tipo,
+        created_from=created_from,
+        created_to=created_to,
     )
     movimientos = query.order_by(InventarioMovimiento.created_at.desc()).limit(1000).all()
 
