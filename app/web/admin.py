@@ -71,6 +71,7 @@ from app.services import (
     note_service,
     invoice_service,
     contabilidad_report_service,
+    partner_report_service,
     conversion_service,
     corte_caja_report_service,
     comision_service,
@@ -2884,6 +2885,110 @@ def _build_partner_record_context(
     }
 
 
+def _partner_record_note_operation_label(nota: Nota, unified_enabled: bool) -> str:
+    if nota.tipo_operacion == TipoOperacion.compra:
+        return "Compra"
+    if unified_enabled and nota.proveedor_id:
+        return "Venta al proveedor"
+    return "Venta"
+
+
+def _partner_record_note_state_label(nota: Nota) -> str:
+    if nota.estado == NotaEstado.borrador:
+        return "Borrador"
+    if nota.estado == NotaEstado.en_revision:
+        return "En revision"
+    if nota.estado == NotaEstado.aprobada:
+        return "Aprobada"
+    if nota.estado == NotaEstado.cancelada:
+        return "Cancelada"
+    return "-"
+
+
+def _build_partner_statement_report(context: dict) -> dict:
+    partner = context["partner"]
+    linked_partner = context.get("linked_partner")
+    linked_summary = None
+    if linked_partner:
+        linked_summary = (
+            f"Vinculado con {context.get('linked_partner_label') or 'partner'}: "
+            f"{linked_partner.nombre_completo} (ID {linked_partner.id})"
+        )
+    elif context.get("provider_direct_sales_enabled"):
+        linked_summary = "Opera compras y ventas en el mismo perfil."
+
+    summary = context["summary"]
+    summary_items: list[dict] = [
+        {"label": "Notas totales", "value": summary.get("total_notas", 0), "type": "count"},
+        {"label": "Notas aprobadas", "value": summary.get("notas_aprobadas", 0), "type": "count"},
+        {"label": "Notas en revision", "value": summary.get("notas_revision", 0), "type": "count"},
+        {"label": "Notas borrador", "value": summary.get("notas_borrador", 0), "type": "count"},
+        {"label": "Notas canceladas", "value": summary.get("notas_canceladas", 0), "type": "count"},
+    ]
+    if context.get("unified_enabled"):
+        summary_items.extend(
+            [
+                {"label": "Total compras aprobadas", "value": summary.get("total_compras", 0), "type": "money"},
+                {"label": "Total pagado compras", "value": summary.get("total_pagado_compras", 0), "type": "money"},
+                {"label": "Saldo por pagar compras", "value": summary.get("saldo_pagar", 0), "type": "money"},
+                {"label": "Total ventas aprobadas", "value": summary.get("total_ventas", 0), "type": "money"},
+                {"label": "Total cobrado ventas", "value": summary.get("total_cobrado_ventas", 0), "type": "money"},
+                {"label": "Saldo por cobrar ventas", "value": summary.get("saldo_cobrar", 0), "type": "money"},
+                {"label": "Ajustes proveedor", "value": summary.get("ajustes_proveedor", 0), "type": "money"},
+                {"label": "Ajustes cliente", "value": summary.get("ajustes_cliente", 0), "type": "money"},
+                {"label": "Saldo neto unificado", "value": summary.get("saldo_neto", 0), "type": "money"},
+            ]
+        )
+    else:
+        summary_items.extend(
+            [
+                {"label": context["total_facturado_label"], "value": summary.get("total_facturado", 0), "type": "money"},
+                {"label": context["total_pagado_label"], "value": summary.get("total_pagado", 0), "type": "money"},
+                {"label": context["saldo_pendiente_label"], "value": summary.get("saldo_pendiente", 0), "type": "money"},
+                {"label": context["saldo_favor_label"], "value": summary.get("saldo_favor", 0), "type": "money"},
+                {"label": "Ajustes manuales", "value": summary.get("ajustes_delta", 0), "type": "money"},
+                {"label": "Ajustes de saldo en notas", "value": summary.get("ajustes_nota_delta", 0), "type": "money"},
+            ]
+        )
+
+    notes_rows: list[dict] = []
+    sucursales = context.get("sucursales") or {}
+    unified_enabled = bool(context.get("unified_enabled"))
+    for row in context.get("record_rows") or []:
+        nota = row["nota"]
+        sucursal = sucursales.get(nota.sucursal_id)
+        notes_rows.append(
+            {
+                "folio": row.get("folio") or f"#{nota.id}",
+                "operacion": _partner_record_note_operation_label(nota, unified_enabled),
+                "estado": _partner_record_note_state_label(nota),
+                "fecha": nota.created_at,
+                "sucursal": sucursal.nombre if sucursal else "-",
+                "total": row.get("total") or Decimal("0"),
+                "pagado": row.get("pagado") or Decimal("0"),
+                "saldo_pendiente": row.get("saldo_pendiente") or Decimal("0"),
+                "saldo_favor": row.get("saldo_favor") or Decimal("0"),
+                "ajuste_aplicado": row.get("ajuste_aplicado") or Decimal("0"),
+                "ajuste_nota": row.get("ajuste_saldo_nota") or Decimal("0"),
+            }
+        )
+
+    return {
+        "generated_at": datetime.utcnow(),
+        "partner_label": context["partner_label"],
+        "partner_name": partner.nombre_completo,
+        "partner_id": partner.id,
+        "scope_label": context.get("record_scope_label") or context.get("tipo_operacion_label") or "Historial completo",
+        "linked_summary": linked_summary,
+        "summary_items": summary_items,
+        "ledger_label": context["ledger_saldo_label"],
+        "ledger_help": context["ledger_saldo_help"],
+        "ledger_final": context.get("ledger_final") or Decimal("0"),
+        "ledger_rows": context.get("ledger_rows") or [],
+        "notes_rows": notes_rows,
+    }
+
+
 def _ensure_nota_access(
     nota: Nota,
     allowed_ids: list[int] | None,
@@ -4640,6 +4745,63 @@ async def proveedor_record(
     return templates.TemplateResponse("admin/partner_record.html", context)
 
 
+def _partner_statement_response(
+    *,
+    request: Request,
+    db: Session,
+    current_user: dict,
+    partner_type: str,
+    partner: Cliente | Proveedor,
+    export_format: str,
+) -> StreamingResponse:
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_partner_access(partner, allowed_suc_ids)
+    context = _build_partner_record_context(
+        request,
+        db,
+        current_user,
+        partner_type=partner_type,
+        partner=partner,
+        q=None,
+    )
+    report = _build_partner_statement_report(context)
+    fmt = (export_format or "pdf").strip().lower()
+    if fmt == "pdf":
+        content, filename = partner_report_service.build_partner_statement_pdf(report)
+        media_type = "application/pdf"
+    elif fmt in {"xls", "xlsx", "excel"}:
+        content, filename = partner_report_service.build_partner_statement_excel(report)
+        media_type = "application/vnd.ms-excel"
+    else:
+        raise HTTPException(status_code=400, detail="Formato invalido. Usa pdf o excel.")
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/proveedores/{proveedor_id}/estado-cuenta")
+async def proveedor_estado_cuenta_export(
+    proveedor_id: int,
+    request: Request,
+    format: str = "pdf",
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_viewer_or_admin_or_superadmin),
+):
+    proveedor = db.get(Proveedor, proveedor_id)
+    if not proveedor:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado.")
+    return _partner_statement_response(
+        request=request,
+        db=db,
+        current_user=current_user,
+        partner_type="proveedor",
+        partner=proveedor,
+        export_format=format,
+    )
+
+
 @router.post("/proveedores/{proveedor_id}/crear-cliente")
 async def proveedor_crear_cliente(
     proveedor_id: int,
@@ -5393,6 +5555,27 @@ async def cliente_record(
         link_error=link_error,
     )
     return templates.TemplateResponse("admin/partner_record.html", context)
+
+
+@router.get("/clientes/{cliente_id}/estado-cuenta")
+async def cliente_estado_cuenta_export(
+    cliente_id: int,
+    request: Request,
+    format: str = "pdf",
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_viewer_or_admin_or_superadmin),
+):
+    cliente = db.get(Cliente, cliente_id)
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado.")
+    return _partner_statement_response(
+        request=request,
+        db=db,
+        current_user=current_user,
+        partner_type="cliente",
+        partner=cliente,
+        export_format=format,
+    )
 
 
 @router.post("/clientes/{cliente_id}/crear-proveedor")

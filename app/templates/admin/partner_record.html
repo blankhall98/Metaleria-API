@@ -30,6 +30,8 @@
         </div>
         <div class="d-flex gap-2">
             <a href="/web/admin/{{ partner_base }}" class="btn btn-outline-secondary btn-sm">Volver</a>
+            <a href="/web/admin/{{ partner_base }}/{{ partner.id }}/estado-cuenta?format=pdf" class="btn btn-outline-dark btn-sm">Estado PDF</a>
+            <a href="/web/admin/{{ partner_base }}/{{ partner.id }}/estado-cuenta?format=excel" class="btn btn-outline-success btn-sm">Estado Excel</a>
             {% if can_view_partner_accounts %}
                 <a href="/web/admin/cuentas?owner_key={{ owner_key }}" class="btn btn-outline-primary btn-sm">Cuentas</a>
             {% endif %}
