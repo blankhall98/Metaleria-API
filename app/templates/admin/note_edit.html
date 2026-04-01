@@ -64,7 +64,11 @@
                     </div>
                     <h2 class="h5 text-dark mb-1">{{ partner_name }}</h2>
                     <p class="text-muted mb-0">
-                        {{ sucursal.nombre if sucursal else '-' }} &middot;
+                        {{ sucursal.nombre if sucursal else '-' }}
+                        {% if nota.tipo_operacion.value == 'compra' and inventario_sucursal_diff %}
+                            &middot; Inventario: {{ inventario_sucursal.nombre if inventario_sucursal else '-' }}
+                        {% endif %}
+                        &middot;
                         {{ trabajador.nombre_completo if trabajador else '-' }}
                     </p>
                 </div>

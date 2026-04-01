@@ -8,7 +8,7 @@
         <p class="text-uppercase text-muted small mb-1">Operación</p>
         <h1 class="h4 text-white mb-0">{{ form_title or "Nueva nota" }}</h1>
     </div>
-    <a href="/web/worker/notes" class="btn btn-outline-secondary btn-sm">Volver</a>
+    <a href="{{ back_url or '/web/worker/notes' }}" class="btn btn-outline-secondary btn-sm">Volver</a>
 </div>
 
 {% if error %}
@@ -35,16 +35,35 @@
                     </div>
                 </div>
                 <div class="row g-3">
+                    {% if show_sucursal_picker %}
+                    <div class="col-lg-4">
+                        <div class="note-step-panel">
+                            <label class="form-label" for="sucursal_contable_id">Sucursal contable</label>
+                            <select class="form-select" id="sucursal_contable_id" name="sucursal_contable_id" required>
+                                <option value="">Selecciona sucursal</option>
+                                {% for s in sucursales %}
+                                    <option value="{{ s.id }}" {% if form_sucursal_id|string == s.id|string %}selected{% endif %}>{{ s.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                            <small class="text-muted">Esta sera la sucursal donde se llevara el saldo de la nota.</small>
+                        </div>
+                    </div>
+                    {% endif %}
                     <div class="col-lg-4">
                         <div class="note-step-panel">
                             <label class="form-label" for="tipo_operacion">Tipo de operaci&oacute;n</label>
-                            <select class="form-select" id="tipo_operacion" name="tipo_operacion" required onchange="togglePartner(); updateSteps();">
-                                <option value="compra">Compra</option>
-                                <option value="venta">Venta</option>
-                            </select>
+                            {% if force_tipo_operacion %}
+                                <input type="hidden" id="tipo_operacion" name="tipo_operacion" value="{{ force_tipo_operacion }}">
+                                <div class="form-control bg-light">{{ 'Compra' if force_tipo_operacion == 'compra' else 'Venta' }}</div>
+                            {% else %}
+                                <select class="form-select" id="tipo_operacion" name="tipo_operacion" required onchange="togglePartner(); updateSteps();">
+                                    <option value="compra">Compra</option>
+                                    <option value="venta">Venta</option>
+                                </select>
+                            {% endif %}
                         </div>
                     </div>
-                    <div class="col-lg-4" id="venta-partner-kind-wrap">
+                    <div class="col-lg-4" id="venta-partner-kind-wrap" {% if force_tipo_operacion == 'compra' %}style="display:none"{% endif %}>
                         <div class="note-step-panel">
                             <label class="form-label" for="venta_partner_kind">En venta, registrar como</label>
                             <select class="form-select" id="venta_partner_kind" name="venta_partner_kind" onchange="togglePartner(); updateSteps();">

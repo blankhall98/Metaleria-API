@@ -14,6 +14,9 @@
             <h1 class="h4 text-dark mb-1">Control de notas</h1>
             <p class="text-muted mb-0">Busca, revisa y filtra notas de compra y venta con foco en estatus, cobranza y seguimiento.</p>
         </div>
+        {% if user.rol == 'super_admin' %}
+            <a href="/web/admin/notas/compra-administrativa" class="btn btn-primary btn-sm">Nueva compra administrativa</a>
+        {% endif %}
     </div>
 
     {% if approved_ok or cancelled_ok or returned_ok %}
@@ -356,6 +359,7 @@
                             {% set partner_name = '-' %}
                         {% endif %}
                         {% set sucursal_name = sucursales.get(n.sucursal_id).nombre if n.sucursal_id and sucursales.get(n.sucursal_id) else '-' %}
+                        {% set inventario_sucursal_name = sucursales.get(n.inventario_sucursal_id).nombre if n.inventario_sucursal_id and sucursales.get(n.inventario_sucursal_id) else sucursal_name %}
                         <tr>
                             <td>
                                 <div class="fw-semibold">{{ folio_map.get(n.id, '-') }}</div>
@@ -374,7 +378,12 @@
                             <td>
                                 <div class="fw-semibold">{{ partner_name }}</div>
                             </td>
-                            <td>{{ sucursal_name }}</td>
+                            <td>
+                                <div class="fw-semibold">{{ sucursal_name }}</div>
+                                {% if n.tipo_operacion.value == 'compra' and n.inventario_sucursal_id and n.inventario_sucursal_id != n.sucursal_id %}
+                                    <div class="text-muted small">Inv: {{ inventario_sucursal_name }}</div>
+                                {% endif %}
+                            </td>
                             <td>
                                 {% if n.estado.value == 'BORRADOR' %}
                                     <span class="badge bg-secondary">Borrador</span>

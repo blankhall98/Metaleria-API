@@ -226,9 +226,22 @@
                     <div class="note-meta-sub">{{ partner_label }}</div>
                 </div>
                 <div class="note-meta-item">
-                    <span class="note-meta-label">Sucursal</span>
+                    <span class="note-meta-label">Sucursal contable</span>
                     <strong>{{ sucursal.nombre if sucursal else '-' }}</strong>
                 </div>
+                {% if nota.tipo_operacion.value == 'compra' %}
+                <div class="note-meta-item">
+                    <span class="note-meta-label">Sucursal inventario</span>
+                    <strong>{{ inventario_sucursal.nombre if inventario_sucursal else '-' }}</strong>
+                    <div class="note-meta-sub">
+                        {% if inventario_sucursal_diff %}
+                            El saldo se lleva en {{ sucursal.nombre if sucursal else '-' }} y el material entra fisicamente en {{ inventario_sucursal.nombre if inventario_sucursal else '-' }}.
+                        {% else %}
+                            Coincide con la sucursal contable.
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
                 <div class="note-meta-item">
                     <span class="note-meta-label">Trabajador</span>
                     <strong>{{ trabajador.nombre_completo if trabajador else '-' }}</strong>
@@ -552,6 +565,18 @@
                                     <label class="form-label">Fecha de caducidad de pago</label>
                                     {% set fecha_val = form_fecha if form_fecha is not none else (nota.fecha_caducidad_pago|date_local if nota.fecha_caducidad_pago else "") %}
                                     <input class="form-control" type="date" name="fecha_caducidad_pago" value="{{ fecha_val }}">
+                                </div>
+                                <div class="col-12">
+                                    {% if nota.tipo_operacion.value == 'compra' %}
+                                    <label class="form-label">Sucursal fisica del inventario</label>
+                                    {% set inventario_sucursal_val = form_inventario_sucursal_id if form_inventario_sucursal_id is not none else (inventario_sucursal.id if inventario_sucursal else nota.sucursal_id) %}
+                                    <select class="form-select" name="inventario_sucursal_id">
+                                        {% for s in inventory_sucursales %}
+                                            <option value="{{ s.id }}" {% if inventario_sucursal_val|string == s.id|string %}selected{% endif %}>{{ s.nombre }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <div class="form-text text-muted">La nota seguira contablemente en {{ sucursal.nombre if sucursal else '-' }}, pero el stock se registrara en la sucursal fisica seleccionada.</div>
+                                    {% endif %}
                                 </div>
                                 <div class="col-12">
                                     <label class="form-label">Metodo de pago</label>

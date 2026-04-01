@@ -30,6 +30,7 @@ from app.models import (
     UserRole,
     Proveedor,
     Cliente,
+    Sucursal,
     NotaDevolucionParcial,
     NotaDevolucionParcialLinea,
     NotaDevolucionParcialAplicacion,
@@ -62,6 +63,14 @@ def _nota_partner_key(nota: Nota) -> tuple[str | None, int | None]:
     if nota.cliente_id:
         return "cliente", nota.cliente_id
     return None, None
+
+
+def get_inventory_sucursal_id(nota: Nota) -> int | None:
+    if getattr(nota, "inventario_sucursal_id", None):
+        return int(nota.inventario_sucursal_id)
+    if nota.sucursal_id:
+        return int(nota.sucursal_id)
+    return None
 
 
 def _recalc_material(nm: NotaMaterial) -> None:
@@ -158,6 +167,7 @@ def _build_nota_snapshot(nota: Nota) -> dict:
     return {
         "nota_id": nota.id,
         "sucursal_id": nota.sucursal_id,
+        "inventario_sucursal_id": get_inventory_sucursal_id(nota),
         "trabajador_id": nota.trabajador_id,
         "proveedor_id": nota.proveedor_id,
         "cliente_id": nota.cliente_id,
@@ -605,6 +615,7 @@ def create_draft_note(
     )
     nota = Nota(
         sucursal_id=sucursal_id,
+        inventario_sucursal_id=sucursal_id,
         trabajador_id=trabajador_id,
         tipo_operacion=tipo_operacion,
         estado=NotaEstado.borrador,
@@ -733,6 +744,7 @@ def update_worker_note(
         cliente_id=cliente_id,
     )
     nota.tipo_operacion = tipo_operacion
+    nota.inventario_sucursal_id = nota.sucursal_id
     nota.comentarios_trabajador = (comentarios_trabajador or "").strip() or None
     if tipo_operacion == TipoOperacion.compra:
         nota.proveedor_id = proveedor_id
@@ -847,8 +859,11 @@ def _validar_stock_para_venta(
 ) -> None:
     if nota.tipo_operacion != TipoOperacion.venta:
         return
+    inventario_sucursal_id = get_inventory_sucursal_id(nota)
+    if not inventario_sucursal_id:
+        raise ValueError("La nota no tiene una sucursal de inventario asignada.")
     for nm in nota.materiales:
-        inv = _get_or_create_inventario(db, nota.sucursal_id, nm.material_id)
+        inv = _get_or_create_inventario(db, inventario_sucursal_id, nm.material_id)
         disponible = Decimal(str(inv.stock_actual or 0))
         requerido = Decimal(str(nm.kg_neto or 0))
         if requerido > disponible:
@@ -865,11 +880,14 @@ def _registrar_movimiento_inventario(
 ) -> None:
     if nota.tipo_operacion not in (TipoOperacion.compra, TipoOperacion.venta):
         return
+    inventario_sucursal_id = get_inventory_sucursal_id(nota)
+    if not inventario_sucursal_id:
+        raise ValueError("La nota no tiene una sucursal de inventario asignada.")
     delta = Decimal(str(nm.kg_neto or 0))
     tipo_mov = "compra" if nota.tipo_operacion == TipoOperacion.compra else "venta"
     if tipo_mov == "venta":
         delta = -delta
-    inv = _get_or_create_inventario(db, nota.sucursal_id, nm.material_id)
+    inv = _get_or_create_inventario(db, inventario_sucursal_id, nm.material_id)
     nuevo_saldo = Decimal(str(inv.stock_actual or 0)) + delta
     # evitar negativos drásticos
     if nuevo_saldo < Decimal("0"):
@@ -1396,6 +1414,7 @@ def approve_note(
     monto_pagado: Decimal | None = None,
     iva_incluido: bool | None = None,
     iva_porcentaje: Decimal | None = None,
+    inventario_sucursal_id: int | None = None,
 ) -> Nota:
     """
     Aprueba una nota aplicando precios, recalculando totales y registrando inventario/contable.
@@ -1421,6 +1440,20 @@ def approve_note(
         if iva_pct < 0 or iva_pct > 100:
             raise ValueError("El porcentaje de IVA debe estar entre 0 y 100.")
         nota.iva_porcentaje = iva_pct
+    if nota.tipo_operacion == TipoOperacion.compra:
+        resolved_inventario_sucursal_id = inventario_sucursal_id
+        if resolved_inventario_sucursal_id is None:
+            resolved_inventario_sucursal_id = get_inventory_sucursal_id(nota)
+        if resolved_inventario_sucursal_id is None:
+            resolved_inventario_sucursal_id = nota.sucursal_id
+        if not resolved_inventario_sucursal_id:
+            raise ValueError("Debes indicar la sucursal donde se registrara el inventario.")
+        sucursal_inventario = db.get(Sucursal, int(resolved_inventario_sucursal_id))
+        if not sucursal_inventario:
+            raise ValueError("La sucursal de inventario seleccionada no existe.")
+        nota.inventario_sucursal_id = int(resolved_inventario_sucursal_id)
+    else:
+        nota.inventario_sucursal_id = nota.sucursal_id
     apply_prices(db, nota)
     _apply_precio_overrides(nota, precio_override_map)
     _validar_stock_para_venta(db, nota)
@@ -1566,7 +1599,7 @@ def reverse_partial_return_line(
     db.add(nm)
 
     stock_delta = kg_restore if _is_compra_like(nota.tipo_operacion) else -kg_restore
-    inv = _get_or_create_inventario(db, nota.sucursal_id, nm.material_id)
+    inv = _get_or_create_inventario(db, get_inventory_sucursal_id(nota), nm.material_id)
     new_stock = Decimal(str(inv.stock_actual or 0)) + stock_delta
     if new_stock < Decimal("0"):
         raise ValueError("No hay stock suficiente para revertir esta devolucion parcial.")
@@ -1676,7 +1709,7 @@ def cancel_approved_note(
     for nm in nota.materiales:
         delta = Decimal(str(nm.kg_neto or 0))
         signed_delta = -delta if nota.tipo_operacion == TipoOperacion.compra else delta
-        inv = _get_or_create_inventario(db, nota.sucursal_id, nm.material_id)
+        inv = _get_or_create_inventario(db, get_inventory_sucursal_id(nota), nm.material_id)
         nuevo_saldo = Decimal(str(inv.stock_actual or 0)) + signed_delta
         if nuevo_saldo < Decimal("0"):
             nombre_mat = nm.material.nombre if nm.material else f"Material {nm.material_id}"
@@ -1775,7 +1808,7 @@ def reverse_total_return(
     for nm in nota.materiales:
         delta = Decimal(str(nm.kg_neto or 0))
         signed_delta = delta if nota.tipo_operacion == TipoOperacion.compra else -delta
-        inv = _get_or_create_inventario(db, nota.sucursal_id, nm.material_id)
+        inv = _get_or_create_inventario(db, get_inventory_sucursal_id(nota), nm.material_id)
         nuevo_saldo = Decimal(str(inv.stock_actual or 0)) + signed_delta
         if nuevo_saldo < Decimal("0"):
             nombre_mat = nm.material.nombre if nm.material else f"Material {nm.material_id}"
@@ -2000,7 +2033,7 @@ def partial_return_approved_note(
         nm = materiales_by_id[nm_id]
         kg_devolucion = ajuste["kg_devolucion"]
         stock_delta = -kg_devolucion if _is_compra_like(nota.tipo_operacion) else kg_devolucion
-        inv = _get_or_create_inventario(db, nota.sucursal_id, nm.material_id)
+        inv = _get_or_create_inventario(db, get_inventory_sucursal_id(nota), nm.material_id)
         new_stock = Decimal(str(inv.stock_actual or 0)) + stock_delta
         if new_stock < Decimal("0"):
             nombre_mat = nm.material.nombre if nm.material else f"Material {nm.material_id}"
@@ -2208,7 +2241,7 @@ def edit_note_by_superadmin(
             if delta == 0:
                 continue
             stock_delta = delta if nota.tipo_operacion == TipoOperacion.compra else -delta
-            inv = _get_or_create_inventario(db, nota.sucursal_id, nm.material_id)
+            inv = _get_or_create_inventario(db, get_inventory_sucursal_id(nota), nm.material_id)
             new_stock = Decimal(str(inv.stock_actual or 0)) + stock_delta
             if new_stock < Decimal("0"):
                 nombre_mat = nm.material.nombre if nm.material else f"Material {nm.material_id}"
@@ -2280,6 +2313,7 @@ def create_transfer_notes(
     ) -> Nota:
         nota = Nota(
             sucursal_id=sucursal_id,
+            inventario_sucursal_id=sucursal_id,
             trabajador_id=admin_id,
             admin_id=admin_id,
             tipo_operacion=tipo_operacion,

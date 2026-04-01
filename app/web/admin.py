@@ -7538,6 +7538,203 @@ async def cuenta_scrap360_ajuste(
 # ---------- NOTAS ----------
 
 
+def _build_note_price_map(db: Session) -> dict:
+    mapping: dict = {}
+    precios = db.query(TablaPrecio).filter(TablaPrecio.activo.is_(True)).all()
+    for precio in precios:
+        mapping.setdefault(precio.material_id, {}).setdefault(precio.tipo_operacion.value, {})[
+            precio.tipo_cliente.value
+        ] = float(precio.precio_por_unidad)
+    return mapping
+
+
+def _parse_note_materials_from_form(
+    material_ids: list[str],
+    kg_brutos: list[str],
+    kg_descs: list[str],
+    subpesos: list[str],
+    tipos_cliente: list[str],
+) -> list[dict]:
+    materiales_payload: list[dict] = []
+    for mid, kg_b, kg_d, sub, tc in zip(material_ids, kg_brutos, kg_descs, subpesos, tipos_cliente):
+        if not mid:
+            continue
+        kg_bruto = Decimal(kg_b or "0")
+        kg_desc = Decimal(kg_d or "0")
+        if kg_bruto <= 0 and not sub:
+            continue
+        sub_list: list[dict] = []
+        if sub:
+            try:
+                sub_json = json.loads(sub)
+            except json.JSONDecodeError:
+                raise ValueError("Formato de subpesajes invalido.")
+            for item in sub_json:
+                peso_bruto = Decimal(str(item.get("peso_kg") or item.get("peso_bruto") or 0))
+                desc = Decimal(str(item.get("descuento_kg", 0)))
+                if peso_bruto <= 0:
+                    continue
+                sub_list.append(
+                    {
+                        "peso_kg": peso_bruto,
+                        "descuento_kg": desc,
+                        "foto_url": item.get("foto_url"),
+                    }
+                )
+            kg_bruto = sum((item["peso_kg"] for item in sub_list), Decimal("0"))
+            kg_desc = sum((item["descuento_kg"] for item in sub_list), Decimal("0"))
+            if kg_desc > kg_bruto:
+                raise ValueError("El descuento no puede ser mayor que el peso bruto.")
+        else:
+            if kg_desc > kg_bruto:
+                raise ValueError("El descuento no puede ser mayor que el peso bruto.")
+        materiales_payload.append(
+            {
+                "material_id": int(mid),
+                "kg_bruto": kg_bruto,
+                "kg_descuento": kg_desc,
+                "subpesajes": sub_list,
+                "tipo_cliente": tc or None,
+            }
+        )
+    return materiales_payload
+
+
+def _render_admin_purchase_note_form(
+    request: Request,
+    db: Session,
+    current_user: dict,
+    *,
+    error: str | None = None,
+    status_code: int = 200,
+    initial_state: dict | None = None,
+    form_sucursal_id: str | None = None,
+):
+    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
+    proveedores = db.query(Proveedor).filter(Proveedor.activo.is_(True)).order_by(Proveedor.nombre_completo).all()
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
+    return templates.TemplateResponse(
+        "worker/notes_form.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "materiales": materiales,
+            "proveedores": proveedores,
+            "proveedores_venta": [],
+            "clientes": [],
+            "error": error,
+            "price_map": _build_note_price_map(db),
+            "max_mb": settings.FIREBASE_MAX_MB,
+            "form_title": "Nueva compra administrativa",
+            "action_url": "/web/admin/notas/compra-administrativa",
+            "submit_label": "Crear borrador administrativo",
+            "initial_note_json": json.dumps(initial_state or {}, ensure_ascii=True),
+            "review_comment": "",
+            "back_url": "/web/admin/notas",
+            "show_sucursal_picker": True,
+            "sucursales": sucursales,
+            "form_sucursal_id": form_sucursal_id or "",
+            "force_tipo_operacion": "compra",
+        },
+        status_code=status_code,
+    )
+
+
+@router.get("/notas/compra-administrativa")
+async def notas_compra_administrativa_get(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    return _render_admin_purchase_note_form(
+        request,
+        db,
+        current_user,
+        initial_state={"tipo_operacion": "compra", "venta_partner_kind": "proveedor", "materiales": [], "extra_evidencias": []},
+    )
+
+
+@router.post("/notas/compra-administrativa")
+async def notas_compra_administrativa_post(
+    request: Request,
+    sucursal_contable_id: str = Form(...),
+    proveedor_compra_id: str = Form(""),
+    material_id: List[str] = Form([]),
+    kg_bruto: List[str] = Form([]),
+    kg_descuento: List[str] = Form([]),
+    subpesajes: List[str] = Form([]),
+    tipo_cliente: List[str] = Form([]),
+    comentarios_trabajador: str = Form(""),
+    extra_evidencias: str = Form(""),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    initial_state = {
+        "tipo_operacion": "compra",
+        "venta_partner_kind": "proveedor",
+        "proveedor_compra_id": proveedor_compra_id or "",
+        "comentarios_trabajador": comentarios_trabajador or "",
+        "materiales": [],
+        "extra_evidencias": [],
+    }
+
+    def render_error(message: str):
+        return _render_admin_purchase_note_form(
+            request,
+            db,
+            current_user,
+            error=message,
+            status_code=400,
+            initial_state=initial_state,
+            form_sucursal_id=sucursal_contable_id,
+        )
+
+    try:
+        sucursal_id = int(sucursal_contable_id)
+    except (TypeError, ValueError):
+        return render_error("Selecciona una sucursal contable valida.")
+    if not proveedor_compra_id:
+        return render_error("Selecciona un proveedor para la compra.")
+
+    try:
+        materiales_payload = _parse_note_materials_from_form(material_id, kg_bruto, kg_descuento, subpesajes, tipo_cliente)
+        initial_state["materiales"] = materiales_payload
+    except ValueError as exc:
+        return render_error(str(exc))
+    if not materiales_payload:
+        return render_error("Debes agregar al menos un material con peso.")
+
+    extra_evidencias_payload: list[str] = []
+    if extra_evidencias:
+        try:
+            loaded = json.loads(extra_evidencias)
+        except json.JSONDecodeError:
+            return render_error("Formato de evidencia extra invalido.")
+        if not isinstance(loaded, list):
+            return render_error("Formato de evidencia extra invalido.")
+        extra_evidencias_payload = [str(url) for url in loaded if url]
+        initial_state["extra_evidencias"] = extra_evidencias_payload
+
+    try:
+        nota = note_service.create_draft_note(
+            db,
+            sucursal_id=sucursal_id,
+            trabajador_id=current_user.get("id"),
+            tipo_operacion=TipoOperacion.compra,
+            materiales_payload=materiales_payload,
+            comentarios_trabajador=comentarios_trabajador,
+            proveedor_id=int(proveedor_compra_id),
+            extra_evidencias_payload=extra_evidencias_payload,
+        )
+    except ValueError as exc:
+        return render_error(str(exc))
+
+    return RedirectResponse(url=f"/web/admin/notas/{nota.id}", status_code=303)
+
+
 @router.get("/notas")
 async def notas_list(
     request: Request,
@@ -7782,7 +7979,7 @@ async def notas_list(
                 folio_error = "Ese folio pertenece a otra sucursal."
             if not folio_result and not folio_error:
                 folio_error = "No se encontr\u00f3 una nota con ese folio."
-    sucursales = {s.id: s for s in sucursales_list}
+    sucursales = {s.id: s for s in db.query(Sucursal).order_by(Sucursal.nombre).all()}
     proveedores = {p.id: p for p in db.query(Proveedor).all()}
     clientes = {c.id: c for c in db.query(Cliente).all()}
     notas_folio = []
@@ -8222,6 +8419,8 @@ def _render_nota_detail(
     devolucion_total_reverted: bool = False,
 ):
     sucursal = db.get(Sucursal, nota.sucursal_id) if nota.sucursal_id else None
+    inventario_sucursal_id = note_service.get_inventory_sucursal_id(nota)
+    inventario_sucursal = db.get(Sucursal, inventario_sucursal_id) if inventario_sucursal_id else None
     proveedor = db.get(Proveedor, nota.proveedor_id) if nota.proveedor_id else None
     cliente = db.get(Cliente, nota.cliente_id) if nota.cliente_id else None
     trabajador = db.get(User, nota.trabajador_id) if nota.trabajador_id else None
@@ -8379,11 +8578,11 @@ def _render_nota_detail(
     note_material_options: list[dict] = []
     note_inventory_stock_map: dict[int, Decimal] = {}
     material_ids = [m.material_id for m in nota.materiales if m.material_id]
-    if nota.sucursal_id and material_ids:
+    if inventario_sucursal_id and material_ids:
         inv_rows = (
             db.query(Inventario)
             .filter(
-                Inventario.sucursal_id == nota.sucursal_id,
+                Inventario.sucursal_id == inventario_sucursal_id,
                 Inventario.material_id.in_(material_ids),
             )
             .all()
@@ -8442,6 +8641,7 @@ def _render_nota_detail(
         "form_ajuste_saldo_tipo": "reducir",
         "form_ajuste_saldo_monto": None,
         "form_ajuste_saldo_comentario": None,
+        "form_inventario_sucursal_id": inventario_sucursal_id or nota.sucursal_id,
     }
     context = {
         "request": request,
@@ -8449,6 +8649,8 @@ def _render_nota_detail(
         "user": current_user,
         "nota": nota,
         "sucursal": sucursal,
+        "inventario_sucursal": inventario_sucursal,
+        "inventario_sucursal_diff": bool(inventario_sucursal and sucursal and inventario_sucursal.id != sucursal.id),
         "proveedor": proveedor,
         "cliente": cliente,
         "trabajador": trabajador,
@@ -8500,6 +8702,7 @@ def _render_nota_detail(
         "cuentas_partner": cuentas_partner,
         "cuentas_partner_label": cuentas_partner_label,
         "cuentas_scrap360": cuentas_scrap360,
+        "inventory_sucursales": db.query(Sucursal).order_by(Sucursal.nombre).all(),
         "pago_updated": pago_updated,
         "pago_reverted": pago_reverted,
         "ajuste_manual_updated": request.query_params.get("ajuste_manual") == "1",
@@ -8548,6 +8751,8 @@ def _render_nota_edit(
     saved: bool = False,
 ):
     sucursal = db.get(Sucursal, nota.sucursal_id) if nota.sucursal_id else None
+    inventario_sucursal_id = note_service.get_inventory_sucursal_id(nota)
+    inventario_sucursal = db.get(Sucursal, inventario_sucursal_id) if inventario_sucursal_id else None
     proveedor = db.get(Proveedor, nota.proveedor_id) if nota.proveedor_id else None
     cliente = db.get(Cliente, nota.cliente_id) if nota.cliente_id else None
     trabajador = db.get(User, nota.trabajador_id) if nota.trabajador_id else None
@@ -8604,6 +8809,8 @@ def _render_nota_edit(
             "user": current_user,
             "nota": nota,
             "sucursal": sucursal,
+            "inventario_sucursal": inventario_sucursal,
+            "inventario_sucursal_diff": bool(inventario_sucursal and sucursal and inventario_sucursal.id != sucursal.id),
             "proveedor": proveedor,
             "cliente": cliente,
             "trabajador": trabajador,
@@ -9094,6 +9301,7 @@ async def notas_aprobar(
     metodo_pago = (form.get("metodo_pago") or "").strip().lower()
     cuenta_financiera = (form.get("cuenta_financiera") or "").strip()
     cuenta_scrap360_raw = (form.get("cuenta_scrap360_id") or "").strip()
+    inventario_sucursal_raw = (form.get("inventario_sucursal_id") or "").strip()
     monto_pagado_raw = (form.get("monto_pagado") or "").strip()
     iva_incluido = form.get("iva_incluido") is not None
     iva_porcentaje_raw = (form.get("iva_porcentaje") or "").strip()
@@ -9104,6 +9312,7 @@ async def notas_aprobar(
         "form_comentarios": comentarios_admin,
         "form_pagado": monto_pagado_raw,
         "form_cuenta_scrap360": cuenta_scrap360_raw,
+        "form_inventario_sucursal_id": inventario_sucursal_raw,
         "form_iva_incluido": iva_incluido,
         "form_iva_porcentaje": iva_porcentaje_raw,
     }
@@ -9240,6 +9449,20 @@ async def notas_aprobar(
                 form_state=form_state,
             )
 
+    inventario_sucursal_id = None
+    if inventario_sucursal_raw:
+        try:
+            inventario_sucursal_id = int(inventario_sucursal_raw)
+        except (TypeError, ValueError):
+            return _render_nota_detail(
+                request,
+                db,
+                current_user,
+                nota,
+                error="La sucursal de inventario es invalida.",
+                form_state=form_state,
+            )
+
     try:
         if kg_neto_override_map or kg_desc_override_map:
             for nm in nota.materiales:
@@ -9295,6 +9518,7 @@ async def notas_aprobar(
             monto_pagado=monto_pagado,
             iva_incluido=iva_incluido,
             iva_porcentaje=iva_porcentaje,
+            inventario_sucursal_id=inventario_sucursal_id,
         )
     except ValueError as e:
         return _render_nota_detail(
@@ -9700,7 +9924,7 @@ async def notas_ajuste_manual_post(
     try:
         note_service.ajustar_stock(
             db,
-            sucursal_id=nota.sucursal_id,
+            sucursal_id=note_service.get_inventory_sucursal_id(nota),
             material_id=nota_material.material_id,
             cantidad_kg=delta,
             comentario=comentario_final,

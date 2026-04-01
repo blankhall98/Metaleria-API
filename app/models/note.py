@@ -35,6 +35,7 @@ class Nota(Base):
     nota_origen_id = Column(Integer, ForeignKey("notas.id"), nullable=True, index=True)
 
     sucursal_id = Column(Integer, ForeignKey("sucursales.id"), nullable=False, index=True)
+    inventario_sucursal_id = Column(Integer, ForeignKey("sucursales.id"), nullable=True, index=True)
     trabajador_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     admin_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     proveedor_id = Column(Integer, ForeignKey("proveedores.id"), nullable=True, index=True)
