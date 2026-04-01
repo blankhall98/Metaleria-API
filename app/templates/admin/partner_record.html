@@ -68,6 +68,9 @@
     <div class="ops-inline-toolbar sticky-tools mb-3">
         <a href="#partner-summary" class="ops-inline-pill active">Resumen</a>
         <a href="#partner-ledger" class="ops-inline-pill">Estado de cuenta</a>
+        {% if attendance_enabled %}
+            <a href="#partner-attendance" class="ops-inline-pill">Asistencias</a>
+        {% endif %}
         <a href="#partner-notes" class="ops-inline-pill">Notas</a>
         <a href="#partner-payments" class="ops-inline-pill">Pagos</a>
         {% if can_view_partner_accounts %}
@@ -186,6 +189,13 @@
                                 {% endif %}
                             </strong>
                         </div>
+                        {% if attendance_enabled %}
+                            <div class="note-meta-item">
+                                <span class="note-meta-label">Asistencias historicas</span>
+                                <strong>{{ attendance_total_historico }}</strong>
+                                <div class="note-meta-sub">1 asistencia por dia con nota registrada</div>
+                            </div>
+                        {% endif %}
                     </div>
                 </div>
                 <div class="d-none d-xl-block vr"></div>
@@ -299,8 +309,98 @@
                 </div>
             </div>
         </div>
+        </div>
     </div>
-    </div>
+
+    {% if attendance_enabled %}
+        <div class="card hover-lift mb-3" id="partner-attendance">
+            <div class="card-body">
+                <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2">
+                    <div>
+                        <h2 class="h6 text-dark mb-1">Asistencias del proveedor</h2>
+                        <div class="text-muted small">
+                            Se calculan automaticamente a partir de las notas del proveedor. Varias notas del mismo dia cuentan como una sola asistencia.
+                        </div>
+                    </div>
+                </div>
+                <form method="get" class="row g-2 align-items-end mt-3">
+                    {% if q %}
+                        <input type="hidden" name="q" value="{{ q }}">
+                    {% endif %}
+                    <div class="col-lg-3 col-md-4">
+                        <label class="form-label">Desde</label>
+                        <input type="date" class="form-control form-control-sm" name="attendance_from" value="{{ attendance_from }}">
+                    </div>
+                    <div class="col-lg-3 col-md-4">
+                        <label class="form-label">Hasta</label>
+                        <input type="date" class="form-control form-control-sm" name="attendance_to" value="{{ attendance_to }}">
+                    </div>
+                    <div class="col-lg-2 col-md-4 d-grid">
+                        <button class="btn btn-outline-primary btn-sm" type="submit">Filtrar</button>
+                    </div>
+                    <div class="col-lg-2 col-md-4 d-grid">
+                        {% if attendance_from or attendance_to %}
+                            <a href="/web/admin/proveedores/{{ partner.id }}/record{% if q %}?q={{ q }}{% endif %}" class="btn btn-outline-secondary btn-sm">Limpiar</a>
+                        {% endif %}
+                    </div>
+                </form>
+                {% if attendance_error %}
+                    <div class="alert alert-danger py-2 small mt-3 mb-0">{{ attendance_error }}</div>
+                {% endif %}
+                <div class="note-meta-grid mt-3">
+                    <div class="note-meta-item">
+                        <span class="note-meta-label">Asistencias historicas</span>
+                        <strong>{{ attendance_total_historico }}</strong>
+                    </div>
+                    <div class="note-meta-item">
+                        <span class="note-meta-label">Asistencias en rango</span>
+                        <strong>{{ attendance_total_filtrado }}</strong>
+                    </div>
+                    <div class="note-meta-item">
+                        <span class="note-meta-label">Rango actual</span>
+                        <strong>{{ attendance_range_label }}</strong>
+                    </div>
+                </div>
+                <div class="table-responsive mt-3">
+                    <table class="table table-hover table-sm align-middle mb-0">
+                        <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Sucursal(es)</th>
+                            <th class="text-end">Notas del dia</th>
+                            <th>Folios considerados</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for row in attendance_rows %}
+                            <tr>
+                                <td>
+                                    <div class="fw-semibold">{{ row.fecha_label }}</div>
+                                </td>
+                                <td>{{ row.sucursales_label }}</td>
+                                <td class="text-end">{{ row.notes_count }}</td>
+                                <td>
+                                    {% if row.folios %}
+                                        <div class="d-flex flex-wrap gap-1">
+                                            {% for folio in row.folios %}
+                                                <span class="badge bg-light text-dark border">{{ folio }}</span>
+                                            {% endfor %}
+                                        </div>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% if attendance_rows|length == 0 %}
+                    <p class="text-muted small mt-3 mb-0">No hay asistencias para el rango seleccionado.</p>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
 
     <div class="card hover-lift mb-3" id="partner-ledger">
         <div class="card-body">
@@ -431,6 +531,12 @@
                     </div>
                 </div>
                 <form method="get" class="d-flex flex-wrap gap-2 align-items-end">
+                    {% if attendance_from %}
+                        <input type="hidden" name="attendance_from" value="{{ attendance_from }}">
+                    {% endif %}
+                    {% if attendance_to %}
+                        <input type="hidden" name="attendance_to" value="{{ attendance_to }}">
+                    {% endif %}
                     <div>
                         <label class="form-label">Buscar nota</label>
                         <input

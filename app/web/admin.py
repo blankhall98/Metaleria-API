@@ -16,7 +16,7 @@ from datetime import datetime, date, timedelta
 from typing import Iterable, List
 
 from app.core.config import get_settings
-from app.core.datetime_utils import format_datetime_local
+from app.core.datetime_utils import format_date_local, format_datetime_local, to_local_datetime
 from app.core.security import hash_password
 from app.db.deps import get_db
 from app.models import (
@@ -2590,6 +2590,9 @@ def _build_partner_record_context(
     link_msg: str | None = None,
     link_warn: str | None = None,
     link_error: str | None = None,
+    attendance_from: date | None = None,
+    attendance_to: date | None = None,
+    attendance_error: str | None = None,
 ) -> dict:
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     form_state = form_state or {}
@@ -2833,6 +2836,68 @@ def _build_partner_record_context(
         suc_query = suc_query.filter(Sucursal.id.in_(allowed_suc_ids))
     sucursales = {s.id: s for s in suc_query.all()}
     can_manage_partner = not _is_read_only_admin_user(current_user)
+    attendance_rows: list[dict] = []
+    attendance_total_historico = 0
+    attendance_total_filtrado = 0
+    attendance_range_label = "Historial completo"
+    if partner_type == "proveedor":
+        attendance_query = db.query(Nota).filter(
+            Nota.proveedor_id == partner.id,
+            Nota.estado != NotaEstado.borrador,
+        )
+        attendance_query = _apply_sucursal_filter(attendance_query, allowed_suc_ids, None, Nota.sucursal_id)
+        attendance_notes = attendance_query.order_by(Nota.created_at.asc(), Nota.id.asc()).all()
+        attendance_folio_map = _build_folio_map(attendance_notes) if attendance_notes else {}
+        attendance_days: dict[date, dict] = {}
+        for nota in attendance_notes:
+            local_dt = to_local_datetime(nota.created_at) if nota.created_at else None
+            if not local_dt:
+                continue
+            local_day = local_dt.date()
+            day_data = attendance_days.setdefault(
+                local_day,
+                {
+                    "fecha": local_day,
+                    "sucursales": set(),
+                    "notes_count": 0,
+                    "folios": [],
+                },
+            )
+            day_data["notes_count"] += 1
+            if nota.sucursal_id and nota.sucursal_id in sucursales:
+                day_data["sucursales"].add(sucursales[nota.sucursal_id].nombre)
+            elif nota.sucursal and nota.sucursal.nombre:
+                day_data["sucursales"].add(nota.sucursal.nombre)
+            folio = attendance_folio_map.get(nota.id)
+            if folio:
+                day_data["folios"].append(folio)
+        attendance_total_historico = len(attendance_days)
+        if attendance_from or attendance_to:
+            range_parts = []
+            if attendance_from:
+                range_parts.append(f"Desde {format_date_local(attendance_from, '%d/%m/%Y')}")
+            if attendance_to:
+                range_parts.append(f"Hasta {format_date_local(attendance_to, '%d/%m/%Y')}")
+            attendance_range_label = " / ".join(range_parts) if range_parts else attendance_range_label
+        filtered_days = []
+        for attendance_day, row in attendance_days.items():
+            if attendance_from and attendance_day < attendance_from:
+                continue
+            if attendance_to and attendance_day > attendance_to:
+                continue
+            filtered_days.append(
+                {
+                    "fecha": row["fecha"],
+                    "fecha_label": format_date_local(row["fecha"], "%d/%m/%Y"),
+                    "notes_count": row["notes_count"],
+                    "sucursales": sorted(row["sucursales"]),
+                    "sucursales_label": ", ".join(sorted(row["sucursales"])) if row["sucursales"] else "-",
+                    "folios": row["folios"][:6],
+                }
+            )
+        filtered_days.sort(key=lambda row: row["fecha"], reverse=True)
+        attendance_rows = filtered_days
+        attendance_total_filtrado = len(filtered_days)
 
     return {
         "request": request,
@@ -2883,6 +2948,14 @@ def _build_partner_record_context(
         "record_credito_ajuste_restante": coverage_summary["credito_restante"],
         "can_manage_partner": can_manage_partner,
         "can_view_partner_accounts": can_manage_partner,
+        "attendance_enabled": partner_type == "proveedor",
+        "attendance_rows": attendance_rows,
+        "attendance_total_historico": attendance_total_historico,
+        "attendance_total_filtrado": attendance_total_filtrado,
+        "attendance_from": attendance_from.isoformat() if attendance_from else "",
+        "attendance_to": attendance_to.isoformat() if attendance_to else "",
+        "attendance_error": attendance_error,
+        "attendance_range_label": attendance_range_label,
     }
 
 
@@ -4905,6 +4978,23 @@ async def proveedor_record(
     link_msg = (request.query_params.get("link_msg") or "").strip() or None
     link_warn = (request.query_params.get("link_warn") or "").strip() or None
     link_error = (request.query_params.get("link_error") or "").strip() or None
+    attendance_from_raw = (request.query_params.get("attendance_from") or "").strip()
+    attendance_to_raw = (request.query_params.get("attendance_to") or "").strip()
+    attendance_from = None
+    attendance_to = None
+    attendance_error = None
+    if attendance_from_raw:
+        try:
+            attendance_from = datetime.strptime(attendance_from_raw, "%Y-%m-%d").date()
+        except ValueError:
+            attendance_error = "La fecha inicial de asistencias es invalida."
+    if attendance_to_raw:
+        try:
+            attendance_to = datetime.strptime(attendance_to_raw, "%Y-%m-%d").date()
+        except ValueError:
+            attendance_error = "La fecha final de asistencias es invalida."
+    if attendance_from and attendance_to and attendance_from > attendance_to:
+        attendance_from, attendance_to = attendance_to, attendance_from
     context = _build_partner_record_context(
         request,
         db,
@@ -4917,6 +5007,9 @@ async def proveedor_record(
         link_msg=link_msg,
         link_warn=link_warn,
         link_error=link_error,
+        attendance_from=attendance_from,
+        attendance_to=attendance_to,
+        attendance_error=attendance_error,
     )
     return templates.TemplateResponse("admin/partner_record.html", context)
 
