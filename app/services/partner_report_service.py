@@ -322,3 +322,127 @@ def build_partner_statement_pdf(report: dict) -> tuple[bytes, str]:
         f"{_safe_filename(report['partner_name'])}.pdf"
     )
     return doc.render(), filename
+
+
+def build_provider_attendance_excel(report: dict) -> tuple[bytes, str]:
+    generated_at = format_datetime_local(report["generated_at"])
+    summary_rows = [
+        _sheet_row([("Asistencias proveedor", "String")]),
+        _sheet_row([(f"Proveedor: {report['partner_name']}", "String")]),
+        _sheet_row([(f"ID: {report['partner_id']}", "String")]),
+        _sheet_row([(f"Rango: {report['range_label']}", "String")]),
+        _sheet_row([(f"Generado: {generated_at}", "String")]),
+        _sheet_row([("", "String")]),
+        _sheet_row([("Asistencias historicas", "String"), (str(report["attendance_total_historico"]), "Number")]),
+        _sheet_row([("Asistencias en rango", "String"), (str(report["attendance_total_filtrado"]), "Number")]),
+    ]
+
+    day_headers = ["Fecha", "Sucursal(es)", "Notas del dia", "Folios considerados"]
+    day_rows = ["<Row>" + "".join([_sheet_cell(h) for h in day_headers]) + "</Row>"]
+    for row in report["attendance_rows"]:
+        day_rows.append(
+            _sheet_row(
+                [
+                    (row["fecha_label"], "String"),
+                    (row["sucursales_label"], "String"),
+                    (str(int(_safe_decimal(row["notes_count"]))), "Number"),
+                    (", ".join(row.get("folios") or []), "String"),
+                ]
+            )
+        )
+
+    workbook = f"""<?xml version="1.0"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Worksheet ss:Name="Resumen">
+  <Table>
+   {''.join(summary_rows)}
+  </Table>
+ </Worksheet>
+ <Worksheet ss:Name="Asistencias">
+  <Table>
+   {''.join(day_rows)}
+  </Table>
+ </Worksheet>
+</Workbook>"""
+    filename = f"asistencias_proveedor_{_safe_filename(report['partner_name'])}.xls"
+    return workbook.encode("utf-8"), filename
+
+
+def build_provider_attendance_pdf(report: dict) -> tuple[bytes, str]:
+    left = 42
+    right = 570
+    top = 760
+    bottom = 58
+
+    doc = _PdfDocument()
+
+    def new_page(title_suffix: str | None = None) -> tuple[_PdfPage, float]:
+        page = doc.new_page()
+        y_pos = top
+        title = "Asistencias proveedor"
+        if title_suffix:
+            title = f"{title} {title_suffix}"
+        page.text(left, y_pos, title, size=16, font="F2")
+        page.text(left, y_pos - 16, f"Proveedor: {report['partner_name']}", size=9)
+        page.text(left, y_pos - 28, f"ID: {report['partner_id']}", size=9)
+        page.text(left, y_pos - 40, f"Rango: {report['range_label']}", size=9)
+        page.text(right - 156, y_pos - 16, f"Generado: {format_datetime_local(report['generated_at'])}", size=9)
+        page.line(left, y_pos - 48, right, y_pos - 48)
+        return page, y_pos - 66
+
+    page, y = new_page()
+    page.rect(left, y - 18, right - left, 18, fill_gray=0.93, stroke_gray=0.85)
+    page.text(left + 8, y - 6, "Resumen", size=10, font="F2")
+    y -= 28
+    page.text(left + 8, y, "Asistencias historicas", size=9)
+    page.text(left + 180, y, str(report["attendance_total_historico"]), size=9, font="F2")
+    y -= 12
+    page.text(left + 8, y, "Asistencias en rango", size=9)
+    page.text(left + 180, y, str(report["attendance_total_filtrado"]), size=9, font="F2")
+    y -= 22
+
+    def draw_header(target: _PdfPage, y_pos: float) -> float:
+        target.rect(left, y_pos - 16, right - left, 16, fill_gray=0.93, stroke_gray=0.85)
+        cols = [
+            ("Fecha", left, 90, "left"),
+            ("Sucursal(es)", left + 90, 200, "left"),
+            ("Notas", left + 290, 54, "right"),
+            ("Folios", left + 344, 182, "left"),
+        ]
+        for title, x, width, align in cols:
+            draw_x = x + 2
+            if align == "right":
+                draw_x = x + width - _text_width(title, 8) - 2
+            target.text(draw_x, y_pos - 5, title, size=8, font="F2")
+        return y_pos - 24
+
+    def draw_row(target: _PdfPage, y_pos: float, row: dict) -> float:
+        cols = [
+            (row["fecha_label"], left, 90, "left"),
+            (row["sucursales_label"], left + 90, 200, "left"),
+            (str(row["notes_count"]), left + 290, 54, "right"),
+            (", ".join(row.get("folios") or []) or "-", left + 344, 182, "left"),
+        ]
+        for text, x, width, align in cols:
+            display = _truncate_text(str(text), width - 4, 8)
+            draw_x = x + 2
+            if align == "right":
+                draw_x = x + width - _text_width(display, 8) - 2
+            target.text(draw_x, y_pos, display, size=8)
+        return y_pos - 12
+
+    if report["attendance_rows"]:
+        y = draw_header(page, y)
+        for row in report["attendance_rows"]:
+            if y < bottom + 12:
+                page, y = new_page("(continuacion)")
+                y = draw_header(page, y)
+            y = draw_row(page, y, row)
+    else:
+        page.text(left, y, "No hay asistencias para el rango seleccionado.", size=9)
+
+    filename = f"asistencias_proveedor_{_safe_filename(report['partner_name'])}.pdf"
+    return doc.render(), filename

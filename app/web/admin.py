@@ -3063,6 +3063,19 @@ def _build_partner_statement_report(context: dict) -> dict:
     }
 
 
+def _build_provider_attendance_report(context: dict) -> dict:
+    partner = context["partner"]
+    return {
+        "generated_at": datetime.utcnow(),
+        "partner_name": partner.nombre_completo,
+        "partner_id": partner.id,
+        "range_label": context.get("attendance_range_label") or "Historial completo",
+        "attendance_total_historico": context.get("attendance_total_historico") or 0,
+        "attendance_total_filtrado": context.get("attendance_total_filtrado") or 0,
+        "attendance_rows": context.get("attendance_rows") or [],
+    }
+
+
 def _ensure_nota_access(
     nota: Nota,
     allowed_ids: list[int] | None,
@@ -5068,6 +5081,64 @@ async def proveedor_estado_cuenta_export(
         partner_type="proveedor",
         partner=proveedor,
         export_format=format,
+    )
+
+
+@router.get("/proveedores/{proveedor_id}/asistencias")
+async def proveedor_asistencias_export(
+    proveedor_id: int,
+    request: Request,
+    format: str = "pdf",
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_viewer_or_admin_or_superadmin),
+):
+    proveedor = db.get(Proveedor, proveedor_id)
+    if not proveedor:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_partner_access(proveedor, allowed_suc_ids)
+
+    attendance_from_raw = (request.query_params.get("attendance_from") or "").strip()
+    attendance_to_raw = (request.query_params.get("attendance_to") or "").strip()
+    attendance_from = None
+    attendance_to = None
+    if attendance_from_raw:
+        try:
+            attendance_from = datetime.strptime(attendance_from_raw, "%Y-%m-%d").date()
+        except ValueError:
+            attendance_from = None
+    if attendance_to_raw:
+        try:
+            attendance_to = datetime.strptime(attendance_to_raw, "%Y-%m-%d").date()
+        except ValueError:
+            attendance_to = None
+    if attendance_from and attendance_to and attendance_from > attendance_to:
+        attendance_from, attendance_to = attendance_to, attendance_from
+
+    context = _build_partner_record_context(
+        request,
+        db,
+        current_user,
+        partner_type="proveedor",
+        partner=proveedor,
+        q=None,
+        attendance_from=attendance_from,
+        attendance_to=attendance_to,
+    )
+    report = _build_provider_attendance_report(context)
+    fmt = (format or "pdf").strip().lower()
+    if fmt == "pdf":
+        content, filename = partner_report_service.build_provider_attendance_pdf(report)
+        media_type = "application/pdf"
+    elif fmt in {"xls", "xlsx", "excel"}:
+        content, filename = partner_report_service.build_provider_attendance_excel(report)
+        media_type = "application/vnd.ms-excel"
+    else:
+        raise HTTPException(status_code=400, detail="Formato invalido. Usa pdf o excel.")
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
