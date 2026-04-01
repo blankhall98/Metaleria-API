@@ -13511,16 +13511,33 @@ async def inventario_movimientos(
     )
     compra_movimientos = compra_summary_query.order_by(InventarioMovimiento.created_at.desc()).limit(2000).all()
     compra_total_kg = Decimal("0")
+    compra_total_monto = Decimal("0")
     compra_rows_map: dict[int, dict] = {}
     compra_note_ids: list[int] = []
+    compra_nota_material_ids = [
+        mov.nota_material_id
+        for mov in compra_movimientos
+        if mov.nota_material_id
+    ]
+    compra_nota_material_map: dict[int, NotaMaterial] = {}
+    if compra_nota_material_ids:
+        compra_nota_material_map = {
+            nm.id: nm
+            for nm in db.query(NotaMaterial).filter(NotaMaterial.id.in_(compra_nota_material_ids)).all()
+        }
     for mov in compra_movimientos:
         qty = _signed_inventario_qty(mov) or Decimal("0")
         compra_total_kg += qty
+        subtotal = Decimal("0")
+        if mov.nota_material_id and compra_nota_material_map.get(mov.nota_material_id):
+            subtotal = Decimal(str(compra_nota_material_map[mov.nota_material_id].subtotal or 0))
+            compra_total_monto += subtotal
         if mov.nota_id:
             if mov.nota_id not in compra_rows_map:
                 compra_rows_map[mov.nota_id] = {
                     "nota_id": mov.nota_id,
                     "cantidad_kg": Decimal("0"),
+                    "monto": Decimal("0"),
                     "fecha": mov.created_at,
                     "latest_fecha": mov.created_at,
                     "sucursal": mov.inventario.sucursal.nombre if mov.inventario and mov.inventario.sucursal else "-",
@@ -13529,6 +13546,7 @@ async def inventario_movimientos(
                 compra_note_ids.append(mov.nota_id)
             row = compra_rows_map[mov.nota_id]
             row["cantidad_kg"] += qty
+            row["monto"] += subtotal
             if mov.created_at and (row["fecha"] is None or mov.created_at < row["fecha"]):
                 row["fecha"] = mov.created_at
             if mov.created_at and (row["latest_fecha"] is None or mov.created_at > row["latest_fecha"]):
@@ -13566,6 +13584,7 @@ async def inventario_movimientos(
                 "sucursal": row["sucursal"],
                 "proveedor": proveedor.nombre_completo if proveedor else "-",
                 "cantidad_kg": row["cantidad_kg"],
+                "monto": row["monto"],
                 "materiales": sorted(row["materiales"]),
             }
         )
@@ -13598,6 +13617,7 @@ async def inventario_movimientos(
             "date_scope_label": date_scope_label,
             "total_firmado": total_firmado,
             "compra_total_kg": compra_total_kg,
+            "compra_total_monto": compra_total_monto,
             "compra_total_notas": len(compra_notas_rows),
             "compra_total_movimientos": len(compra_movimientos),
             "compra_notas_rows": compra_notas_rows,

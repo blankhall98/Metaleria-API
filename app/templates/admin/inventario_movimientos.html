@@ -80,7 +80,7 @@
 </div>
 
 <div class="row g-3 mb-3">
-    <div class="col-lg-4">
+    <div class="col-xl-3 col-lg-6">
         <div class="card hover-lift h-100">
             <div class="card-body">
                 <p class="text-uppercase text-muted small mb-2">Compras en rango</p>
@@ -101,7 +101,16 @@
             </div>
         </div>
     </div>
-    <div class="col-lg-4">
+    <div class="col-xl-3 col-lg-6">
+        <div class="card hover-lift h-100">
+            <div class="card-body">
+                <p class="text-uppercase text-muted small mb-2">Monto comprado</p>
+                <div class="h4 text-white mb-1">${{ "{:,.2f}".format(compra_total_monto or 0) }}</div>
+                <div class="text-muted small">Subtotal acumulado del material comprado en el rango.</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-lg-6">
         <div class="card hover-lift h-100">
             <div class="card-body">
                 <p class="text-uppercase text-muted small mb-2">Notas de compra</p>
@@ -110,7 +119,7 @@
             </div>
         </div>
     </div>
-    <div class="col-lg-4">
+    <div class="col-xl-3 col-lg-6">
         <div class="card hover-lift h-100">
             <div class="card-body">
                 <p class="text-uppercase text-muted small mb-2">Movimientos de compra</p>
@@ -129,7 +138,7 @@
                 <p class="text-muted small mb-0">Resumen por nota para identificar cuanto material se compro en las fechas filtradas.</p>
             </div>
             <div class="text-muted small">
-                {{ compra_total_notas }} notas · {{ "{:,.2f}".format(compra_total_kg or 0) }} kg
+                {{ compra_total_notas }} notas · {{ "{:,.2f}".format(compra_total_kg or 0) }} kg · ${{ "{:,.2f}".format(compra_total_monto or 0) }}
             </div>
         </div>
         <div class="table-scroll-shell">
@@ -143,6 +152,7 @@
                         <th>Sucursal</th>
                         <th>Material(es)</th>
                         <th>Cantidad comprada</th>
+                        <th>Total comprado $</th>
                         <th class="text-end"></th>
                     </tr>
                     </thead>
@@ -161,6 +171,7 @@
                                 {% endif %}
                             </td>
                             <td class="fw-semibold">{{ "{:,.2f}".format(row.cantidad_kg or 0) }} kg</td>
+                            <td class="fw-semibold">${{ "{:,.2f}".format(row.monto or 0) }}</td>
                             <td class="text-end">
                                 <a class="btn btn-sm btn-outline-secondary" href="/web/admin/notas/{{ row.nota_id }}">Ver nota</a>
                             </td>
