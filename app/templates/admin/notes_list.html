@@ -6,6 +6,7 @@
 {% set approved_ok = request.query_params.get("approved") == "1" %}
 {% set cancelled_ok = request.query_params.get("cancelled") == "1" %}
 {% set returned_ok = request.query_params.get("returned") == "1" %}
+{% set sucursal_suffix = '&sucursal_id=' ~ sucursal_id if sucursal_id else '' %}
 <div class="notes-dashboard">
     <div class="page-header note-page-header">
         <div>
@@ -24,12 +25,12 @@
     {% endif %}
 
     <div class="ops-inline-toolbar sticky-tools mb-3">
-        <a href="/web/admin/notas?estado=EN_REVISION#tabla-principal" class="ops-inline-pill">Revision inmediata</a>
-        <a href="/web/admin/notas?pago=PENDIENTES#tabla-principal" class="ops-inline-pill">Pendientes por saldar</a>
-        <a href="/web/admin/notas?pago=PAGADAS#tabla-principal" class="ops-inline-pill">Pagadas</a>
+        <a href="/web/admin/notas?estado=EN_REVISION{{ sucursal_suffix }}#tabla-principal" class="ops-inline-pill">Revision inmediata</a>
+        <a href="/web/admin/notas?pago=PENDIENTES{{ sucursal_suffix }}#tabla-principal" class="ops-inline-pill">Pendientes por saldar</a>
+        <a href="/web/admin/notas?pago=PAGADAS{{ sucursal_suffix }}#tabla-principal" class="ops-inline-pill">Pagadas</a>
         <a href="#notes-deadline-panel" class="ops-inline-pill">Vencidas y por vencer</a>
-        <a href="/web/admin/proveedores?modo=COMPRA_VENTA" class="ops-inline-pill">Proveedores compra y venta</a>
-        <a href="/web/admin/contabilidad" class="ops-inline-pill">Log contable</a>
+        <a href="/web/admin/proveedores?modo=COMPRA_VENTA{% if sucursal_id %}&sucursal_id={{ sucursal_id }}{% endif %}" class="ops-inline-pill">Proveedores compra y venta</a>
+        <a href="/web/admin/contabilidad{% if sucursal_id %}?sucursal_id={{ sucursal_id }}{% endif %}" class="ops-inline-pill">Log contable</a>
     </div>
 
     <div class="card hover-lift mb-3 notes-toolbar-card">
@@ -38,15 +39,24 @@
                 <div class="notes-search-panel">
                     <div class="d-flex align-items-center gap-2 mb-3">
                         <span class="chip-strong">Busqueda</span>
-                        <span class="text-muted small">Acceso rapido por folio y estado de pago</span>
+                        <span class="text-muted small">Acceso rapido por folio, sucursal y estado de pago</span>
                     </div>
                     <form method="get" class="notes-search-form">
                         <div class="row g-3 align-items-end">
-                            <div class="col-lg-6">
+                            <div class="col-lg-5">
                                 <label class="form-label">Buscar por folio</label>
                                 <input class="form-control" name="folio" placeholder="01_C_1" value="{{ folio_query }}">
                             </div>
-                            <div class="col-lg-4">
+                            <div class="col-lg-3">
+                                <label class="form-label">Sucursal</label>
+                                <select class="form-select" name="sucursal_id">
+                                    <option value="">Todas las sucursales</option>
+                                    {% for suc in sucursales.values()|sort(attribute='nombre') %}
+                                        <option value="{{ suc.id }}" {% if sucursal_id == suc.id %}selected{% endif %}>{{ suc.nombre }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-lg-2">
                                 <label class="form-label">Estado de pago</label>
                                 <select class="form-select" name="pago">
                                     <option value="TODAS" {% if pago_current == 'TODAS' %}selected{% endif %}>Todas</option>
@@ -61,7 +71,17 @@
                         {% if estado_current and estado_current != 'TODAS' %}
                             <input type="hidden" name="estado" value="{{ estado_current }}">
                         {% endif %}
-                        {% if folio_query or pago_current != 'TODAS' %}
+                        <div class="mt-3 d-flex flex-wrap align-items-center gap-2">
+                            <span class="chip-strong">Vista actual</span>
+                            <span class="text-muted small">Sucursal: {{ sucursal_label }}</span>
+                        </div>
+                        <div class="ops-inline-toolbar mt-3">
+                            <a href="{{ sucursal_links['ALL'] }}" class="ops-inline-pill {{ 'active' if not sucursal_id else '' }}">Todas las sucursales</a>
+                            {% for suc in sucursales.values()|sort(attribute='nombre') %}
+                                <a href="{{ sucursal_links[suc.id ~ ''] }}" class="ops-inline-pill {{ 'active' if sucursal_id == suc.id else '' }}">{{ suc.nombre }}</a>
+                            {% endfor %}
+                        </div>
+                        {% if folio_query or pago_current != 'TODAS' or sucursal_id %}
                             <div class="mt-3">
                                 <a class="btn btn-outline-secondary btn-sm" href="/web/admin/notas">Limpiar filtros</a>
                             </div>
@@ -217,6 +237,7 @@
                     <h2 class="h6 text-dark mb-1">Explorador de notas</h2>
                     <div class="text-muted small">
                         Mostrando {{ notas_estado|length }} de {{ estado_total }} notas
+                        &middot; Sucursal: {{ sucursal_label }}
                         &middot; Estado: {{ estado_label }}
                         &middot; Pago: {{ pago_label }}
                     </div>

@@ -1615,11 +1615,17 @@ def _build_folio_map(notas: Iterable[Nota]) -> dict[int, str]:
     return folio_map
 
 
-def _build_notas_estado_links(folio_query: str | None, pago_filter: str | None = None) -> dict[str, str]:
+def _build_notas_estado_links(
+    folio_query: str | None,
+    pago_filter: str | None = None,
+    sucursal_id: int | None = None,
+) -> dict[str, str]:
     def build(estado: str | None) -> str:
         params: dict[str, str] = {}
         if folio_query:
             params["folio"] = folio_query
+        if sucursal_id:
+            params["sucursal_id"] = str(sucursal_id)
         if pago_filter and pago_filter != "TODAS":
             params["pago"] = pago_filter
         if estado:
@@ -1636,11 +1642,17 @@ def _build_notas_estado_links(folio_query: str | None, pago_filter: str | None =
     }
 
 
-def _build_notas_pago_links(folio_query: str | None, estado_filter: str | None = None) -> dict[str, str]:
+def _build_notas_pago_links(
+    folio_query: str | None,
+    estado_filter: str | None = None,
+    sucursal_id: int | None = None,
+) -> dict[str, str]:
     def build(pago: str | None) -> str:
         params: dict[str, str] = {}
         if folio_query:
             params["folio"] = folio_query
+        if sucursal_id:
+            params["sucursal_id"] = str(sucursal_id)
         if estado_filter and estado_filter != "TODAS":
             params["estado"] = estado_filter
         if pago and pago != "TODAS":
@@ -1653,6 +1665,32 @@ def _build_notas_pago_links(folio_query: str | None, estado_filter: str | None =
         "PAGADAS": build("PAGADAS"),
         "PENDIENTES": build("PENDIENTES"),
     }
+
+
+def _build_notas_sucursal_links(
+    sucursales: Iterable[Sucursal],
+    *,
+    folio_query: str | None = None,
+    estado_filter: str | None = None,
+    pago_filter: str | None = None,
+) -> dict[str, str]:
+    def build(target_sucursal_id: int | None) -> str:
+        params: dict[str, str] = {}
+        if folio_query:
+            params["folio"] = folio_query
+        if estado_filter and estado_filter != "TODAS":
+            params["estado"] = estado_filter
+        if pago_filter and pago_filter != "TODAS":
+            params["pago"] = pago_filter
+        if target_sucursal_id:
+            params["sucursal_id"] = str(target_sucursal_id)
+        qs = urlencode(params)
+        return f"/web/admin/notas?{qs}" if qs else "/web/admin/notas"
+
+    links = {"ALL": build(None)}
+    for sucursal in sucursales:
+        links[str(sucursal.id)] = build(sucursal.id)
+    return links
 
 
 def _filter_notes_by_query(notas: list[Nota], q: str | None) -> tuple[list[Nota], dict[int, str]]:
@@ -7027,6 +7065,20 @@ async def notas_list(
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    sucursales_list = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales_list = _filter_sucursales_for_admin(sucursales_list, allowed_suc_ids)
+    sucursal_raw = (request.query_params.get("sucursal_id") or "").strip()
+    sucursal_id = None
+    if sucursal_raw:
+        try:
+            sucursal_id = int(sucursal_raw)
+        except ValueError:
+            sucursal_id = None
+    if allowed_suc_ids is not None:
+        if sucursal_id and sucursal_id not in allowed_suc_ids:
+            sucursal_id = None
+        if sucursal_id is None and len(allowed_suc_ids) == 1:
+            sucursal_id = allowed_suc_ids[0]
     folio_query = (request.query_params.get("folio") or "").strip()
     estado_raw = (request.query_params.get("estado") or "").strip().upper()
     pago_raw = (request.query_params.get("pago") or "").strip().upper()
@@ -7087,44 +7139,35 @@ async def notas_list(
         Nota.estado == NotaEstado.aprobada,
         func.coalesce(Nota.monto_pagado, 0) < func.coalesce(Nota.total_monto, 0),
     )
-    notas_revision = (
-        db.query(Nota)
-        .filter(
-            Nota.estado == NotaEstado.en_revision,
-            Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]),
-            *([Nota.sucursal_id.in_(allowed_suc_ids)] if allowed_suc_ids else []),
-        )
-        .order_by(Nota.id.desc())
-        .all()
+    notas_revision = db.query(Nota).filter(
+        Nota.estado == NotaEstado.en_revision,
+        Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]),
     )
-    notas_recientes = (
-        db.query(Nota)
-        .filter(
-            Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]),
-            *([Nota.sucursal_id.in_(allowed_suc_ids)] if allowed_suc_ids else []),
-        )
-        .order_by(Nota.id.desc())
-        .limit(10)
-        .all()
+    notas_revision = _apply_sucursal_filter(notas_revision, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
+    notas_revision = notas_revision.order_by(Nota.id.desc()).all()
+    notas_recientes = db.query(Nota).filter(
+        Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]),
     )
+    notas_recientes = _apply_sucursal_filter(notas_recientes, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
+    notas_recientes = notas_recientes.order_by(Nota.id.desc()).limit(10).all()
     hoy = date.today()
     alerta_dias = max(1, int(getattr(settings, "NOTA_VENCIMIENTO_ALERTA_DIAS", 5)))
     limite_alerta = hoy + timedelta(days=alerta_dias)
-    notas_con_vencimiento = (
-        db.query(Nota)
-        .filter(
-            Nota.estado == NotaEstado.aprobada,
-            Nota.fecha_caducidad_pago.isnot(None),
-            Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]),
-            *([Nota.sucursal_id.in_(allowed_suc_ids)] if allowed_suc_ids else []),
-        )
-        .order_by(Nota.fecha_caducidad_pago.asc())
-        .all()
+    notas_con_vencimiento = db.query(Nota).filter(
+        Nota.estado == NotaEstado.aprobada,
+        Nota.fecha_caducidad_pago.isnot(None),
+        Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]),
     )
+    notas_con_vencimiento = _apply_sucursal_filter(
+        notas_con_vencimiento,
+        allowed_suc_ids,
+        sucursal_id,
+        Nota.sucursal_id,
+    )
+    notas_con_vencimiento = notas_con_vencimiento.order_by(Nota.fecha_caducidad_pago.asc()).all()
     estado_counts = {e.value: 0 for e in NotaEstado}
     counts_query = db.query(Nota.estado, func.count(Nota.id))
-    if allowed_suc_ids:
-        counts_query = counts_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
+    counts_query = _apply_sucursal_filter(counts_query, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
     counts_query = counts_query.filter(Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]))
     counts_query = counts_query.group_by(Nota.estado).all()
     for estado, cantidad in counts_query:
@@ -7132,8 +7175,7 @@ async def notas_list(
             estado_counts[estado.value] = int(cantidad or 0)
     estado_total = sum(estado_counts.values())
     pago_counts_query = db.query(Nota)
-    if allowed_suc_ids:
-        pago_counts_query = pago_counts_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
+    pago_counts_query = _apply_sucursal_filter(pago_counts_query, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
     pago_counts_query = pago_counts_query.filter(Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]))
     if estado_filter:
         pago_counts_query = pago_counts_query.filter(Nota.estado == estado_filter)
@@ -7143,8 +7185,7 @@ async def notas_list(
     }
     pago_total = pago_counts["PAGADAS"] + pago_counts["PENDIENTES"]
     notas_estado_query = db.query(Nota)
-    if allowed_suc_ids:
-        notas_estado_query = notas_estado_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
+    notas_estado_query = _apply_sucursal_filter(notas_estado_query, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
     notas_estado_query = notas_estado_query.filter(Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]))
     if estado_filter:
         notas_estado_query = notas_estado_query.filter(Nota.estado == estado_filter)
@@ -7153,15 +7194,12 @@ async def notas_list(
     elif pago_filter == "PENDIENTES":
         notas_estado_query = notas_estado_query.filter(pending_condition)
     notas_estado = notas_estado_query.order_by(Nota.created_at.desc()).limit(200).all()
-    notas_aprobadas = (
-        db.query(Nota)
-        .filter(
-            Nota.estado == NotaEstado.aprobada,
-            Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]),
-            *([Nota.sucursal_id.in_(allowed_suc_ids)] if allowed_suc_ids else []),
-        )
-        .all()
+    notas_aprobadas = db.query(Nota).filter(
+        Nota.estado == NotaEstado.aprobada,
+        Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]),
     )
+    notas_aprobadas = _apply_sucursal_filter(notas_aprobadas, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
+    notas_aprobadas = notas_aprobadas.all()
 
     def saldo_pendiente(nota: Nota) -> Decimal:
         total = Decimal(str(nota.total_monto or 0))
@@ -7204,11 +7242,11 @@ async def notas_list(
         if not parsed:
             folio_error = "Formato de folio invalido. Usa 01_C_1 o 01_V_1."
         else:
-            sucursal_id, tipo_op, seq = parsed
+            folio_sucursal_id, tipo_op, seq = parsed
             folio_result = (
                 db.query(Nota)
                 .filter(
-                    Nota.sucursal_id == sucursal_id,
+                    Nota.sucursal_id == folio_sucursal_id,
                     Nota.tipo_operacion == tipo_op,
                     Nota.folio_seq == seq,
                 )
@@ -7217,12 +7255,12 @@ async def notas_list(
             if folio_result and allowed_suc_ids and folio_result.sucursal_id not in allowed_suc_ids:
                 folio_result = None
                 folio_error = "No tienes acceso a esa sucursal."
+            if folio_result and sucursal_id and folio_result.sucursal_id != sucursal_id:
+                folio_result = None
+                folio_error = "Ese folio pertenece a otra sucursal."
             if not folio_result and not folio_error:
                 folio_error = "No se encontr\u00f3 una nota con ese folio."
-    suc_query = db.query(Sucursal)
-    if allowed_suc_ids:
-        suc_query = suc_query.filter(Sucursal.id.in_(allowed_suc_ids))
-    sucursales = {s.id: s for s in suc_query.all()}
+    sucursales = {s.id: s for s in sucursales_list}
     proveedores = {p.id: p for p in db.query(Proveedor).all()}
     clientes = {c.id: c for c in db.query(Cliente).all()}
     notas_folio = []
@@ -7234,8 +7272,18 @@ async def notas_list(
     if folio_result:
         notas_folio.append(folio_result)
     folio_map = _build_folio_map(notas_folio)
-    estado_links = _build_notas_estado_links(folio_query, pago_current)
-    pago_links = _build_notas_pago_links(folio_query, estado_current)
+    estado_links = _build_notas_estado_links(folio_query, pago_current, sucursal_id)
+    pago_links = _build_notas_pago_links(folio_query, estado_current, sucursal_id)
+    sucursal_links = _build_notas_sucursal_links(
+        sucursales_list,
+        folio_query=folio_query,
+        estado_filter=estado_current,
+        pago_filter=pago_current,
+    )
+    sucursal_label = "Todas las sucursales"
+    if sucursal_id:
+        sucursal = sucursales.get(sucursal_id)
+        sucursal_label = sucursal.nombre if sucursal else f"Sucursal {sucursal_id}"
 
     return templates.TemplateResponse(
         "admin/notes_list.html",
@@ -7253,6 +7301,9 @@ async def notas_list(
             "saldo_vivo_total": saldo_vivo_total,
             "notas_aprobadas_total": len(notas_aprobadas),
             "sucursales": sucursales,
+            "sucursal_id": sucursal_id,
+            "sucursal_label": sucursal_label,
+            "sucursal_links": sucursal_links,
             "proveedores": proveedores,
             "clientes": clientes,
             "folio_query": folio_query,
