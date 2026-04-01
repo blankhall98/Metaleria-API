@@ -29,7 +29,7 @@ async def upload_evidencia(request: Request, file: UploadFile = File(...)):
             "Evidence upload rejected: invalid content type",
             extra={
                 "user_id": user.get("id"),
-                "filename": file.filename,
+                "upload_name": file.filename,
                 "content_type": file.content_type,
             },
         )
@@ -37,7 +37,7 @@ async def upload_evidencia(request: Request, file: UploadFile = File(...)):
     if not content:
         logger.warning(
             "Evidence upload rejected: empty file",
-            extra={"user_id": user.get("id"), "filename": file.filename},
+            extra={"user_id": user.get("id"), "upload_name": file.filename},
         )
         raise HTTPException(status_code=400, detail="La imagen llego vacia. Intenta elegirla de nuevo.")
     max_bytes = settings.FIREBASE_MAX_MB * 1024 * 1024
@@ -46,7 +46,7 @@ async def upload_evidencia(request: Request, file: UploadFile = File(...)):
             "Evidence upload rejected: file too large",
             extra={
                 "user_id": user.get("id"),
-                "filename": file.filename,
+                "upload_name": file.filename,
                 "content_type": resolved_content_type,
                 "size_bytes": len(content),
                 "max_bytes": max_bytes,
@@ -66,7 +66,7 @@ async def upload_evidencia(request: Request, file: UploadFile = File(...)):
             "Evidence upload failed",
             extra={
                 "user_id": user.get("id"),
-                "filename": file.filename,
+                "upload_name": file.filename,
                 "content_type": resolved_content_type,
                 "size_bytes": len(content),
             },

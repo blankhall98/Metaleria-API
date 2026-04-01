@@ -8,6 +8,7 @@ import uuid
 from pathlib import Path
 
 import firebase_admin
+import yaml
 from firebase_admin import credentials, storage
 
 from app.core.config import get_settings
@@ -37,6 +38,19 @@ _IMAGE_EXT_TO_MIME = {
 }
 
 
+def _parse_credentials_value(raw_value: str) -> dict:
+    try:
+        parsed = json.loads(raw_value)
+    except json.JSONDecodeError:
+        try:
+            parsed = yaml.safe_load(raw_value)
+        except yaml.YAMLError as exc:
+            raise ValueError("FIREBASE_CREDENTIALS_JSON no es JSON ni YAML valido") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError("FIREBASE_CREDENTIALS_JSON no contiene un objeto de credenciales valido")
+    return parsed
+
+
 def _ensure_bucket():
     global _BUCKET
     if _BUCKET is not None:
@@ -46,9 +60,10 @@ def _ensure_bucket():
     cred_json = settings.FIREBASE_CREDENTIALS_JSON
     if cred_json:
         try:
-            cred_info = json.loads(cred_json)
-        except json.JSONDecodeError as exc:
-            raise ValueError("FIREBASE_CREDENTIALS_JSON no es JSON valido") from exc
+            cred_info = _parse_credentials_value(cred_json)
+        except ValueError as exc:
+            logger.exception("Firebase credentials env var is invalid")
+            raise
 
         if not firebase_admin._apps:
             cred = credentials.Certificate(cred_info)

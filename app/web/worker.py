@@ -740,7 +740,7 @@ async def notes_subpesaje_upload(
                 "user_id": current_user["id"],
                 "nota_id": nota_id,
                 "subpesaje_id": subpesaje_id,
-                "filename": file.filename,
+                "upload_name": file.filename,
                 "content_type": file.content_type,
             },
         )
@@ -755,7 +755,7 @@ async def notes_subpesaje_upload(
                 "user_id": current_user["id"],
                 "nota_id": nota_id,
                 "subpesaje_id": subpesaje_id,
-                "filename": file.filename,
+                "upload_name": file.filename,
             },
         )
         return RedirectResponse(
@@ -770,7 +770,7 @@ async def notes_subpesaje_upload(
                 "user_id": current_user["id"],
                 "nota_id": nota_id,
                 "subpesaje_id": subpesaje_id,
-                "filename": file.filename,
+                "upload_name": file.filename,
                 "content_type": resolved_content_type,
                 "size_bytes": len(content),
                 "max_bytes": max_bytes,
@@ -795,7 +795,7 @@ async def notes_subpesaje_upload(
                 "user_id": current_user["id"],
                 "nota_id": nota_id,
                 "subpesaje_id": subpesaje_id,
-                "filename": file.filename,
+                "upload_name": file.filename,
                 "content_type": resolved_content_type,
                 "size_bytes": len(content),
             },
