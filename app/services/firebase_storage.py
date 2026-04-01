@@ -38,6 +38,20 @@ _IMAGE_EXT_TO_MIME = {
 }
 
 
+def _normalize_compact_mapping(parsed: dict) -> dict:
+    expected_keys = {"type", "project_id", "private_key", "client_email"}
+    if expected_keys & set(parsed.keys()):
+        return parsed
+
+    normalized: dict[str, str] = {}
+    for raw_key, raw_value in parsed.items():
+        if raw_value not in (None, "") or not isinstance(raw_key, str) or ":" not in raw_key:
+            return parsed
+        key, value = raw_key.split(":", 1)
+        normalized[key.strip()] = value
+    return normalized or parsed
+
+
 def _parse_credentials_value(raw_value: str) -> dict:
     try:
         parsed = json.loads(raw_value)
@@ -48,6 +62,9 @@ def _parse_credentials_value(raw_value: str) -> dict:
             raise ValueError("FIREBASE_CREDENTIALS_JSON no es JSON ni YAML valido") from exc
     if not isinstance(parsed, dict):
         raise ValueError("FIREBASE_CREDENTIALS_JSON no contiene un objeto de credenciales valido")
+    parsed = _normalize_compact_mapping(parsed)
+    if not {"type", "project_id", "private_key", "client_email"} <= set(parsed.keys()):
+        raise ValueError("FIREBASE_CREDENTIALS_JSON no contiene las llaves requeridas de Firebase")
     return parsed
 
 
