@@ -11679,7 +11679,7 @@ async def inventario_list(
 async def contabilidad_list(
     request: Request,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_admin_or_superadmin),
+    current_user: dict = Depends(require_viewer_or_admin_or_superadmin),
 ):
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
@@ -12144,7 +12144,7 @@ async def contabilidad_list(
 async def contabilidad_export(
     request: Request,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_admin_or_superadmin),
+    current_user: dict = Depends(require_viewer_or_admin_or_superadmin),
 ):
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     params = request.query_params
@@ -12329,7 +12329,7 @@ async def contabilidad_export(
 async def contabilidad_reporte(
     request: Request,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_admin_or_superadmin),
+    current_user: dict = Depends(require_viewer_or_admin_or_superadmin),
 ):
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     params = request.query_params
