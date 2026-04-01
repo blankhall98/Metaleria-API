@@ -56,7 +56,15 @@
                         <td>{{ u.id }}</td>
                         <td>{{ u.username }}</td>
                         <td>{{ u.nombre_completo }}</td>
-                        <td><span class="pill">{{ u.rol.value }}</span></td>
+                        <td>
+                            <span class="pill">
+                                {% if u.rol.value == 'visor' %}
+                                    Visor
+                                {% else %}
+                                    {{ u.rol.value }}
+                                {% endif %}
+                            </span>
+                        </td>
                         <td>
                             {% if u.sucursal_id %}
                                 {{ sucursales_map[u.sucursal_id].nombre }}

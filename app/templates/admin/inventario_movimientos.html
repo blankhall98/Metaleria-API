@@ -13,7 +13,7 @@
 <div class="card hover-lift mb-3">
     <div class="card-body">
         <form class="row g-2 align-items-end" method="get">
-            {% if user.rol == 'super_admin' or (user.rol == 'admin' and sucursales|length > 1) %}
+            {% if user.rol in ['super_admin', 'visor'] or (user.rol == 'admin' and sucursales|length > 1) %}
                 <div class="col-lg-3 col-md-4">
                     <label class="form-label">Sucursal</label>
                     <select class="form-select" name="sucursal_id">
@@ -52,16 +52,18 @@
             <div class="col-md-2 d-grid">
                 <button class="btn btn-outline-primary">Filtrar</button>
             </div>
-            <div class="col-md-3 d-grid">
-                <div class="d-flex gap-2">
-                    <select class="form-select" id="invExportFormat">
-                        <option value="csv">CSV</option>
-                        <option value="xlsx">Excel</option>
-                        <option value="pdf">PDF</option>
-                    </select>
-                    <button type="button" class="btn btn-export w-100" onclick="exportInventario()">Exportar</button>
+            {% if can_export_inventory %}
+                <div class="col-md-3 d-grid">
+                    <div class="d-flex gap-2">
+                        <select class="form-select" id="invExportFormat">
+                            <option value="csv">CSV</option>
+                            <option value="xlsx">Excel</option>
+                            <option value="pdf">PDF</option>
+                        </select>
+                        <button type="button" class="btn btn-export w-100" onclick="exportInventario()">Exportar</button>
+                    </div>
                 </div>
-            </div>
+            {% endif %}
         </form>
     </div>
 </div>

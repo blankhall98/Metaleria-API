@@ -31,7 +31,13 @@
         {% endif %}
     {% endif %}
     {% if not can_upload %}
-        <div class="alert alert-secondary py-2 small">La nota ya no permite subir evidencia.</div>
+        <div class="alert alert-secondary py-2 small">
+            {% if user and user.rol == 'visor' %}
+                Este perfil solo puede consultar evidencias.
+            {% else %}
+                La nota ya no permite subir evidencia.
+            {% endif %}
+        </div>
     {% endif %}
 
     <div class="card hover-lift mb-3 note-summary-card">

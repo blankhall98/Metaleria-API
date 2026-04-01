@@ -2634,6 +2634,7 @@ def _build_partner_record_context(
     if allowed_suc_ids:
         suc_query = suc_query.filter(Sucursal.id.in_(allowed_suc_ids))
     sucursales = {s.id: s for s in suc_query.all()}
+    can_manage_partner = not _is_read_only_admin_user(current_user)
 
     return {
         "request": request,
@@ -2682,6 +2683,8 @@ def _build_partner_record_context(
         "record_credito_ajuste_total": coverage_summary["credito_total"],
         "record_credito_ajuste_aplicado": coverage_summary["credito_aplicado"],
         "record_credito_ajuste_restante": coverage_summary["credito_restante"],
+        "can_manage_partner": can_manage_partner,
+        "can_view_partner_accounts": can_manage_partner,
     }
 
 
@@ -2744,6 +2747,17 @@ def require_admin_or_superadmin(request: Request) -> dict:
     if not user or user.get("rol") not in ("super_admin", "admin"):
         raise HTTPException(status_code=403, detail="Solo admins pueden acceder a esta sección.")
     return user
+
+
+def require_viewer_or_admin_or_superadmin(request: Request) -> dict:
+    user = request.session.get("user")
+    if not user or user.get("rol") not in ("super_admin", "admin", "visor"):
+        raise HTTPException(status_code=403, detail="No tienes acceso a esta seccion.")
+    return user
+
+
+def _is_read_only_admin_user(current_user: dict | None) -> bool:
+    return bool(current_user) and current_user.get("rol") == UserRole.visor.value
 
 
 # ---------- SUCURSALES ----------
@@ -3165,6 +3179,11 @@ async def user_new_post(
             status_code=400,
         )
 
+    if user_role != UserRole.admin:
+        selected_admin_suc_ids = []
+    if user_role != UserRole.trabajador:
+        sucursal_id = None
+
     user = User(
         username=username,
         nombre_completo=nombre_completo,
@@ -3288,6 +3307,7 @@ async def user_edit_post(
 
     if user_role == UserRole.trabajador and not suc_id:
         return render_error("Los trabajadores deben tener una sucursal asignada.")
+    found: list[Sucursal] = []
     if user_role == UserRole.admin:
         if not selected_admin_suc_ids and suc_id:
             selected_admin_suc_ids = [suc_id]
@@ -3304,6 +3324,12 @@ async def user_edit_post(
     existing = db.query(User).filter(User.username == username, User.id != user.id).first()
     if existing:
         return render_error("Ya existe un usuario con ese username.")
+
+    if user_role != UserRole.admin:
+        selected_admin_suc_ids = []
+        found = []
+    if user_role != UserRole.trabajador:
+        suc_id = None
 
     user.username = username
     user.nombre_completo = nombre_completo
@@ -3790,7 +3816,7 @@ async def proveedores_list(
     request: Request,
     q: str | None = None,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_admin_or_superadmin),
+    current_user: dict = Depends(require_viewer_or_admin_or_superadmin),
 ):
     params = request.query_params
     modo_current = (params.get("modo") or "TODOS").strip().upper()
@@ -4390,7 +4416,7 @@ async def proveedor_record(
     request: Request,
     q: str | None = None,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_admin_or_superadmin),
+    current_user: dict = Depends(require_viewer_or_admin_or_superadmin),
 ):
     proveedor = db.get(Proveedor, proveedor_id)
     if not proveedor:
@@ -4581,7 +4607,7 @@ async def clientes_list(
     request: Request,
     q: str | None = None,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_admin_or_superadmin),
+    current_user: dict = Depends(require_viewer_or_admin_or_superadmin),
 ):
     params = request.query_params
     delete_ok = params.get("deleted") == "1"
@@ -5145,7 +5171,7 @@ async def cliente_record(
     request: Request,
     q: str | None = None,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_admin_or_superadmin),
+    current_user: dict = Depends(require_viewer_or_admin_or_superadmin),
 ):
     cliente = db.get(Cliente, cliente_id)
     if not cliente:
@@ -7336,7 +7362,7 @@ async def cuenta_scrap360_ajuste(
 async def notas_list(
     request: Request,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_admin_or_superadmin),
+    current_user: dict = Depends(require_viewer_or_admin_or_superadmin),
 ):
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     sucursales_list = db.query(Sucursal).order_by(Sucursal.nombre).all()
@@ -8196,6 +8222,7 @@ def _render_nota_detail(
         cuentas_partner_label = "Proveedor"
     else:
         cuentas_partner_label = "Partner"
+    can_manage_note = not _is_read_only_admin_user(current_user)
     base_form_state = {
         "form_metodo": None,
         "form_cuenta": None,
@@ -8289,6 +8316,8 @@ def _render_nota_detail(
         "error": error,
         "proveedores": proveedores,
         "clientes": clientes,
+        "can_manage_note": can_manage_note,
+        "can_edit_note": current_user.get("rol") == UserRole.super_admin.value,
     }
     context.update(base_form_state)
     if form_state:
@@ -8405,7 +8434,7 @@ async def notas_detail(
     nota_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_admin_or_superadmin),
+    current_user: dict = Depends(require_viewer_or_admin_or_superadmin),
 ):
     nota = db.get(Nota, nota_id)
     if not nota:
@@ -8442,7 +8471,7 @@ async def notas_evidencias(
     nota_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_admin_or_superadmin),
+    current_user: dict = Depends(require_viewer_or_admin_or_superadmin),
 ):
     nota = db.get(Nota, nota_id)
     if not nota:
@@ -8494,7 +8523,7 @@ async def notas_evidencias(
             "missing_subpesajes": missing,
             "extra_evidencias": extra_evidencias,
             "extra_evidencias_total": len(extra_evidencias),
-            "can_upload": True,
+            "can_upload": not _is_read_only_admin_user(current_user),
             "upload_action_base": f"/web/admin/notas/{nota.id}/subpesajes",
             "back_url": f"/web/admin/notas/{nota.id}",
             "max_mb": settings.FIREBASE_MAX_MB,
@@ -8510,7 +8539,7 @@ async def notas_factura(
     nota_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_admin_or_superadmin),
+    current_user: dict = Depends(require_viewer_or_admin_or_superadmin),
 ):
     nota = db.get(Nota, nota_id)
     if not nota:
@@ -10496,7 +10525,7 @@ async def conversion_material_reverse(
 async def inventario_list(
     request: Request,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_admin_or_superadmin),
+    current_user: dict = Depends(require_viewer_or_admin_or_superadmin),
 ):
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
@@ -10533,6 +10562,7 @@ async def inventario_list(
             "inventarios": inventarios,
             "sucursales": sucursales,
             "sucursal_id": sucursal_id,
+            "can_manage_inventory": not _is_read_only_admin_user(current_user),
         },
     )
 
@@ -12060,7 +12090,7 @@ async def corte_caja_reporte(
 async def inventario_movimientos(
     request: Request,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_admin_or_superadmin),
+    current_user: dict = Depends(require_viewer_or_admin_or_superadmin),
 ):
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
@@ -12122,6 +12152,8 @@ async def inventario_movimientos(
             "tipo": tipo or "",
             "total_firmado": total_firmado,
             "ajustes_by_mov_id": ajustes_by_mov_id,
+            "can_manage_inventory": not _is_read_only_admin_user(current_user),
+            "can_export_inventory": not _is_read_only_admin_user(current_user),
         },
     )
 
@@ -12131,7 +12163,7 @@ async def inventario_ajuste_detail(
     ajuste_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_admin_or_superadmin),
+    current_user: dict = Depends(require_viewer_or_admin_or_superadmin),
 ):
     ajuste = db.get(InventarioAjusteManual, ajuste_id)
     if not ajuste:
@@ -12162,6 +12194,7 @@ async def inventario_ajuste_detail(
             "is_reversal": bool(ajuste.reversal_of_id),
             "error": request.query_params.get("error") or None,
             "reverted_ok": request.query_params.get("revertida") == "1",
+            "can_manage_inventory_adjustment": not _is_read_only_admin_user(current_user),
         },
     )
 

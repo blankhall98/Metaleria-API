@@ -9,9 +9,11 @@
         <h1 class="h4 text-white mb-0">Proveedores</h1>
         <div class="text-muted small mt-1">Busqueda, saldo neto y proveedores que tambien compran material.</div>
     </div>
-    <a href="/web/admin/proveedores/nuevo" class="btn btn-primary btn-sm">
-        Nuevo proveedor
-    </a>
+    {% if user.rol in ['super_admin', 'admin'] %}
+        <a href="/web/admin/proveedores/nuevo" class="btn btn-primary btn-sm">
+            Nuevo proveedor
+        </a>
+    {% endif %}
 </div>
 
 <div class="ops-kpi-strip mb-3">
@@ -83,7 +85,9 @@
             <a href="/web/admin/proveedores?modo=TODOS{% if q %}&q={{ q }}{% endif %}{% if sucursal_id %}&sucursal_id={{ sucursal_id }}{% endif %}" class="ops-inline-pill {{ 'active' if modo_current == 'TODOS' else '' }}">Todos</a>
             <a href="/web/admin/proveedores?modo=COMPRA_VENTA{% if q %}&q={{ q }}{% endif %}{% if sucursal_id %}&sucursal_id={{ sucursal_id }}{% endif %}" class="ops-inline-pill {{ 'active' if modo_current == 'COMPRA_VENTA' else '' }}">Compra y venta</a>
             <a href="/web/admin/proveedores?modo=CON_SALDO{% if q %}&q={{ q }}{% endif %}{% if sucursal_id %}&sucursal_id={{ sucursal_id }}{% endif %}" class="ops-inline-pill {{ 'active' if modo_current == 'CON_SALDO' else '' }}">Con saldo</a>
-            <a href="/web/admin/contabilidad" class="ops-inline-pill">Log contable</a>
+            {% if user.rol in ['super_admin', 'admin'] %}
+                <a href="/web/admin/contabilidad" class="ops-inline-pill">Log contable</a>
+            {% endif %}
         </div>
         <div class="table-responsive">
             <table class="table table-hover table-sm align-middle mb-0">
@@ -163,12 +167,14 @@
                                 <a href="/web/admin/proveedores/{{ p.id }}/record" class="btn btn-sm btn-outline-primary">
                                     Historial
                                 </a>
-                                <a href="/web/admin/cuentas?owner_key=proveedor:{{ p.id }}" class="btn btn-sm btn-outline-primary">
-                                    Cuentas
-                                </a>
-                                <a href="/web/admin/proveedores/{{ p.id }}/editar" class="btn btn-sm btn-outline-secondary">
-                                    Editar
-                                </a>
+                                {% if user.rol in ['super_admin', 'admin'] %}
+                                    <a href="/web/admin/cuentas?owner_key=proveedor:{{ p.id }}" class="btn btn-sm btn-outline-primary">
+                                        Cuentas
+                                    </a>
+                                    <a href="/web/admin/proveedores/{{ p.id }}/editar" class="btn btn-sm btn-outline-secondary">
+                                        Editar
+                                    </a>
+                                {% endif %}
                                 {% if user.rol == 'super_admin' %}
                                     <form method="post" action="/web/admin/proveedores/{{ p.id }}/eliminar" onsubmit="return confirm('¿Eliminar este proveedor? Esta acción no se puede deshacer.');">
                                         <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>

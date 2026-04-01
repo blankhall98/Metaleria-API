@@ -43,6 +43,7 @@
                     <select class="form-select" id="rol" name="rol" required>
                         <option value="super_admin" {% if edit_user.rol.value == 'super_admin' %}selected{% endif %}>Super admin</option>
                         <option value="admin" {% if edit_user.rol.value == 'admin' %}selected{% endif %}>Admin</option>
+                        <option value="visor" {% if edit_user.rol.value == 'visor' %}selected{% endif %}>Visor (solo lectura)</option>
                         <option value="trabajador" {% if edit_user.rol.value == 'trabajador' %}selected{% endif %}>Trabajador</option>
                     </select>
                 </div>
@@ -57,7 +58,7 @@
                     </select>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label" for="sucursal_id">Sucursal (obligatoria para trabajador)</label>
+                    <label class="form-label" for="sucursal_id">Sucursal (solo obligatoria para trabajador)</label>
                     <select class="form-select" id="sucursal_id" name="sucursal_id">
                         <option value="">-- Sin sucursal --</option>
                         {% for s in sucursales %}
@@ -73,7 +74,7 @@
                         <option value="{{ s.id }}" {% if admin_sucursal_ids and s.id in admin_sucursal_ids %}selected{% endif %}>{{ s.nombre }}</option>
                     {% endfor %}
                 </select>
-                <div class="form-text">Selecciona una o varias sucursales si el rol es admin.</div>
+                <div class="form-text">Admin: una o varias sucursales. Visor: consulta global de todas las sucursales.</div>
             </div>
 
             <div class="form-check">

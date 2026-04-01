@@ -104,7 +104,7 @@
                     <p class="text-muted small mb-0">La reversa creara un ajuste compensatorio exacto. Solo se permitira si el stock actual soporta la compensacion sin quedar negativo.</p>
                 {% endif %}
             </div>
-            {% if not is_reversal and not reversion %}
+            {% if can_manage_inventory_adjustment and not is_reversal and not reversion %}
                 <form method="post" action="/web/admin/inventario/ajustes/{{ ajuste.id }}/revertir" onsubmit="return confirm('Se generara un ajuste compensatorio exacto para revertir esta accion. Deseas continuar?');">
                     <button type="submit" class="btn btn-outline-primary">Revertir accion</button>
                 </form>

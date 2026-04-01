@@ -28,6 +28,31 @@
             </div>
         </div>
     </section>
+{% elif user and user.rol == 'visor' %}
+    <section class="hero card mb-4">
+        <div class="card-body hero-content">
+            <div class="d-flex flex-column flex-lg-row align-items-start align-items-lg-center justify-content-between gap-3">
+                <div>
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span class="hero-badge">Panel solo lectura</span>
+                    </div>
+                    <h1 class="display-6 fw-bold mb-2 text-white">Consulta de saldos, notas e inventario</h1>
+                    <p class="mb-3 text-muted">
+                        Vista segura para revisar informacion operativa sin riesgo de modificar datos.
+                    </p>
+                    <div class="hero-badges">
+                        <span class="hero-badge"><strong>Notas</strong> filtros por sucursal y estado</span>
+                        <span class="hero-badge"><strong>Partners</strong> saldos de clientes y proveedores</span>
+                        <span class="hero-badge"><strong>Inventario</strong> stock y movimientos</span>
+                    </div>
+                </div>
+                <div class="d-flex flex-column gap-2 align-self-start align-self-lg-center text-center w-100" style="max-width: 260px;">
+                    <a href="/web/admin/notas" class="btn btn-primary btn-lg w-100">Ver notas</a>
+                    <a href="/web/admin/proveedores" class="btn btn-outline-secondary btn-sm w-100">Ver saldos</a>
+                </div>
+            </div>
+        </div>
+    </section>
 {% else %}
     <section class="hero card mb-4">
         <div class="card-body hero-content">
@@ -57,7 +82,36 @@
 {% endif %}
 
 {% if user %}
-    {% if user.rol != 'trabajador' %}
+    {% if user.rol == 'visor' %}
+        <div class="card soft mb-4">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+                    <div>
+                        <p class="text-uppercase text-muted small mb-1">Consulta</p>
+                        <h2 class="h5 text-white mb-0">Panel de visor</h2>
+                    </div>
+                </div>
+                <div class="action-grid">
+                    <a href="/web/admin/notas" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
+                        <div class="action-top"><div class="action-icon">&#x1F4DD;</div></div>
+                        <div><h3 class="h6 mb-1 text-white">Notas</h3><p class="text-muted mb-0">Consulta notas de todas las sucursales con filtros por estado y pago.</p></div>
+                    </a>
+                    <a href="/web/admin/proveedores" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
+                        <div class="action-top"><div class="action-icon">&#x1F69A;</div></div>
+                        <div><h3 class="h6 mb-1 text-white">Proveedores</h3><p class="text-muted mb-0">Saldos netos, historial y filtro por sucursal.</p></div>
+                    </a>
+                    <a href="/web/admin/clientes" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
+                        <div class="action-top"><div class="action-icon">&#x1F9FE;</div></div>
+                        <div><h3 class="h6 mb-1 text-white">Clientes</h3><p class="text-muted mb-0">Consulta saldos, notas y pagos sin permisos de edicion.</p></div>
+                    </a>
+                    <a href="/web/admin/inventario" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
+                        <div class="action-top"><div class="action-icon">&#x1F4E6;</div></div>
+                        <div><h3 class="h6 mb-1 text-white">Inventario</h3><p class="text-muted mb-0">Stock por sucursal y movimientos historicos.</p></div>
+                    </a>
+                </div>
+            </div>
+        </div>
+    {% elif user.rol != 'trabajador' %}
         <div class="card soft mb-4">
             <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">

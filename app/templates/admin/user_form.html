@@ -43,13 +43,14 @@
                     <select class="form-select" id="rol" name="rol" required>
                         <option value="super_admin">Super admin</option>
                         <option value="admin">Admin</option>
+                        <option value="visor">Visor (solo lectura)</option>
                         <option value="trabajador">Trabajador</option>
                     </select>
                 </div>
             </div>
 
             <div>
-                <label class="form-label" for="sucursal_id">Sucursal (obligatoria para trabajador)</label>
+                <label class="form-label" for="sucursal_id">Sucursal (solo obligatoria para trabajador)</label>
                 <select class="form-select" id="sucursal_id" name="sucursal_id">
                     <option value="">-- Sin sucursal --</option>
                     {% for s in sucursales %}
@@ -64,7 +65,7 @@
                         <option value="{{ s.id }}">{{ s.nombre }}</option>
                     {% endfor %}
                 </select>
-                <div class="form-text">Selecciona una o varias sucursales si el rol es admin.</div>
+                <div class="form-text">Admin: una o varias sucursales. Visor: no necesita sucursal y podra consultar todas.</div>
             </div>
 
             <div class="d-flex gap-2">

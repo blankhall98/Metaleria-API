@@ -30,9 +30,13 @@
         </div>
         <div class="d-flex gap-2">
             <a href="/web/admin/{{ partner_base }}" class="btn btn-outline-secondary btn-sm">Volver</a>
-            <a href="/web/admin/cuentas?owner_key={{ owner_key }}" class="btn btn-outline-primary btn-sm">Cuentas</a>
-            <a href="/web/admin/{{ partner_base }}/{{ partner.id }}/editar" class="btn btn-outline-primary btn-sm">Editar</a>
-            {% if not partner_is_internal and not linked_partner and partner_base != 'proveedores' %}
+            {% if can_view_partner_accounts %}
+                <a href="/web/admin/cuentas?owner_key={{ owner_key }}" class="btn btn-outline-primary btn-sm">Cuentas</a>
+            {% endif %}
+            {% if can_manage_partner %}
+                <a href="/web/admin/{{ partner_base }}/{{ partner.id }}/editar" class="btn btn-outline-primary btn-sm">Editar</a>
+            {% endif %}
+            {% if can_manage_partner and not partner_is_internal and not linked_partner and partner_base != 'proveedores' %}
                 {% if partner_base == 'clientes' %}
                     <form method="post" action="/web/admin/clientes/{{ partner.id }}/crear-proveedor" class="d-inline">
                         <input type="hidden" name="next_url" value="{{ request.url.path }}">
@@ -64,7 +68,9 @@
         <a href="#partner-ledger" class="ops-inline-pill">Estado de cuenta</a>
         <a href="#partner-notes" class="ops-inline-pill">Notas</a>
         <a href="#partner-payments" class="ops-inline-pill">Pagos</a>
-        <a href="/web/admin/cuentas?owner_key={{ owner_key }}" class="ops-inline-pill">Cuentas</a>
+        {% if can_view_partner_accounts %}
+            <a href="/web/admin/cuentas?owner_key={{ owner_key }}" class="ops-inline-pill">Cuentas</a>
+        {% endif %}
     </div>
 
     {% if unified_enabled %}
@@ -298,39 +304,47 @@
         <div class="card-body">
             <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2">
                 <div>
-                    <h2 class="h6 text-dark mb-1">Ajuste manual de saldo</h2>
-                    <div class="text-muted small">Registra un saldo inicial o corrige el balance del partner.</div>
+                    <h2 class="h6 text-dark mb-1">{% if can_manage_partner %}Ajuste manual de saldo{% else %}Estado de cuenta{% endif %}</h2>
+                    <div class="text-muted small">
+                        {% if can_manage_partner %}
+                            Registra un saldo inicial o corrige el balance del partner.
+                        {% else %}
+                            Vista de solo lectura del balance, notas y pagos de este partner.
+                        {% endif %}
+                    </div>
                 </div>
             </div>
-            {% if ajuste_ok %}
+            {% if can_manage_partner and ajuste_ok %}
                 <div class="text-success small mt-2">Ajuste registrado correctamente.</div>
             {% endif %}
-            {% if ajuste_error %}
+            {% if can_manage_partner and ajuste_error %}
                 <div class="text-danger small mt-2">{{ ajuste_error }}</div>
             {% endif %}
-            <form method="post" action="/web/admin/{{ partner_base }}/{{ partner.id }}/ajuste-saldo" class="row g-2 align-items-end mt-2">
-                <div class="col-lg-4">
-                    <label class="form-label">Tipo de ajuste</label>
-                    {% set ajuste_dir = form_ajuste_direccion if form_ajuste_direccion is not none else "" %}
-                    <select class="form-select form-select-sm" name="ajuste_direccion" required>
-                        <option value="favor" {% if ajuste_dir == 'favor' %}selected{% endif %}>{{ ajuste_favor_label }}</option>
-                        <option value="contra" {% if ajuste_dir == 'contra' %}selected{% endif %}>{{ ajuste_contra_label }}</option>
-                    </select>
-                </div>
-                <div class="col-lg-2">
-                    <label class="form-label">Monto</label>
-                    {% set ajuste_monto_val = form_ajuste_monto if form_ajuste_monto is not none else "" %}
-                    <input class="form-control form-control-sm" type="number" step="0.01" min="0.01" name="ajuste_monto" value="{{ ajuste_monto_val }}" required>
-                </div>
-                <div class="col-lg-4">
-                    <label class="form-label">Comentario</label>
-                    {% set ajuste_comment_val = form_ajuste_comentario if form_ajuste_comentario is not none else "" %}
-                    <input class="form-control form-control-sm" name="ajuste_comentario" placeholder="Motivo del ajuste" value="{{ ajuste_comment_val }}" required>
-                </div>
-                <div class="col-lg-2 d-grid">
-                    <button class="btn btn-outline-primary btn-sm">Aplicar ajuste</button>
-                </div>
-            </form>
+            {% if can_manage_partner %}
+                <form method="post" action="/web/admin/{{ partner_base }}/{{ partner.id }}/ajuste-saldo" class="row g-2 align-items-end mt-2">
+                    <div class="col-lg-4">
+                        <label class="form-label">Tipo de ajuste</label>
+                        {% set ajuste_dir = form_ajuste_direccion if form_ajuste_direccion is not none else "" %}
+                        <select class="form-select form-select-sm" name="ajuste_direccion" required>
+                            <option value="favor" {% if ajuste_dir == 'favor' %}selected{% endif %}>{{ ajuste_favor_label }}</option>
+                            <option value="contra" {% if ajuste_dir == 'contra' %}selected{% endif %}>{{ ajuste_contra_label }}</option>
+                        </select>
+                    </div>
+                    <div class="col-lg-2">
+                        <label class="form-label">Monto</label>
+                        {% set ajuste_monto_val = form_ajuste_monto if form_ajuste_monto is not none else "" %}
+                        <input class="form-control form-control-sm" type="number" step="0.01" min="0.01" name="ajuste_monto" value="{{ ajuste_monto_val }}" required>
+                    </div>
+                    <div class="col-lg-4">
+                        <label class="form-label">Comentario</label>
+                        {% set ajuste_comment_val = form_ajuste_comentario if form_ajuste_comentario is not none else "" %}
+                        <input class="form-control form-control-sm" name="ajuste_comentario" placeholder="Motivo del ajuste" value="{{ ajuste_comment_val }}" required>
+                    </div>
+                    <div class="col-lg-2 d-grid">
+                        <button class="btn btn-outline-primary btn-sm">Aplicar ajuste</button>
+                    </div>
+                </form>
+            {% endif %}
         </div>
     </div>
 

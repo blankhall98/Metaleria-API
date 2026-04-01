@@ -31,7 +31,9 @@
         <a href="/web/admin/notas?seguimiento=VENCIDAS{{ sucursal_suffix }}#tabla-principal" class="ops-inline-pill">Vencidas</a>
         <a href="/web/admin/notas?seguimiento=POR_VENCER{{ sucursal_suffix }}#tabla-principal" class="ops-inline-pill">Por vencer</a>
         <a href="/web/admin/proveedores?modo=COMPRA_VENTA{% if sucursal_id %}&sucursal_id={{ sucursal_id }}{% endif %}" class="ops-inline-pill">Proveedores compra y venta</a>
-        <a href="/web/admin/contabilidad{% if sucursal_id %}?sucursal_id={{ sucursal_id }}{% endif %}" class="ops-inline-pill">Log contable</a>
+        {% if user.rol in ['super_admin', 'admin'] %}
+            <a href="/web/admin/contabilidad{% if sucursal_id %}?sucursal_id={{ sucursal_id }}{% endif %}" class="ops-inline-pill">Log contable</a>
+        {% endif %}
     </div>
 
     <div class="card hover-lift mb-3 notes-toolbar-card">

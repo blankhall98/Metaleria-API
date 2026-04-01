@@ -8,9 +8,11 @@
         <p class="text-uppercase text-muted small mb-1">Relaciones</p>
         <h1 class="h4 text-white mb-0">Clientes</h1>
     </div>
-    <a href="/web/admin/clientes/nuevo" class="btn btn-primary btn-sm">
-        Nuevo cliente
-    </a>
+    {% if user.rol in ['super_admin', 'admin'] %}
+        <a href="/web/admin/clientes/nuevo" class="btn btn-primary btn-sm">
+            Nuevo cliente
+        </a>
+    {% endif %}
 </div>
 
 <form method="get" class="row g-2 mb-3">
@@ -120,12 +122,14 @@
                                 <a href="/web/admin/clientes/{{ c.id }}/record" class="btn btn-sm btn-outline-primary">
                                     Historial
                                 </a>
-                                <a href="/web/admin/cuentas?owner_key=cliente:{{ c.id }}" class="btn btn-sm btn-outline-primary">
-                                    Cuentas
-                                </a>
-                                <a href="/web/admin/clientes/{{ c.id }}/editar" class="btn btn-sm btn-outline-secondary">
-                                    Editar
-                                </a>
+                                {% if user.rol in ['super_admin', 'admin'] %}
+                                    <a href="/web/admin/cuentas?owner_key=cliente:{{ c.id }}" class="btn btn-sm btn-outline-primary">
+                                        Cuentas
+                                    </a>
+                                    <a href="/web/admin/clientes/{{ c.id }}/editar" class="btn btn-sm btn-outline-secondary">
+                                        Editar
+                                    </a>
+                                {% endif %}
                                 {% if user.rol == 'super_admin' %}
                                     <form method="post" action="/web/admin/clientes/{{ c.id }}/eliminar" onsubmit="return confirm('¿Eliminar este cliente? Esta acción no se puede deshacer.');">
                                         <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>

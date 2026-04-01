@@ -3,10 +3,13 @@
 {% block title %}Nota {{ folio or '-' }}{% endblock %}
 
 {% block content %}
+{% set can_manage_note = can_manage_note if can_manage_note is defined else true %}
+{% set can_edit_note = can_edit_note if can_edit_note is defined else false %}
 {% set note_state = nota.estado.value %}
 {% set is_pending_review = note_state in ['BORRADOR', 'EN_REVISION'] %}
 {% set is_approved = note_state == 'APROBADA' %}
 {% set is_cancelled = note_state == 'CANCELADA' %}
+{% set show_review_workspace = is_pending_review and can_manage_note %}
 {% set payment_badge = 'Sin aplicar' %}
 {% if is_approved %}
     {% if saldo_a_favor > 0 %}
@@ -27,7 +30,9 @@
 {% elif devoluciones_totales %}
     {% set history_href = '#note-history-total' %}
 {% endif %}
-{% if is_pending_review %}
+{% set show_returns_section = (is_approved and can_manage_note) or is_cancelled or devoluciones_parciales or devoluciones_totales %}
+{% set returns_href = '#note-returns' if (is_approved and can_manage_note) else history_href %}
+{% if show_review_workspace %}
     {% set next_step_title = 'Siguiente paso recomendado: revisar y aprobar' %}
     {% set next_step_copy = 'Confirma kilos, descuentos, precios y forma de pago antes de aprobar o devolver la nota.' %}
     {% set next_step_href = '#note-review-approval' %}
@@ -45,7 +50,7 @@
 {% elif is_cancelled and devolucion_total_activa %}
     {% set next_step_title = 'Nota en devolucion total' %}
     {% set next_step_copy = 'La nota ya fue devuelta por completo. Si necesitas restaurarla, usa la reversa auditada.' %}
-    {% set next_step_href = '#note-returns' %}
+    {% set next_step_href = returns_href %}
     {% set next_step_button = 'Ir a devoluciones' %}
 {% endif %}
 <div class="note-detail-page note-detail-page--review">
@@ -56,12 +61,12 @@
             <p class="text-muted mb-0">{{ operation_label }} vinculada a {{ partner_label|lower }}: {{ partner_name }}</p>
         </div>
         <div class="d-flex gap-2 flex-wrap">
-            {% if user.rol == 'super_admin' %}
+            {% if can_edit_note %}
                 <a href="/web/admin/notas/{{ nota.id }}/editar" class="btn btn-outline-primary btn-sm">Editar</a>
             {% endif %}
             <a href="/web/admin/notas/{{ nota.id }}/evidencias" class="btn btn-primary btn-sm note-evidence-btn">Evidencias</a>
-            {% if is_approved or note_adjustments %}
-                <a href="#note-manual-adjustments" class="btn btn-outline-primary btn-sm">Ajuste manual</a>
+            {% if (is_approved and can_manage_note) or note_adjustments %}
+                <a href="#note-manual-adjustments" class="btn btn-outline-primary btn-sm">{{ 'Ajuste manual' if can_manage_note else 'Ajustes' }}</a>
             {% endif %}
             {% if nota.estado.value == 'APROBADA' and nota.tipo_operacion.value in ['compra', 'venta'] %}
                 <a href="/web/admin/notas/{{ nota.id }}/factura" class="btn btn-outline-primary btn-sm">Orden PDF</a>
@@ -118,16 +123,16 @@
             </div>
             <div class="ops-inline-toolbar mt-3">
                 <a href="#note-summary" class="ops-inline-pill active">Resumen</a>
-                {% if is_pending_review %}
+                {% if show_review_workspace %}
                     <a href="#note-review-approval" class="ops-inline-pill">Aprobacion</a>
                 {% endif %}
                 {% if is_approved or saldo_a_favor > 0 %}
                     <a href="#note-payments" class="ops-inline-pill">Pagos</a>
                 {% endif %}
-                {% if is_approved or is_cancelled or devoluciones_parciales or devoluciones_totales %}
-                    <a href="#note-returns" class="ops-inline-pill">Devoluciones</a>
+                {% if show_returns_section %}
+                    <a href="{{ returns_href }}" class="ops-inline-pill">Devoluciones</a>
                 {% endif %}
-                {% if is_approved or note_adjustments %}
+                {% if (is_approved and can_manage_note) or note_adjustments %}
                     <a href="#note-manual-adjustments" class="ops-inline-pill">Ajustes</a>
                 {% endif %}
                 {% if devoluciones_parciales or devoluciones_totales or pagos %}
@@ -314,9 +319,11 @@
                             </div>
                             <div class="text-muted small">{{ devolucion_total_activa.comentario or 'Sin comentario.' }}</div>
                         </div>
-                        <form method="post" action="/web/admin/notas/{{ nota.id }}/devolucion-total/{{ devolucion_total_activa.id }}/revertir" onsubmit="return confirm('La nota volvera a estado aprobada y se restauraran inventario, contabilidad y pagos activos. Deseas continuar?');">
-                            <button type="submit" class="btn btn-outline-primary">Revertir devolucion total</button>
-                        </form>
+                        {% if can_manage_note %}
+                            <form method="post" action="/web/admin/notas/{{ nota.id }}/devolucion-total/{{ devolucion_total_activa.id }}/revertir" onsubmit="return confirm('La nota volvera a estado aprobada y se restauraran inventario, contabilidad y pagos activos. Deseas continuar?');">
+                                <button type="submit" class="btn btn-outline-primary">Revertir devolucion total</button>
+                            </form>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -376,7 +383,7 @@
         </div>
     {% endif %}
 
-    {% if is_pending_review %}
+    {% if show_review_workspace %}
         <form method="post" action="/web/admin/notas/{{ nota.id }}/aprobar" id="approveForm" class="note-review-workspace">
             <div class="note-workspace-grid">
                 <div class="note-main-column">
@@ -737,16 +744,17 @@
     {% if is_approved %}
         <div class="note-workspace-grid">
             <div class="note-main-column">
-                <div class="card hover-lift mb-3" id="note-returns">
-                    <div class="card-body">
-                        <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
-                            <div>
-                                <h2 class="h6 text-dark mb-1">Devolucion parcial</h2>
-                                <p class="text-muted small mb-0">Edita cuantas unidades regresan por material y a que precio por kilo se valora la devolucion.</p>
+                {% if can_manage_note %}
+                    <div class="card hover-lift mb-3" id="note-returns">
+                        <div class="card-body">
+                            <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
+                                <div>
+                                    <h2 class="h6 text-dark mb-1">Devolucion parcial</h2>
+                                    <p class="text-muted small mb-0">Edita cuantas unidades regresan por material y a que precio por kilo se valora la devolucion.</p>
+                                </div>
+                                <span class="badge bg-light text-dark border">No genera reembolso automatico</span>
                             </div>
-                            <span class="badge bg-light text-dark border">No genera reembolso automatico</span>
-                        </div>
-                        <form method="post" action="/web/admin/notas/{{ nota.id }}/devolucion-parcial" class="note-return-form" data-current-total="{{ nota.total_monto or 0 }}" data-current-paid="{{ nota.monto_pagado or 0 }}" data-iva-factor="{{ (1 + ((iva_pct or 0) / 100)) if nota.iva_incluido else 1 }}">
+                            <form method="post" action="/web/admin/notas/{{ nota.id }}/devolucion-parcial" class="note-return-form" data-current-total="{{ nota.total_monto or 0 }}" data-current-paid="{{ nota.monto_pagado or 0 }}" data-iva-factor="{{ (1 + ((iva_pct or 0) / 100)) if nota.iva_incluido else 1 }}">
                             <div class="table-scroll-shell">
                                 <div class="table-responsive scroll-x note-table-scroll">
                                     <table class="table table-hover table-sm align-middle mb-0 note-return-table">
@@ -812,9 +820,10 @@
                                     <button type="submit" class="btn btn-outline-danger">Aplicar devolucion parcial</button>
                                 </div>
                             </div>
-                        </form>
+                            </form>
+                        </div>
                     </div>
-                </div>
+                {% endif %}
 
                 <div class="card hover-lift mb-3 note-payments-card" id="note-payments">
                     <div class="card-body">
@@ -830,8 +839,9 @@
                             </div>
                         </div>
 
-                        <div class="note-payment-panels">
-                            <form method="post" action="/web/admin/notas/{{ nota.id }}/pago-inicial" class="note-payment-form">
+                        {% if can_manage_note %}
+                            <div class="note-payment-panels">
+                                <form method="post" action="/web/admin/notas/{{ nota.id }}/pago-inicial" class="note-payment-form">
                                 <div class="note-form-card-title">Corregir pago inicial</div>
                                 <div class="row g-2 align-items-end">
                                     <div class="col-md-6">
@@ -876,8 +886,8 @@
                                     </div>
                                 </div>
                                 <div class="form-text text-muted mt-2">Util cuando la nota se aprobo con monto inicial incorrecto o en cero por error.</div>
-                            </form>
-                            <form method="post" action="/web/admin/notas/{{ nota.id }}/pago" class="note-payment-form">
+                                </form>
+                                <form method="post" action="/web/admin/notas/{{ nota.id }}/pago" class="note-payment-form">
                                 <div class="note-form-card-title">Registrar nuevo abono</div>
                                 <div class="row g-2 align-items-end">
                                     <div class="col-md-6">
@@ -921,8 +931,20 @@
                                         <button type="submit" class="btn btn-outline-primary btn-sm">Agregar abono</button>
                                     </div>
                                 </div>
-                            </form>
-                        </div>
+                                </form>
+                            </div>
+                        {% else %}
+                            <div class="note-inline-info mb-3">
+                                <div class="card-body px-0 py-0">
+                                    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
+                                        <div>
+                                            <div class="fw-semibold">Vista de solo lectura</div>
+                                            <div class="text-muted small">Aqui puedes consultar el historial de pagos y abonos, pero no registrar ni deshacer movimientos.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endif %}
 
                         <div class="table-scroll-shell mt-3">
                             <div class="table-responsive scroll-x note-table-scroll">
@@ -954,9 +976,13 @@
                                         <td>{{ pago.comentario or '-' }}</td>
                                         <td class="text-end">
                                             {% if pago_activo %}
-                                                <form method="post" action="/web/admin/notas/{{ nota.id }}/pago/{{ pago.id }}/deshacer" class="d-inline" onsubmit="return confirm('Revertir este abono restaurara saldo, log contable y movimiento de Cuenta Scrap360 asociado. Deseas continuar?');">
-                                                    <button type="submit" class="btn btn-sm btn-outline-danger">Revertir pago</button>
-                                                </form>
+                                                {% if can_manage_note %}
+                                                    <form method="post" action="/web/admin/notas/{{ nota.id }}/pago/{{ pago.id }}/deshacer" class="d-inline" onsubmit="return confirm('Revertir este abono restaurara saldo, log contable y movimiento de Cuenta Scrap360 asociado. Deseas continuar?');">
+                                                        <button type="submit" class="btn btn-sm btn-outline-danger">Revertir pago</button>
+                                                    </form>
+                                                {% else %}
+                                                    <span class="text-muted small">Solo consulta</span>
+                                                {% endif %}
                                             {% else %}
                                                 <span class="text-muted small">Solo auditoria</span>
                                             {% endif %}
@@ -975,14 +1001,15 @@
                 </div>
             </div>
 
-            <div class="note-side-column">
-                <div class="card hover-lift note-side-card">
-                    <div class="card-body">
-                        <div class="d-flex align-items-center gap-2 mb-3">
-                            <span class="chip-strong">Control</span>
-                            <span class="text-muted small">Acciones sobre nota aprobada</span>
-                        </div>
-                        <form method="post" action="/web/admin/notas/{{ nota.id }}/cancelar">
+            {% if can_manage_note %}
+                <div class="note-side-column">
+                    <div class="card hover-lift note-side-card">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center gap-2 mb-3">
+                                <span class="chip-strong">Control</span>
+                                <span class="text-muted small">Acciones sobre nota aprobada</span>
+                            </div>
+                            <form method="post" action="/web/admin/notas/{{ nota.id }}/cancelar">
                             <label class="form-label">Comentario de devolucion total</label>
                             <textarea class="form-control" name="comentarios_admin" rows="4" placeholder="Motivo, referencia o explicacion administrativa.">{{ nota.comentarios_admin or '' }}</textarea>
                             <div class="form-text text-muted">La devolucion total revierte inventario, movimientos contables y pagos activos.</div>
@@ -992,10 +1019,11 @@
                                     <a href="/web/admin/notas/{{ nota.id }}/editar" class="btn btn-outline-primary">Editar nota aprobada</a>
                                 {% endif %}
                             </div>
-                        </form>
+                            </form>
+                        </div>
                     </div>
                 </div>
-            </div>
+            {% endif %}
         </div>
     {% endif %}
     {% if is_approved or note_adjustments %}
@@ -1013,7 +1041,7 @@
                     </div>
                 </div>
 
-                {% if is_approved %}
+                {% if is_approved and can_manage_note %}
                     <div class="note-adjust-layout">
                         <form method="post" action="/web/admin/notas/{{ nota.id }}/ajuste-manual" class="note-adjust-form">
                             <div class="note-adjust-form-grid">
@@ -1078,8 +1106,14 @@
                         <div class="card-body px-0 py-0">
                             <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
                                 <div>
-                                    <div class="fw-semibold">La nota ya no admite nuevos ajustes manuales</div>
-                                    <div class="text-muted small">Como la nota no esta aprobada, solo puedes auditar o revertir los ajustes historicos que ya quedaron vinculados a esta nota.</div>
+                                    <div class="fw-semibold">{% if can_manage_note %}La nota ya no admite nuevos ajustes manuales{% else %}Vista de solo lectura{% endif %}</div>
+                                    <div class="text-muted small">
+                                        {% if can_manage_note %}
+                                            Como la nota no esta aprobada, solo puedes auditar o revertir los ajustes historicos que ya quedaron vinculados a esta nota.
+                                        {% else %}
+                                            Puedes auditar los ajustes historicos ligados a esta nota, pero no registrar nuevos ni revertirlos desde este perfil.
+                                        {% endif %}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1134,7 +1168,7 @@
                                         <td class="text-end">
                                             <div class="d-inline-flex flex-wrap justify-content-end gap-2">
                                                 <a class="btn btn-sm btn-outline-secondary" href="/web/admin/inventario/ajustes/{{ ajuste.id }}">Detalle</a>
-                                                {% if not ajuste.reversal_of_id and not ajuste.reverted_at %}
+                                                {% if can_manage_note and not ajuste.reversal_of_id and not ajuste.reverted_at %}
                                                     <form method="post" action="/web/admin/notas/{{ nota.id }}/ajuste-manual/{{ ajuste.id }}/revertir" class="d-inline" onsubmit="return confirm('Se generara una reversa exacta para este ajuste manual ligado a la nota. Deseas continuar?');">
                                                         <button type="submit" class="btn btn-sm btn-outline-danger">Revertir</button>
                                                     </form>
@@ -1216,7 +1250,7 @@
                                             {% endif %}
                                         </td>
                                         <td class="text-end">
-                                            {% if not linea.reverted_at and is_approved %}
+                                            {% if can_manage_note and not linea.reverted_at and is_approved %}
                                                 <form method="post" action="/web/admin/notas/{{ nota.id }}/devolucion-parcial/{{ linea.id }}/revertir" class="d-inline" onsubmit="return confirm('Se restauraran exactamente los kg y el valor de esta linea de devolucion parcial. Deseas continuar?');">
                                                     <button type="submit" class="btn btn-sm btn-outline-primary">Revertir linea</button>
                                                 </form>

@@ -20,7 +20,7 @@
     <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
 </head>
 {% set current_path = request.url.path if request and request.url else '' %}
-{% set show_mobile_dock = user and user.rol in ['super_admin', 'admin', 'trabajador'] %}
+{% set show_mobile_dock = user and user.rol in ['super_admin', 'admin', 'visor', 'trabajador'] %}
 <body class="{% if show_mobile_dock %}app-has-mobile-dock {% endif %}{% if user %}role-{{ user.rol }}{% else %}role-guest{% endif %}">
 <nav class="navbar mb-4">
     <div class="container-fluid">
@@ -87,6 +87,14 @@
                 <a class="nav-drawer-link" href="/web/admin/cuentas-scrap360">Cuentas Scrap360</a>
             {% endif %}
 
+            {% if user.rol == 'visor' %}
+                <a class="nav-drawer-link" href="/web/admin/notas">Notas</a>
+                <a class="nav-drawer-link" href="/web/admin/proveedores">Proveedores</a>
+                <a class="nav-drawer-link" href="/web/admin/clientes">Clientes</a>
+                <a class="nav-drawer-link" href="/web/admin/inventario">Inventario</a>
+                <a class="nav-drawer-link" href="/web/admin/inventario/movimientos">Movimientos de inventario</a>
+            {% endif %}
+
             {% if user.rol == 'trabajador' %}
                 <a class="nav-drawer-link" href="/web/worker/notes">Mis notas</a>
                 <a class="nav-drawer-link" href="/web/worker/notes/nueva">Nueva nota</a>
@@ -122,6 +130,29 @@
         <a class="mobile-dock-link {% if current_path.startswith('/web/admin/proveedores') or current_path.startswith('/web/admin/clientes') %}active{% endif %}" href="/web/admin/proveedores">
             <span class="mobile-dock-icon">&#128101;</span>
             <span class="mobile-dock-label">Partners</span>
+        </a>
+        <a class="mobile-dock-link {% if current_path.startswith('/web/admin/inventario') %}active{% endif %}" href="/web/admin/inventario">
+            <span class="mobile-dock-icon">&#128230;</span>
+            <span class="mobile-dock-label">Inventario</span>
+        </a>
+        <button class="mobile-dock-link mobile-dock-link--menu" type="button" onclick="toggleDrawer(true)" aria-label="Abrir men&uacute;">
+            <span class="mobile-dock-icon">&#9776;</span>
+            <span class="mobile-dock-label">Men&uacute;</span>
+        </button>
+    </nav>
+{% elif user and user.rol == 'visor' %}
+    <nav class="mobile-dock mobile-dock--admin" aria-label="Navegaci&oacute;n m&oacute;vil de solo lectura">
+        <a class="mobile-dock-link {% if current_path == '/web' %}active{% endif %}" href="/web">
+            <span class="mobile-dock-icon">&#8962;</span>
+            <span class="mobile-dock-label">Inicio</span>
+        </a>
+        <a class="mobile-dock-link {% if current_path.startswith('/web/admin/notas') %}active{% endif %}" href="/web/admin/notas">
+            <span class="mobile-dock-icon">&#9998;</span>
+            <span class="mobile-dock-label">Notas</span>
+        </a>
+        <a class="mobile-dock-link {% if current_path.startswith('/web/admin/proveedores') or current_path.startswith('/web/admin/clientes') %}active{% endif %}" href="/web/admin/proveedores">
+            <span class="mobile-dock-icon">&#128101;</span>
+            <span class="mobile-dock-label">Saldos</span>
         </a>
         <a class="mobile-dock-link {% if current_path.startswith('/web/admin/inventario') %}active{% endif %}" href="/web/admin/inventario">
             <span class="mobile-dock-icon">&#128230;</span>
