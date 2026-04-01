@@ -7,7 +7,6 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Form, UploadFile, File
 from fastapi.responses import RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -28,8 +27,9 @@ from app.models import (
 from app.services import note_service
 from app.services.evidence_service import build_evidence_groups
 from app.services.firebase_storage import resolve_image_content_type, upload_image
+from app.web.template_utils import create_templates
 
-templates = Jinja2Templates(directory="app/templates")
+templates = create_templates()
 settings = get_settings()
 logger = logging.getLogger(__name__)
 

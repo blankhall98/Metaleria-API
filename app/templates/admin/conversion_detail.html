@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Conversion {{ conversion.id }}{% endblock %}
 
@@ -38,7 +38,7 @@
                 <p class="text-muted mb-0">
                     {{ conversion.sucursal.nombre if conversion.sucursal else conversion.sucursal_id }} &middot;
                     {{ conversion.usuario.username if conversion.usuario else (conversion.usuario_id or '-') }} &middot;
-                    {{ conversion.created_at.strftime("%Y-%m-%d %H:%M") if conversion.created_at else '-' }}
+                    {{ conversion.created_at|datetime_local if conversion.created_at else '-' }}
                 </p>
             </div>
             <div class="note-hero-side text-lg-end">
@@ -94,3 +94,4 @@
     </div>
 </div>
 {% endblock %}
+

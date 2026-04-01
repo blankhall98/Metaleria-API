@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Movimientos de inventario{% endblock %}
 
@@ -106,7 +106,7 @@
                                 -
                             {% endif %}
                         </td>
-                        <td>{{ mov.created_at.strftime("%Y-%m-%d %H:%M") if mov.created_at else '-' }}</td>
+                        <td>{{ mov.created_at|datetime_local if mov.created_at else '-' }}</td>
                         <td class="small text-muted">{{ mov.comentario or '-' }}</td>
                         <td class="text-end">
                             {% set ajuste = ajustes_by_mov_id.get(mov.id) %}
@@ -137,3 +137,4 @@
     }
 </script>
 {% endblock %}
+

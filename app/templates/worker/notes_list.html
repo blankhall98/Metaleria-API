@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Mis notas{% endblock %}
 
@@ -55,7 +55,7 @@
                         </td>
                         <td>{{ "{:,.2f}".format(n.total_kg_neto or 0) }} kg</td>
                         <td>${{ "{:,.2f}".format(n.total_monto or 0) }}</td>
-                        <td>{{ n.created_at.strftime("%Y-%m-%d %H:%M") if n.created_at else '-' }}</td>
+                        <td>{{ n.created_at|datetime_local if n.created_at else '-' }}</td>
                         <td class="text-end">
                             <div class="d-flex gap-2 justify-content-end flex-wrap">
                                 <a href="/web/worker/notes/{{ n.id }}/evidencias" class="btn btn-sm btn-outline-primary">Evidencias</a>
@@ -106,7 +106,7 @@
                     </div>
                     <div class="d-flex justify-content-between small">
                         <span class="text-muted">Fecha</span>
-                        <strong>{{ n.created_at.strftime("%Y-%m-%d %H:%M") if n.created_at else '-' }}</strong>
+                        <strong>{{ n.created_at|datetime_local if n.created_at else '-' }}</strong>
                     </div>
                     <div class="d-grid gap-2 mt-2">
                         <a href="/web/worker/notes/{{ n.id }}/evidencias" class="btn btn-outline-primary btn-sm w-100">Evidencias</a>
@@ -130,3 +130,4 @@
     </div>
 </div>
 {% endblock %}
+

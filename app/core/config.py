@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     # App
     PROJECT_NAME: str = "Scrap360 MVP"
     BACKEND_CORS_ORIGINS: List[str] = ["*"]
+    APP_TIMEZONE: str = "America/Mexico_City"
 
     # Base de datos (ajustaremos en Paso 3)
     DATABASE_URL: str = "sqlite:///./metalleria.db"

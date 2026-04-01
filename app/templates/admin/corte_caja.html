@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Corte de Caja{% endblock %}
 
@@ -197,7 +197,7 @@
                     <tbody>
                     {% for gasto in gastos %}
                         <tr>
-                            <td>{{ gasto.created_at.strftime("%Y-%m-%d %H:%M") if gasto.created_at else '-' }}</td>
+                            <td>{{ gasto.created_at|datetime_local if gasto.created_at else '-' }}</td>
                             <td>{{ gasto.descripcion }}</td>
                             <td>{{ gasto.categoria or '-' }}</td>
                             <td>{{ gasto.usuario.nombre_completo if gasto.usuario else '-' }}</td>
@@ -274,7 +274,7 @@
                     <tbody>
                     {% for mov in manual_movs %}
                         <tr>
-                            <td>{{ mov.fecha.strftime("%Y-%m-%d %H:%M") if mov.fecha else '-' }}</td>
+                            <td>{{ mov.fecha|datetime_local if mov.fecha else '-' }}</td>
                             <td>{{ mov.tipo_label }}</td>
                             <td>{{ mov.descripcion }}</td>
                             <td>{{ mov.usuario }}</td>
@@ -317,7 +317,7 @@
                     <tbody>
                     {% for mov in cash_movs %}
                         <tr>
-                            <td>{{ mov.fecha.strftime("%Y-%m-%d %H:%M") if mov.fecha else '-' }}</td>
+                            <td>{{ mov.fecha|datetime_local if mov.fecha else '-' }}</td>
                             <td>{{ mov.tipo }} {{ mov.detalle|capitalize }}</td>
                             <td>
                                 <div class="fw-semibold">{{ mov.folio }}</div>
@@ -412,7 +412,7 @@
                     </div>
                     <div class="note-meta-item">
                         <span class="note-meta-label">Fecha cierre</span>
-                        <strong>{{ corte.closed_at.strftime("%Y-%m-%d %H:%M") if corte.closed_at else '-' }}</strong>
+                        <strong>{{ corte.closed_at|datetime_local if corte.closed_at else '-' }}</strong>
                     </div>
                     <div class="note-meta-item">
                         <span class="note-meta-label">Comentarios</span>
@@ -472,7 +472,7 @@
                 <tbody>
                 {% for h in historial %}
                     <tr>
-                        <td>{{ h.fecha.strftime("%Y-%m-%d") if h.fecha else '-' }}</td>
+                        <td>{{ h.fecha|date_local if h.fecha else '-' }}</td>
                         <td>
                             {% if h.estado.value == 'ABIERTO' %}
                                 <span class="badge bg-warning text-dark">Abierto</span>
@@ -492,7 +492,7 @@
                         </td>
                         <td class="text-end">
                             <a class="btn btn-sm btn-outline-primary"
-                               href="/web/admin/corte-caja?sucursal_id={{ h.sucursal_id }}&fecha={{ h.fecha.strftime('%Y-%m-%d') }}">Ver</a>
+                               href="/web/admin/corte-caja?sucursal_id={{ h.sucursal_id }}&fecha={{ h.fecha|date_local }}">Ver</a>
                         </td>
                     </tr>
                 {% endfor %}
@@ -543,3 +543,4 @@
     })();
 </script>
 {% endblock %}
+

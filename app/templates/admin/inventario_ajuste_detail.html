@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Ajuste {{ ajuste.id }}{% endblock %}
 
@@ -46,7 +46,7 @@
                 <p class="text-muted mb-0">
                     {{ ajuste.sucursal.nombre if ajuste.sucursal else ajuste.sucursal_id }} &middot;
                     {{ ajuste.usuario.username if ajuste.usuario else (ajuste.usuario_id or '-') }} &middot;
-                    {{ ajuste.created_at.strftime("%Y-%m-%d %H:%M") if ajuste.created_at else '-' }}
+                    {{ ajuste.created_at|datetime_local if ajuste.created_at else '-' }}
                 </p>
             </div>
             <div class="note-hero-side text-lg-end">
@@ -113,3 +113,4 @@
     </div>
 </div>
 {% endblock %}
+

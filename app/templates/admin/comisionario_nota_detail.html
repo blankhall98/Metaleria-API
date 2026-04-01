@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Nota comision #{{ nota.id }} &middot; Admin{% endblock %}
 
@@ -44,7 +44,7 @@
                     </div>
                     <div class="note-meta-item">
                         <span class="note-meta-label">Fecha</span>
-                        <strong>{{ nota.created_at.strftime("%Y-%m-%d %H:%M") if nota.created_at else '-' }}</strong>
+                        <strong>{{ nota.created_at|datetime_local if nota.created_at else '-' }}</strong>
                     </div>
                 </div>
             </div>
@@ -198,7 +198,7 @@
                 <tbody>
                 {% for pago in pagos %}
                     <tr>
-                        <td>{{ pago.created_at.strftime("%Y-%m-%d %H:%M") if pago.created_at else '-' }}</td>
+                        <td>{{ pago.created_at|datetime_local if pago.created_at else '-' }}</td>
                         <td class="fw-semibold">${{ "{:,.2f}".format(pago.monto or 0) }}</td>
                         <td>{{ pago.metodo_pago|capitalize if pago.metodo_pago else '-' }}</td>
                         <td>{{ pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or '-') }}</td>
@@ -237,3 +237,4 @@
     })();
 </script>
 {% endblock %}
+

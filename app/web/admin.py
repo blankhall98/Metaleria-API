@@ -6,7 +6,6 @@ import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Form, UploadFile, File
 from fastapi.responses import RedirectResponse, StreamingResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func, and_
 from sqlalchemy.exc import IntegrityError
@@ -16,6 +15,7 @@ from datetime import datetime, date, timedelta
 from typing import Iterable, List
 
 from app.core.config import get_settings
+from app.core.datetime_utils import format_datetime_local
 from app.core.security import hash_password
 from app.db.deps import get_db
 from app.models import (
@@ -75,8 +75,9 @@ from app.services import (
 )
 from app.services.evidence_service import build_evidence_groups
 from app.services.firebase_storage import resolve_image_content_type, upload_image
+from app.web.template_utils import create_templates
 
-templates = Jinja2Templates(directory="app/templates")
+templates = create_templates()
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
@@ -10659,7 +10660,7 @@ async def contabilidad_export(
                 m["metodo_pago"],
                 m["cuenta_financiera"],
                 m["comentario"],
-                m["created_at"].strftime("%Y-%m-%d %H:%M") if m["created_at"] else "",
+                format_datetime_local(m["created_at"]) if m["created_at"] else "",
             ])
         output.seek(0)
         headers = {"Content-Disposition": "attachment; filename=movimientos_contables.csv"}
@@ -10683,7 +10684,7 @@ async def contabilidad_export(
                 m["metodo_pago"],
                 m["cuenta_financiera"],
                 m["comentario"].replace("\\n", " "),
-                m["created_at"].strftime("%Y-%m-%d %H:%M") if m["created_at"] else "",
+                format_datetime_local(m["created_at"]) if m["created_at"] else "",
             ]
             rows.append("<Row>" + "".join([f"<Cell><Data ss:Type='String'>{v}</Data></Cell>" for v in vals]) + "</Row>")
         workbook = f"""<?xml version="1.0"?>
@@ -10728,7 +10729,7 @@ async def contabilidad_export(
             m["metodo_pago"],
             m["cuenta_financiera"],
             m["comentario"].replace("\n", " "),
-            m["created_at"].strftime("%Y-%m-%d %H:%M") if m["created_at"] else "",
+            format_datetime_local(m["created_at"]) if m["created_at"] else "",
         ]
         text_lines.append(" | ".join(vals))
 
@@ -11884,7 +11885,7 @@ async def inventario_movimientos_export(
                 float(mov.saldo_resultante or 0),
                 mov.nota_id or "",
                 (mov.comentario or "").replace("\n", " "),
-                mov.created_at.strftime("%Y-%m-%d %H:%M") if mov.created_at else "",
+                format_datetime_local(mov.created_at) if mov.created_at else "",
             ])
         output.seek(0)
         headers = {"Content-Disposition": "attachment; filename=movimientos_inventario.csv"}
@@ -11903,7 +11904,7 @@ async def inventario_movimientos_export(
             float(mov.saldo_resultante or 0),
             mov.nota_id or "",
             (mov.comentario or "").replace("\\n", " "),
-            mov.created_at.strftime("%Y-%m-%d %H:%M") if mov.created_at else "",
+            format_datetime_local(mov.created_at) if mov.created_at else "",
         ]
         rows.append("<Row>" + "".join([f"<Cell><Data ss:Type='String'>{v}</Data></Cell>" for v in vals]) + "</Row>")
 
@@ -11939,7 +11940,7 @@ async def inventario_movimientos_export(
             f"{float(mov.saldo_resultante or 0):.2f}",
             str(mov.nota_id or ""),
             (mov.comentario or "").replace("\\n", " "),
-            mov.created_at.strftime("%Y-%m-%d %H:%M") if mov.created_at else "",
+            format_datetime_local(mov.created_at) if mov.created_at else "",
         ]
         text_lines.append(" | ".join(vals))
 

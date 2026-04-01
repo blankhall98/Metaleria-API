@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Nota {{ folio or '-' }}{% endblock %}
 
@@ -169,7 +169,7 @@
                     <p class="text-muted mb-0">
                         {{ sucursal.nombre if sucursal else '-' }} &middot;
                         {{ trabajador.nombre_completo if trabajador else '-' }} &middot;
-                        {{ nota.created_at.strftime("%Y-%m-%d %H:%M") if nota.created_at else '-' }}
+                        {{ nota.created_at|datetime_local if nota.created_at else '-' }}
                     </p>
                 </div>
                 <div class="note-hero-side text-lg-end">
@@ -233,7 +233,7 @@
                 </div>
                 <div class="note-meta-item">
                     <span class="note-meta-label">Vence</span>
-                    <strong>{{ nota.fecha_caducidad_pago.strftime("%Y-%m-%d") if nota.fecha_caducidad_pago else '-' }}</strong>
+                    <strong>{{ nota.fecha_caducidad_pago|date_local if nota.fecha_caducidad_pago else '-' }}</strong>
                     <div class="note-meta-sub">Solo aplica si la nota queda con saldo</div>
                 </div>
                 <div class="note-meta-item">
@@ -309,7 +309,7 @@
                             <div class="fw-semibold">Devolucion total activa</div>
                             <div class="text-muted small">
                                 Accion #{{ devolucion_total_activa.id }}
-                                &middot; {{ devolucion_total_activa.created_at.strftime("%Y-%m-%d %H:%M") if devolucion_total_activa.created_at else '-' }}
+                                &middot; {{ devolucion_total_activa.created_at|datetime_local if devolucion_total_activa.created_at else '-' }}
                                 &middot; {{ devolucion_total_activa.usuario.username if devolucion_total_activa.usuario else (devolucion_total_activa.usuario_id or '-') }}
                             </div>
                             <div class="text-muted small">{{ devolucion_total_activa.comentario or 'Sin comentario.' }}</div>
@@ -348,7 +348,7 @@
                             <tbody>
                             {% for devolucion in devoluciones_totales %}
                                 <tr class="{{ 'is-reverted' if devolucion.reverted_at else '' }}">
-                                    <td>{{ devolucion.created_at.strftime("%Y-%m-%d %H:%M") if devolucion.created_at else '-' }}</td>
+                                    <td>{{ devolucion.created_at|datetime_local if devolucion.created_at else '-' }}</td>
                                     <td>
                                         {% if devolucion.reverted_at %}
                                             <span class="badge bg-light text-dark border">Revertida</span>
@@ -360,7 +360,7 @@
                                     <td class="small text-muted">{{ devolucion.comentario or '-' }}</td>
                                     <td class="small text-muted">
                                         {% if devolucion.reverted_at %}
-                                            {{ devolucion.reverted_at.strftime("%Y-%m-%d %H:%M") }}
+                                            {{ devolucion.reverted_at|datetime_local }}
                                         {% else %}
                                             -
                                         {% endif %}
@@ -394,7 +394,7 @@
                                     <div class="note-table-assist-copy">La tabla de materiales prioriza lectura horizontal en escritorio. Puedes arrastrar la tabla o usar `Shift + rueda` para revisar sin perder contexto.</div>
                                 </div>
                                 <div class="note-table-assist-pills">
-                                    <span class="pill">↔ Arrastrar</span>
+                                    <span class="pill">â†” Arrastrar</span>
                                     <span class="pill">Shift + rueda</span>
                                 </div>
                             </div>
@@ -531,7 +531,7 @@
                             <div class="row g-3">
                                 <div class="col-12">
                                     <label class="form-label">Fecha de caducidad de pago</label>
-                                    {% set fecha_val = form_fecha if form_fecha is not none else (nota.fecha_caducidad_pago.strftime("%Y-%m-%d") if nota.fecha_caducidad_pago else "") %}
+                                    {% set fecha_val = form_fecha if form_fecha is not none else (nota.fecha_caducidad_pago|date_local if nota.fecha_caducidad_pago else "") %}
                                     <input class="form-control" type="date" name="fecha_caducidad_pago" value="{{ fecha_val }}">
                                 </div>
                                 <div class="col-12">
@@ -672,7 +672,7 @@
                     </div>
                     <div class="note-table-assist-pills">
                         <span class="pill">Primer bloque fijo</span>
-                        <span class="pill">↔ Arrastrar</span>
+                        <span class="pill">â†” Arrastrar</span>
                     </div>
                 </div>
                 <div class="table-scroll-shell">
@@ -944,7 +944,7 @@
                                 {% for pago in pagos %}
                                     {% set pago_activo = (pago.monto or 0) > 0 %}
                                     <tr class="{{ 'is-reverted' if not pago_activo else '' }}">
-                                        <td>{{ pago.created_at.strftime("%Y-%m-%d %H:%M") if pago.created_at else '-' }}</td>
+                                        <td>{{ pago.created_at|datetime_local if pago.created_at else '-' }}</td>
                                         <td>{% if pago_activo %}<span class="badge bg-success">Activo</span>{% else %}<span class="badge bg-light text-dark border">Deshecho</span>{% endif %}</td>
                                         <td class="text-end fw-semibold">{% if pago_activo %}${{ "{:,.2f}".format(pago.monto or 0) }}{% else %}<span class="text-muted">$0.00</span>{% endif %}</td>
                                         <td>{{ pago.metodo_pago|capitalize if pago.metodo_pago else '-' }}</td>
@@ -1105,7 +1105,7 @@
                                 <tbody>
                                 {% for ajuste in note_adjustments %}
                                     <tr class="{{ 'is-reverted' if ajuste.reverted_at or ajuste.reversal_of_id else '' }}">
-                                        <td>{{ ajuste.created_at.strftime("%Y-%m-%d %H:%M") if ajuste.created_at else '-' }}</td>
+                                        <td>{{ ajuste.created_at|datetime_local if ajuste.created_at else '-' }}</td>
                                         <td>
                                             <div class="fw-semibold">{{ ajuste.material.nombre if ajuste.material else ('Material #' ~ ajuste.material_id) }}</div>
                                             <div class="text-muted small">
@@ -1193,7 +1193,7 @@
                             {% for devolucion in devoluciones_parciales %}
                                 {% for linea in devolucion.lineas %}
                                     <tr class="{{ 'is-reverted' if linea.reverted_at else '' }}">
-                                        <td>{{ devolucion.created_at.strftime("%Y-%m-%d %H:%M") if devolucion.created_at else '-' }}</td>
+                                        <td>{{ devolucion.created_at|datetime_local if devolucion.created_at else '-' }}</td>
                                         <td>
                                             <div class="fw-semibold">{{ linea.material.nombre if linea.material else (linea.nota_material.material.nombre if linea.nota_material and linea.nota_material.material else ('Material #' ~ linea.material_id)) }}</div>
                                             <div class="text-muted small">Accion #{{ devolucion.id }} &middot; Linea #{{ linea.id }}</div>
@@ -1212,7 +1212,7 @@
                                         <td class="small text-muted">
                                             {{ devolucion.comentario or '-' }}
                                             {% if linea.reverted_at %}
-                                                <div>Revertida: {{ linea.reverted_at.strftime("%Y-%m-%d %H:%M") }}</div>
+                                                <div>Revertida: {{ linea.reverted_at|datetime_local }}</div>
                                             {% endif %}
                                         </td>
                                         <td class="text-end">
@@ -1279,7 +1279,7 @@
                                 </td>
                                 <td class="text-end">{{ "{:,.2f}".format(qty) }} kg</td>
                                 <td class="text-end">{{ "{:,.2f}".format(mov.saldo_resultante or 0) }} kg</td>
-                                <td>{{ mov.created_at.strftime("%Y-%m-%d %H:%M") if mov.created_at else '-' }}</td>
+                                <td>{{ mov.created_at|datetime_local if mov.created_at else '-' }}</td>
                                 <td class="text-end">
                                     {% if linked_adjustment %}
                                         <a class="btn btn-sm btn-outline-secondary" href="/web/admin/inventario/ajustes/{{ linked_adjustment.id }}">Detalle</a>
@@ -1718,3 +1718,4 @@
     </script>
 </div>
 {% endblock %}
+

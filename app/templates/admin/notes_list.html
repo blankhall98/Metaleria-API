@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Notas{% endblock %}
 
@@ -145,7 +145,7 @@
                                 </div>
                                 <div class="text-end">
                                     <div class="small fw-semibold">${{ "{:,.2f}".format(n.total_monto or 0) }}</div>
-                                    <div class="text-muted small">{{ n.created_at.strftime("%Y-%m-%d %H:%M") if n.created_at else '-' }}</div>
+                                    <div class="text-muted small">{{ n.created_at|datetime_local if n.created_at else '-' }}</div>
                                 </div>
                             </a>
                         {% endfor %}
@@ -260,7 +260,7 @@
                         <div class="note-table-assist-copy">La tabla conserva todas las columnas visibles sin comprimir importes ni acciones. Puedes arrastrar, usar `Shift + rueda` o la barra flotante inferior.</div>
                     </div>
                     <div class="note-table-assist-pills">
-                        <span class="pill">↔ Arrastrar</span>
+                        <span class="pill">â†” Arrastrar</span>
                         <span class="pill">Shift + rueda</span>
                     </div>
                 </div>
@@ -359,7 +359,7 @@
                             </td>
                             <td>
                                 {% if n.estado.value == 'APROBADA' and n.fecha_caducidad_pago and saldo_pendiente > 0 %}
-                                    <div class="fw-semibold">{{ n.fecha_caducidad_pago.strftime("%Y-%m-%d") }}</div>
+                                    <div class="fw-semibold">{{ n.fecha_caducidad_pago|date_local }}</div>
                                     {% if n.fecha_caducidad_pago < hoy %}
                                         <span class="badge bg-danger">{{ (hoy - n.fecha_caducidad_pago).days }} dias vencida</span>
                                     {% elif n.fecha_caducidad_pago <= limite_alerta %}
@@ -375,7 +375,7 @@
                                     <span class="text-muted small">Sin seguimiento</span>
                                 {% endif %}
                             </td>
-                            <td>{{ n.created_at.strftime("%Y-%m-%d %H:%M") if n.created_at else '-' }}</td>
+                            <td>{{ n.created_at|datetime_local if n.created_at else '-' }}</td>
                             <td class="text-end">
                                 <div class="d-flex gap-2 justify-content-end notes-state-actions">
                                     <a href="/web/admin/notas/{{ n.id }}/evidencias" class="btn btn-sm btn-outline-primary">Evidencias</a>
@@ -400,3 +400,4 @@
     </div>
 </div>
 {% endblock %}
+

@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Evidencias - Nota {{ nota.id }}{% endblock %}
 
@@ -71,7 +71,7 @@
                 {% endif %}
                 <div class="note-meta-item">
                     <span class="note-meta-label">Fecha</span>
-                    <strong>{{ nota.created_at.strftime("%Y-%m-%d %H:%M") if nota.created_at else '-' }}</strong>
+                    <strong>{{ nota.created_at|datetime_local if nota.created_at else '-' }}</strong>
                 </div>
                 <div class="note-meta-item">
                     <span class="note-meta-label">Evidencias</span>
@@ -157,7 +157,7 @@
                                     {% if sp.created_at %}
                                         <div>
                                             <span class="text-muted small">Registro</span>
-                                            <strong>{{ sp.created_at.strftime("%Y-%m-%d %H:%M") }}</strong>
+                                            <strong>{{ sp.created_at|datetime_local }}</strong>
                                         </div>
                                     {% endif %}
                                 </div>
@@ -196,7 +196,7 @@
                                 <img src="{{ ev.url }}" alt="Evidencia extra" loading="lazy" class="extra-evidence-thumb">
                             </a>
                             <div class="extra-evidence-actions">
-                                <span class="text-muted small">{{ ev.created_at.strftime("%Y-%m-%d %H:%M") if ev.created_at else "-" }}</span>
+                                <span class="text-muted small">{{ ev.created_at|datetime_local if ev.created_at else "-" }}</span>
                                 <a href="{{ ev.url }}" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm">Ver</a>
                             </div>
                         </div>
@@ -282,3 +282,4 @@
     })();
 </script>
 {% endblock %}
+

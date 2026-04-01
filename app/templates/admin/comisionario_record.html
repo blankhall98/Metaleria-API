@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Record Comisionario {{ comisionario.nombre_completo }}{% endblock %}
 
@@ -123,7 +123,7 @@
                     <tbody>
                     {% for row in ledger_rows %}
                         <tr>
-                            <td>{{ row.fecha.strftime("%Y-%m-%d %H:%M") if row.fecha else "-" }}</td>
+                            <td>{{ row.fecha|datetime_local if row.fecha else "-" }}</td>
                             <td>{{ row.tipo }}</td>
                             <td>
                                 {% if row.nota_id %}
@@ -215,7 +215,7 @@
                                     <span class="badge bg-danger">Cancelada</span>
                                 {% endif %}
                             </td>
-                            <td>{{ nota.created_at.strftime("%Y-%m-%d %H:%M") if nota.created_at else '-' }}</td>
+                            <td>{{ nota.created_at|datetime_local if nota.created_at else '-' }}</td>
                             <td>{{ suc.nombre if suc else '-' }}</td>
                             <td class="text-end">${{ "{:,.2f}".format(nota.total_monto or 0) }}</td>
                             <td class="text-end">${{ "{:,.2f}".format(nota.monto_pagado or 0) }}</td>
@@ -267,7 +267,7 @@
                     {% for pago in pagos %}
                         {% set nota = pago.nota %}
                         <tr>
-                            <td>{{ pago.created_at.strftime("%Y-%m-%d %H:%M") if pago.created_at else '-' }}</td>
+                            <td>{{ pago.created_at|datetime_local if pago.created_at else '-' }}</td>
                             <td>
                                 {% if nota %}
                                     <div class="fw-semibold">#{{ nota.id }}</div>
@@ -310,3 +310,4 @@
     </div>
 </div>
 {% endblock %}
+

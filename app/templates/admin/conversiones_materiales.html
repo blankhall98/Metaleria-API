@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Conversion de materiales{% endblock %}
 
@@ -108,7 +108,7 @@
                     {% set rev_link = reversion_by_conversion_id.get(conv.id) %}
                     {% set reverse_link = reversion_by_reversal_id.get(conv.id) %}
                     <tr>
-                        <td>{{ conv.created_at.strftime("%Y-%m-%d %H:%M") if conv.created_at else '-' }}</td>
+                        <td>{{ conv.created_at|datetime_local if conv.created_at else '-' }}</td>
                         <td>
                             {% if reverse_link %}
                                 <span class="badge bg-light text-dark border">Reversion</span>
@@ -179,3 +179,4 @@
     updateStocks();
 </script>
 {% endblock %}
+

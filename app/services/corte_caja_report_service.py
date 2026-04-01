@@ -6,6 +6,7 @@ import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
+from app.core.datetime_utils import format_date_local, format_datetime_local
 from app.models import CorteCaja, Sucursal, CorteCajaGasto, CorteCajaDenominacion
 
 
@@ -141,18 +142,18 @@ def build_report_excel(report: dict) -> tuple[bytes, str]:
 
     add_row(["Corte de caja"])
     add_row(["Sucursal", report["sucursal"], "Fecha", report["fecha"].isoformat(), "Estado", report["estado"]])
-    add_row(["Generado", report["generated_at"].strftime("%Y-%m-%d %H:%M")])
+    add_row(["Generado", format_datetime_local(report["generated_at"])])
     add_row([
         "Abierto por",
         report.get("abierto_por") or "-",
         "Hora apertura",
-        report["opened_at"].strftime("%Y-%m-%d %H:%M") if report.get("opened_at") else "-",
+        format_datetime_local(report["opened_at"]) if report.get("opened_at") else "-",
     ])
     add_row([
         "Cerrado por",
         report.get("cerrado_por") or "-",
         "Hora cierre",
-        report["closed_at"].strftime("%Y-%m-%d %H:%M") if report.get("closed_at") else "-",
+        format_datetime_local(report["closed_at"]) if report.get("closed_at") else "-",
     ])
     add_row([])
 
@@ -183,7 +184,7 @@ def build_report_excel(report: dict) -> tuple[bytes, str]:
     if report["manual_movs"]:
         for mov in report["manual_movs"]:
             add_row([
-                mov["fecha"].strftime("%Y-%m-%d %H:%M") if mov.get("fecha") else "-",
+                format_datetime_local(mov["fecha"]) if mov.get("fecha") else "-",
                 mov.get("tipo_label") or mov.get("tipo") or "-",
                 mov.get("descripcion") or "",
                 mov.get("usuario") or "-",
@@ -198,7 +199,7 @@ def build_report_excel(report: dict) -> tuple[bytes, str]:
     if report["cash_movs"]:
         for mov in report["cash_movs"]:
             add_row([
-                mov["fecha"].strftime("%Y-%m-%d %H:%M") if mov.get("fecha") else "-",
+                format_datetime_local(mov["fecha"]) if mov.get("fecha") else "-",
                 mov.get("tipo") or "-",
                 mov.get("detalle") or "-",
                 mov.get("folio") or "-",
@@ -215,7 +216,7 @@ def build_report_excel(report: dict) -> tuple[bytes, str]:
     if report["gastos"]:
         for gasto in report["gastos"]:
             add_row([
-                gasto["fecha"].strftime("%Y-%m-%d %H:%M") if gasto.get("fecha") else "-",
+                format_datetime_local(gasto["fecha"]) if gasto.get("fecha") else "-",
                 gasto.get("descripcion") or "",
                 gasto.get("categoria") or "",
                 gasto.get("usuario") or "-",
@@ -360,7 +361,7 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
     top = 760
     y = top
 
-    generated = report["generated_at"].strftime("%Y-%m-%d %H:%M")
+    generated = format_datetime_local(report["generated_at"])
     fecha = report["fecha"].isoformat()
 
     page.text(left, y, "Corte de caja", size=16, font="F2")
@@ -370,13 +371,13 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
     page.text(
         left,
         y - 52,
-        f"Abierto por: {report.get('abierto_por') or '-'} ({report['opened_at'].strftime('%Y-%m-%d %H:%M') if report.get('opened_at') else '-'})",
+        f"Abierto por: {report.get('abierto_por') or '-'} ({format_datetime_local(report['opened_at']) if report.get('opened_at') else '-'})",
         size=9,
     )
     page.text(
         left,
         y - 64,
-        f"Cerrado por: {report.get('cerrado_por') or '-'} ({report['closed_at'].strftime('%Y-%m-%d %H:%M') if report.get('closed_at') else '-'})",
+        f"Cerrado por: {report.get('cerrado_por') or '-'} ({format_datetime_local(report['closed_at']) if report.get('closed_at') else '-'})",
         size=9,
     )
     page.text(right - 150, y - 16, f"Generado: {generated}", size=9)
@@ -488,7 +489,7 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
             draw_row(
                 manual_cols,
                 [
-                    mov["fecha"].strftime("%Y-%m-%d") if mov.get("fecha") else "-",
+                    format_date_local(mov["fecha"]) if mov.get("fecha") else "-",
                     mov.get("tipo_label") or mov.get("tipo") or "-",
                     mov.get("descripcion") or "",
                     mov.get("usuario") or "-",
@@ -512,7 +513,7 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
             draw_row(
                 cash_cols,
                 [
-                    mov["fecha"].strftime("%Y-%m-%d") if mov.get("fecha") else "-",
+                    format_date_local(mov["fecha"]) if mov.get("fecha") else "-",
                     mov.get("tipo") or "-",
                     mov.get("folio") or "-",
                     mov.get("partner") or "-",
@@ -536,7 +537,7 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
             draw_row(
                 gasto_cols,
                 [
-                    gasto["fecha"].strftime("%Y-%m-%d") if gasto.get("fecha") else "-",
+                    format_date_local(gasto["fecha"]) if gasto.get("fecha") else "-",
                     gasto.get("descripcion") or "",
                     gasto.get("categoria") or "",
                     gasto.get("usuario") or "-",

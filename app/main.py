@@ -1,7 +1,6 @@
 from fastapi import FastAPI, Request, Depends, Form
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session
 
@@ -16,8 +15,9 @@ from app.web.files import router as files_web_router
 from app.core.config import get_settings
 from app.db.deps import get_db
 from app.services.auth import authenticate_user
+from app.web.template_utils import create_templates
 
-templates = Jinja2Templates(directory="app/templates")
+templates = create_templates()
 
 
 def _get_session_user(request: Request) -> dict | None:

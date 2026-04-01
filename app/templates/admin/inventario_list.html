@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Inventario{% endblock %}
 
@@ -53,15 +53,16 @@
                         <td>{{ inv.material.nombre if inv.material else inv.material_id }}</td>
                         <td>{{ "{:,.2f}".format(inv.stock_inicial or 0) }} kg</td>
                         <td>{{ "{:,.2f}".format(inv.stock_actual or 0) }} kg</td>
-                        <td>{{ inv.updated_at.strftime("%Y-%m-%d %H:%M") if inv.updated_at else "-" }}</td>
+                        <td>{{ inv.updated_at|datetime_local if inv.updated_at else "-" }}</td>
                     </tr>
                 {% endfor %}
                 </tbody>
             </table>
         </div>
         {% if inventarios|length == 0 %}
-            <p class="text-muted small mt-3 mb-0">Aún no hay inventario registrado.</p>
+            <p class="text-muted small mt-3 mb-0">AÃºn no hay inventario registrado.</p>
         {% endif %}
     </div>
 </div>
 {% endblock %}
+

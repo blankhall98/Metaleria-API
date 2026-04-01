@@ -35,6 +35,7 @@ from app.models import (
     NotaDevolucionTotal,
     InventarioAjusteManual,
 )
+from app.core.datetime_utils import format_datetime_local
 
 
 def _sum_decimal(values: Iterable[Decimal | float | int]) -> Decimal:
@@ -1021,7 +1022,7 @@ def undo_payment(
         nota.monto_pagado = Decimal("0")
     nota.updated_at = datetime.utcnow()
 
-    stamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+    stamp = format_datetime_local(datetime.utcnow())
     comentario_prev = (pago.comentario or "").strip()
     tag = f"DESHECHO {stamp} | monto original {monto_revertir:.2f}"
     if comentario_prev:

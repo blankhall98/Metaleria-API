@@ -9,6 +9,7 @@ from decimal import Decimal, InvalidOperation
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
+from app.core.datetime_utils import format_date_local, format_datetime_local
 from app.models import (
     MovimientoContable,
     Nota,
@@ -454,7 +455,7 @@ def build_report_excel(report: dict) -> tuple[bytes, str]:
     cuenta = report.get("cuenta") or "Todas"
     date_from = report["date_from"].isoformat() if report.get("date_from") else "---"
     date_to = report["date_to"].isoformat() if report.get("date_to") else "---"
-    generated_at = report["generated_at"].strftime("%Y-%m-%d %H:%M")
+    generated_at = format_datetime_local(report["generated_at"])
 
     summary_rows = [
         row([(title, "String")]),
@@ -497,7 +498,7 @@ def build_report_excel(report: dict) -> tuple[bytes, str]:
         mov_rows.append(
             row(
                 [
-                    (mov["fecha"].strftime("%Y-%m-%d %H:%M") if mov["fecha"] else "-", "String"),
+                    (format_datetime_local(mov["fecha"]) if mov["fecha"] else "-", "String"),
                     (mov["tipo"], "String"),
                     (mov["naturaleza"], "String"),
                     (str(_safe_decimal(mov["monto"])), "Number"),
@@ -540,7 +541,7 @@ def build_report_excel(report: dict) -> tuple[bytes, str]:
                     (str(_safe_decimal(nota["total"])), "Number"),
                     (str(_safe_decimal(nota["pagado"])), "Number"),
                     (str(_safe_decimal(nota["saldo"])), "Number"),
-                    (nota["fecha"].strftime("%Y-%m-%d") if nota["fecha"] else "-", "String"),
+                    (format_date_local(nota["fecha"]) if nota["fecha"] else "-", "String"),
                     (nota["sucursal"], "String"),
                 ]
             )
@@ -680,7 +681,7 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
     top = 760
     y = top
 
-    generated = report["generated_at"].strftime("%Y-%m-%d %H:%M")
+    generated = format_datetime_local(report["generated_at"])
     date_from = report["date_from"].isoformat() if report.get("date_from") else "---"
     date_to = report["date_to"].isoformat() if report.get("date_to") else "---"
 
@@ -748,7 +749,7 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
 
     def draw_mov_row(p: _PdfPage, y_pos: float, mov: dict) -> float:
         cols = [
-            (mov["fecha"].strftime("%Y-%m-%d") if mov["fecha"] else "-", left, 54, "left"),
+            (format_date_local(mov["fecha"]) if mov["fecha"] else "-", left, 54, "left"),
             (mov["tipo"], left + 54, 64, "left"),
             (mov["naturaleza"], left + 118, 52, "left"),
             (_format_money(_safe_decimal(mov["monto"])), left + 170, 60, "right"),
@@ -820,7 +821,7 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
                 (_format_money(_safe_decimal(nota["total"])), left + 270, 70, "right"),
                 (_format_money(_safe_decimal(nota["pagado"])), left + 340, 70, "right"),
                 (_format_money(_safe_decimal(nota["saldo"])), left + 410, 70, "right"),
-                (nota["fecha"].strftime("%Y-%m-%d") if nota["fecha"] else "-", left + 480, 86, "left"),
+                (format_date_local(nota["fecha"]) if nota["fecha"] else "-", left + 480, 86, "left"),
             ]
             for text, x, width, align in cols:
                 display = _truncate_text(str(text), width - 4, 8)

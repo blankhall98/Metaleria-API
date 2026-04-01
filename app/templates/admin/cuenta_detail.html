@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Cuenta {{ cuenta.nombre }}{% endblock %}
 
@@ -341,7 +341,7 @@
                             <tbody>
                             {% for pago in pagos_sin_nota %}
                                 <tr>
-                                    <td>{{ pago.created_at.strftime("%Y-%m-%d %H:%M") if pago.created_at else "-" }}</td>
+                                    <td>{{ pago.created_at|datetime_local if pago.created_at else "-" }}</td>
                                     <td class="text-end">${{ "{:,.2f}".format(pago.monto or 0) }}</td>
                                     <td>{{ pago.metodo_pago or "-" }}</td>
                                     <td class="text-muted small">{{ pago.comentario or "-" }}</td>
@@ -375,7 +375,7 @@
                                     {% set partner = None %}
                                 {% endif %}
                                 <tr>
-                                    <td>{{ pago.created_at.strftime("%Y-%m-%d %H:%M") if pago.created_at else "-" }}</td>
+                                    <td>{{ pago.created_at|datetime_local if pago.created_at else "-" }}</td>
                                     <td>
                                         {% if nota %}
                                             <div class="fw-semibold">{{ folio_map.get(nota.id, '-') }}</div>
@@ -409,7 +409,7 @@
                             {% for pago in pagos_no_aprobados %}
                                 {% set nota = pago.nota %}
                                 <tr>
-                                    <td>{{ pago.created_at.strftime("%Y-%m-%d %H:%M") if pago.created_at else "-" }}</td>
+                                    <td>{{ pago.created_at|datetime_local if pago.created_at else "-" }}</td>
                                     <td>
                                         {% if nota %}
                                             <div class="fw-semibold">{{ folio_map.get(nota.id, '-') }}</div>
@@ -482,7 +482,7 @@
                         </td>
                         <td>{{ m.sucursal }}</td>
                         <td>{{ m.usuario_id }}</td>
-                        <td>{{ m.created_at.strftime("%Y-%m-%d %H:%M") if m.created_at else "-" }}</td>
+                        <td>{{ m.created_at|datetime_local if m.created_at else "-" }}</td>
                         <td class="small text-muted">{{ m.comentario or "-" }}</td>
                     </tr>
                 {% endfor %}
@@ -517,7 +517,7 @@
                 {% for pago in pagos %}
                     {% set nota = pago.nota %}
                     <tr>
-                        <td>{{ pago.created_at.strftime("%Y-%m-%d %H:%M") if pago.created_at else "-" }}</td>
+                        <td>{{ pago.created_at|datetime_local if pago.created_at else "-" }}</td>
                         <td>
                             {% if nota %}
                                 <div class="fw-semibold">{{ folio_map.get(nota.id, '-') }}</div>
@@ -624,3 +624,4 @@
     </div>
 </div>
 {% endblock %}
+

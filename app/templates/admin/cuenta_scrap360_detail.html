@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Cuenta Scrap360 {{ cuenta.nombre }}{% endblock %}
 
@@ -101,7 +101,7 @@
                 <tbody>
                 {% for mov in movimientos %}
                     <tr>
-                        <td>{{ mov.created_at.strftime("%Y-%m-%d %H:%M") if mov.created_at else "-" }}</td>
+                        <td>{{ mov.created_at|datetime_local if mov.created_at else "-" }}</td>
                         <td>{{ mov.tipo|upper }}</td>
                         <td class="text-end">
                             {% if mov.tipo == 'ingreso' %}
@@ -144,3 +144,4 @@
     </div>
 </div>
 {% endblock %}
+

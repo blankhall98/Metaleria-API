@@ -17,6 +17,7 @@ from app.models import (
     ComisionarioNota,
     Comisionario,
 )
+from app.core.datetime_utils import format_date_local, format_datetime_local
 from app.services import note_service
 from app.services.firebase_storage import upload_file
 
@@ -127,7 +128,7 @@ def build_invoice_pdf(db: Session, nota: Nota, generated_at: datetime | None = N
         folio_seq=nota.folio_seq,
     )
     generated_at = generated_at or datetime.utcnow()
-    issue_date = generated_at.strftime("%Y-%m-%d %H:%M")
+    issue_date = format_datetime_local(generated_at)
 
     if nota.proveedor_id and proveedor:
         partner_label = "Proveedor"
@@ -190,7 +191,7 @@ def build_invoice_pdf(db: Session, nota: Nota, generated_at: datetime | None = N
             cuenta_label = cuenta.display_label
         else:
             cuenta_label = str(nota.cuenta_financiera_id)
-    caducidad = nota.fecha_caducidad_pago.strftime("%Y-%m-%d") if nota.fecha_caducidad_pago else "-"
+    caducidad = format_date_local(nota.fecha_caducidad_pago) if nota.fecha_caducidad_pago else "-"
     pdf.text(380, top - 70, f"Cuenta: {cuenta_label}", size=9)
     pdf.text(380, top - 82, f"Vencimiento: {caducidad}", size=9)
 
@@ -318,7 +319,7 @@ def build_comisionario_nota_pdf(
     admin = db.get(User, nota.admin_id) if nota.admin_id else None
 
     generated_at = generated_at or datetime.utcnow()
-    issue_date = generated_at.strftime("%Y-%m-%d %H:%M")
+    issue_date = format_datetime_local(generated_at)
 
     header_title = "NOTA DE COMISION"
     sucursal_name = sucursal.nombre if sucursal else "-"
