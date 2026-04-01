@@ -6,7 +6,6 @@
 {% set approved_ok = request.query_params.get("approved") == "1" %}
 {% set cancelled_ok = request.query_params.get("cancelled") == "1" %}
 {% set returned_ok = request.query_params.get("returned") == "1" %}
-{% set sucursal_suffix = '&sucursal_id=' ~ sucursal_id if sucursal_id else '' %}
 <div class="notes-dashboard">
     <div class="page-header note-page-header">
         <div>
@@ -26,18 +25,6 @@
             {% if returned_ok %}La nota fue devuelta al trabajador.{% endif %}
         </div>
     {% endif %}
-
-    <div class="ops-inline-toolbar sticky-tools mb-3">
-        <a href="/web/admin/notas?estado=EN_REVISION{{ sucursal_suffix }}#tabla-principal" class="ops-inline-pill">Revision inmediata</a>
-        <a href="/web/admin/notas?pago=PENDIENTES{{ sucursal_suffix }}#tabla-principal" class="ops-inline-pill">Pendientes por saldar</a>
-        <a href="/web/admin/notas?pago=PAGADAS{{ sucursal_suffix }}#tabla-principal" class="ops-inline-pill">Pagadas</a>
-        <a href="/web/admin/notas?seguimiento=VENCIDAS{{ sucursal_suffix }}#tabla-principal" class="ops-inline-pill">Vencidas</a>
-        <a href="/web/admin/notas?seguimiento=POR_VENCER{{ sucursal_suffix }}#tabla-principal" class="ops-inline-pill">Por vencer</a>
-        <a href="/web/admin/proveedores?modo=COMPRA_VENTA{% if sucursal_id %}&sucursal_id={{ sucursal_id }}{% endif %}" class="ops-inline-pill">Proveedores compra y venta</a>
-        {% if user.rol in ['super_admin', 'admin'] %}
-            <a href="/web/admin/contabilidad{% if sucursal_id %}?sucursal_id={{ sucursal_id }}{% endif %}" class="ops-inline-pill">Log contable</a>
-        {% endif %}
-    </div>
 
     <div class="card hover-lift mb-3 notes-toolbar-card">
         <div class="card-body">
