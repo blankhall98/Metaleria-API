@@ -306,6 +306,18 @@
                         <span class="pill">Shift + rueda</span>
                     </div>
                 </div>
+                {% set ajuste_rows = namespace(count=0) %}
+                {% for n in notas_estado %}
+                    {% set balance = note_effective_balances.get(n.id) %}
+                    {% if balance and balance.ajuste_aplicado and balance.ajuste_aplicado > 0 %}
+                        {% set ajuste_rows.count = ajuste_rows.count + 1 %}
+                    {% endif %}
+                {% endfor %}
+                {% if ajuste_rows.count > 0 %}
+                    <div class="alert alert-info py-2 small mb-3">
+                        {{ ajuste_rows.count }} notas visibles ya reflejan cobertura por ajuste manual del partner. El saldo mostrado es el saldo efectivo, no solo el pago directo.
+                    </div>
+                {% endif %}
                 <div class="table-responsive scroll-x note-table-scroll">
                     <table class="table table-hover table-sm align-middle mb-0 notes-state-table">
                     <thead>
@@ -326,11 +338,13 @@
                     </thead>
                     <tbody>
                     {% for n in notas_estado %}
-                        {% set total = n.total_monto or 0 %}
-                        {% set pagado = n.monto_pagado or 0 %}
-                        {% set saldo = total - pagado %}
-                        {% set saldo_pendiente = saldo if saldo > 0 else 0 %}
-                        {% set saldo_favor = pagado - total if pagado > total else 0 %}
+                        {% set balance = note_effective_balances.get(n.id) %}
+                        {% set total = balance.total if balance else (n.total_monto or 0) %}
+                        {% set pagado = balance.pagado if balance else (n.monto_pagado or 0) %}
+                        {% set saldo_pendiente = balance.saldo_pendiente if balance else ((n.total_monto or 0) - (n.monto_pagado or 0)) %}
+                        {% if saldo_pendiente < 0 %}{% set saldo_pendiente = 0 %}{% endif %}
+                        {% set saldo_favor = balance.saldo_favor if balance else (((n.monto_pagado or 0) - (n.total_monto or 0)) if (n.monto_pagado or 0) > (n.total_monto or 0) else 0) %}
+                        {% set ajuste_aplicado = balance.ajuste_aplicado if balance else 0 %}
                         {% if n.proveedor_id and proveedores.get(n.proveedor_id) %}
                             {% set partner_name = proveedores.get(n.proveedor_id).nombre_completo %}
                         {% elif n.cliente_id and clientes.get(n.cliente_id) %}
@@ -378,6 +392,9 @@
                                     {% else %}
                                         <span class="badge bg-success">Pagada</span>
                                     {% endif %}
+                                    {% if ajuste_aplicado > 0 %}
+                                        <div class="text-muted small mt-1">Cubierta por ajuste</div>
+                                    {% endif %}
                                 {% else %}
                                     <span class="badge bg-light text-dark border">N/A</span>
                                 {% endif %}
@@ -394,6 +411,9 @@
                                             ${{ "{:,.2f}".format(saldo_pendiente) }}
                                         </div>
                                         <div class="text-muted small">{{ 'Por saldar' if saldo_pendiente > 0 else 'En cero' }}</div>
+                                        {% if ajuste_aplicado > 0 %}
+                                            <div class="text-muted small">Ajuste aplicado: ${{ "{:,.2f}".format(ajuste_aplicado) }}</div>
+                                        {% endif %}
                                     {% endif %}
                                 {% else %}
                                     <span class="text-muted">-</span>

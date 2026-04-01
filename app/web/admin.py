@@ -1,4 +1,5 @@
 # app/web/admin.py
+from collections import defaultdict
 import io
 import json
 import logging
@@ -293,6 +294,156 @@ def _signed_partner_amounts(
     pagado = Decimal(str(nota.monto_pagado or 0))
     sign = _partner_note_sign(partner_type, nota)
     return total * sign, pagado * sign
+
+
+def _raw_note_payment_balance(nota: Nota) -> dict[str, Decimal]:
+    total = Decimal(str(nota.total_monto or 0))
+    pagado = Decimal(str(nota.monto_pagado or 0))
+    saldo = total - pagado
+    saldo_pendiente = saldo if saldo > Decimal("0") else Decimal("0")
+    saldo_favor = -saldo if saldo < Decimal("0") else Decimal("0")
+    return {
+        "total": total,
+        "pagado": pagado,
+        "saldo": saldo,
+        "saldo_pendiente": saldo_pendiente,
+        "saldo_favor": saldo_favor,
+    }
+
+
+def _get_partner_adjustment_totals_map(
+    db: Session,
+    partner_keys: set[tuple[str, int]],
+    *,
+    allowed_suc_ids: list[int] | None = None,
+    sucursal_id: int | None = None,
+) -> dict[tuple[str, int], Decimal]:
+    totals: dict[tuple[str, int], Decimal] = {}
+    if not partner_keys:
+        return totals
+
+    ids_by_type: dict[str, set[int]] = defaultdict(set)
+    for partner_type, partner_id in partner_keys:
+        if partner_type and partner_id:
+            ids_by_type[partner_type].add(partner_id)
+            totals[(partner_type, partner_id)] = Decimal("0")
+
+    conditions = [
+        and_(
+            AjusteSaldoPartner.partner_type == partner_type,
+            AjusteSaldoPartner.partner_id.in_(sorted(partner_ids)),
+        )
+        for partner_type, partner_ids in ids_by_type.items()
+        if partner_ids
+    ]
+    if not conditions:
+        return totals
+
+    query = db.query(
+        AjusteSaldoPartner.partner_type,
+        AjusteSaldoPartner.partner_id,
+        AjusteSaldoPartner.monto,
+    ).filter(or_(*conditions))
+    if allowed_suc_ids is not None:
+        if sucursal_id:
+            query = query.filter(AjusteSaldoPartner.sucursal_id == sucursal_id)
+        else:
+            query = query.filter(AjusteSaldoPartner.sucursal_id.in_(allowed_suc_ids))
+    elif sucursal_id:
+        query = query.filter(AjusteSaldoPartner.sucursal_id == sucursal_id)
+
+    for partner_type, partner_id, monto in query.all():
+        key = (partner_type, int(partner_id))
+        totals[key] = totals.get(key, Decimal("0")) + Decimal(str(monto or 0))
+    return totals
+
+
+def _build_effective_note_balance_map(
+    db: Session,
+    notas: list[Nota],
+    *,
+    allowed_suc_ids: list[int] | None = None,
+    sucursal_id: int | None = None,
+) -> dict[int, dict[str, Decimal | bool]]:
+    balances: dict[int, dict[str, Decimal | bool]] = {}
+    approved_notes: list[Nota] = []
+    partner_keys: set[tuple[str, int]] = set()
+
+    for nota in notas:
+        raw = _raw_note_payment_balance(nota)
+        balances[nota.id] = {
+            **raw,
+            "ajuste_aplicado": Decimal("0"),
+            "saldo_cubierto_por_ajuste": False,
+            "saldo_parcialmente_cubierto": False,
+        }
+        if nota.estado != NotaEstado.aprobada:
+            continue
+        partner_type, partner_id = _nota_partner_key(nota)
+        if not partner_type or not partner_id:
+            continue
+        approved_notes.append(nota)
+        partner_keys.add((partner_type, partner_id))
+
+    adjustment_totals = _get_partner_adjustment_totals_map(
+        db,
+        partner_keys,
+        allowed_suc_ids=allowed_suc_ids,
+        sucursal_id=sucursal_id,
+    )
+
+    grouped_notes: dict[tuple[str, int], list[Nota]] = defaultdict(list)
+    for nota in approved_notes:
+        partner_type, partner_id = _nota_partner_key(nota)
+        if partner_type and partner_id:
+            grouped_notes[(partner_type, partner_id)].append(nota)
+
+    for partner_key, partner_notes in grouped_notes.items():
+        delta = adjustment_totals.get(partner_key) or Decimal("0")
+        credito_contra_saldo_positivo = -delta if delta < Decimal("0") else Decimal("0")
+        credito_contra_saldo_negativo = delta if delta > Decimal("0") else Decimal("0")
+        if (
+            credito_contra_saldo_positivo <= Decimal("0")
+            and credito_contra_saldo_negativo <= Decimal("0")
+        ):
+            continue
+        for nota in sorted(partner_notes, key=lambda item: (item.created_at or datetime.min, item.id)):
+            balance = balances.get(nota.id)
+            if not balance:
+                continue
+            saldo_pendiente = Decimal(str(balance["saldo_pendiente"]))
+            if saldo_pendiente <= Decimal("0"):
+                continue
+            partner_type, _ = partner_key
+            signed_total, signed_pagado = _signed_partner_amounts(nota, partner_type)
+            signed_saldo = signed_total - signed_pagado
+            if signed_saldo > Decimal("0"):
+                aplicado = min(saldo_pendiente, credito_contra_saldo_positivo)
+            elif signed_saldo < Decimal("0"):
+                aplicado = min(saldo_pendiente, credito_contra_saldo_negativo)
+            else:
+                aplicado = Decimal("0")
+            if aplicado <= Decimal("0"):
+                continue
+            balance["ajuste_aplicado"] = aplicado
+            balance["saldo"] = Decimal(str(balance["saldo"])) - aplicado
+            balance["saldo_pendiente"] = saldo_pendiente - aplicado
+            balance["saldo_cubierto_por_ajuste"] = balance["saldo_pendiente"] <= Decimal("0")
+            balance["saldo_parcialmente_cubierto"] = (
+                aplicado > Decimal("0")
+                and balance["saldo_pendiente"] > Decimal("0")
+            )
+            if signed_saldo > Decimal("0"):
+                credito_contra_saldo_positivo -= aplicado
+            else:
+                credito_contra_saldo_negativo -= aplicado
+            if (
+                credito_contra_saldo_positivo <= Decimal("0")
+                and credito_contra_saldo_negativo <= Decimal("0")
+            ):
+                break
+
+    return balances
 
 
 def _movimiento_display_partner(
@@ -7277,124 +7428,111 @@ async def notas_list(
     alerta_dias = max(1, int(getattr(settings, "NOTA_VENCIMIENTO_ALERTA_DIAS", 5)))
     limite_alerta = hoy + timedelta(days=alerta_dias)
 
-    paid_condition = and_(
-        Nota.estado == NotaEstado.aprobada,
-        func.coalesce(Nota.monto_pagado, 0) >= func.coalesce(Nota.total_monto, 0),
-    )
-    pending_condition = and_(
-        Nota.estado == NotaEstado.aprobada,
-        func.coalesce(Nota.monto_pagado, 0) < func.coalesce(Nota.total_monto, 0),
-    )
-    overdue_condition = and_(
-        pending_condition,
-        Nota.fecha_caducidad_pago.isnot(None),
-        Nota.fecha_caducidad_pago < hoy,
-    )
-    upcoming_condition = and_(
-        pending_condition,
-        Nota.fecha_caducidad_pago.isnot(None),
-        Nota.fecha_caducidad_pago >= hoy,
-        Nota.fecha_caducidad_pago <= limite_alerta,
-    )
-    notas_revision = db.query(Nota).filter(
-        Nota.estado == NotaEstado.en_revision,
+    notas_scope_query = db.query(Nota).filter(
         Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]),
     )
-    notas_revision = _apply_sucursal_filter(notas_revision, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
-    notas_revision = notas_revision.order_by(Nota.id.desc()).all()
-    notas_recientes = db.query(Nota).filter(
-        Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]),
+    notas_scope_query = _apply_sucursal_filter(notas_scope_query, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
+    notas_scope = notas_scope_query.order_by(Nota.created_at.desc(), Nota.id.desc()).all()
+    note_effective_balances = _build_effective_note_balance_map(
+        db,
+        notas_scope,
+        allowed_suc_ids=allowed_suc_ids,
+        sucursal_id=sucursal_id,
     )
-    notas_recientes = _apply_sucursal_filter(notas_recientes, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
-    notas_recientes = notas_recientes.order_by(Nota.id.desc()).limit(10).all()
-    notas_con_vencimiento = db.query(Nota).filter(
-        Nota.estado == NotaEstado.aprobada,
-        Nota.fecha_caducidad_pago.isnot(None),
-        Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]),
-    )
-    notas_con_vencimiento = _apply_sucursal_filter(
-        notas_con_vencimiento,
-        allowed_suc_ids,
-        sucursal_id,
-        Nota.sucursal_id,
-    )
-    notas_con_vencimiento = notas_con_vencimiento.order_by(Nota.fecha_caducidad_pago.asc()).all()
+
+    def note_balance_view(nota: Nota) -> dict[str, Decimal | bool]:
+        return note_effective_balances.get(nota.id) or {
+            **_raw_note_payment_balance(nota),
+            "ajuste_aplicado": Decimal("0"),
+            "saldo_cubierto_por_ajuste": False,
+            "saldo_parcialmente_cubierto": False,
+        }
+
+    def is_note_effectively_pending(nota: Nota) -> bool:
+        if nota.estado != NotaEstado.aprobada:
+            return False
+        return Decimal(str(note_balance_view(nota)["saldo_pendiente"])) > Decimal("0")
+
+    def is_note_effectively_paid(nota: Nota) -> bool:
+        if nota.estado != NotaEstado.aprobada:
+            return False
+        return Decimal(str(note_balance_view(nota)["saldo_pendiente"])) <= Decimal("0")
+
+    notas_revision = [nota for nota in notas_scope if nota.estado == NotaEstado.en_revision]
+    notas_recientes = notas_scope[:10]
+    notas_aprobadas = [nota for nota in notas_scope if nota.estado == NotaEstado.aprobada]
+    notas_con_vencimiento = [
+        nota
+        for nota in notas_aprobadas
+        if nota.fecha_caducidad_pago is not None
+    ]
     estado_counts = {e.value: 0 for e in NotaEstado}
-    counts_query = db.query(Nota.estado, func.count(Nota.id))
-    counts_query = _apply_sucursal_filter(counts_query, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
-    counts_query = counts_query.filter(Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]))
-    counts_query = counts_query.group_by(Nota.estado).all()
-    for estado, cantidad in counts_query:
-        if estado and estado.value in estado_counts:
-            estado_counts[estado.value] = int(cantidad or 0)
-    estado_total = sum(estado_counts.values())
-    pago_counts_query = db.query(Nota)
-    pago_counts_query = _apply_sucursal_filter(pago_counts_query, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
-    pago_counts_query = pago_counts_query.filter(Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]))
+    for nota in notas_scope:
+        if nota.estado and nota.estado.value in estado_counts:
+            estado_counts[nota.estado.value] += 1
+    estado_total = len(notas_scope)
+
+    pago_source = notas_scope
     if estado_filter:
-        pago_counts_query = pago_counts_query.filter(Nota.estado == estado_filter)
+        pago_source = [nota for nota in pago_source if nota.estado == estado_filter]
     pago_counts = {
-        "PAGADAS": int(pago_counts_query.filter(paid_condition).count()),
-        "PENDIENTES": int(pago_counts_query.filter(pending_condition).count()),
+        "PAGADAS": sum(1 for nota in pago_source if is_note_effectively_paid(nota)),
+        "PENDIENTES": sum(1 for nota in pago_source if is_note_effectively_pending(nota)),
     }
     pago_total = pago_counts["PAGADAS"] + pago_counts["PENDIENTES"]
-    seguimiento_counts_query = db.query(Nota)
-    seguimiento_counts_query = _apply_sucursal_filter(
-        seguimiento_counts_query,
-        allowed_suc_ids,
-        sucursal_id,
-        Nota.sucursal_id,
-    )
-    seguimiento_counts_query = seguimiento_counts_query.filter(
-        Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta])
-    )
-    if estado_filter:
-        seguimiento_counts_query = seguimiento_counts_query.filter(Nota.estado == estado_filter)
-    if pago_filter == "PAGADAS":
-        seguimiento_counts_query = seguimiento_counts_query.filter(paid_condition)
-    elif pago_filter == "PENDIENTES":
-        seguimiento_counts_query = seguimiento_counts_query.filter(pending_condition)
-    seguimiento_counts = {
-        "VENCIDAS": int(seguimiento_counts_query.filter(overdue_condition).count()),
-        "POR_VENCER": int(seguimiento_counts_query.filter(upcoming_condition).count()),
-    }
-    notas_estado_query = db.query(Nota)
-    notas_estado_query = _apply_sucursal_filter(notas_estado_query, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
-    notas_estado_query = notas_estado_query.filter(Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]))
-    if estado_filter:
-        notas_estado_query = notas_estado_query.filter(Nota.estado == estado_filter)
-    if pago_filter == "PAGADAS":
-        notas_estado_query = notas_estado_query.filter(paid_condition)
-    elif pago_filter == "PENDIENTES":
-        notas_estado_query = notas_estado_query.filter(pending_condition)
-    if seguimiento_current == "VENCIDAS":
-        notas_estado_query = notas_estado_query.filter(overdue_condition)
-    elif seguimiento_current == "POR_VENCER":
-        notas_estado_query = notas_estado_query.filter(upcoming_condition)
-    notas_estado = notas_estado_query.order_by(Nota.created_at.desc()).limit(200).all()
-    notas_aprobadas = db.query(Nota).filter(
-        Nota.estado == NotaEstado.aprobada,
-        Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]),
-    )
-    notas_aprobadas = _apply_sucursal_filter(notas_aprobadas, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
-    notas_aprobadas = notas_aprobadas.all()
 
-    def saldo_pendiente(nota: Nota) -> Decimal:
-        total = Decimal(str(nota.total_monto or 0))
-        pagado = Decimal(str(nota.monto_pagado or 0))
-        saldo = total - pagado
-        if saldo < Decimal("0"):
-            saldo = Decimal("0")
-        return saldo
+    seguimiento_source = notas_scope
+    if estado_filter:
+        seguimiento_source = [nota for nota in seguimiento_source if nota.estado == estado_filter]
+    if pago_filter == "PAGADAS":
+        seguimiento_source = [nota for nota in seguimiento_source if is_note_effectively_paid(nota)]
+    elif pago_filter == "PENDIENTES":
+        seguimiento_source = [nota for nota in seguimiento_source if is_note_effectively_pending(nota)]
+
+    def is_overdue(nota: Nota) -> bool:
+        return (
+            nota.estado == NotaEstado.aprobada
+            and nota.fecha_caducidad_pago is not None
+            and nota.fecha_caducidad_pago < hoy
+            and is_note_effectively_pending(nota)
+        )
+
+    def is_upcoming(nota: Nota) -> bool:
+        return (
+            nota.estado == NotaEstado.aprobada
+            and nota.fecha_caducidad_pago is not None
+            and nota.fecha_caducidad_pago >= hoy
+            and nota.fecha_caducidad_pago <= limite_alerta
+            and is_note_effectively_pending(nota)
+        )
+
+    seguimiento_counts = {
+        "VENCIDAS": sum(1 for nota in seguimiento_source if is_overdue(nota)),
+        "POR_VENCER": sum(1 for nota in seguimiento_source if is_upcoming(nota)),
+    }
+
+    notas_estado = list(notas_scope)
+    if estado_filter:
+        notas_estado = [nota for nota in notas_estado if nota.estado == estado_filter]
+    if pago_filter == "PAGADAS":
+        notas_estado = [nota for nota in notas_estado if is_note_effectively_paid(nota)]
+    elif pago_filter == "PENDIENTES":
+        notas_estado = [nota for nota in notas_estado if is_note_effectively_pending(nota)]
+    if seguimiento_current == "VENCIDAS":
+        notas_estado = [nota for nota in notas_estado if is_overdue(nota)]
+    elif seguimiento_current == "POR_VENCER":
+        notas_estado = [nota for nota in notas_estado if is_upcoming(nota)]
+    notas_estado = notas_estado[:200]
 
     saldo_vivo_total = Decimal("0")
     for nota in notas_aprobadas:
-        saldo_vivo_total += saldo_pendiente(nota)
+        saldo_vivo_total += Decimal(str(note_balance_view(nota)["saldo_pendiente"]))
 
     notas_vencidas = []
     notas_por_vencer = []
-    for nota in notas_con_vencimiento:
-        saldo = saldo_pendiente(nota)
+    for nota in sorted(notas_con_vencimiento, key=lambda item: item.fecha_caducidad_pago or hoy):
+        balance = note_balance_view(nota)
+        saldo = Decimal(str(balance["saldo_pendiente"]))
         if saldo <= Decimal("0"):
             continue
         if nota.fecha_caducidad_pago < hoy:
@@ -7494,6 +7632,7 @@ async def notas_list(
             "folio_error": folio_error,
             "folio_result": folio_result,
             "folio_map": folio_map,
+            "note_effective_balances": note_effective_balances,
             "notas_estado": notas_estado,
             "estado_current": estado_current,
             "estado_label": estado_label,
