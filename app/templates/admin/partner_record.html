@@ -433,6 +433,17 @@
                     </div>
                 </form>
             </div>
+            {% if not unified_enabled and record_credito_ajuste_total > 0 %}
+                <div class="alert alert-info py-2 small mt-3 mb-0">
+                    El saldo a favor generado por ajustes manuales se aplica automaticamente a las notas mas antiguas para reflejar el saldo real.
+                    Se aplicaron <strong>${{ "{:,.2f}".format(record_credito_ajuste_aplicado or 0) }}</strong>
+                    {% if record_credito_ajuste_restante > 0 %}
+                        y quedan <strong>${{ "{:,.2f}".format(record_credito_ajuste_restante or 0) }}</strong> disponibles como saldo a favor.
+                    {% else %}
+                        y no queda saldo de ajuste pendiente por aplicar.
+                    {% endif %}
+                </div>
+            {% endif %}
 
             <div class="table-responsive mt-3">
                 <table class="table table-hover table-sm align-middle mb-0">
@@ -482,6 +493,15 @@
                                 {% else %}
                                     <span class="badge bg-danger">Cancelada</span>
                                 {% endif %}
+                                {% if row.saldo_cubierto_por_ajuste and row.ajuste_aplicado > 0 %}
+                                    <div class="mt-1">
+                                        <span class="badge bg-info text-dark">Liquidada por ajuste</span>
+                                    </div>
+                                {% elif row.saldo_parcialmente_cubierto %}
+                                    <div class="mt-1">
+                                        <span class="badge bg-info text-dark">Ajuste parcial aplicado</span>
+                                    </div>
+                                {% endif %}
                             </td>
                             <td>{{ nota.created_at|datetime_local if nota.created_at else '-' }}</td>
                             <td>{{ suc.nombre if suc else '-' }}</td>
@@ -492,7 +512,13 @@
                                     {% if row.saldo_pendiente > 0 %}
                                         <span class="text-danger fw-semibold">${{ "{:,.2f}".format(row.saldo_pendiente) }}</span>
                                     {% else %}
-                                        <span class="text-muted">$0.00</span>
+                                        <span class="text-success fw-semibold">$0.00</span>
+                                    {% endif %}
+                                    {% if row.ajuste_aplicado > 0 %}
+                                        <div class="text-muted small">Ajuste aplicado: ${{ "{:,.2f}".format(row.ajuste_aplicado or 0) }}</div>
+                                        {% if row.saldo_pendiente_original > row.saldo_pendiente %}
+                                            <div class="text-muted small">Saldo original: ${{ "{:,.2f}".format(row.saldo_pendiente_original or 0) }}</div>
+                                        {% endif %}
                                     {% endif %}
                                 {% else %}
                                     <span class="text-muted">-</span>

@@ -1758,10 +1758,90 @@ def _build_partner_record_rows(
                 "saldo": saldo,
                 "saldo_pendiente": saldo_pendiente,
                 "saldo_favor": saldo_favor,
+                "saldo_original": saldo,
+                "saldo_pendiente_original": saldo_pendiente,
+                "saldo_favor_original": saldo_favor,
+                "ajuste_aplicado": Decimal("0"),
+                "saldo_cubierto_por_ajuste": False,
+                "saldo_parcialmente_cubierto": False,
                 "saldo_aplicable": saldo_aplicable,
             }
         )
     return rows
+
+
+def _partner_adjustment_credit_pool(
+    ajustes_delta: Decimal | None,
+) -> Decimal:
+    delta = ajustes_delta if ajustes_delta is not None else Decimal("0")
+    return -delta if delta < Decimal("0") else Decimal("0")
+
+
+def _apply_partner_adjustment_coverage(
+    rows: list[dict],
+    *,
+    ajustes_delta: Decimal | None,
+) -> dict[str, Decimal]:
+    credito_total = _partner_adjustment_credit_pool(ajustes_delta)
+    credito_disponible = credito_total
+    if credito_disponible <= Decimal("0"):
+        return {
+            "credito_total": Decimal("0"),
+            "credito_aplicado": Decimal("0"),
+            "credito_restante": Decimal("0"),
+        }
+
+    rows_ordenadas = sorted(
+        rows,
+        key=lambda row: (
+            row["nota"].created_at or datetime.min,
+            row["nota"].id,
+        ),
+    )
+    for row in rows_ordenadas:
+        if credito_disponible <= Decimal("0"):
+            break
+        if not row.get("saldo_aplicable"):
+            continue
+        saldo_pendiente = Decimal(str(row.get("saldo_pendiente") or 0))
+        if saldo_pendiente <= Decimal("0"):
+            continue
+        aplicado = min(saldo_pendiente, credito_disponible)
+        if aplicado <= Decimal("0"):
+            continue
+        row["ajuste_aplicado"] = aplicado
+        row["saldo"] = Decimal(str(row.get("saldo") or 0)) - aplicado
+        row["saldo_pendiente"] = saldo_pendiente - aplicado
+        row["saldo_cubierto_por_ajuste"] = row["saldo_pendiente"] <= Decimal("0")
+        row["saldo_parcialmente_cubierto"] = (
+            aplicado > Decimal("0")
+            and row["saldo_pendiente"] > Decimal("0")
+        )
+        credito_disponible -= aplicado
+
+    return {
+        "credito_total": credito_total,
+        "credito_aplicado": credito_total - credito_disponible,
+        "credito_restante": credito_disponible,
+    }
+
+
+def _filter_partner_record_rows_by_query(
+    rows: list[dict],
+    q: str | None,
+) -> list[dict]:
+    if not q:
+        return rows
+    term = q.strip().lower()
+    if not term:
+        return rows
+    filtered: list[dict] = []
+    for row in rows:
+        folio = (row.get("folio") or "").lower()
+        nota = row.get("nota")
+        if nota and (term in str(nota.id) or (folio and term in folio)):
+            filtered.append(row)
+    return filtered
 
 
 def _filter_comisionario_notas(
@@ -2380,8 +2460,19 @@ def _build_partner_record_context(
             pagos_query = pagos_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
         pagos = pagos_query.order_by(NotaPago.created_at.desc()).all()
 
-    notas_filtradas, folio_map = _filter_notes_by_query(record_notes, q)
-    rows = _build_partner_record_rows(notas_filtradas, folio_map, partner_type=record_partner_type)
+    folio_map = _build_folio_map(record_notes)
+    all_rows = _build_partner_record_rows(record_notes, folio_map, partner_type=record_partner_type)
+    coverage_summary = {
+        "credito_total": Decimal("0"),
+        "credito_aplicado": Decimal("0"),
+        "credito_restante": Decimal("0"),
+    }
+    if not unified_summary and record_partner_type in {"cliente", "proveedor"}:
+        coverage_summary = _apply_partner_adjustment_coverage(
+            all_rows,
+            ajustes_delta=ajustes_delta,
+        )
+    rows = _filter_partner_record_rows_by_query(all_rows, q)
 
     pago_inicial_total = Decimal("0")
     for pago in pagos:
@@ -2403,7 +2494,7 @@ def _build_partner_record_context(
         "tipo_operacion_label": tipo_operacion_label,
         "record_rows": rows,
         "record_total_count": len(record_notes),
-        "record_filtered_count": len(notas_filtradas),
+        "record_filtered_count": len(rows),
         "record_scope_label": record_scope_label,
         "payments_scope_label": payments_scope_label,
         "summary": summary,
@@ -2437,6 +2528,9 @@ def _build_partner_record_context(
         "partner_is_internal": partner_is_internal,
         "provider_direct_sales_enabled": provider_direct_sales_enabled,
         "provider_direct_sales_count": provider_direct_sales_count,
+        "record_credito_ajuste_total": coverage_summary["credito_total"],
+        "record_credito_ajuste_aplicado": coverage_summary["credito_aplicado"],
+        "record_credito_ajuste_restante": coverage_summary["credito_restante"],
     }
 
 
