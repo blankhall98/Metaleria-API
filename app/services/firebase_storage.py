@@ -52,6 +52,14 @@ def _normalize_compact_mapping(parsed: dict) -> dict:
     return normalized or parsed
 
 
+def _normalize_certificate_fields(parsed: dict) -> dict:
+    normalized = dict(parsed)
+    private_key = normalized.get("private_key")
+    if isinstance(private_key, str):
+        normalized["private_key"] = private_key.replace("\\n", "\n").strip()
+    return normalized
+
+
 def _parse_credentials_value(raw_value: str) -> dict:
     try:
         parsed = json.loads(raw_value)
@@ -63,6 +71,7 @@ def _parse_credentials_value(raw_value: str) -> dict:
     if not isinstance(parsed, dict):
         raise ValueError("FIREBASE_CREDENTIALS_JSON no contiene un objeto de credenciales valido")
     parsed = _normalize_compact_mapping(parsed)
+    parsed = _normalize_certificate_fields(parsed)
     if not {"type", "project_id", "private_key", "client_email"} <= set(parsed.keys()):
         raise ValueError("FIREBASE_CREDENTIALS_JSON no contiene las llaves requeridas de Firebase")
     return parsed
