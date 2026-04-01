@@ -28,7 +28,8 @@
         <a href="/web/admin/notas?estado=EN_REVISION{{ sucursal_suffix }}#tabla-principal" class="ops-inline-pill">Revision inmediata</a>
         <a href="/web/admin/notas?pago=PENDIENTES{{ sucursal_suffix }}#tabla-principal" class="ops-inline-pill">Pendientes por saldar</a>
         <a href="/web/admin/notas?pago=PAGADAS{{ sucursal_suffix }}#tabla-principal" class="ops-inline-pill">Pagadas</a>
-        <a href="#notes-deadline-panel" class="ops-inline-pill">Vencidas y por vencer</a>
+        <a href="/web/admin/notas?seguimiento=VENCIDAS{{ sucursal_suffix }}#tabla-principal" class="ops-inline-pill">Vencidas</a>
+        <a href="/web/admin/notas?seguimiento=POR_VENCER{{ sucursal_suffix }}#tabla-principal" class="ops-inline-pill">Por vencer</a>
         <a href="/web/admin/proveedores?modo=COMPRA_VENTA{% if sucursal_id %}&sucursal_id={{ sucursal_id }}{% endif %}" class="ops-inline-pill">Proveedores compra y venta</a>
         <a href="/web/admin/contabilidad{% if sucursal_id %}?sucursal_id={{ sucursal_id }}{% endif %}" class="ops-inline-pill">Log contable</a>
     </div>
@@ -64,7 +65,15 @@
                                     <option value="PAGADAS" {% if pago_current == 'PAGADAS' %}selected{% endif %}>Pagadas</option>
                                 </select>
                             </div>
-                            <div class="col-lg-2 d-grid">
+                            <div class="col-lg-2">
+                                <label class="form-label">Seguimiento</label>
+                                <select class="form-select" name="seguimiento">
+                                    <option value="TODOS" {% if seguimiento_current == 'TODOS' %}selected{% endif %}>Todos</option>
+                                    <option value="VENCIDAS" {% if seguimiento_current == 'VENCIDAS' %}selected{% endif %}>Vencidas</option>
+                                    <option value="POR_VENCER" {% if seguimiento_current == 'POR_VENCER' %}selected{% endif %}>Por vencer</option>
+                                </select>
+                            </div>
+                            <div class="col-lg-12 d-grid d-lg-flex justify-content-lg-end">
                                 <button class="btn btn-primary">Buscar</button>
                             </div>
                         </div>
@@ -81,7 +90,7 @@
                                 <a href="{{ sucursal_links[suc.id ~ ''] }}" class="ops-inline-pill {{ 'active' if sucursal_id == suc.id else '' }}">{{ suc.nombre }}</a>
                             {% endfor %}
                         </div>
-                        {% if folio_query or pago_current != 'TODAS' or sucursal_id %}
+                        {% if folio_query or pago_current != 'TODAS' or sucursal_id or seguimiento_current != 'TODOS' %}
                             <div class="mt-3">
                                 <a class="btn btn-outline-secondary btn-sm" href="/web/admin/notas">Limpiar filtros</a>
                             </div>
@@ -240,6 +249,7 @@
                         &middot; Sucursal: {{ sucursal_label }}
                         &middot; Estado: {{ estado_label }}
                         &middot; Pago: {{ pago_label }}
+                        &middot; Seguimiento: {{ seguimiento_label }}
                     </div>
                 </div>
                 <div class="d-flex flex-column gap-2 align-items-start align-items-lg-end">
@@ -269,6 +279,17 @@
                         </a>
                         <a href="{{ pago_links.PAGADAS }}" class="btn btn-sm note-state-tab {{ 'active' if pago_current == 'PAGADAS' else 'btn-outline-secondary' }}">
                             Pagadas <span class="badge bg-success">{{ pago_counts['PAGADAS'] }}</span>
+                        </a>
+                    </div>
+                    <div class="note-state-tabs">
+                        <a href="{{ seguimiento_links.TODOS }}" class="btn btn-sm note-state-tab {{ 'active' if seguimiento_current == 'TODOS' else 'btn-outline-secondary' }}">
+                            Seguimiento: Todos
+                        </a>
+                        <a href="{{ seguimiento_links.VENCIDAS }}" class="btn btn-sm note-state-tab {{ 'active' if seguimiento_current == 'VENCIDAS' else 'btn-outline-secondary' }}">
+                            Vencidas <span class="badge bg-danger">{{ seguimiento_counts['VENCIDAS'] }}</span>
+                        </a>
+                        <a href="{{ seguimiento_links.POR_VENCER }}" class="btn btn-sm note-state-tab {{ 'active' if seguimiento_current == 'POR_VENCER' else 'btn-outline-secondary' }}">
+                            Por vencer <span class="badge bg-warning text-dark">{{ seguimiento_counts['POR_VENCER'] }}</span>
                         </a>
                     </div>
                 </div>

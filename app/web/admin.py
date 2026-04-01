@@ -1693,6 +1693,35 @@ def _build_notas_sucursal_links(
     return links
 
 
+def _build_notas_seguimiento_links(
+    *,
+    folio_query: str | None = None,
+    estado_filter: str | None = None,
+    pago_filter: str | None = None,
+    sucursal_id: int | None = None,
+) -> dict[str, str]:
+    def build(seguimiento: str | None) -> str:
+        params: dict[str, str] = {}
+        if folio_query:
+            params["folio"] = folio_query
+        if estado_filter and estado_filter != "TODAS":
+            params["estado"] = estado_filter
+        if pago_filter and pago_filter != "TODAS":
+            params["pago"] = pago_filter
+        if sucursal_id:
+            params["sucursal_id"] = str(sucursal_id)
+        if seguimiento and seguimiento != "TODOS":
+            params["seguimiento"] = seguimiento
+        qs = urlencode(params)
+        return f"/web/admin/notas?{qs}" if qs else "/web/admin/notas"
+
+    return {
+        "TODOS": build(None),
+        "VENCIDAS": build("VENCIDAS"),
+        "POR_VENCER": build("POR_VENCER"),
+    }
+
+
 def _filter_notes_by_query(notas: list[Nota], q: str | None) -> tuple[list[Nota], dict[int, str]]:
     folio_map = _build_folio_map(notas)
     if not q:
@@ -7130,6 +7159,29 @@ async def notas_list(
         "PENDIENTES": "Pendientes por pagar",
     }
     pago_label = pago_labels.get(pago_current, "Todas")
+    seguimiento_raw = (request.query_params.get("seguimiento") or "").strip().upper()
+    seguimiento_aliases = {
+        "TODOS": "TODOS",
+        "TODAS": "TODOS",
+        "VENCIDA": "VENCIDAS",
+        "VENCIDAS": "VENCIDAS",
+        "PORVENCER": "POR_VENCER",
+        "POR_VENCER": "POR_VENCER",
+        "PROXIMAS": "POR_VENCER",
+    }
+    seguimiento_raw = seguimiento_aliases.get(seguimiento_raw, seguimiento_raw)
+    seguimiento_current = "TODOS"
+    if seguimiento_raw in {"VENCIDAS", "POR_VENCER"}:
+        seguimiento_current = seguimiento_raw
+    seguimiento_labels = {
+        "TODOS": "Todos",
+        "VENCIDAS": "Vencidas",
+        "POR_VENCER": "Por vencer",
+    }
+    seguimiento_label = seguimiento_labels.get(seguimiento_current, "Todos")
+    hoy = date.today()
+    alerta_dias = max(1, int(getattr(settings, "NOTA_VENCIMIENTO_ALERTA_DIAS", 5)))
+    limite_alerta = hoy + timedelta(days=alerta_dias)
 
     paid_condition = and_(
         Nota.estado == NotaEstado.aprobada,
@@ -7138,6 +7190,17 @@ async def notas_list(
     pending_condition = and_(
         Nota.estado == NotaEstado.aprobada,
         func.coalesce(Nota.monto_pagado, 0) < func.coalesce(Nota.total_monto, 0),
+    )
+    overdue_condition = and_(
+        pending_condition,
+        Nota.fecha_caducidad_pago.isnot(None),
+        Nota.fecha_caducidad_pago < hoy,
+    )
+    upcoming_condition = and_(
+        pending_condition,
+        Nota.fecha_caducidad_pago.isnot(None),
+        Nota.fecha_caducidad_pago >= hoy,
+        Nota.fecha_caducidad_pago <= limite_alerta,
     )
     notas_revision = db.query(Nota).filter(
         Nota.estado == NotaEstado.en_revision,
@@ -7150,9 +7213,6 @@ async def notas_list(
     )
     notas_recientes = _apply_sucursal_filter(notas_recientes, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
     notas_recientes = notas_recientes.order_by(Nota.id.desc()).limit(10).all()
-    hoy = date.today()
-    alerta_dias = max(1, int(getattr(settings, "NOTA_VENCIMIENTO_ALERTA_DIAS", 5)))
-    limite_alerta = hoy + timedelta(days=alerta_dias)
     notas_con_vencimiento = db.query(Nota).filter(
         Nota.estado == NotaEstado.aprobada,
         Nota.fecha_caducidad_pago.isnot(None),
@@ -7184,6 +7244,26 @@ async def notas_list(
         "PENDIENTES": int(pago_counts_query.filter(pending_condition).count()),
     }
     pago_total = pago_counts["PAGADAS"] + pago_counts["PENDIENTES"]
+    seguimiento_counts_query = db.query(Nota)
+    seguimiento_counts_query = _apply_sucursal_filter(
+        seguimiento_counts_query,
+        allowed_suc_ids,
+        sucursal_id,
+        Nota.sucursal_id,
+    )
+    seguimiento_counts_query = seguimiento_counts_query.filter(
+        Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta])
+    )
+    if estado_filter:
+        seguimiento_counts_query = seguimiento_counts_query.filter(Nota.estado == estado_filter)
+    if pago_filter == "PAGADAS":
+        seguimiento_counts_query = seguimiento_counts_query.filter(paid_condition)
+    elif pago_filter == "PENDIENTES":
+        seguimiento_counts_query = seguimiento_counts_query.filter(pending_condition)
+    seguimiento_counts = {
+        "VENCIDAS": int(seguimiento_counts_query.filter(overdue_condition).count()),
+        "POR_VENCER": int(seguimiento_counts_query.filter(upcoming_condition).count()),
+    }
     notas_estado_query = db.query(Nota)
     notas_estado_query = _apply_sucursal_filter(notas_estado_query, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
     notas_estado_query = notas_estado_query.filter(Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]))
@@ -7193,6 +7273,10 @@ async def notas_list(
         notas_estado_query = notas_estado_query.filter(paid_condition)
     elif pago_filter == "PENDIENTES":
         notas_estado_query = notas_estado_query.filter(pending_condition)
+    if seguimiento_current == "VENCIDAS":
+        notas_estado_query = notas_estado_query.filter(overdue_condition)
+    elif seguimiento_current == "POR_VENCER":
+        notas_estado_query = notas_estado_query.filter(upcoming_condition)
     notas_estado = notas_estado_query.order_by(Nota.created_at.desc()).limit(200).all()
     notas_aprobadas = db.query(Nota).filter(
         Nota.estado == NotaEstado.aprobada,
@@ -7280,6 +7364,12 @@ async def notas_list(
         estado_filter=estado_current,
         pago_filter=pago_current,
     )
+    seguimiento_links = _build_notas_seguimiento_links(
+        folio_query=folio_query,
+        estado_filter=estado_current,
+        pago_filter=pago_current,
+        sucursal_id=sucursal_id,
+    )
     sucursal_label = "Todas las sucursales"
     if sucursal_id:
         sucursal = sucursales.get(sucursal_id)
@@ -7321,6 +7411,10 @@ async def notas_list(
             "pago_counts": pago_counts,
             "pago_total": pago_total,
             "pago_links": pago_links,
+            "seguimiento_current": seguimiento_current,
+            "seguimiento_label": seguimiento_label,
+            "seguimiento_counts": seguimiento_counts,
+            "seguimiento_links": seguimiento_links,
         },
     )
 
