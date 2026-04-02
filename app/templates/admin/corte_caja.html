@@ -71,6 +71,182 @@
             </form>
         </div>
     </div>
+
+    <div class="card hover-lift mb-3">
+        <div class="card-body">
+            <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3 mb-3">
+                <div>
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span class="chip-strong">Vista previa</span>
+                        <span class="text-muted small">Antes de abrir caja</span>
+                    </div>
+                    <h2 class="h5 text-dark mb-1">Resumen operativo y conteo preliminar</h2>
+                    <p class="text-muted small mb-0">Puedes revisar la operación del día y contar efectivo antes de abrir caja. Este conteo no se guarda hasta que abras el corte.</p>
+                </div>
+                <div class="alert alert-info py-2 px-3 mb-0 small">
+                    Primero revisa y cuenta. Cuando estés lista, abre caja para registrar el saldo inicial y guardar el arqueo oficial.
+                </div>
+            </div>
+
+            <div class="note-kpi-grid mb-3">
+                <div class="notes-kpi-card tone-blue">
+                    <span class="notes-kpi-label">Compras del día</span>
+                    <strong>${{ "{:,.2f}".format(compras_total or 0) }}</strong>
+                    <div class="notes-kpi-sub">{{ compras_notas }} notas · {{ "{:,.3f}".format(compras_kg or 0) }} kg</div>
+                </div>
+                <div class="notes-kpi-card tone-green">
+                    <span class="notes-kpi-label">Ventas del día</span>
+                    <strong>${{ "{:,.2f}".format(ventas_total or 0) }}</strong>
+                    <div class="notes-kpi-sub">{{ ventas_notas }} notas · {{ "{:,.3f}".format(ventas_kg or 0) }} kg</div>
+                </div>
+                <div class="notes-kpi-card tone-green">
+                    <span class="notes-kpi-label">Cobros en efectivo</span>
+                    <strong>${{ "{:,.2f}".format(ventas_efectivo_total or 0) }}</strong>
+                    <div class="notes-kpi-sub">Ingresos reales de efectivo</div>
+                </div>
+                <div class="notes-kpi-card tone-red">
+                    <span class="notes-kpi-label">Pagos en efectivo</span>
+                    <strong>${{ "{:,.2f}".format(compras_efectivo_total or 0) }}</strong>
+                    <div class="notes-kpi-sub">Egresos reales de efectivo</div>
+                </div>
+                <div class="notes-kpi-card {{ 'tone-green' if (cash_ingresos - cash_egresos) >= 0 else 'tone-red' }}">
+                    <span class="notes-kpi-label">Neto efectivo del día</span>
+                    <strong>{% if (cash_ingresos - cash_egresos) >= 0 %}+{% else %}-{% endif %}${{ "{:,.2f}".format((cash_ingresos - cash_egresos)|abs) }}</strong>
+                    <div class="notes-kpi-sub">Sin considerar saldo inicial</div>
+                </div>
+            </div>
+
+            <div class="cash-count-sheet">
+                <div class="cash-count-sheet__header">
+                    <div>
+                        <span class="chip-strong">Conteo preliminar</span>
+                        <h3 class="h6 text-dark mb-1 mt-2">Arqueo de monedas y billetes</h3>
+                        <p class="text-muted small mb-0">Úsalo para contar el efectivo físico antes de abrir caja. Después podrás registrar el saldo inicial oficial con mayor seguridad.</p>
+                    </div>
+                    <div class="cash-count-sheet__totals">
+                        <div class="cash-count-total-card">
+                            <span>Monedas</span>
+                            <strong id="cashCountCoins">${{ "{:,.2f}".format(denom_total_monedas or 0) }}</strong>
+                        </div>
+                        <div class="cash-count-total-card">
+                            <span>Billetes</span>
+                            <strong id="cashCountBills">${{ "{:,.2f}".format(denom_total_billetes or 0) }}</strong>
+                        </div>
+                        <div class="cash-count-total-card cash-count-total-card--primary">
+                            <span>Total general</span>
+                            <strong id="cashCountTotal">${{ "{:,.2f}".format(denom_total or 0) }}</strong>
+                        </div>
+                    </div>
+                </div>
+                <div class="row g-3">
+                    <div class="col-xl-5">
+                        <div class="cash-count-section">
+                            <div class="cash-count-section__title">Monedas</div>
+                            <div class="table-responsive">
+                                <table class="table table-sm align-middle mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Denominacion</th>
+                                            <th class="text-end">Cantidad</th>
+                                            <th class="text-end">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for denom in denom_monedas %}
+                                            <tr>
+                                                <td>{{ denom.label }}</td>
+                                                <td class="text-end">
+                                                    <input
+                                                        class="form-control form-control-sm text-end denom-count-input"
+                                                        type="number"
+                                                        min="0"
+                                                        step="1"
+                                                        inputmode="numeric"
+                                                        name="{{ denom.key }}"
+                                                        value="{{ denom.count }}"
+                                                        data-denom-value="{{ denom.value }}"
+                                                        data-denom-target="row-{{ denom.key }}"
+                                                        data-denom-group="coins"
+                                                    >
+                                                </td>
+                                                <td class="text-end" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td>
+                                            </tr>
+                                        {% endfor %}
+                                        <tr class="table-light fw-semibold">
+                                            <td colspan="2">Total monedas</td>
+                                            <td class="text-end" id="cashCountCoinsTable">${{ "{:,.2f}".format(denom_total_monedas or 0) }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-xl-7">
+                        <div class="cash-count-section">
+                            <div class="cash-count-section__title">Billetes</div>
+                            <div class="table-responsive">
+                                <table class="table table-sm align-middle mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Denominacion</th>
+                                            <th class="text-end">Cantidad</th>
+                                            <th class="text-end">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for denom in denom_billetes %}
+                                            <tr>
+                                                <td>{{ denom.label }}</td>
+                                                <td class="text-end">
+                                                    <input
+                                                        class="form-control form-control-sm text-end denom-count-input"
+                                                        type="number"
+                                                        min="0"
+                                                        step="1"
+                                                        inputmode="numeric"
+                                                        name="{{ denom.key }}"
+                                                        value="{{ denom.count }}"
+                                                        data-denom-value="{{ denom.value }}"
+                                                        data-denom-target="row-{{ denom.key }}"
+                                                        data-denom-group="bills"
+                                                    >
+                                                </td>
+                                                <td class="text-end" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td>
+                                            </tr>
+                                        {% endfor %}
+                                        <tr class="table-light fw-semibold">
+                                            <td colspan="2">Total billetes</td>
+                                            <td class="text-end" id="cashCountBillsTable">${{ "{:,.2f}".format(denom_total_billetes or 0) }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="cash-count-footer">
+                    <div class="cash-count-footer__line">
+                        <span>Cobros en efectivo</span>
+                        <strong class="text-success">+${{ "{:,.2f}".format(ventas_efectivo_total or 0) }}</strong>
+                    </div>
+                    <div class="cash-count-footer__line">
+                        <span>Pagos en efectivo</span>
+                        <strong class="text-danger">-${{ "{:,.2f}".format(compras_efectivo_total or 0) }}</strong>
+                    </div>
+                    <div class="cash-count-footer__line">
+                        <span>Neto efectivo del día</span>
+                        <strong class="{% if (cash_ingresos - cash_egresos) >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            {% if (cash_ingresos - cash_egresos) >= 0 %}+{% else %}-{% endif %}${{ "{:,.2f}".format((cash_ingresos - cash_egresos)|abs) }}
+                        </strong>
+                    </div>
+                    <div class="cash-count-footer__line">
+                        <span>Conteo preliminar</span>
+                        <strong id="cashCountTotalInline">${{ "{:,.2f}".format(denom_total or 0) }}</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 {% else %}
     <div class="card hover-lift mb-3">
         <div class="card-body">
