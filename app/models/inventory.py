@@ -62,7 +62,7 @@ class MovimientoContable(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     nota = relationship("Nota")
-    sucursal = relationship("Sucursal")
+    sucursal = relationship("Sucursal", foreign_keys=[sucursal_id])
     caja_sucursal = relationship("Sucursal", foreign_keys=[caja_sucursal_id])
     cuenta = relationship("Cuenta")
 
