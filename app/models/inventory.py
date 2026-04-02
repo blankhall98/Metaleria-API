@@ -20,7 +20,7 @@ class Inventario(Base):
 
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    sucursal = relationship("Sucursal")
+    sucursal = relationship("Sucursal", foreign_keys=[sucursal_id])
     material = relationship("Material")
     movimientos = relationship("InventarioMovimiento", back_populates="inventario", cascade="all, delete-orphan")
 
