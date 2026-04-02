@@ -432,7 +432,7 @@
                                     <div class="note-table-assist-copy">La tabla de materiales prioriza lectura horizontal en escritorio. Puedes arrastrar la tabla o usar `Shift + rueda` para revisar sin perder contexto.</div>
                                 </div>
                                 <div class="note-table-assist-pills">
-                                    <span class="pill">â†” Arrastrar</span>
+                                    <span class="pill">Arrastrar</span>
                                     <span class="pill">Shift + rueda</span>
                                 </div>
                             </div>
@@ -620,6 +620,17 @@
                                     {% endif %}
                                 </div>
                                 <div class="col-12">
+                                    <label class="form-label">Sucursal de caja</label>
+                                    {% set caja_sucursal_val = form_caja_sucursal_id if form_caja_sucursal_id is not none else (nota.sucursal_id or "") %}
+                                    <select class="form-select" name="caja_sucursal_id" id="caja_sucursal_select">
+                                        <option value="" {% if not caja_sucursal_val %}selected{% endif %}>Usar sucursal contable</option>
+                                        {% for s in cash_sucursales %}
+                                            <option value="{{ s.id }}" {% if caja_sucursal_val|string == s.id|string %}selected{% endif %}>{{ s.nombre }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <div class="form-text text-muted">Solo aplica para efectivo. Si no cambias la seleccion, el corte tomara la sucursal contable.</div>
+                                </div>
+                                <div class="col-12">
                                     <label class="form-label">Cuenta Scrap360</label>
                                     {% set cuenta_scrap_val = form_cuenta_scrap360 if form_cuenta_scrap360 is not none else "" %}
                                     <select class="form-select" name="cuenta_scrap360_id" id="cuenta_scrap360_select">
@@ -724,7 +735,7 @@
                     </div>
                     <div class="note-table-assist-pills">
                         <span class="pill">Primer bloque fijo</span>
-                        <span class="pill">â†” Arrastrar</span>
+                        <span class="pill">Arrastrar</span>
                     </div>
                 </div>
                 <div class="table-scroll-shell">
@@ -922,6 +933,14 @@
                                         </select>
                                     </div>
                                     <div class="col-12">
+                                        <label class="form-label">Sucursal de caja</label>
+                                        {% set pago_inicial_caja_sucursal_val = form_pago_inicial_caja_sucursal_id if form_pago_inicial_caja_sucursal_id is not none else (nota.sucursal_id or "") %}
+                                        <select class="form-select form-select-sm" name="pago_inicial_caja_sucursal_id" id="pago_inicial_caja_sucursal_select">
+                                            <option value="" {% if not pago_inicial_caja_sucursal_val %}selected{% endif %}>Usar sucursal contable</option>
+                                            {% for s in cash_sucursales %}<option value="{{ s.id }}" {% if pago_inicial_caja_sucursal_val|string == s.id|string %}selected{% endif %}>{{ s.nombre }}</option>{% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-12">
                                         <label class="form-label">Comentario</label>
                                         {% set pago_inicial_comment_val = form_pago_inicial_comentario if form_pago_inicial_comentario is not none else "" %}
                                         <input class="form-control form-control-sm" name="pago_inicial_comentario" placeholder="Opcional" value="{{ pago_inicial_comment_val }}">
@@ -968,6 +987,14 @@
                                         </select>
                                     </div>
                                     <div class="col-12">
+                                        <label class="form-label">Sucursal de caja</label>
+                                        {% set pago_caja_sucursal_val = form_pago_caja_sucursal_id if form_pago_caja_sucursal_id is not none else (nota.sucursal_id or "") %}
+                                        <select class="form-select form-select-sm" name="pago_caja_sucursal_id" id="pago_caja_sucursal_select">
+                                            <option value="" {% if not pago_caja_sucursal_val %}selected{% endif %}>Usar sucursal contable</option>
+                                            {% for s in cash_sucursales %}<option value="{{ s.id }}" {% if pago_caja_sucursal_val|string == s.id|string %}selected{% endif %}>{{ s.nombre }}</option>{% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-12">
                                         <label class="form-label">Comentario</label>
                                         {% set pago_comment_val = form_pago_comentario if form_pago_comentario is not none else "" %}
                                         <input class="form-control form-control-sm" name="pago_comentario" placeholder="Opcional" value="{{ pago_comment_val }}">
@@ -1000,6 +1027,7 @@
                                     <th>Estado</th>
                                     <th class="text-end">Monto</th>
                                     <th>Metodo</th>
+                                    <th>Caja</th>
                                     <th>Cuenta</th>
                                     <th>Cuenta Scrap360</th>
                                     <th>Usuario</th>
@@ -1015,6 +1043,7 @@
                                         <td>{% if pago_activo %}<span class="badge bg-success">Activo</span>{% else %}<span class="badge bg-light text-dark border">Deshecho</span>{% endif %}</td>
                                         <td class="text-end fw-semibold">{% if pago_activo %}${{ "{:,.2f}".format(pago.monto or 0) }}{% else %}<span class="text-muted">$0.00</span>{% endif %}</td>
                                         <td>{{ pago.metodo_pago|capitalize if pago.metodo_pago else '-' }}</td>
+                                        <td>{{ pago.caja_sucursal.nombre if pago.caja_sucursal else (sucursal.nombre if pago.metodo_pago == 'efectivo' and sucursal else '-') }}</td>
                                         <td>{{ pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or '-') }}</td>
                                         <td>{{ pago.cuenta_scrap360.nombre if pago.cuenta_scrap360 else '-' }}</td>
                                         <td>{{ pago.usuario.username if pago.usuario else (pago.usuario_id or '-') }}</td>
@@ -1646,6 +1675,7 @@
         const metodoSelect = document.getElementById('metodo_pago_select');
         const cuentaInput = document.getElementById('cuenta_financiera_select');
         const cuentaScrapInput = document.getElementById('cuenta_scrap360_select');
+        const cajaSucursalInput = document.getElementById('caja_sucursal_select');
         const pagoInput = document.querySelector('#approveForm input[name="monto_pagado"]');
         const approveForm = document.getElementById('approveForm');
         const approveButton = document.getElementById('approveNoteButton');
@@ -1691,10 +1721,17 @@
             if (!metodoSelect || !cuentaInput) return;
             const metodo = (metodoSelect.value || '').toLowerCase();
             const needsAccount = metodo === 'transferencia' || metodo === 'cheque';
+            const needsCajaSucursal = metodo === 'efectivo';
             cuentaInput.disabled = !needsAccount;
             cuentaInput.required = needsAccount;
             if (!needsAccount) {
                 cuentaInput.value = '';
+            }
+            if (cajaSucursalInput) {
+                cajaSucursalInput.disabled = !needsCajaSucursal;
+                if (!needsCajaSucursal) {
+                    cajaSucursalInput.value = '';
+                }
             }
         }
 
@@ -1722,14 +1759,22 @@
 
         const pagoMetodo = document.getElementById('pago_metodo_select');
         const pagoCuenta = document.getElementById('pago_cuenta_select');
+        const pagoCajaSucursal = document.getElementById('pago_caja_sucursal_select');
         function togglePagoCuenta() {
             if (!pagoMetodo || !pagoCuenta) return;
             const metodo = (pagoMetodo.value || '').toLowerCase();
             const needsAccount = metodo === 'transferencia' || metodo === 'cheque';
+            const needsCajaSucursal = metodo === 'efectivo';
             pagoCuenta.disabled = !needsAccount;
             pagoCuenta.required = needsAccount;
             if (!needsAccount) {
                 pagoCuenta.value = '';
+            }
+            if (pagoCajaSucursal) {
+                pagoCajaSucursal.disabled = !needsCajaSucursal;
+                if (!needsCajaSucursal) {
+                    pagoCajaSucursal.value = '';
+                }
             }
         }
         if (pagoMetodo) {
@@ -1740,10 +1785,12 @@
         const pagoInicialMetodo = document.getElementById('pago_inicial_metodo_select');
         const pagoInicialCuenta = document.getElementById('pago_inicial_cuenta_select');
         const pagoInicialCuentaScrap = document.getElementById('pago_inicial_cuenta_scrap360_select');
+        const pagoInicialCajaSucursal = document.getElementById('pago_inicial_caja_sucursal_select');
         function togglePagoInicialCuenta() {
             if (!pagoInicialMetodo || !pagoInicialCuenta) return;
             const metodo = (pagoInicialMetodo.value || '').toLowerCase();
             const needsAccount = metodo === 'transferencia' || metodo === 'cheque';
+            const needsCajaSucursal = metodo === 'efectivo';
             pagoInicialCuenta.disabled = !needsAccount;
             pagoInicialCuenta.required = needsAccount;
             if (!needsAccount) {
@@ -1753,6 +1800,12 @@
                 pagoInicialCuentaScrap.disabled = !metodo;
                 if (!metodo) {
                     pagoInicialCuentaScrap.value = '';
+                }
+            }
+            if (pagoInicialCajaSucursal) {
+                pagoInicialCajaSucursal.disabled = !needsCajaSucursal;
+                if (!needsCajaSucursal) {
+                    pagoInicialCajaSucursal.value = '';
                 }
             }
         }

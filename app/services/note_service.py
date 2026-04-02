@@ -918,6 +918,7 @@ def _registrar_movimiento_contable(
     cuenta_financiera: str | None = None,
     cuenta_id: int | None = None,
     cuenta_label: str | None = None,
+    caja_sucursal_id: int | None = None,
     monto: Decimal | None = None,
     tipo: str | None = None,
 ) -> None:
@@ -934,6 +935,7 @@ def _registrar_movimiento_contable(
     mov = MovimientoContable(
         nota_id=nota.id,
         sucursal_id=nota.sucursal_id,
+        caja_sucursal_id=caja_sucursal_id,
         usuario_id=usuario_id,
         tipo=tipo_mov,
         monto=monto_val,
@@ -954,6 +956,7 @@ def add_payment(
     metodo_pago: str | None = None,
     cuenta_financiera: str | None = None,
     cuenta_scrap360_id: int | None = None,
+    caja_sucursal_id: int | None = None,
     comentario: str | None = None,
     commit: bool = True,
     registrar_contable: bool = True,
@@ -974,6 +977,11 @@ def add_payment(
             raise ValueError("Selecciona una cuenta valida.")
         cuenta = _validate_cuenta_for_nota(db, nota, cuenta_id)
         cuenta_label = cuenta.display_label
+    caja_sucursal_resolved: int | None = None
+    if metodo == "efectivo":
+        caja_sucursal_resolved = int(caja_sucursal_id or nota.sucursal_id or 0) or None
+        if caja_sucursal_resolved is None or not db.get(Sucursal, caja_sucursal_resolved):
+            raise ValueError("Selecciona una sucursal de caja valida para efectivo.")
 
     cuenta_scrap = _validate_cuenta_scrap360_for_nota(db, nota, cuenta_scrap360_id, metodo)
 
@@ -982,6 +990,7 @@ def add_payment(
         usuario_id=usuario_id,
         cuenta_id=cuenta_id,
         cuenta_scrap360_id=cuenta_scrap.id if cuenta_scrap else None,
+        caja_sucursal_id=caja_sucursal_resolved,
         monto=monto,
         metodo_pago=metodo,
         cuenta_financiera=cuenta_label or (cuenta_financiera or None),
@@ -1001,6 +1010,7 @@ def add_payment(
             metodo_pago=metodo,
             cuenta_label=cuenta_label,
             cuenta_id=cuenta_id,
+            caja_sucursal_id=caja_sucursal_resolved,
             monto=monto,
             tipo="pago",
         )
@@ -1054,6 +1064,7 @@ def undo_payment(
         metodo_pago=pago.metodo_pago or nota.metodo_pago,
         cuenta_label=cuenta_label,
         cuenta_id=pago.cuenta_id,
+        caja_sucursal_id=pago.caja_sucursal_id,
         monto=monto_revertir,
         tipo="reverso_pago",
     )
@@ -1105,6 +1116,7 @@ def adjust_initial_payment(
     metodo_pago: str | None = None,
     cuenta_financiera: str | None = None,
     cuenta_scrap360_id: int | None = None,
+    caja_sucursal_id: int | None = None,
     comentario: str | None = None,
 ) -> None:
     if nota.estado != NotaEstado.aprobada:
@@ -1149,6 +1161,7 @@ def adjust_initial_payment(
             metodo_pago=metodo,
             cuenta_financiera=cuenta_financiera,
             cuenta_scrap360_id=cuenta_scrap360_id,
+            caja_sucursal_id=caja_sucursal_id,
             comentario=comentario or "Pago inicial (ajuste)",
             commit=False,
             registrar_contable=True,
@@ -1184,6 +1197,7 @@ def adjust_initial_payment(
             metodo_pago=pago.metodo_pago or nota.metodo_pago,
             cuenta_label=pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or None),
             cuenta_id=pago.cuenta_id,
+            caja_sucursal_id=pago.caja_sucursal_id,
             monto=revertir,
             tipo="reverso_pago",
         )
@@ -1385,7 +1399,7 @@ def reverse_note_balance_adjustment(
         raise ValueError("Solo puedes revertir ajustes de saldo en notas aprobadas.")
 
     delta_reversion = -Decimal(str(ajuste.monto_delta or 0))
-    comment = comentario or f"Reversion ajuste saldo nota #{nota.id} · ajuste #{ajuste.id}"
+    comment = comentario or f"Reversion ajuste saldo nota #{nota.id} - ajuste #{ajuste.id}"
     adjust_note_balance(
         db,
         nota,
@@ -1415,6 +1429,7 @@ def approve_note(
     iva_incluido: bool | None = None,
     iva_porcentaje: Decimal | None = None,
     inventario_sucursal_id: int | None = None,
+    caja_sucursal_id: int | None = None,
 ) -> Nota:
     """
     Aprueba una nota aplicando precios, recalculando totales y registrando inventario/contable.
@@ -1460,6 +1475,7 @@ def approve_note(
     metodo_pago_clean = (metodo_pago or "").strip().lower() or None
     cuenta_id: int | None = None
     cuenta_label: str | None = None
+    caja_sucursal_resolved: int | None = None
     if metodo_pago_clean in ("transferencia", "cheque"):
         if cuenta_financiera:
             cuenta_id = _resolve_cuenta_id(db, nota, cuenta_financiera)
@@ -1471,6 +1487,9 @@ def approve_note(
             raise ValueError("Debes indicar la cuenta para transferencia o cheque.")
     elif metodo_pago_clean == "efectivo":
         cuenta_id = None
+        caja_sucursal_resolved = int(caja_sucursal_id or nota.sucursal_id or 0) or None
+        if caja_sucursal_resolved is None or not db.get(Sucursal, caja_sucursal_resolved):
+            raise ValueError("Selecciona una sucursal de caja valida para efectivo.")
     nota.metodo_pago = metodo_pago_clean
     nota.cuenta_financiera_id = cuenta_id
     update_state(
@@ -1494,6 +1513,7 @@ def approve_note(
             metodo_pago=nota.metodo_pago,
             cuenta_label=None,
             cuenta_id=None,
+            caja_sucursal_id=caja_sucursal_resolved,
             tipo=nota.tipo_operacion.value,
         )
     pago_inicial: Decimal | None = None
@@ -1508,6 +1528,7 @@ def approve_note(
             metodo_pago=metodo_pago_clean,
             cuenta_financiera=cuenta_label or (str(cuenta_id) if cuenta_id else None),
             cuenta_scrap360_id=cuenta_scrap360_id,
+            caja_sucursal_id=caja_sucursal_resolved,
             comentario="Pago inicial",
             commit=False,
             registrar_contable=True,

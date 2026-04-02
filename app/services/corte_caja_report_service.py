@@ -48,6 +48,8 @@ def build_report(
     gastos: list[CorteCajaGasto],
     denominaciones: list[CorteCajaDenominacion],
     saldo_calculado: Decimal,
+    compras_rows: list[dict] | None = None,
+    ventas_rows: list[dict] | None = None,
     generated_at: datetime | None = None,
 ) -> dict:
     generated_at = generated_at or datetime.utcnow()
@@ -65,13 +67,25 @@ def build_report(
     manual_egresos = _safe_decimal(manual_data.get("egresos"))
     manual_neto = _safe_decimal(manual_data.get("neto"))
     gastos_total = sum((_safe_decimal(g.monto) for g in gastos), Decimal("0"))
+    compras_rows = compras_rows or []
+    ventas_rows = ventas_rows or []
+    dotaciones = list(manual_data.get("movimientos_by_categoria", {}).get("DOTACION_EFECTIVO", []))
+    sobrantes_viaticos = list(manual_data.get("movimientos_by_categoria", {}).get("SOBRANTE_VIATICOS", []))
+    sobrantes_gastos = list(manual_data.get("movimientos_by_categoria", {}).get("SOBRANTE_GASTOS", []))
+    otros_ajustes = [
+        mov
+        for mov in manual_data.get("movimientos", [])
+        if (mov.get("categoria") or "") not in {"DOTACION_EFECTIVO", "SOBRANTE_VIATICOS", "SOBRANTE_GASTOS"}
+    ]
 
     summary_items = [
         {"label": "Saldo inicial", "value": saldo_inicial, "type": "money"},
-        {"label": "Ingresos efectivo", "value": cash_ingresos, "type": "money"},
-        {"label": "Egresos efectivo", "value": cash_egresos, "type": "money"},
-        {"label": "Ingresos manuales", "value": manual_ingresos, "type": "money"},
-        {"label": "Egresos manuales", "value": manual_egresos, "type": "money"},
+        {"label": "Dotacion efectivo", "value": _safe_decimal(manual_data.get("totals_by_categoria", {}).get("DOTACION_EFECTIVO", 0)), "type": "money"},
+        {"label": "Ventas efectivo", "value": _safe_decimal(cash_data.get("ventas_efectivo_total")), "type": "money"},
+        {"label": "Compras efectivo", "value": _safe_decimal(cash_data.get("compras_efectivo_total")), "type": "money"},
+        {"label": "Sobrantes viaticos", "value": _safe_decimal(manual_data.get("totals_by_categoria", {}).get("SOBRANTE_VIATICOS", 0)), "type": "money"},
+        {"label": "Sobrantes gastos", "value": _safe_decimal(manual_data.get("totals_by_categoria", {}).get("SOBRANTE_GASTOS", 0)), "type": "money"},
+        {"label": "Otros ajustes", "value": sum((_safe_decimal(m.get("monto")) for m in otros_ajustes), Decimal("0")), "type": "money"},
         {"label": "Gastos caja chica", "value": gastos_total, "type": "money"},
         {"label": "Saldo esperado", "value": saldo_calculado, "type": "money"},
         {"label": "Saldo contado", "value": saldo_cierre, "type": "money"},
@@ -126,9 +140,23 @@ def build_report(
         "gastos_total": gastos_total,
         "summary_items": summary_items,
         "cash_movs": cash_data.get("movimientos", []),
+        "ventas_efectivo_rows": cash_data.get("ventas_efectivo_rows", []),
+        "ventas_efectivo_total": _safe_decimal(cash_data.get("ventas_efectivo_total")),
+        "compras_efectivo_rows": cash_data.get("compras_efectivo_rows", []),
+        "compras_efectivo_total": _safe_decimal(cash_data.get("compras_efectivo_total")),
         "manual_movs": manual_data.get("movimientos", []),
+        "dotaciones": dotaciones,
+        "sobrantes_viaticos": sobrantes_viaticos,
+        "sobrantes_gastos": sobrantes_gastos,
+        "otros_ajustes": otros_ajustes,
         "gastos": gastos_data,
         "denominaciones": denoms_data,
+        "compras_rows": compras_rows,
+        "ventas_rows": ventas_rows,
+        "compras_total": sum((_safe_decimal(row.get("subtotal")) for row in compras_rows), Decimal("0")),
+        "ventas_total": sum((_safe_decimal(row.get("subtotal")) for row in ventas_rows), Decimal("0")),
+        "compras_kg": sum((_safe_decimal(row.get("kg_neto")) for row in compras_rows), Decimal("0")),
+        "ventas_kg": sum((_safe_decimal(row.get("kg_neto")) for row in ventas_rows), Decimal("0")),
     }
     return report
 
@@ -140,7 +168,7 @@ def build_report_excel(report: dict) -> tuple[bytes, str]:
         cells = "".join([f"<Cell><Data ss:Type='String'>{_xml_escape(str(v))}</Data></Cell>" for v in values])
         rows.append(f"<Row>{cells}</Row>")
 
-    add_row(["Corte de caja"])
+    add_row([f"Corte de Caja Scrap360 - {report['sucursal']}"])
     add_row(["Sucursal", report["sucursal"], "Fecha", report["fecha"].isoformat(), "Estado", report["estado"]])
     add_row(["Generado", format_datetime_local(report["generated_at"])])
     add_row([
@@ -179,6 +207,72 @@ def build_report_excel(report: dict) -> tuple[bytes, str]:
         add_row(["Sin arqueo registrado"])
     add_row([])
 
+    add_row(["Relacion de compras del dia"])
+    add_row(["Orden", "Proveedor", "Material", "Kg", "Precio", "Total linea", "Total orden", "Metodo"])
+    if report["compras_rows"]:
+        for row in report["compras_rows"]:
+            add_row([
+                row.get("folio") or "-",
+                row.get("partner") or "-",
+                row.get("material") or "-",
+                f"{_safe_decimal(row.get('kg_neto')):,.3f}",
+                _format_money(_safe_decimal(row.get("precio_unitario"))),
+                _format_money(_safe_decimal(row.get("subtotal"))),
+                _format_money(_safe_decimal(row.get("total_nota"))),
+                str(row.get("metodo_pago") or "-"),
+            ])
+        add_row(["Totales compras", "", "", f"{_safe_decimal(report.get('compras_kg')):,.3f}", "", _format_money(_safe_decimal(report.get("compras_total"))), "", ""])
+    else:
+        add_row(["Sin compras registradas"])
+    add_row([])
+
+    add_row(["Relacion de ventas del dia"])
+    add_row(["Orden", "Cliente", "Material", "Kg", "Precio", "Total linea", "Total orden", "Metodo"])
+    if report["ventas_rows"]:
+        for row in report["ventas_rows"]:
+            add_row([
+                row.get("folio") or "-",
+                row.get("partner") or "-",
+                row.get("material") or "-",
+                f"{_safe_decimal(row.get('kg_neto')):,.3f}",
+                _format_money(_safe_decimal(row.get("precio_unitario"))),
+                _format_money(_safe_decimal(row.get("subtotal"))),
+                _format_money(_safe_decimal(row.get("total_nota"))),
+                str(row.get("metodo_pago") or "-"),
+            ])
+        add_row(["Totales ventas", "", "", f"{_safe_decimal(report.get('ventas_kg')):,.3f}", "", _format_money(_safe_decimal(report.get("ventas_total"))), "", ""])
+    else:
+        add_row(["Sin ventas registradas"])
+    add_row([])
+
+    add_row(["Dotacion de efectivo"])
+    add_row(["Fecha", "Concepto", "Monto"])
+    if report["dotaciones"]:
+        for row in report["dotaciones"]:
+            add_row([
+                format_datetime_local(row["fecha"]) if row.get("fecha") else "-",
+                row.get("descripcion") or "",
+                _format_money(_safe_decimal(row.get("monto_abs"))),
+            ])
+    else:
+        add_row(["Sin dotaciones"])
+    add_row([])
+
+    add_row(["Ventas de material en efectivo"])
+    add_row(["Fecha", "Orden", "Cliente", "Caja", "Monto"])
+    if report["ventas_efectivo_rows"]:
+        for row in report["ventas_efectivo_rows"]:
+            add_row([
+                format_datetime_local(row["fecha"]) if row.get("fecha") else "-",
+                row.get("folio") or "-",
+                row.get("partner") or "-",
+                row.get("caja_sucursal") or "-",
+                _format_money(_safe_decimal(row.get("monto_abs"))),
+            ])
+    else:
+        add_row(["Sin ventas en efectivo"])
+    add_row([])
+
     add_row(["Movimientos manuales"])
     add_row(["Fecha", "Tipo", "Descripcion", "Usuario", "Monto"])
     if report["manual_movs"]:
@@ -194,8 +288,34 @@ def build_report_excel(report: dict) -> tuple[bytes, str]:
         add_row(["Sin movimientos manuales"])
     add_row([])
 
+    add_row(["Sobrantes de viaticos"])
+    add_row(["Fecha", "Concepto", "Monto"])
+    if report["sobrantes_viaticos"]:
+        for row in report["sobrantes_viaticos"]:
+            add_row([
+                format_datetime_local(row["fecha"]) if row.get("fecha") else "-",
+                row.get("descripcion") or "",
+                _format_money(_safe_decimal(row.get("monto_abs"))),
+            ])
+    else:
+        add_row(["Sin sobrantes de viaticos"])
+    add_row([])
+
+    add_row(["Sobrantes de gastos"])
+    add_row(["Fecha", "Concepto", "Monto"])
+    if report["sobrantes_gastos"]:
+        for row in report["sobrantes_gastos"]:
+            add_row([
+                format_datetime_local(row["fecha"]) if row.get("fecha") else "-",
+                row.get("descripcion") or "",
+                _format_money(_safe_decimal(row.get("monto_abs"))),
+            ])
+    else:
+        add_row(["Sin sobrantes de gastos"])
+    add_row([])
+
     add_row(["Movimientos efectivo (notas)"])
-    add_row(["Fecha", "Tipo", "Detalle", "Folio", "Partner", "Monto", "Comentario"])
+    add_row(["Fecha", "Tipo", "Detalle", "Folio", "Partner", "Caja", "Monto", "Comentario"])
     if report["cash_movs"]:
         for mov in report["cash_movs"]:
             add_row([
@@ -204,6 +324,7 @@ def build_report_excel(report: dict) -> tuple[bytes, str]:
                 mov.get("detalle") or "-",
                 mov.get("folio") or "-",
                 mov.get("partner") or "-",
+                mov.get("caja_sucursal") or "-",
                 _format_money(_safe_decimal(mov.get("monto"))),
                 mov.get("comentario") or "",
             ])
@@ -364,7 +485,7 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
     generated = format_datetime_local(report["generated_at"])
     fecha = report["fecha"].isoformat()
 
-    page.text(left, y, "Corte de caja", size=16, font="F2")
+    page.text(left, y, f"Corte de Caja Scrap360 - {report['sucursal']}", size=16, font="F2")
     page.text(left, y - 16, f"Sucursal: {report['sucursal']}", size=9)
     page.text(left, y - 28, f"Fecha: {fecha}", size=9)
     page.text(left, y - 40, f"Estado: {report['estado']}", size=9)
@@ -455,6 +576,102 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
             page.text(draw_x, y, display, size=8)
         y -= 12
 
+    compra_cols = [
+        ("Orden", left, 60, "left"),
+        ("Proveedor", left + 60, 110, "left"),
+        ("Material", left + 170, 120, "left"),
+        ("Kg", left + 290, 55, "right"),
+        ("Precio", left + 345, 70, "right"),
+        ("Linea", left + 415, 55, "right"),
+        ("Orden total", left + 470, 60, "right"),
+    ]
+    draw_table_header("Relacion de compras del dia", compra_cols)
+    if report["compras_rows"]:
+        for row in report["compras_rows"]:
+            draw_row(
+                compra_cols,
+                [
+                    row.get("folio") or "-",
+                    row.get("partner") or "-",
+                    row.get("material") or "-",
+                    f"{_safe_decimal(row.get('kg_neto')):,.3f}",
+                    _format_money(_safe_decimal(row.get("precio_unitario"))),
+                    _format_money(_safe_decimal(row.get("subtotal"))),
+                    _format_money(_safe_decimal(row.get("total_nota"))),
+                ],
+            )
+    else:
+        draw_row(compra_cols, ["Sin compras registradas", "", "", "", "", "", ""])
+
+    venta_cols = [
+        ("Orden", left, 60, "left"),
+        ("Cliente", left + 60, 110, "left"),
+        ("Material", left + 170, 120, "left"),
+        ("Kg", left + 290, 55, "right"),
+        ("Precio", left + 345, 70, "right"),
+        ("Linea", left + 415, 55, "right"),
+        ("Orden total", left + 470, 60, "right"),
+    ]
+    draw_table_header("Relacion de ventas del dia", venta_cols)
+    if report["ventas_rows"]:
+        for row in report["ventas_rows"]:
+            draw_row(
+                venta_cols,
+                [
+                    row.get("folio") or "-",
+                    row.get("partner") or "-",
+                    row.get("material") or "-",
+                    f"{_safe_decimal(row.get('kg_neto')):,.3f}",
+                    _format_money(_safe_decimal(row.get("precio_unitario"))),
+                    _format_money(_safe_decimal(row.get("subtotal"))),
+                    _format_money(_safe_decimal(row.get("total_nota"))),
+                ],
+            )
+    else:
+        draw_row(venta_cols, ["Sin ventas registradas", "", "", "", "", "", ""])
+
+    dot_cols = [
+        ("Fecha", left, 90, "left"),
+        ("Concepto", left + 90, 320, "left"),
+        ("Monto", left + 410, 80, "right"),
+    ]
+    draw_table_header("Dotacion de efectivo", dot_cols)
+    if report["dotaciones"]:
+        for row in report["dotaciones"]:
+            draw_row(
+                dot_cols,
+                [
+                    format_date_local(row["fecha"]) if row.get("fecha") else "-",
+                    row.get("descripcion") or "",
+                    _format_money(_safe_decimal(row.get("monto_abs"))),
+                ],
+            )
+    else:
+        draw_row(dot_cols, ["Sin dotaciones", "", ""])
+
+    venta_ef_cols = [
+        ("Fecha", left, 90, "left"),
+        ("Orden", left + 90, 70, "left"),
+        ("Cliente", left + 160, 180, "left"),
+        ("Caja", left + 340, 90, "left"),
+        ("Monto", left + 430, 80, "right"),
+    ]
+    draw_table_header("Ventas de material en efectivo", venta_ef_cols)
+    if report["ventas_efectivo_rows"]:
+        for row in report["ventas_efectivo_rows"]:
+            draw_row(
+                venta_ef_cols,
+                [
+                    format_date_local(row["fecha"]) if row.get("fecha") else "-",
+                    row.get("folio") or "-",
+                    row.get("partner") or "-",
+                    row.get("caja_sucursal") or "-",
+                    _format_money(_safe_decimal(row.get("monto_abs"))),
+                ],
+            )
+    else:
+        draw_row(venta_ef_cols, ["Sin ventas en efectivo", "", "", "", ""])
+
     # Denominaciones
     denom_cols = [
         ("Denominacion", left, 160, "left"),
@@ -479,9 +696,10 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
     manual_cols = [
         ("Fecha", left, 80, "left"),
         ("Tipo", left + 80, 60, "left"),
-        ("Descripcion", left + 140, 200, "left"),
-        ("Usuario", left + 340, 120, "left"),
-        ("Monto", left + 460, 70, "right"),
+        ("Categoria", left + 140, 110, "left"),
+        ("Descripcion", left + 250, 150, "left"),
+        ("Usuario", left + 400, 80, "left"),
+        ("Monto", left + 480, 60, "right"),
     ]
     draw_table_header("Movimientos manuales", manual_cols)
     if report["manual_movs"]:
@@ -491,21 +709,56 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
                 [
                     format_date_local(mov["fecha"]) if mov.get("fecha") else "-",
                     mov.get("tipo_label") or mov.get("tipo") or "-",
+                    mov.get("categoria_label") or "-",
                     mov.get("descripcion") or "",
                     mov.get("usuario") or "-",
                     _format_money(_safe_decimal(mov.get("monto"))),
                 ],
             )
     else:
-        draw_row(manual_cols, ["Sin movimientos manuales", "", "", "", ""])
+        draw_row(manual_cols, ["Sin movimientos manuales", "", "", "", "", ""])
+
+    sobrante_cols = [
+        ("Fecha", left, 90, "left"),
+        ("Concepto", left + 90, 320, "left"),
+        ("Monto", left + 410, 80, "right"),
+    ]
+    draw_table_header("Sobrantes de viaticos", sobrante_cols)
+    if report["sobrantes_viaticos"]:
+        for row in report["sobrantes_viaticos"]:
+            draw_row(
+                sobrante_cols,
+                [
+                    format_date_local(row["fecha"]) if row.get("fecha") else "-",
+                    row.get("descripcion") or "",
+                    _format_money(_safe_decimal(row.get("monto_abs"))),
+                ],
+            )
+    else:
+        draw_row(sobrante_cols, ["Sin sobrantes de viaticos", "", ""])
+
+    draw_table_header("Sobrantes de gastos", sobrante_cols)
+    if report["sobrantes_gastos"]:
+        for row in report["sobrantes_gastos"]:
+            draw_row(
+                sobrante_cols,
+                [
+                    format_date_local(row["fecha"]) if row.get("fecha") else "-",
+                    row.get("descripcion") or "",
+                    _format_money(_safe_decimal(row.get("monto_abs"))),
+                ],
+            )
+    else:
+        draw_row(sobrante_cols, ["Sin sobrantes de gastos", "", ""])
 
     # Movimientos efectivo
     cash_cols = [
         ("Fecha", left, 80, "left"),
         ("Tipo", left + 80, 60, "left"),
         ("Folio", left + 140, 60, "left"),
-        ("Partner", left + 200, 210, "left"),
-        ("Monto", left + 410, 70, "right"),
+        ("Partner", left + 200, 150, "left"),
+        ("Caja", left + 350, 90, "left"),
+        ("Monto", left + 440, 70, "right"),
     ]
     draw_table_header("Movimientos efectivo (notas)", cash_cols)
     if report["cash_movs"]:
@@ -517,11 +770,12 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
                     mov.get("tipo") or "-",
                     mov.get("folio") or "-",
                     mov.get("partner") or "-",
+                    mov.get("caja_sucursal") or "-",
                     _format_money(_safe_decimal(mov.get("monto"))),
                 ],
             )
     else:
-        draw_row(cash_cols, ["Sin movimientos en efectivo", "", "", "", ""])
+        draw_row(cash_cols, ["Sin movimientos en efectivo", "", "", "", "", ""])
 
     # Gastos
     gasto_cols = [

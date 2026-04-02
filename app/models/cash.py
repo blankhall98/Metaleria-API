@@ -106,6 +106,7 @@ class CorteCajaMovimiento(Base):
         ),
         nullable=False,
     )
+    categoria = Column(String(50), nullable=True)
     descripcion = Column(String(255), nullable=False)
     monto = Column(Numeric(12, 2), nullable=False, default=Decimal("0"))
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)

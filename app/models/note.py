@@ -164,6 +164,7 @@ class NotaPago(Base):
     usuario_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     cuenta_id = Column(Integer, ForeignKey("cuentas.id"), nullable=True, index=True)
     cuenta_scrap360_id = Column(Integer, ForeignKey("cuentas_scrap360.id"), nullable=True, index=True)
+    caja_sucursal_id = Column(Integer, ForeignKey("sucursales.id"), nullable=True, index=True)
 
     monto = Column(Numeric(12, 2), nullable=False, default=0)
     metodo_pago = Column(String(50), nullable=True)
@@ -176,6 +177,7 @@ class NotaPago(Base):
     usuario = relationship("User")
     cuenta = relationship("Cuenta")
     cuenta_scrap360 = relationship("CuentaScrap360")
+    caja_sucursal = relationship("Sucursal")
 
 
 class NotaAjusteSaldo(Base):

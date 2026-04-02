@@ -97,6 +97,23 @@ _CORTE_MOV_TIPOS = (
     ("RETIRO", "Retiro"),
     ("DEPOSITO", "Deposito"),
 )
+_CORTE_GASTO_CATEGORIAS = (
+    ("CAJA_CHICA", "Caja chica / operativo"),
+    ("SERVICIOS", "Servicios"),
+    ("VIATICOS", "Viaticos"),
+    ("MANTENIMIENTO", "Mantenimiento"),
+    ("ADMINISTRATIVO", "Administrativo"),
+    ("OTRO", "Otro"),
+)
+_CORTE_MOV_CATEGORIAS = (
+    ("DOTACION_EFECTIVO", "Dotacion de efectivo", "DEPOSITO"),
+    ("SOBRANTE_VIATICOS", "Sobrante de viaticos", "INGRESO"),
+    ("SOBRANTE_GASTOS", "Sobrante de gastos", "INGRESO"),
+    ("AJUSTE_CAJA", "Ajuste de caja", "INGRESO"),
+    ("DEPOSITO_BANCO", "Deposito a banco", "DEPOSITO"),
+    ("RETIRO_CAJA", "Retiro de caja", "RETIRO"),
+    ("OTRO", "Otro", "INGRESO"),
+)
 _CORTE_DENOMINACIONES = [
     {"label": "$1,000", "value": Decimal("1000"), "key": "denom_1000"},
     {"label": "$500", "value": Decimal("500"), "key": "denom_500"},
@@ -9289,6 +9306,11 @@ def _render_nota_detail(
                 transfer_related_sucursal = db.get(Sucursal, transfer_related.sucursal_id)
     cuentas_sucursal, cuentas_partner = _get_cuentas_for_nota(db, nota)
     cuentas_scrap360 = _get_scrap360_cuentas_for_nota(db, nota)
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    cash_sucursales = _filter_sucursales_for_admin(
+        db.query(Sucursal).order_by(Sucursal.nombre).all(),
+        allowed_suc_ids,
+    )
     note_material_options: list[dict] = []
     note_inventory_stock_map: dict[int, Decimal] = {}
     material_ids = [m.material_id for m in nota.materiales if m.material_id]
@@ -9330,6 +9352,7 @@ def _render_nota_detail(
         "form_comentarios": None,
         "form_pagado": None,
         "form_cuenta_scrap360": None,
+        "form_caja_sucursal_id": nota.sucursal_id,
         "form_iva_incluido": None,
         "form_iva_porcentaje": None,
         "form_pago_monto": None,
@@ -9337,11 +9360,13 @@ def _render_nota_detail(
         "form_pago_cuenta": None,
         "form_pago_comentario": None,
         "form_pago_cuenta_scrap360": None,
+        "form_pago_caja_sucursal_id": nota.sucursal_id,
         "form_pago_inicial_monto": None,
         "form_pago_inicial_metodo": None,
         "form_pago_inicial_cuenta": None,
         "form_pago_inicial_comentario": None,
         "form_pago_inicial_cuenta_scrap360": None,
+        "form_pago_inicial_caja_sucursal_id": nota.sucursal_id,
         "form_devol_kg_map": {},
         "form_devol_precio_map": {},
         "form_devol_comment": None,
@@ -9416,7 +9441,8 @@ def _render_nota_detail(
         "cuentas_partner": cuentas_partner,
         "cuentas_partner_label": cuentas_partner_label,
         "cuentas_scrap360": cuentas_scrap360,
-        "inventory_sucursales": db.query(Sucursal).order_by(Sucursal.nombre).all(),
+        "inventory_sucursales": cash_sucursales,
+        "cash_sucursales": cash_sucursales,
         "pago_updated": pago_updated,
         "pago_reverted": pago_reverted,
         "ajuste_manual_updated": request.query_params.get("ajuste_manual") == "1",
@@ -10021,6 +10047,7 @@ async def notas_aprobar(
     cuenta_financiera = (form.get("cuenta_financiera") or "").strip()
     cuenta_scrap360_raw = (form.get("cuenta_scrap360_id") or "").strip()
     inventario_sucursal_raw = (form.get("inventario_sucursal_id") or "").strip()
+    caja_sucursal_raw = (form.get("caja_sucursal_id") or "").strip()
     monto_pagado_raw = (form.get("monto_pagado") or "").strip()
     iva_incluido = form.get("iva_incluido") is not None
     iva_porcentaje_raw = (form.get("iva_porcentaje") or "").strip()
@@ -10032,6 +10059,7 @@ async def notas_aprobar(
         "form_pagado": monto_pagado_raw,
         "form_cuenta_scrap360": cuenta_scrap360_raw,
         "form_inventario_sucursal_id": inventario_sucursal_raw,
+        "form_caja_sucursal_id": caja_sucursal_raw,
         "form_iva_incluido": iva_incluido,
         "form_iva_porcentaje": iva_porcentaje_raw,
     }
@@ -10182,6 +10210,29 @@ async def notas_aprobar(
                 form_state=form_state,
             )
 
+    caja_sucursal_id = None
+    if caja_sucursal_raw:
+        try:
+            caja_sucursal_id = int(caja_sucursal_raw)
+        except (TypeError, ValueError):
+            return _render_nota_detail(
+                request,
+                db,
+                current_user,
+                nota,
+                error="La sucursal de caja es invalida.",
+                form_state=form_state,
+            )
+    if metodo_pago == "efectivo" and caja_sucursal_id and allowed_suc_ids is not None and caja_sucursal_id not in allowed_suc_ids:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="No tienes acceso a la sucursal de caja seleccionada.",
+            form_state=form_state,
+        )
+
     try:
         if kg_neto_override_map or kg_desc_override_map:
             for nm in nota.materiales:
@@ -10238,6 +10289,7 @@ async def notas_aprobar(
             iva_incluido=iva_incluido,
             iva_porcentaje=iva_porcentaje,
             inventario_sucursal_id=inventario_sucursal_id,
+            caja_sucursal_id=caja_sucursal_id,
         )
     except ValueError as e:
         return _render_nota_detail(
@@ -10422,6 +10474,7 @@ async def notas_actualizar_pago(
     metodo_pago = (form.get("pago_metodo") or "").strip().lower()
     cuenta_financiera = (form.get("pago_cuenta") or "").strip()
     cuenta_scrap360_raw = (form.get("pago_cuenta_scrap360_id") or "").strip()
+    caja_sucursal_raw = (form.get("pago_caja_sucursal_id") or "").strip()
     comentario = (form.get("pago_comentario") or "").strip()
     form_state = {
         "form_pago_monto": monto_pagado_raw,
@@ -10429,6 +10482,7 @@ async def notas_actualizar_pago(
         "form_pago_cuenta": cuenta_financiera,
         "form_pago_comentario": comentario,
         "form_pago_cuenta_scrap360": cuenta_scrap360_raw,
+        "form_pago_caja_sucursal_id": caja_sucursal_raw,
     }
     if not monto_pagado_raw:
         return _render_nota_detail(
@@ -10465,6 +10519,29 @@ async def notas_actualizar_pago(
                 form_state=form_state,
             )
 
+    caja_sucursal_id = None
+    if caja_sucursal_raw:
+        try:
+            caja_sucursal_id = int(caja_sucursal_raw)
+        except (TypeError, ValueError):
+            return _render_nota_detail(
+                request,
+                db,
+                current_user,
+                nota,
+                error="La sucursal de caja es invalida.",
+                form_state=form_state,
+            )
+    if metodo_pago == "efectivo" and caja_sucursal_id and allowed_suc_ids is not None and caja_sucursal_id not in allowed_suc_ids:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="No tienes acceso a la sucursal de caja seleccionada.",
+            form_state=form_state,
+        )
+
     try:
         note_service.add_payment(
             db,
@@ -10474,6 +10551,7 @@ async def notas_actualizar_pago(
             metodo_pago=metodo_pago or None,
             cuenta_financiera=cuenta_financiera or None,
             cuenta_scrap360_id=cuenta_scrap360_id,
+            caja_sucursal_id=caja_sucursal_id,
             comentario=comentario or None,
         )
     except ValueError as e:
@@ -10650,7 +10728,7 @@ async def notas_ajuste_manual_post(
         else f"Material #{nota_material.material_id}"
     )
     comentario_final = comentario or (
-        f"Ajuste manual ligado a nota #{nota.id} · {material_name}"
+        f"Ajuste manual ligado a nota #{nota.id} - {material_name}"
     )
 
     try:
@@ -10717,7 +10795,7 @@ async def notas_ajuste_manual_revertir(
             db,
             ajuste,
             usuario_id=current_user.get("id"),
-            comentario=f"Reversion ajuste manual nota #{nota.id} · ajuste #{ajuste.id}",
+            comentario=f"Reversion ajuste manual nota #{nota.id} - ajuste #{ajuste.id}",
         )
     except ValueError as exc:
         db.rollback()
@@ -10867,7 +10945,7 @@ async def notas_ajuste_saldo_revertir(
             db,
             ajuste,
             usuario_id=current_user.get("id"),
-            comentario=f"Reversion ajuste saldo nota #{nota.id} · ajuste #{ajuste.id}",
+            comentario=f"Reversion ajuste saldo nota #{nota.id} - ajuste #{ajuste.id}",
         )
     except ValueError as exc:
         db.rollback()
@@ -10911,6 +10989,7 @@ async def notas_ajustar_pago_inicial(
     metodo_pago = (form.get("pago_inicial_metodo") or "").strip().lower()
     cuenta_financiera = (form.get("pago_inicial_cuenta") or "").strip()
     cuenta_scrap360_raw = (form.get("pago_inicial_cuenta_scrap360_id") or "").strip()
+    caja_sucursal_raw = (form.get("pago_inicial_caja_sucursal_id") or "").strip()
     comentario = (form.get("pago_inicial_comentario") or "").strip()
     form_state = {
         "form_pago_inicial_monto": monto_raw,
@@ -10918,6 +10997,7 @@ async def notas_ajustar_pago_inicial(
         "form_pago_inicial_cuenta": cuenta_financiera,
         "form_pago_inicial_comentario": comentario,
         "form_pago_inicial_cuenta_scrap360": cuenta_scrap360_raw,
+        "form_pago_inicial_caja_sucursal_id": caja_sucursal_raw,
     }
     if monto_raw == "":
         return _render_nota_detail(
@@ -10954,6 +11034,29 @@ async def notas_ajustar_pago_inicial(
                 form_state=form_state,
             )
 
+    caja_sucursal_id = None
+    if caja_sucursal_raw:
+        try:
+            caja_sucursal_id = int(caja_sucursal_raw)
+        except (TypeError, ValueError):
+            return _render_nota_detail(
+                request,
+                db,
+                current_user,
+                nota,
+                error="La sucursal de caja es invalida.",
+                form_state=form_state,
+            )
+    if metodo_pago == "efectivo" and caja_sucursal_id and allowed_suc_ids is not None and caja_sucursal_id not in allowed_suc_ids:
+        return _render_nota_detail(
+            request,
+            db,
+            current_user,
+            nota,
+            error="No tienes acceso a la sucursal de caja seleccionada.",
+            form_state=form_state,
+        )
+
     try:
         note_service.adjust_initial_payment(
             db,
@@ -10963,6 +11066,7 @@ async def notas_ajustar_pago_inicial(
             metodo_pago=metodo_pago or None,
             cuenta_financiera=cuenta_financiera or None,
             cuenta_scrap360_id=cuenta_scrap360_id,
+            caja_sucursal_id=caja_sucursal_id,
             comentario=comentario or None,
         )
     except ValueError as e:
@@ -12609,6 +12713,30 @@ def _parse_corte_fecha(raw: str | None) -> tuple[date, str | None]:
         return date.today(), "Fecha invalida."
 
 
+def _corte_local_day_bounds(fecha: date) -> tuple[datetime, datetime]:
+    tz = get_app_timezone()
+    start_local = datetime.combine(fecha, time.min).replace(tzinfo=tz)
+    end_local = datetime.combine(fecha + timedelta(days=1), time.min).replace(tzinfo=tz)
+    start_utc = start_local.astimezone(timezone.utc).replace(tzinfo=None)
+    end_utc = end_local.astimezone(timezone.utc).replace(tzinfo=None)
+    return start_utc, end_utc
+
+
+def _corte_mov_category_label(categoria: str | None) -> str:
+    catalog = {code: label for code, label, _ in _CORTE_MOV_CATEGORIAS}
+    return catalog.get((categoria or "").upper(), categoria or "-")
+
+
+def _corte_mov_default_type(categoria: str | None) -> str:
+    catalog = {code: tipo for code, _, tipo in _CORTE_MOV_CATEGORIAS}
+    return catalog.get((categoria or "").upper(), "INGRESO")
+
+
+def _corte_gasto_category_label(categoria: str | None) -> str:
+    catalog = {code: label for code, label in _CORTE_GASTO_CATEGORIAS}
+    return catalog.get((categoria or "").upper(), categoria or "-")
+
+
 def _cash_sign_for_nota(nota: Nota | None) -> Decimal:
     if not nota:
         return Decimal("0")
@@ -12638,78 +12766,70 @@ def _build_corte_cash_movimientos(
     sucursal_id: int,
     fecha: date,
 ) -> dict:
-    start_dt = datetime(fecha.year, fecha.month, fecha.day)
-    end_dt = start_dt + timedelta(days=1)
-
-    pagos = (
-        db.query(NotaPago)
-        .join(Nota, NotaPago.nota_id == Nota.id)
-        .filter(
-            Nota.sucursal_id == sucursal_id,
-            NotaPago.metodo_pago == "efectivo",
-            NotaPago.created_at >= start_dt,
-            NotaPago.created_at < end_dt,
-        )
-        .order_by(NotaPago.created_at.asc())
-        .all()
-    )
-    reversos = (
+    start_dt, end_dt = _corte_local_day_bounds(fecha)
+    movs = (
         db.query(MovimientoContable)
         .filter(
-            MovimientoContable.sucursal_id == sucursal_id,
-            MovimientoContable.tipo.in_(["reverso_pago", "restauracion_pago"]),
+            MovimientoContable.tipo.in_(["pago", "reverso_pago", "restauracion_pago"]),
             MovimientoContable.metodo_pago == "efectivo",
+            or_(
+                MovimientoContable.caja_sucursal_id == sucursal_id,
+                and_(
+                    MovimientoContable.caja_sucursal_id.is_(None),
+                    MovimientoContable.sucursal_id == sucursal_id,
+                ),
+            ),
             MovimientoContable.created_at >= start_dt,
             MovimientoContable.created_at < end_dt,
         )
-        .order_by(MovimientoContable.created_at.asc())
+        .order_by(MovimientoContable.created_at.asc(), MovimientoContable.id.asc())
         .all()
     )
 
-    note_ids = {p.nota_id for p in pagos if p.nota_id}
-    note_ids.update({m.nota_id for m in reversos if m.nota_id})
+    note_ids = {m.nota_id for m in movs if m.nota_id}
     notas = db.query(Nota).filter(Nota.id.in_(note_ids)).all() if note_ids else []
     nota_map = {n.id: n for n in notas}
     folio_map = _build_folio_map(notas)
-
     prov_ids = {n.proveedor_id for n in notas if n.proveedor_id}
     cli_ids = {n.cliente_id for n in notas if n.cliente_id}
-    proveedores_map = {
-        p.id: p.nombre_completo for p in db.query(Proveedor).filter(Proveedor.id.in_(prov_ids)).all()
-    } if prov_ids else {}
-    clientes_map = {
-        c.id: c.nombre_completo for c in db.query(Cliente).filter(Cliente.id.in_(cli_ids)).all()
-    } if cli_ids else {}
+    proveedores_map = (
+        {
+            p.id: p.nombre_completo
+            for p in db.query(Proveedor).filter(Proveedor.id.in_(prov_ids)).all()
+        }
+        if prov_ids
+        else {}
+    )
+    clientes_map = (
+        {
+            c.id: c.nombre_completo
+            for c in db.query(Cliente).filter(Cliente.id.in_(cli_ids)).all()
+        }
+        if cli_ids
+        else {}
+    )
+    suc_ids = {
+        mov.caja_sucursal_id
+        for mov in movs
+        if mov.caja_sucursal_id
+    }
+    suc_ids.update({mov.sucursal_id for mov in movs if mov.sucursal_id})
+    sucursales_map = (
+        {s.id: s for s in db.query(Sucursal).filter(Sucursal.id.in_(suc_ids)).all()}
+        if suc_ids
+        else {}
+    )
 
     movimientos: list[dict] = []
     total_ingresos = Decimal("0")
     total_egresos = Decimal("0")
     neto = Decimal("0")
+    ventas_efectivo_rows: list[dict] = []
+    compras_efectivo_rows: list[dict] = []
+    ventas_efectivo_total = Decimal("0")
+    compras_efectivo_total = Decimal("0")
 
-    for pago in pagos:
-        nota = pago.nota or nota_map.get(pago.nota_id)
-        sign = _cash_sign_for_nota(nota)
-        monto = Decimal(str(pago.monto or 0))
-        signed = monto * sign
-        neto += signed
-        if signed >= 0:
-            total_ingresos += signed
-        else:
-            total_egresos += abs(signed)
-        movimientos.append(
-            {
-                "fecha": pago.created_at,
-                "tipo": "Pago",
-                "detalle": nota.tipo_operacion.value if nota else "-",
-                "nota_id": pago.nota_id,
-                "folio": folio_map.get(pago.nota_id) or f"#{pago.nota_id}",
-                "partner": _partner_name_for_nota(nota, proveedores_map, clientes_map),
-                "monto": signed,
-                "comentario": pago.comentario or "",
-            }
-        )
-
-    for mov in reversos:
+    for mov in movs:
         tipo_raw = (mov.tipo or "").lower()
         tipo_op = _movimiento_tipo_operacion(mov)
         signed = _movimiento_monto_firmado(mov, tipo_raw, tipo_op)
@@ -12719,20 +12839,37 @@ def _build_corte_cash_movimientos(
         else:
             total_egresos += abs(signed)
         nota = mov.nota or (nota_map.get(mov.nota_id) if mov.nota_id else None)
-        movimientos.append(
-            {
-                "fecha": mov.created_at,
-                "tipo": "Restauracion pago" if mov.tipo == "restauracion_pago" else "Reverso pago",
-                "detalle": tipo_op or "-",
-                "nota_id": mov.nota_id,
-                "folio": folio_map.get(mov.nota_id) or f"#{mov.nota_id}",
-                "partner": _partner_name_for_nota(nota, proveedores_map, clientes_map),
-                "monto": signed,
-                "comentario": mov.comentario or "",
-            }
-        )
+        caja_sucursal_label = "-"
+        caja_sucursal_id = mov.caja_sucursal_id or mov.sucursal_id
+        if caja_sucursal_id and sucursales_map.get(caja_sucursal_id):
+            caja_sucursal_label = sucursales_map[caja_sucursal_id].nombre
+        elif caja_sucursal_id:
+            caja_sucursal_label = str(caja_sucursal_id)
 
-    movimientos.sort(key=lambda m: (m["fecha"] or datetime.min, m["tipo"]))
+        row = {
+            "fecha": mov.created_at,
+            "tipo": _movimiento_label(tipo_raw, tipo_op),
+            "detalle": tipo_op or "-",
+            "nota_id": mov.nota_id,
+            "folio": folio_map.get(mov.nota_id) or (f"#{mov.nota_id}" if mov.nota_id else "-"),
+            "partner": _partner_name_for_nota(nota, proveedores_map, clientes_map),
+            "monto": signed,
+            "monto_abs": abs(signed),
+            "comentario": mov.comentario or "",
+            "caja_sucursal": caja_sucursal_label,
+            "nota_tipo": tipo_op or "-",
+        }
+        movimientos.append(row)
+        if tipo_op == "venta" and signed > 0:
+            ventas_efectivo_rows.append(row)
+            ventas_efectivo_total += signed
+        if tipo_op == "compra" and signed < 0:
+            compras_efectivo_rows.append(row)
+            compras_efectivo_total += abs(signed)
+
+    movimientos.sort(key=lambda m: (m["fecha"] or datetime.min, m["tipo"], m["folio"]))
+    ventas_efectivo_rows.sort(key=lambda m: (m["fecha"] or datetime.min, m["folio"]))
+    compras_efectivo_rows.sort(key=lambda m: (m["fecha"] or datetime.min, m["folio"]))
 
     return {
         "movimientos": movimientos,
@@ -12740,6 +12877,10 @@ def _build_corte_cash_movimientos(
         "egresos": total_egresos,
         "neto": neto,
         "total": len(movimientos),
+        "ventas_efectivo_rows": ventas_efectivo_rows,
+        "ventas_efectivo_total": ventas_efectivo_total,
+        "compras_efectivo_rows": compras_efectivo_rows,
+        "compras_efectivo_total": compras_efectivo_total,
     }
 
 
@@ -12769,11 +12910,13 @@ def _build_corte_manual_movimientos(
         .all()
     )
     movimientos: list[dict] = []
+    movimientos_by_categoria: dict[str, list[dict]] = defaultdict(list)
     total_ingresos = Decimal("0")
     total_egresos = Decimal("0")
     neto = Decimal("0")
     totals_by_tipo = {tipo: Decimal("0") for tipo, _ in _CORTE_MOV_TIPOS}
     tipo_labels = dict(_CORTE_MOV_TIPOS)
+    totals_by_categoria: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
 
     for mov in movimientos_db:
         tipo_val = mov.tipo.value if isinstance(mov.tipo, CorteCajaMovimientoTipo) else str(mov.tipo or "").upper()
@@ -12785,16 +12928,21 @@ def _build_corte_manual_movimientos(
             total_ingresos += signed
         else:
             total_egresos += abs(signed)
-        movimientos.append(
-            {
-                "fecha": mov.created_at,
-                "tipo": tipo_val,
-                "tipo_label": tipo_labels.get(tipo_val, tipo_val.title()),
-                "descripcion": mov.descripcion,
-                "usuario": mov.usuario.nombre_completo if mov.usuario else "-",
-                "monto": signed,
-            }
-        )
+        row = {
+            "fecha": mov.created_at,
+            "tipo": tipo_val,
+            "tipo_label": tipo_labels.get(tipo_val, tipo_val.title()),
+            "categoria": (mov.categoria or "").upper() or None,
+            "categoria_label": _corte_mov_category_label(mov.categoria),
+            "descripcion": mov.descripcion,
+            "usuario": mov.usuario.nombre_completo if mov.usuario else "-",
+            "monto": signed,
+            "monto_abs": abs(signed),
+        }
+        movimientos.append(row)
+        if row["categoria"]:
+            movimientos_by_categoria[row["categoria"]].append(row)
+            totals_by_categoria[row["categoria"]] += signed
 
     return {
         "movimientos": movimientos,
@@ -12803,6 +12951,106 @@ def _build_corte_manual_movimientos(
         "neto": neto,
         "total": len(movimientos),
         "totals_by_tipo": totals_by_tipo,
+        "movimientos_by_categoria": movimientos_by_categoria,
+        "totals_by_categoria": totals_by_categoria,
+    }
+
+
+def _build_corte_note_relations(
+    db: Session,
+    *,
+    sucursal_id: int,
+    fecha: date,
+) -> dict:
+    start_dt, end_dt = _corte_local_day_bounds(fecha)
+    base_movs = (
+        db.query(MovimientoContable)
+        .filter(
+            MovimientoContable.sucursal_id == sucursal_id,
+            MovimientoContable.tipo.in_(["compra", "venta"]),
+            MovimientoContable.created_at >= start_dt,
+            MovimientoContable.created_at < end_dt,
+        )
+        .order_by(MovimientoContable.created_at.asc(), MovimientoContable.id.asc())
+        .all()
+    )
+    note_ids = []
+    for mov in base_movs:
+        if mov.nota_id and mov.nota_id not in note_ids:
+            note_ids.append(mov.nota_id)
+
+    notas = db.query(Nota).filter(Nota.id.in_(note_ids)).all() if note_ids else []
+    nota_map = {nota.id: nota for nota in notas}
+    folio_map = _build_folio_map(notas)
+    prov_ids = {n.proveedor_id for n in notas if n.proveedor_id}
+    cli_ids = {n.cliente_id for n in notas if n.cliente_id}
+    proveedores_map = (
+        {
+            p.id: p.nombre_completo
+            for p in db.query(Proveedor).filter(Proveedor.id.in_(prov_ids)).all()
+        }
+        if prov_ids
+        else {}
+    )
+    clientes_map = (
+        {
+            c.id: c.nombre_completo
+            for c in db.query(Cliente).filter(Cliente.id.in_(cli_ids)).all()
+        }
+        if cli_ids
+        else {}
+    )
+
+    compras_rows: list[dict] = []
+    ventas_rows: list[dict] = []
+    compras_total = Decimal("0")
+    ventas_total = Decimal("0")
+    compras_kg = Decimal("0")
+    ventas_kg = Decimal("0")
+
+    for mov in base_movs:
+        nota = mov.nota or nota_map.get(mov.nota_id)
+        if not nota:
+            continue
+        partner = _partner_name_for_nota(nota, proveedores_map, clientes_map)
+        target_rows = compras_rows if nota.tipo_operacion == TipoOperacion.compra else ventas_rows
+        for nm in nota.materiales:
+            material_name = nm.material.nombre if nm.material else f"Material #{nm.material_id}"
+            kg_neto = Decimal(str(nm.kg_neto or 0))
+            precio_unitario = Decimal(str(nm.precio_unitario or 0))
+            subtotal = Decimal(str(nm.subtotal or 0))
+            row = {
+                "fecha": mov.created_at,
+                "nota_id": nota.id,
+                "folio": folio_map.get(nota.id) or f"#{nota.id}",
+                "partner": partner,
+                "material": material_name,
+                "kg_neto": kg_neto,
+                "precio_unitario": precio_unitario,
+                "subtotal": subtotal,
+                "total_nota": Decimal(str(nota.total_monto or 0)),
+                "metodo_pago": nota.metodo_pago or "-",
+                "es_efectivo": (nota.metodo_pago or "").strip().lower() == "efectivo",
+            }
+            target_rows.append(row)
+            if nota.tipo_operacion == TipoOperacion.compra:
+                compras_total += subtotal
+                compras_kg += kg_neto
+            else:
+                ventas_total += subtotal
+                ventas_kg += kg_neto
+
+    compras_rows.sort(key=lambda row: (row["fecha"] or datetime.min, row["folio"], row["material"]))
+    ventas_rows.sort(key=lambda row: (row["fecha"] or datetime.min, row["folio"], row["material"]))
+    return {
+        "compras_rows": compras_rows,
+        "ventas_rows": ventas_rows,
+        "compras_total": compras_total,
+        "ventas_total": ventas_total,
+        "compras_kg": compras_kg,
+        "ventas_kg": ventas_kg,
+        "compras_notas": len({row["nota_id"] for row in compras_rows}),
+        "ventas_notas": len({row["nota_id"] for row in ventas_rows}),
     }
 
 
@@ -12844,6 +13092,7 @@ def _render_corte_caja(
             .limit(15)
             .all()
         )
+    sucursal_actual = db.get(Sucursal, sucursal_id) if sucursal_id else None
 
     gastos = []
     gastos_total = Decimal("0")
@@ -12861,11 +13110,45 @@ def _render_corte_caja(
     if sucursal_id:
         cash_data = _build_corte_cash_movimientos(db, sucursal_id=sucursal_id, fecha=fecha)
     else:
-        cash_data = {"movimientos": [], "ingresos": Decimal("0"), "egresos": Decimal("0"), "neto": Decimal("0"), "total": 0}
+        cash_data = {
+            "movimientos": [],
+            "ingresos": Decimal("0"),
+            "egresos": Decimal("0"),
+            "neto": Decimal("0"),
+            "total": 0,
+            "ventas_efectivo_rows": [],
+            "ventas_efectivo_total": Decimal("0"),
+            "compras_efectivo_rows": [],
+            "compras_efectivo_total": Decimal("0"),
+        }
 
-    manual_data = {"movimientos": [], "ingresos": Decimal("0"), "egresos": Decimal("0"), "neto": Decimal("0"), "total": 0, "totals_by_tipo": {}}
+    manual_data = {
+        "movimientos": [],
+        "ingresos": Decimal("0"),
+        "egresos": Decimal("0"),
+        "neto": Decimal("0"),
+        "total": 0,
+        "totals_by_tipo": {},
+        "movimientos_by_categoria": {},
+        "totals_by_categoria": {},
+    }
     if corte:
         manual_data = _build_corte_manual_movimientos(db, corte_id=corte.id)
+
+    relaciones = (
+        _build_corte_note_relations(db, sucursal_id=sucursal_id, fecha=fecha)
+        if sucursal_id
+        else {
+            "compras_rows": [],
+            "ventas_rows": [],
+            "compras_total": Decimal("0"),
+            "ventas_total": Decimal("0"),
+            "compras_kg": Decimal("0"),
+            "ventas_kg": Decimal("0"),
+            "compras_notas": 0,
+            "ventas_notas": 0,
+        }
+    )
 
     denominaciones = []
     denom_map: dict[Decimal, int] = {}
@@ -12902,6 +13185,21 @@ def _render_corte_caja(
         denom_total += subtotal
         denom_inputs.append({**denom, "count": count_val, "subtotal": subtotal})
 
+    movimientos_by_categoria = manual_data.get("movimientos_by_categoria", {})
+    totals_by_categoria = manual_data.get("totals_by_categoria", {})
+    dotaciones_rows = list(movimientos_by_categoria.get("DOTACION_EFECTIVO", []))
+    sobrantes_viaticos_rows = list(movimientos_by_categoria.get("SOBRANTE_VIATICOS", []))
+    sobrantes_gastos_rows = list(movimientos_by_categoria.get("SOBRANTE_GASTOS", []))
+    otros_ajustes_rows = [
+        mov
+        for mov in manual_data.get("movimientos", [])
+        if (mov.get("categoria") or "") not in {"DOTACION_EFECTIVO", "SOBRANTE_VIATICOS", "SOBRANTE_GASTOS"}
+    ]
+    dotaciones_total = abs(Decimal(str(totals_by_categoria.get("DOTACION_EFECTIVO", 0) or 0)))
+    sobrantes_viaticos_total = abs(Decimal(str(totals_by_categoria.get("SOBRANTE_VIATICOS", 0) or 0)))
+    sobrantes_gastos_total = abs(Decimal(str(totals_by_categoria.get("SOBRANTE_GASTOS", 0) or 0)))
+    otros_ajustes_total = sum((Decimal(str(mov.get("monto_abs") or 0)) for mov in otros_ajustes_rows), Decimal("0"))
+
     return templates.TemplateResponse(
         "admin/corte_caja.html",
         {
@@ -12909,6 +13207,7 @@ def _render_corte_caja(
             "env": settings.ENV,
             "user": current_user,
             "sucursales": sucursales,
+            "sucursal_actual": sucursal_actual,
             "sucursal_id": sucursal_id,
             "fecha": fecha.strftime("%Y-%m-%d"),
             "corte": corte,
@@ -12918,12 +13217,32 @@ def _render_corte_caja(
             "cash_ingresos": cash_data["ingresos"],
             "cash_egresos": cash_data["egresos"],
             "cash_total": cash_data["total"],
+            "ventas_efectivo_rows": cash_data["ventas_efectivo_rows"],
+            "ventas_efectivo_total": cash_data["ventas_efectivo_total"],
+            "compras_efectivo_rows": cash_data["compras_efectivo_rows"],
+            "compras_efectivo_total": cash_data["compras_efectivo_total"],
             "manual_movs": manual_data["movimientos"],
             "manual_ingresos": manual_data["ingresos"],
             "manual_egresos": manual_data["egresos"],
             "manual_neto": manual_data["neto"],
             "manual_total": manual_data["total"],
             "manual_totals_by_tipo": manual_data["totals_by_tipo"],
+            "dotaciones_rows": dotaciones_rows,
+            "dotaciones_total": dotaciones_total,
+            "sobrantes_viaticos_rows": sobrantes_viaticos_rows,
+            "sobrantes_viaticos_total": sobrantes_viaticos_total,
+            "sobrantes_gastos_rows": sobrantes_gastos_rows,
+            "sobrantes_gastos_total": sobrantes_gastos_total,
+            "otros_ajustes_rows": otros_ajustes_rows,
+            "otros_ajustes_total": otros_ajustes_total,
+            "compras_rows": relaciones["compras_rows"],
+            "ventas_rows": relaciones["ventas_rows"],
+            "compras_total": relaciones["compras_total"],
+            "ventas_total": relaciones["ventas_total"],
+            "compras_kg": relaciones["compras_kg"],
+            "ventas_kg": relaciones["ventas_kg"],
+            "compras_notas": relaciones["compras_notas"],
+            "ventas_notas": relaciones["ventas_notas"],
             "saldo_inicial": saldo_inicial,
             "saldo_calculado_actual": saldo_calculado_actual,
             "saldo_calculado": saldo_calculado,
@@ -12934,11 +13253,14 @@ def _render_corte_caja(
             "error": error,
             "success": success,
             "corte_mov_tipos": _CORTE_MOV_TIPOS,
+            "corte_mov_categorias": _CORTE_MOV_CATEGORIAS,
+            "corte_gasto_categorias": _CORTE_GASTO_CATEGORIAS,
             "form_saldo_inicial": form_data.get("saldo_inicial", ""),
             "form_gasto_desc": form_data.get("gasto_desc", ""),
             "form_gasto_monto": form_data.get("gasto_monto", ""),
             "form_gasto_categoria": form_data.get("gasto_categoria", ""),
             "form_mov_tipo": form_data.get("mov_tipo", ""),
+            "form_mov_categoria": form_data.get("mov_categoria", ""),
             "form_mov_desc": form_data.get("mov_desc", ""),
             "form_mov_monto": form_data.get("mov_monto", ""),
             "form_saldo_cierre": form_data.get("saldo_cierre", f"{denom_total:.2f}"),
@@ -13107,7 +13429,7 @@ async def corte_caja_add_gasto(
         raise HTTPException(status_code=403, detail="No tienes acceso a esta sucursal.")
 
     descripcion = (form.get("descripcion") or "").strip()
-    categoria = (form.get("categoria") or "").strip()
+    categoria = (form.get("categoria") or "").strip().upper()
     monto_raw = (form.get("monto") or "").strip()
     if not descripcion:
         return _render_corte_caja(
@@ -13142,6 +13464,19 @@ async def corte_caja_add_gasto(
             fecha=corte.fecha,
             allowed_suc_ids=allowed_suc_ids,
             error="El monto del gasto debe ser mayor a 0.",
+            form_data={"gasto_desc": descripcion, "gasto_monto": monto_raw, "gasto_categoria": categoria},
+        )
+
+    allowed_categories = {code for code, _ in _CORTE_GASTO_CATEGORIAS}
+    if categoria and categoria not in allowed_categories:
+        return _render_corte_caja(
+            request,
+            db,
+            current_user,
+            sucursal_id=corte.sucursal_id,
+            fecha=corte.fecha,
+            allowed_suc_ids=allowed_suc_ids,
+            error="La categoria del gasto es invalida.",
             form_data={"gasto_desc": descripcion, "gasto_monto": monto_raw, "gasto_categoria": categoria},
         )
 
@@ -13188,10 +13523,25 @@ async def corte_caja_add_movimiento(
         raise HTTPException(status_code=403, detail="No tienes acceso a esta sucursal.")
 
     tipo_raw = (form.get("tipo") or "").strip().upper()
+    categoria = (form.get("categoria") or "").strip().upper()
     descripcion = (form.get("descripcion") or "").strip()
     monto_raw = (form.get("monto") or "").strip()
 
     allowed_types = {t[0] for t in _CORTE_MOV_TIPOS}
+    allowed_categories = {code for code, _, _ in _CORTE_MOV_CATEGORIAS}
+    if categoria and categoria not in allowed_categories:
+        return _render_corte_caja(
+            request,
+            db,
+            current_user,
+            sucursal_id=corte.sucursal_id,
+            fecha=corte.fecha,
+            allowed_suc_ids=allowed_suc_ids,
+            error="La categoria del movimiento es invalida.",
+            form_data={"mov_tipo": tipo_raw, "mov_categoria": categoria, "mov_desc": descripcion, "mov_monto": monto_raw},
+        )
+    if not tipo_raw and categoria:
+        tipo_raw = _corte_mov_default_type(categoria)
     if tipo_raw not in allowed_types:
         return _render_corte_caja(
             request,
@@ -13201,7 +13551,7 @@ async def corte_caja_add_movimiento(
             fecha=corte.fecha,
             allowed_suc_ids=allowed_suc_ids,
             error="El tipo de movimiento es invalido.",
-            form_data={"mov_tipo": tipo_raw, "mov_desc": descripcion, "mov_monto": monto_raw},
+            form_data={"mov_tipo": tipo_raw, "mov_categoria": categoria, "mov_desc": descripcion, "mov_monto": monto_raw},
         )
     if not descripcion:
         return _render_corte_caja(
@@ -13212,7 +13562,7 @@ async def corte_caja_add_movimiento(
             fecha=corte.fecha,
             allowed_suc_ids=allowed_suc_ids,
             error="La descripcion del movimiento es obligatoria.",
-            form_data={"mov_tipo": tipo_raw, "mov_desc": descripcion, "mov_monto": monto_raw},
+            form_data={"mov_tipo": tipo_raw, "mov_categoria": categoria, "mov_desc": descripcion, "mov_monto": monto_raw},
         )
     try:
         monto = Decimal(str(monto_raw))
@@ -13225,7 +13575,7 @@ async def corte_caja_add_movimiento(
             fecha=corte.fecha,
             allowed_suc_ids=allowed_suc_ids,
             error="El monto del movimiento es invalido.",
-            form_data={"mov_tipo": tipo_raw, "mov_desc": descripcion, "mov_monto": monto_raw},
+            form_data={"mov_tipo": tipo_raw, "mov_categoria": categoria, "mov_desc": descripcion, "mov_monto": monto_raw},
         )
     if monto <= Decimal("0"):
         return _render_corte_caja(
@@ -13236,13 +13586,14 @@ async def corte_caja_add_movimiento(
             fecha=corte.fecha,
             allowed_suc_ids=allowed_suc_ids,
             error="El monto del movimiento debe ser mayor a 0.",
-            form_data={"mov_tipo": tipo_raw, "mov_desc": descripcion, "mov_monto": monto_raw},
+            form_data={"mov_tipo": tipo_raw, "mov_categoria": categoria, "mov_desc": descripcion, "mov_monto": monto_raw},
         )
 
     movimiento = CorteCajaMovimiento(
         corte_id=corte.id,
         usuario_id=current_user.get("id"),
         tipo=CorteCajaMovimientoTipo(tipo_raw),
+        categoria=categoria or None,
         descripcion=descripcion,
         monto=monto,
         created_at=datetime.utcnow(),
@@ -13386,6 +13737,7 @@ async def corte_caja_reporte(
     sucursal = db.get(Sucursal, corte.sucursal_id)
     cash_data = _build_corte_cash_movimientos(db, sucursal_id=corte.sucursal_id, fecha=corte.fecha)
     manual_data = _build_corte_manual_movimientos(db, corte_id=corte.id)
+    relaciones = _build_corte_note_relations(db, sucursal_id=corte.sucursal_id, fecha=corte.fecha)
     gastos = (
         db.query(CorteCajaGasto)
         .filter(CorteCajaGasto.corte_id == corte.id)
@@ -13412,6 +13764,8 @@ async def corte_caja_reporte(
         gastos=gastos,
         denominaciones=denominaciones,
         saldo_calculado=saldo_calculado,
+        compras_rows=relaciones["compras_rows"],
+        ventas_rows=relaciones["ventas_rows"],
     )
 
     fmt = (request.query_params.get("format") or "pdf").lower()

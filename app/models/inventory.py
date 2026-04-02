@@ -50,6 +50,7 @@ class MovimientoContable(Base):
     id = Column(Integer, primary_key=True, index=True)
     nota_id = Column(Integer, ForeignKey("notas.id"), nullable=True, index=True)
     sucursal_id = Column(Integer, ForeignKey("sucursales.id"), nullable=True, index=True)
+    caja_sucursal_id = Column(Integer, ForeignKey("sucursales.id"), nullable=True, index=True)
     usuario_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
 
     tipo = Column(String(20), nullable=False)  # compra, venta, ajuste
@@ -62,6 +63,7 @@ class MovimientoContable(Base):
 
     nota = relationship("Nota")
     sucursal = relationship("Sucursal")
+    caja_sucursal = relationship("Sucursal", foreign_keys=[caja_sucursal_id])
     cuenta = relationship("Cuenta")
 
 
