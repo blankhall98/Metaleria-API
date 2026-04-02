@@ -42,6 +42,8 @@
             <div class="alert alert-success py-2 small mt-3 mb-0">Gasto registrado correctamente.</div>
         {% elif success == 'movimiento' %}
             <div class="alert alert-success py-2 small mt-3 mb-0">Movimiento manual registrado correctamente.</div>
+        {% elif success == 'arqueo' %}
+            <div class="alert alert-success py-2 small mt-3 mb-0">Conteo de efectivo guardado correctamente.</div>
         {% elif success == 'close' %}
             <div class="alert alert-success py-2 small mt-3 mb-0">Corte cerrado correctamente.</div>
         {% endif %}
@@ -117,6 +119,18 @@
                     <strong>${{ "{:,.2f}".format(saldo_calculado or 0) }}</strong>
                     <div class="notes-kpi-sub">Caja fisica esperada</div>
                 </div>
+                <div class="notes-kpi-card tone-neutral">
+                    <span class="notes-kpi-label">Conteo actual</span>
+                    <strong>${{ "{:,.2f}".format(denom_total or 0) }}</strong>
+                    <div class="notes-kpi-sub">Monedas ${{ "{:,.2f}".format(denom_total_monedas or 0) }} · Billetes ${{ "{:,.2f}".format(denom_total_billetes or 0) }}</div>
+                </div>
+                {% if corte.estado.value == 'ABIERTO' %}
+                    <div class="notes-kpi-card {{ 'tone-green' if (diferencia_provisional or 0) >= 0 else 'tone-red' }}">
+                        <span class="notes-kpi-label">{% if (diferencia_provisional or 0) >= 0 %}Sobrante provisional{% else %}Faltante provisional{% endif %}</span>
+                        <strong>{% if (diferencia_provisional or 0) >= 0 %}+{% else %}-{% endif %}${{ "{:,.2f}".format((diferencia_provisional or 0)|abs) }}</strong>
+                        <div class="notes-kpi-sub">Comparado contra el saldo esperado de hoy</div>
+                    </div>
+                {% endif %}
                 {% if corte.estado.value == 'CERRADO' %}
                     <div class="notes-kpi-card tone-neutral">
                         <span class="notes-kpi-label">Saldo final</span>
@@ -702,34 +716,133 @@
 
             {% if corte.estado.value == 'ABIERTO' %}
                 <form method="post" action="/web/admin/corte-caja/{{ corte.id }}/cerrar">
-                    <div class="table-scroll-shell mb-3">
-                        <div class="table-responsive scroll-x note-table-scroll">
-                            <table class="table table-sm align-middle mb-0">
-                                <thead>
-                                    <tr>
-                                        <th>Denominacion</th>
-                                        <th class="text-end">Cantidad</th>
-                                        <th class="text-end">Subtotal</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for denom in denom_inputs %}
-                                        <tr>
-                                            <td>{{ denom.label }}</td>
-                                            <td class="text-end">
-                                                <input class="form-control form-control-sm text-end" type="number" min="0" step="1" name="{{ denom.key }}" value="{{ denom.count }}">
-                                            </td>
-                                            <td class="text-end">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td>
-                                        </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
+                    <div class="cash-count-sheet mb-3">
+                        <div class="cash-count-sheet__header">
+                            <div>
+                                <span class="chip-strong">Arqueo diario</span>
+                                <h3 class="h6 text-dark mb-1 mt-2">Registro de efectivo contado</h3>
+                                <p class="text-muted small mb-0">Cuenta monedas y billetes durante el dia. El sistema usa este total para proyectar sobrante o faltante de caja.</p>
+                            </div>
+                            <div class="cash-count-sheet__totals">
+                                <div class="cash-count-total-card">
+                                    <span>Monedas</span>
+                                    <strong id="cashCountCoins">${{ "{:,.2f}".format(denom_total_monedas or 0) }}</strong>
+                                </div>
+                                <div class="cash-count-total-card">
+                                    <span>Billetes</span>
+                                    <strong id="cashCountBills">${{ "{:,.2f}".format(denom_total_billetes or 0) }}</strong>
+                                </div>
+                                <div class="cash-count-total-card cash-count-total-card--primary">
+                                    <span>Total general</span>
+                                    <strong id="cashCountTotal">${{ "{:,.2f}".format(denom_total or 0) }}</strong>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-xl-5">
+                                <div class="cash-count-section">
+                                    <div class="cash-count-section__title">Monedas</div>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm align-middle mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>Denominacion</th>
+                                                    <th class="text-end">Cantidad</th>
+                                                    <th class="text-end">Total</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for denom in denom_monedas %}
+                                                    <tr>
+                                                        <td>{{ denom.label }}</td>
+                                                        <td class="text-end">
+                                                            <input
+                                                                class="form-control form-control-sm text-end denom-count-input"
+                                                                type="number"
+                                                                min="0"
+                                                                step="1"
+                                                                inputmode="numeric"
+                                                                name="{{ denom.key }}"
+                                                                value="{{ denom.count }}"
+                                                                data-denom-value="{{ denom.value }}"
+                                                                data-denom-target="row-{{ denom.key }}"
+                                                                data-denom-group="coins"
+                                                            >
+                                                        </td>
+                                                        <td class="text-end" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td>
+                                                    </tr>
+                                                {% endfor %}
+                                                <tr class="table-light fw-semibold">
+                                                    <td colspan="2">Total monedas</td>
+                                                    <td class="text-end" id="cashCountCoinsTable">${{ "{:,.2f}".format(denom_total_monedas or 0) }}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-xl-7">
+                                <div class="cash-count-section">
+                                    <div class="cash-count-section__title">Billetes</div>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm align-middle mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>Denominacion</th>
+                                                    <th class="text-end">Cantidad</th>
+                                                    <th class="text-end">Total</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for denom in denom_billetes %}
+                                                    <tr>
+                                                        <td>{{ denom.label }}</td>
+                                                        <td class="text-end">
+                                                            <input
+                                                                class="form-control form-control-sm text-end denom-count-input"
+                                                                type="number"
+                                                                min="0"
+                                                                step="1"
+                                                                inputmode="numeric"
+                                                                name="{{ denom.key }}"
+                                                                value="{{ denom.count }}"
+                                                                data-denom-value="{{ denom.value }}"
+                                                                data-denom-target="row-{{ denom.key }}"
+                                                                data-denom-group="bills"
+                                                            >
+                                                        </td>
+                                                        <td class="text-end" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td>
+                                                    </tr>
+                                                {% endfor %}
+                                                <tr class="table-light fw-semibold">
+                                                    <td colspan="2">Total billetes</td>
+                                                    <td class="text-end" id="cashCountBillsTable">${{ "{:,.2f}".format(denom_total_billetes or 0) }}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="cash-count-footer">
+                            <div class="cash-count-footer__line">
+                                <span>Saldo esperado</span>
+                                <strong id="cashExpectedTotal">${{ "{:,.2f}".format(saldo_calculado or 0) }}</strong>
+                            </div>
+                            <div class="cash-count-footer__line">
+                                <span>Saldo contado</span>
+                                <strong id="cashCountTotalInline">${{ "{:,.2f}".format(denom_total or 0) }}</strong>
+                            </div>
+                            <div class="cash-count-footer__line {{ 'text-success' if (diferencia_provisional or 0) >= 0 else 'text-danger' }}">
+                                <span>{% if (diferencia_provisional or 0) >= 0 %}Sobrante provisional{% else %}Faltante provisional{% endif %}</span>
+                                <strong id="cashDifferencePreview">{% if (diferencia_provisional or 0) >= 0 %}+{% else %}-{% endif %}${{ "{:,.2f}".format((diferencia_provisional or 0)|abs) }}</strong>
+                            </div>
                         </div>
                     </div>
                     <div class="row g-3">
                         <div class="col-lg-4">
                             <label class="form-label">Saldo contado</label>
-                            <input class="form-control" type="number" step="0.01" min="0" value="{{ form_saldo_cierre }}" readonly>
+                            <input class="form-control" type="number" step="0.01" min="0" value="{{ form_saldo_cierre }}" id="cashCountTotalInput" readonly>
                         </div>
                         <div class="col-lg-8">
                             <label class="form-label">Comentarios de cierre</label>
@@ -740,12 +853,88 @@
                             <input class="form-control" name="motivo_diferencia" value="{{ form_motivo_diferencia }}" placeholder="Obligatorio si hay sobrante o faltante">
                             <div class="form-text text-muted">Si el contado no coincide con el saldo esperado, explica la diferencia.</div>
                         </div>
-                        <div class="col-12 d-grid d-md-flex justify-content-md-end">
+                        <div class="col-12 d-grid d-md-flex justify-content-md-end gap-2">
+                            <button class="btn btn-outline-primary" type="submit" formaction="/web/admin/corte-caja/{{ corte.id }}/arqueo">Guardar conteo</button>
                             <button class="btn btn-primary" type="submit">Cerrar corte de caja</button>
                         </div>
                     </div>
                 </form>
             {% else %}
+                <div class="cash-count-sheet mb-3">
+                    <div class="cash-count-sheet__header">
+                        <div>
+                            <span class="chip-strong">Arqueo final</span>
+                            <h3 class="h6 text-dark mb-1 mt-2">Conteo registrado por denominaciones</h3>
+                            <p class="text-muted small mb-0">Este conteo es el respaldo del saldo final con el que se cerro la caja.</p>
+                        </div>
+                        <div class="cash-count-sheet__totals">
+                            <div class="cash-count-total-card">
+                                <span>Monedas</span>
+                                <strong>${{ "{:,.2f}".format(denom_total_monedas or 0) }}</strong>
+                            </div>
+                            <div class="cash-count-total-card">
+                                <span>Billetes</span>
+                                <strong>${{ "{:,.2f}".format(denom_total_billetes or 0) }}</strong>
+                            </div>
+                            <div class="cash-count-total-card cash-count-total-card--primary">
+                                <span>Total general</span>
+                                <strong>${{ "{:,.2f}".format(denom_total or 0) }}</strong>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-xl-5">
+                            <div class="cash-count-section">
+                                <div class="cash-count-section__title">Monedas</div>
+                                <div class="table-responsive">
+                                    <table class="table table-sm align-middle mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>Denominacion</th>
+                                                <th class="text-end">Cantidad</th>
+                                                <th class="text-end">Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for denom in denom_monedas %}
+                                                <tr>
+                                                    <td>{{ denom.label }}</td>
+                                                    <td class="text-end">{{ denom.count or 0 }}</td>
+                                                    <td class="text-end">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-xl-7">
+                            <div class="cash-count-section">
+                                <div class="cash-count-section__title">Billetes</div>
+                                <div class="table-responsive">
+                                    <table class="table table-sm align-middle mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>Denominacion</th>
+                                                <th class="text-end">Cantidad</th>
+                                                <th class="text-end">Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for denom in denom_billetes %}
+                                                <tr>
+                                                    <td>{{ denom.label }}</td>
+                                                    <td class="text-end">{{ denom.count or 0 }}</td>
+                                                    <td class="text-end">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div class="note-meta-grid">
                     <div class="note-meta-item">
                         <span class="note-meta-label">Saldo esperado</span>
@@ -812,4 +1001,72 @@
         </div>
     </div>
 {% endif %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const countInputs = Array.from(document.querySelectorAll('.denom-count-input'));
+    if (!countInputs.length) return;
+
+    const coinsTotal = document.getElementById('cashCountCoins');
+    const billsTotal = document.getElementById('cashCountBills');
+    const coinsTableTotal = document.getElementById('cashCountCoinsTable');
+    const billsTableTotal = document.getElementById('cashCountBillsTable');
+    const grandTotal = document.getElementById('cashCountTotal');
+    const grandInline = document.getElementById('cashCountTotalInline');
+    const grandInput = document.getElementById('cashCountTotalInput');
+    const diffPreview = document.getElementById('cashDifferencePreview');
+    const expectedEl = document.getElementById('cashExpectedTotal');
+    const expected = expectedEl ? Number((expectedEl.textContent || '').replace(/[^0-9.-]/g, '')) || 0 : 0;
+
+    const formatMoney = (value) => {
+        return '$' + Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+
+    const updateTotals = () => {
+        let coins = 0;
+        let bills = 0;
+        countInputs.forEach((input) => {
+            const unit = Number(input.dataset.denomValue || 0);
+            const count = Math.max(0, Number(input.value || 0));
+            const subtotal = unit * count;
+            const target = document.getElementById(input.dataset.denomTarget || '');
+            if (target) target.textContent = formatMoney(subtotal);
+            if ((input.dataset.denomGroup || '') === 'coins') {
+                coins += subtotal;
+            } else {
+                bills += subtotal;
+            }
+        });
+        const total = coins + bills;
+        const diff = total - expected;
+        if (coinsTotal) coinsTotal.textContent = formatMoney(coins);
+        if (billsTotal) billsTotal.textContent = formatMoney(bills);
+        if (coinsTableTotal) coinsTableTotal.textContent = formatMoney(coins);
+        if (billsTableTotal) billsTableTotal.textContent = formatMoney(bills);
+        if (grandTotal) grandTotal.textContent = formatMoney(total);
+        if (grandInline) grandInline.textContent = formatMoney(total);
+        if (grandInput) grandInput.value = total.toFixed(2);
+        if (diffPreview) {
+            const label = diff >= 0 ? '+$' : '-$';
+            diffPreview.textContent = `${label}${Math.abs(diff).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            diffPreview.classList.toggle('text-success', diff >= 0);
+            diffPreview.classList.toggle('text-danger', diff < 0);
+            const parent = diffPreview.closest('.cash-count-footer__line');
+            if (parent) {
+                parent.classList.toggle('text-success', diff >= 0);
+                parent.classList.toggle('text-danger', diff < 0);
+                const labelNode = parent.querySelector('span');
+                if (labelNode) {
+                    labelNode.textContent = diff >= 0 ? 'Sobrante provisional' : 'Faltante provisional';
+                }
+            }
+        }
+    };
+
+    countInputs.forEach((input) => {
+        input.addEventListener('input', updateTotals);
+        input.addEventListener('change', updateTotals);
+    });
+    updateTotals();
+});
+</script>
 {% endblock %}

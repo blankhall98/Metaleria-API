@@ -39,6 +39,10 @@ def _safe_filename(value: str) -> str:
     return slug or "corte-caja"
 
 
+def _denom_section(valor: Decimal) -> str:
+    return "BILLETES" if valor >= Decimal("20") else "MONEDAS"
+
+
 def build_report(
     *,
     corte: CorteCaja,
@@ -78,6 +82,31 @@ def build_report(
         if (mov.get("categoria") or "") not in {"DOTACION_EFECTIVO", "SOBRANTE_VIATICOS", "SOBRANTE_GASTOS"}
     ]
 
+    denoms_data = []
+    denoms_monedas = []
+    denoms_billetes = []
+    for denom in denominaciones:
+        valor = _safe_decimal(denom.valor)
+        cantidad = int(denom.cantidad or 0)
+        entry = {
+            "valor": valor,
+            "cantidad": cantidad,
+            "subtotal": valor * Decimal(str(cantidad)),
+            "section": _denom_section(valor),
+        }
+        denoms_data.append(entry)
+        if entry["section"] == "MONEDAS":
+            denoms_monedas.append(entry)
+        else:
+            denoms_billetes.append(entry)
+    denoms_monedas.sort(key=lambda row: row["valor"])
+    denoms_billetes.sort(key=lambda row: row["valor"])
+
+    saldo_contado_actual = saldo_cierre
+    if corte.estado != corte.estado.cerrado:
+        saldo_contado_actual = sum((_safe_decimal(row["subtotal"]) for row in denoms_data), Decimal("0"))
+    diferencia_actual = diferencia if corte.estado == corte.estado.cerrado else saldo_contado_actual - saldo_calculado
+
     summary_items = [
         {"label": "Saldo inicial", "value": saldo_inicial, "type": "money"},
         {"label": "Dotacion efectivo", "value": _safe_decimal(manual_data.get("totals_by_categoria", {}).get("DOTACION_EFECTIVO", 0)), "type": "money"},
@@ -88,21 +117,9 @@ def build_report(
         {"label": "Otros ajustes", "value": sum((_safe_decimal(m.get("monto")) for m in otros_ajustes), Decimal("0")), "type": "money"},
         {"label": "Gastos caja chica", "value": gastos_total, "type": "money"},
         {"label": "Saldo esperado", "value": saldo_calculado, "type": "money"},
-        {"label": "Saldo contado", "value": saldo_cierre, "type": "money"},
-        {"label": "Diferencia", "value": diferencia, "type": "money"},
+        {"label": "Saldo contado", "value": saldo_contado_actual, "type": "money"},
+        {"label": "Diferencia", "value": diferencia_actual, "type": "money"},
     ]
-
-    denoms_data = []
-    for denom in denominaciones:
-        valor = _safe_decimal(denom.valor)
-        cantidad = int(denom.cantidad or 0)
-        denoms_data.append(
-            {
-                "valor": valor,
-                "cantidad": cantidad,
-                "subtotal": valor * Decimal(str(cantidad)),
-            }
-        )
 
     gastos_data = []
     for gasto in gastos:
@@ -127,8 +144,8 @@ def build_report(
         "closed_at": corte.closed_at,
         "saldo_inicial": saldo_inicial,
         "saldo_calculado": saldo_calculado,
-        "saldo_cierre": saldo_cierre,
-        "diferencia": diferencia,
+        "saldo_cierre": saldo_contado_actual,
+        "diferencia": diferencia_actual,
         "motivo_diferencia": corte.motivo_diferencia or "",
         "comentarios_cierre": corte.comentarios_cierre or "",
         "cash_ingresos": cash_ingresos,
@@ -151,6 +168,11 @@ def build_report(
         "otros_ajustes": otros_ajustes,
         "gastos": gastos_data,
         "denominaciones": denoms_data,
+        "denominaciones_monedas": denoms_monedas,
+        "denominaciones_billetes": denoms_billetes,
+        "denominaciones_total_monedas": sum((_safe_decimal(row["subtotal"]) for row in denoms_monedas), Decimal("0")),
+        "denominaciones_total_billetes": sum((_safe_decimal(row["subtotal"]) for row in denoms_billetes), Decimal("0")),
+        "denominaciones_total_general": sum((_safe_decimal(row["subtotal"]) for row in denoms_data), Decimal("0")),
         "compras_rows": compras_rows,
         "ventas_rows": ventas_rows,
         "compras_total": sum((_safe_decimal(row.get("subtotal")) for row in compras_rows), Decimal("0")),
@@ -195,16 +217,31 @@ def build_report_excel(report: dict) -> tuple[bytes, str]:
     add_row([])
 
     add_row(["Arqueo por denominaciones"])
+    add_row(["Monedas"])
     add_row(["Denominacion", "Cantidad", "Subtotal"])
-    if report["denominaciones"]:
-        for denom in report["denominaciones"]:
+    if report["denominaciones_monedas"]:
+        for denom in report["denominaciones_monedas"]:
             add_row([
                 f"${denom['valor']:.2f}",
                 str(denom["cantidad"]),
                 _format_money(_safe_decimal(denom["subtotal"])),
             ])
+        add_row(["Total monedas", "", _format_money(_safe_decimal(report["denominaciones_total_monedas"]))])
     else:
-        add_row(["Sin arqueo registrado"])
+        add_row(["Sin monedas registradas", "", ""])
+    add_row(["Billetes"])
+    add_row(["Denominacion", "Cantidad", "Subtotal"])
+    if report["denominaciones_billetes"]:
+        for denom in report["denominaciones_billetes"]:
+            add_row([
+                f"${denom['valor']:.2f}",
+                str(denom["cantidad"]),
+                _format_money(_safe_decimal(denom["subtotal"])),
+            ])
+        add_row(["Total billetes", "", _format_money(_safe_decimal(report["denominaciones_total_billetes"]))])
+    else:
+        add_row(["Sin billetes registrados", "", ""])
+    add_row(["Total general contado", "", _format_money(_safe_decimal(report["denominaciones_total_general"]))])
     add_row([])
 
     add_row(["Relacion de compras del dia"])
@@ -678,9 +715,9 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
         ("Cantidad", left + 160, 80, "right"),
         ("Subtotal", left + 240, 80, "right"),
     ]
-    draw_table_header("Arqueo por denominaciones", denom_cols)
-    if report["denominaciones"]:
-        for denom in report["denominaciones"]:
+    draw_table_header("Arqueo por denominaciones - Monedas", denom_cols)
+    if report["denominaciones_monedas"]:
+        for denom in report["denominaciones_monedas"]:
             draw_row(
                 denom_cols,
                 [
@@ -689,8 +726,25 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
                     _format_money(_safe_decimal(denom["subtotal"])),
                 ],
             )
+        draw_row(denom_cols, ["Total monedas", "", _format_money(_safe_decimal(report["denominaciones_total_monedas"]))])
     else:
-        draw_row(denom_cols, ["Sin arqueo registrado", "", ""])
+        draw_row(denom_cols, ["Sin monedas registradas", "", ""])
+
+    draw_table_header("Arqueo por denominaciones - Billetes", denom_cols)
+    if report["denominaciones_billetes"]:
+        for denom in report["denominaciones_billetes"]:
+            draw_row(
+                denom_cols,
+                [
+                    _format_money(_safe_decimal(denom["valor"])),
+                    str(denom["cantidad"]),
+                    _format_money(_safe_decimal(denom["subtotal"])),
+                ],
+            )
+        draw_row(denom_cols, ["Total billetes", "", _format_money(_safe_decimal(report["denominaciones_total_billetes"]))])
+    else:
+        draw_row(denom_cols, ["Sin billetes registrados", "", ""])
+    draw_row(denom_cols, ["Total general contado", "", _format_money(_safe_decimal(report["denominaciones_total_general"]))])
 
     # Movimientos manuales
     manual_cols = [

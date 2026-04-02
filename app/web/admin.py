@@ -115,18 +115,91 @@ _CORTE_MOV_CATEGORIAS = (
     ("OTRO", "Otro", "INGRESO"),
 )
 _CORTE_DENOMINACIONES = [
-    {"label": "$1,000", "value": Decimal("1000"), "key": "denom_1000"},
-    {"label": "$500", "value": Decimal("500"), "key": "denom_500"},
-    {"label": "$200", "value": Decimal("200"), "key": "denom_200"},
-    {"label": "$100", "value": Decimal("100"), "key": "denom_100"},
-    {"label": "$50", "value": Decimal("50"), "key": "denom_50"},
-    {"label": "$20", "value": Decimal("20"), "key": "denom_20"},
-    {"label": "$10", "value": Decimal("10"), "key": "denom_10"},
-    {"label": "$5", "value": Decimal("5"), "key": "denom_5"},
-    {"label": "$2", "value": Decimal("2"), "key": "denom_2"},
-    {"label": "$1", "value": Decimal("1"), "key": "denom_1"},
-    {"label": "$0.50", "value": Decimal("0.5"), "key": "denom_0_5"},
+    {"label": "$0.10", "value": Decimal("0.10"), "key": "denom_0_1", "section": "MONEDAS"},
+    {"label": "$0.20", "value": Decimal("0.20"), "key": "denom_0_2", "section": "MONEDAS"},
+    {"label": "$0.50", "value": Decimal("0.50"), "key": "denom_0_5", "section": "MONEDAS"},
+    {"label": "$1", "value": Decimal("1"), "key": "denom_1", "section": "MONEDAS"},
+    {"label": "$2", "value": Decimal("2"), "key": "denom_2", "section": "MONEDAS"},
+    {"label": "$5", "value": Decimal("5"), "key": "denom_5", "section": "MONEDAS"},
+    {"label": "$10", "value": Decimal("10"), "key": "denom_10", "section": "MONEDAS"},
+    {"label": "$20", "value": Decimal("20"), "key": "denom_20", "section": "BILLETES"},
+    {"label": "$50", "value": Decimal("50"), "key": "denom_50", "section": "BILLETES"},
+    {"label": "$100", "value": Decimal("100"), "key": "denom_100", "section": "BILLETES"},
+    {"label": "$200", "value": Decimal("200"), "key": "denom_200", "section": "BILLETES"},
+    {"label": "$500", "value": Decimal("500"), "key": "denom_500", "section": "BILLETES"},
+    {"label": "$1,000", "value": Decimal("1000"), "key": "denom_1000", "section": "BILLETES"},
 ]
+
+
+def _parse_corte_denominaciones_form(form) -> tuple[list[tuple[Decimal, int]], Decimal, dict[str, str], str | None]:
+    form_data: dict[str, str] = {}
+    denom_entries: list[tuple[Decimal, int]] = []
+    saldo_total = Decimal("0")
+    for denom in _CORTE_DENOMINACIONES:
+        raw = (form.get(denom["key"]) or "").strip()
+        form_data[denom["key"]] = raw
+        if not raw:
+            cantidad = 0
+        else:
+            try:
+                cantidad = int(raw)
+            except (ValueError, TypeError):
+                return [], Decimal("0"), form_data, f"Cantidad invalida para {denom['label']}."
+        if cantidad < 0:
+            return [], Decimal("0"), form_data, "Las cantidades de denominaciones no pueden ser negativas."
+        if cantidad:
+            denom_entries.append((denom["value"], cantidad))
+        saldo_total += denom["value"] * Decimal(str(cantidad))
+    return denom_entries, saldo_total, form_data, None
+
+
+def _replace_corte_denominaciones(db: Session, corte: CorteCaja, denom_entries: list[tuple[Decimal, int]]) -> None:
+    db.query(CorteCajaDenominacion).filter(CorteCajaDenominacion.corte_id == corte.id).delete(synchronize_session=False)
+    for valor, cantidad in denom_entries:
+        db.add(
+            CorteCajaDenominacion(
+                corte_id=corte.id,
+                valor=valor,
+                cantidad=cantidad,
+                created_at=datetime.utcnow(),
+            )
+        )
+
+
+def _build_corte_denom_inputs(
+    denom_map: dict[Decimal, int],
+    form_data: dict | None = None,
+) -> tuple[list[dict], list[dict], list[dict], Decimal, Decimal, Decimal]:
+    form_data = form_data or {}
+    denom_inputs: list[dict] = []
+    monedas: list[dict] = []
+    billetes: list[dict] = []
+    total_monedas = Decimal("0")
+    total_billetes = Decimal("0")
+
+    for denom in _CORTE_DENOMINACIONES:
+        key = denom["key"]
+        if key in form_data:
+            raw_val = form_data.get(key)
+            count_val = raw_val if raw_val not in (None, "") else 0
+        else:
+            count_val = denom_map.get(denom["value"], 0)
+        try:
+            count_int = int(str(count_val))
+        except (ValueError, TypeError):
+            count_int = 0
+
+        subtotal = denom["value"] * Decimal(str(count_int))
+        item = {**denom, "count": count_val, "subtotal": subtotal}
+        denom_inputs.append(item)
+        if denom.get("section") == "MONEDAS":
+            monedas.append(item)
+            total_monedas += subtotal
+        else:
+            billetes.append(item)
+            total_billetes += subtotal
+
+    return denom_inputs, monedas, billetes, total_monedas, total_billetes, total_monedas + total_billetes
 
 
 def _movimiento_tipo_operacion(mov: MovimientoContable) -> str | None:
@@ -13243,22 +13316,14 @@ def _render_corte_caja(
         saldo_calculado = Decimal(str(corte.saldo_calculado or 0))
 
     form_data = form_data or {}
-    denom_inputs = []
-    denom_total = Decimal("0")
-    for denom in _CORTE_DENOMINACIONES:
-        key = denom["key"]
-        if key in form_data:
-            raw_val = form_data.get(key)
-            count_val = raw_val if raw_val not in (None, "") else 0
-        else:
-            count_val = denom_map.get(denom["value"], 0)
-        try:
-            count_int = int(str(count_val))
-        except (ValueError, TypeError):
-            count_int = 0
-        subtotal = denom["value"] * Decimal(str(count_int))
-        denom_total += subtotal
-        denom_inputs.append({**denom, "count": count_val, "subtotal": subtotal})
+    (
+        denom_inputs,
+        denom_monedas,
+        denom_billetes,
+        denom_total_monedas,
+        denom_total_billetes,
+        denom_total,
+    ) = _build_corte_denom_inputs(denom_map, form_data)
 
     movimientos_by_categoria = manual_data.get("movimientos_by_categoria", {})
     totals_by_categoria = manual_data.get("totals_by_categoria", {})
@@ -13274,6 +13339,7 @@ def _render_corte_caja(
     sobrantes_viaticos_total = abs(Decimal(str(totals_by_categoria.get("SOBRANTE_VIATICOS", 0) or 0)))
     sobrantes_gastos_total = abs(Decimal(str(totals_by_categoria.get("SOBRANTE_GASTOS", 0) or 0)))
     otros_ajustes_total = sum((Decimal(str(mov.get("monto_abs") or 0)) for mov in otros_ajustes_rows), Decimal("0"))
+    diferencia_provisional = denom_total - saldo_calculado_actual
 
     return templates.TemplateResponse(
         "admin/corte_caja.html",
@@ -13323,7 +13389,12 @@ def _render_corte_caja(
             "saldo_calculado": saldo_calculado,
             "denominaciones": denominaciones,
             "denom_inputs": denom_inputs,
+            "denom_monedas": denom_monedas,
+            "denom_billetes": denom_billetes,
+            "denom_total_monedas": denom_total_monedas,
+            "denom_total_billetes": denom_total_billetes,
             "denom_total": denom_total,
+            "diferencia_provisional": diferencia_provisional,
             "historial": historial,
             "error": error,
             "success": success,
@@ -13682,6 +13753,56 @@ async def corte_caja_add_movimiento(
     )
 
 
+@router.post("/corte-caja/{corte_id}/arqueo")
+async def corte_caja_guardar_arqueo(
+    corte_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    form = await request.form()
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    corte = db.get(CorteCaja, corte_id)
+    if not corte:
+        raise HTTPException(status_code=404, detail="Corte de caja no encontrado.")
+    if corte.estado != CorteCajaEstado.abierto:
+        return _render_corte_caja(
+            request,
+            db,
+            current_user,
+            sucursal_id=corte.sucursal_id,
+            fecha=corte.fecha,
+            allowed_suc_ids=allowed_suc_ids,
+            error="El corte ya esta cerrado.",
+        )
+    if allowed_suc_ids is not None and corte.sucursal_id not in allowed_suc_ids:
+        raise HTTPException(status_code=403, detail="No tienes acceso a esta sucursal.")
+
+    denom_entries, saldo_contado, form_data, denom_error = _parse_corte_denominaciones_form(form)
+    if denom_error:
+        form_data["saldo_cierre"] = f"{saldo_contado:.2f}"
+        return _render_corte_caja(
+            request,
+            db,
+            current_user,
+            sucursal_id=corte.sucursal_id,
+            fecha=corte.fecha,
+            allowed_suc_ids=allowed_suc_ids,
+            error=denom_error,
+            form_data=form_data,
+        )
+
+    _replace_corte_denominaciones(db, corte, denom_entries)
+    corte.updated_at = datetime.utcnow()
+    db.add(corte)
+    db.commit()
+
+    return RedirectResponse(
+        url=f"/web/admin/corte-caja?sucursal_id={corte.sucursal_id}&fecha={corte.fecha.isoformat()}&success=arqueo",
+        status_code=303,
+    )
+
+
 @router.post("/corte-caja/{corte_id}/cerrar")
 async def corte_caja_cerrar(
     corte_id: int,
@@ -13707,47 +13828,24 @@ async def corte_caja_cerrar(
 
     comentarios = (form.get("comentarios_cierre") or "").strip()
     motivo_diferencia = (form.get("motivo_diferencia") or "").strip()
+    denom_entries, saldo_cierre, denom_form_data, denom_error = _parse_corte_denominaciones_form(form)
     form_data = {
+        **denom_form_data,
         "cierre_comentarios": comentarios,
         "motivo_diferencia": motivo_diferencia,
     }
-    for denom in _CORTE_DENOMINACIONES:
-        form_data[denom["key"]] = (form.get(denom["key"]) or "").strip()
-
-    denom_entries: list[tuple[Decimal, int]] = []
-    saldo_cierre = Decimal("0")
-    for denom in _CORTE_DENOMINACIONES:
-        raw = (form.get(denom["key"]) or "").strip()
-        if not raw:
-            cantidad = 0
-        else:
-            try:
-                cantidad = int(raw)
-            except (ValueError, TypeError):
-                return _render_corte_caja(
-                    request,
-                    db,
-                    current_user,
-                    sucursal_id=corte.sucursal_id,
-                    fecha=corte.fecha,
-                    allowed_suc_ids=allowed_suc_ids,
-                    error=f"Cantidad invalida para {denom['label']}.",
-                    form_data=form_data,
-                )
-        if cantidad < 0:
-            return _render_corte_caja(
-                request,
-                db,
-                current_user,
-                sucursal_id=corte.sucursal_id,
-                fecha=corte.fecha,
-                allowed_suc_ids=allowed_suc_ids,
-                error="Las cantidades de denominaciones no pueden ser negativas.",
-                form_data=form_data,
-            )
-        if cantidad:
-            denom_entries.append((denom["value"], cantidad))
-        saldo_cierre += denom["value"] * Decimal(str(cantidad))
+    if denom_error:
+        form_data["saldo_cierre"] = f"{saldo_cierre:.2f}"
+        return _render_corte_caja(
+            request,
+            db,
+            current_user,
+            sucursal_id=corte.sucursal_id,
+            fecha=corte.fecha,
+            allowed_suc_ids=allowed_suc_ids,
+            error=denom_error,
+            form_data=form_data,
+        )
     form_data["saldo_cierre"] = f"{saldo_cierre:.2f}"
 
     cash_data = _build_corte_cash_movimientos(db, sucursal_id=corte.sucursal_id, fecha=corte.fecha)
@@ -13777,16 +13875,7 @@ async def corte_caja_cerrar(
     corte.closed_at = datetime.utcnow()
     corte.updated_at = datetime.utcnow()
     db.add(corte)
-    db.query(CorteCajaDenominacion).filter(CorteCajaDenominacion.corte_id == corte.id).delete(synchronize_session=False)
-    for valor, cantidad in denom_entries:
-        db.add(
-            CorteCajaDenominacion(
-                corte_id=corte.id,
-                valor=valor,
-                cantidad=cantidad,
-                created_at=datetime.utcnow(),
-            )
-        )
+    _replace_corte_denominaciones(db, corte, denom_entries)
     db.commit()
 
     return RedirectResponse(
