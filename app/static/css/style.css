@@ -489,6 +489,140 @@ a:hover {
     }
 }
 
+.entity-summary-strip {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.entity-list-card,
+.entity-form-card,
+.entity-side-card {
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    box-shadow: 0 16px 36px rgba(15, 23, 42, 0.06);
+}
+
+.entity-table th {
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--slate);
+    border-top: none;
+    white-space: nowrap;
+}
+
+.entity-table td {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+    vertical-align: middle;
+}
+
+.entity-identity {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    min-width: 220px;
+}
+
+.entity-avatar {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.85rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(215, 161, 59, 0.16));
+    border: 1px solid rgba(59, 130, 246, 0.15);
+    color: var(--ink);
+    font-weight: 800;
+    flex: 0 0 auto;
+}
+
+.entity-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.entity-avatar-lg {
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: 1rem;
+    font-size: 1.2rem;
+}
+
+.entity-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+}
+
+.entity-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.32rem 0.7rem;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.05);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    color: var(--text-main);
+    font-size: 0.78rem;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.entity-chip.muted {
+    color: var(--text-muted);
+}
+
+.entity-form-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.8fr);
+    gap: 1rem;
+    align-items: start;
+}
+
+.entity-form-grid {
+    display: grid;
+    gap: 1rem;
+}
+
+.entity-form-section {
+    padding: 1rem 1.05rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.94));
+}
+
+.entity-preview-card {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 0.85rem 0;
+}
+
+.entity-preview-card strong {
+    display: block;
+    color: var(--ink);
+    margin-bottom: 0.2rem;
+}
+
+.entity-preview-card p {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+@media (max-width: 991px) {
+    .entity-form-shell {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .entity-identity {
+        min-width: 200px;
+    }
+}
+
 .ops-inline-pill {
     display: inline-flex;
     align-items: center;
