@@ -13509,10 +13509,11 @@ async def inventario_movimientos(
         created_from=created_from,
         created_to=created_to,
     )
-    compra_movimientos = compra_summary_query.order_by(InventarioMovimiento.created_at.desc()).limit(2000).all()
+    compra_movimientos = compra_summary_query.order_by(InventarioMovimiento.created_at.desc()).all()
     compra_total_kg = Decimal("0")
     compra_total_monto = Decimal("0")
     compra_rows_map: dict[int, dict] = {}
+    compra_material_rows_map: dict[int, dict] = {}
     compra_note_ids: list[int] = []
     compra_nota_material_ids = [
         mov.nota_material_id
@@ -13532,6 +13533,24 @@ async def inventario_movimientos(
         if mov.nota_material_id and compra_nota_material_map.get(mov.nota_material_id):
             subtotal = Decimal(str(compra_nota_material_map[mov.nota_material_id].subtotal or 0))
             compra_total_monto += subtotal
+        material = mov.inventario.material if mov.inventario and mov.inventario.material else None
+        if material:
+            if material.id not in compra_material_rows_map:
+                compra_material_rows_map[material.id] = {
+                    "material_id": material.id,
+                    "material": material.nombre,
+                    "cantidad_kg": Decimal("0"),
+                    "monto": Decimal("0"),
+                    "nota_ids": set(),
+                    "sucursales": set(),
+                }
+            material_row = compra_material_rows_map[material.id]
+            material_row["cantidad_kg"] += qty
+            material_row["monto"] += subtotal
+            if mov.nota_id:
+                material_row["nota_ids"].add(mov.nota_id)
+            if mov.inventario.sucursal:
+                material_row["sucursales"].add(mov.inventario.sucursal.nombre)
         if mov.nota_id:
             if mov.nota_id not in compra_rows_map:
                 compra_rows_map[mov.nota_id] = {
@@ -13590,6 +13609,33 @@ async def inventario_movimientos(
         )
 
     selected_material = next((m for m in materiales if material_id and m.id == material_id), None)
+    compra_material_rows = []
+    for row in sorted(compra_material_rows_map.values(), key=lambda item: item["material"].lower()):
+        cantidad_kg = row["cantidad_kg"]
+        monto = row["monto"]
+        precio_promedio = (monto / cantidad_kg) if cantidad_kg > Decimal("0") else Decimal("0")
+        compra_material_rows.append(
+            {
+                "material_id": row["material_id"],
+                "material": row["material"],
+                "cantidad_kg": cantidad_kg,
+                "monto": monto,
+                "precio_promedio": precio_promedio,
+                "notas_count": len(row["nota_ids"]),
+                "sucursales": sorted(row["sucursales"]),
+            }
+        )
+    precio_promedio_compra = None
+    if selected_material:
+        selected_material_row = next(
+            (row for row in compra_material_rows if row["material_id"] == selected_material.id),
+            None,
+        )
+        precio_promedio_compra = (
+            selected_material_row["precio_promedio"]
+            if selected_material_row
+            else Decimal("0")
+        )
     date_scope_label = "Todo el historial"
     if date_from and date_to:
         date_scope_label = f"{format_date_local(date_from)} al {format_date_local(date_to)}"
@@ -13621,6 +13667,8 @@ async def inventario_movimientos(
             "compra_total_notas": len(compra_notas_rows),
             "compra_total_movimientos": len(compra_movimientos),
             "compra_notas_rows": compra_notas_rows,
+            "compra_material_rows": compra_material_rows,
+            "precio_promedio_compra": precio_promedio_compra,
             "ajustes_by_mov_id": ajustes_by_mov_id,
             "can_manage_inventory": not _is_read_only_admin_user(current_user),
             "can_export_inventory": not _is_read_only_admin_user(current_user),

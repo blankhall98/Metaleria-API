@@ -113,20 +113,71 @@
     <div class="col-xl-3 col-lg-6">
         <div class="card hover-lift h-100">
             <div class="card-body">
-                <p class="text-uppercase text-muted small mb-2">Notas de compra</p>
-                <div class="h4 text-white mb-1">{{ compra_total_notas }}</div>
-                <div class="text-muted small">Notas distintas encontradas en el rango.</div>
+                <p class="text-uppercase text-muted small mb-2">Precio promedio compra</p>
+                {% if selected_material %}
+                    <div class="h4 text-white mb-1">${{ "{:,.5f}".format(precio_promedio_compra or 0) }}</div>
+                    <div class="text-muted small">Promedio ponderado por kg para {{ selected_material.nombre }}.</div>
+                {% else %}
+                    <div class="h4 text-white mb-1">{{ compra_material_rows|length }}</div>
+                    <div class="text-muted small">Materiales con compras en el rango. El promedio por material aparece abajo.</div>
+                {% endif %}
             </div>
         </div>
     </div>
     <div class="col-xl-3 col-lg-6">
         <div class="card hover-lift h-100">
             <div class="card-body">
-                <p class="text-uppercase text-muted small mb-2">Movimientos de compra</p>
-                <div class="h4 text-white mb-1">{{ compra_total_movimientos }}</div>
-                <div class="text-muted small">Entradas de inventario de tipo compra consideradas.</div>
+                <p class="text-uppercase text-muted small mb-2">Notas de compra</p>
+                <div class="h4 text-white mb-1">{{ compra_total_notas }}</div>
+                <div class="text-muted small">{{ compra_total_movimientos }} movimientos de compra considerados.</div>
             </div>
         </div>
+    </div>
+</div>
+
+<div class="card hover-lift mb-3">
+    <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <div>
+                <h2 class="h5 text-white mb-1">Precio promedio de compra por material</h2>
+                <p class="text-muted small mb-0">Promedio ponderado por kilos dentro del rango seleccionado.</p>
+            </div>
+            <div class="text-muted small">
+                {{ compra_material_rows|length }} materiales analizados
+            </div>
+        </div>
+        <div class="table-scroll-shell">
+            <div class="table-responsive scroll-x note-table-scroll">
+                <table class="table table-hover table-sm align-middle mb-0">
+                    <thead>
+                    <tr>
+                        <th>Material</th>
+                        <th>Kg comprados</th>
+                        <th>Monto comprado</th>
+                        <th>Precio promedio/kg</th>
+                        <th>Notas</th>
+                        <th>Sucursal(es)</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for row in compra_material_rows %}
+                        <tr>
+                            <td><span class="fw-semibold">{{ row.material }}</span></td>
+                            <td>{{ "{:,.2f}".format(row.cantidad_kg or 0) }} kg</td>
+                            <td>${{ "{:,.2f}".format(row.monto or 0) }}</td>
+                            <td class="fw-semibold">${{ "{:,.5f}".format(row.precio_promedio or 0) }}</td>
+                            <td>{{ row.notas_count }}</td>
+                            <td>{{ row.sucursales|join(', ') if row.sucursales else '-' }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para comparar el promedio de compra entre materiales y sucursales.</div>
+        </div>
+        {% if compra_material_rows|length == 0 %}
+            <p class="text-muted small mt-3 mb-0">No hay compras registradas en el rango para calcular precio promedio.</p>
+        {% endif %}
     </div>
 </div>
 
