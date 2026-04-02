@@ -3589,6 +3589,42 @@ async def sucursal_edit_post(
 # ---------- USUARIOS ----------
 
 
+def _user_access_labels(user: User, sucursales_map: dict[int, Sucursal]) -> list[str]:
+    if user.rol == UserRole.admin:
+        labels = [s.nombre for s in user.sucursales_admin]
+        if not labels and user.sucursal_id and sucursales_map.get(user.sucursal_id):
+            labels = [sucursales_map[user.sucursal_id].nombre]
+        return labels or ["Sin sucursales"]
+    if user.rol == UserRole.trabajador:
+        if user.sucursal_id and sucursales_map.get(user.sucursal_id):
+            return [sucursales_map[user.sucursal_id].nombre]
+        return ["Sin sucursal"]
+    if user.rol == UserRole.visor:
+        return ["Consulta global"]
+    return ["Control total"]
+
+
+def _build_user_form_data(
+    *,
+    username: str = "",
+    nombre_completo: str = "",
+    rol: str = "admin",
+    estado: str = "activo",
+    sucursal_id: int | str | None = None,
+    admin_sucursal_ids: list[int | str] | None = None,
+    super_admin_original: bool = False,
+) -> dict:
+    return {
+        "username": username,
+        "nombre_completo": nombre_completo,
+        "rol": rol,
+        "estado": estado,
+        "sucursal_id": "" if sucursal_id in (None, "") else str(sucursal_id),
+        "admin_sucursal_ids": [str(sid) for sid in (admin_sucursal_ids or []) if sid not in (None, "")],
+        "super_admin_original": bool(super_admin_original),
+    }
+
+
 @router.get("/users")
 async def users_list(
     request: Request,
@@ -3612,7 +3648,16 @@ async def users_list(
         usuarios = usuarios.filter(User.sucursal_id == sucursal_id_int)
     usuarios = usuarios.all()
     sucursales = {s.id: s for s in db.query(Sucursal).all()}
+    users_summary = {
+        "total": len(usuarios),
+        "activos": sum(1 for u in usuarios if u.estado == UserStatus.activo),
+        "admins": sum(1 for u in usuarios if u.rol == UserRole.admin),
+        "trabajadores": sum(1 for u in usuarios if u.rol == UserRole.trabajador),
+        "visores": sum(1 for u in usuarios if u.rol == UserRole.visor),
+        "super_admins": sum(1 for u in usuarios if u.rol == UserRole.super_admin),
+    }
     user_delete_meta = {}
+    user_access_map = {}
     for u in usuarios:
         reason = _user_delete_block_reason(
             db,
@@ -3623,6 +3668,7 @@ async def users_list(
             "can_delete": reason is None,
             "reason": reason,
         }
+        user_access_map[u.id] = _user_access_labels(u, sucursales)
 
     return templates.TemplateResponse(
         "admin/users_list.html",
@@ -3637,6 +3683,8 @@ async def users_list(
             "delete_ok": delete_ok,
             "delete_error": delete_error,
             "user_delete_meta": user_delete_meta,
+            "user_access_map": user_access_map,
+            "users_summary": users_summary,
         },
     )
 
@@ -3656,6 +3704,7 @@ async def user_new_get(
             "user": current_user,
             "sucursales": sucursales,
             "error": None,
+            "form_data": _build_user_form_data(),
         },
     )
 
@@ -3676,6 +3725,13 @@ async def user_new_post(
     nombre_completo = nombre_completo.strip()
 
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    form_data = _build_user_form_data(
+        username=username,
+        nombre_completo=nombre_completo,
+        rol=rol,
+        sucursal_id=sucursal_id,
+        admin_sucursal_ids=admin_sucursal_ids,
+    )
 
     if not username or not nombre_completo or not password:
         return templates.TemplateResponse(
@@ -3828,6 +3884,15 @@ async def user_edit_get(
             "sucursales": sucursales,
             "admin_sucursal_ids": admin_sucursal_ids,
             "error": None,
+            "form_data": _build_user_form_data(
+                username=user.username,
+                nombre_completo=user.nombre_completo,
+                rol=user.rol.value,
+                estado=user.estado.value,
+                sucursal_id=user.sucursal_id,
+                admin_sucursal_ids=admin_sucursal_ids,
+                super_admin_original=user.super_admin_original,
+            ),
         },
     )
 
@@ -3867,7 +3932,17 @@ async def user_edit_post(
                 "user": current_user,
                 "edit_user": user,
                 "sucursales": sucursales,
+                "admin_sucursal_ids": selected_admin_suc_ids,
                 "error": msg,
+                "form_data": _build_user_form_data(
+                    username=username,
+                    nombre_completo=nombre_completo,
+                    rol=rol,
+                    estado=estado,
+                    sucursal_id=sucursal_id,
+                    admin_sucursal_ids=admin_sucursal_ids,
+                    super_admin_original=bool(super_admin_original),
+                ),
             },
             status_code=400,
         )

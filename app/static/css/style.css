@@ -259,6 +259,236 @@ a:hover {
     gap: 0.55rem;
 }
 
+.users-summary-strip {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.user-toolbar-card,
+.users-management-card,
+.user-form-card,
+.user-side-card {
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    box-shadow: 0 16px 36px rgba(15, 23, 42, 0.06);
+}
+
+.user-toolbar-copy {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.55rem;
+    min-height: 42px;
+}
+
+.users-table th {
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--slate);
+    border-top: none;
+    white-space: nowrap;
+}
+
+.users-table td {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+    vertical-align: middle;
+}
+
+.users-identity {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    min-width: 240px;
+}
+
+.user-table-avatar {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.85rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(215, 161, 59, 0.16));
+    border: 1px solid rgba(59, 130, 246, 0.15);
+    color: var(--ink);
+    font-weight: 800;
+}
+
+.users-role-stack,
+.user-access-chips,
+.users-action-stack {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.user-role-chip,
+.user-status-chip,
+.user-flag-chip,
+.user-access-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.3rem 0.7rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.user-role-chip {
+    font-weight: 700;
+    border: 1px solid transparent;
+}
+
+.user-role-chip.role-super_admin {
+    background: rgba(37, 99, 235, 0.12);
+    border-color: rgba(37, 99, 235, 0.2);
+    color: #1d4ed8;
+}
+
+.user-role-chip.role-admin {
+    background: rgba(14, 165, 233, 0.12);
+    border-color: rgba(14, 165, 233, 0.2);
+    color: #0369a1;
+}
+
+.user-role-chip.role-visor {
+    background: rgba(15, 118, 110, 0.12);
+    border-color: rgba(15, 118, 110, 0.2);
+    color: #0f766e;
+}
+
+.user-role-chip.role-trabajador {
+    background: rgba(217, 119, 6, 0.12);
+    border-color: rgba(217, 119, 6, 0.2);
+    color: #b45309;
+}
+
+.user-status-chip.is-active {
+    background: rgba(22, 163, 74, 0.12);
+    color: #15803d;
+}
+
+.user-status-chip.is-inactive {
+    background: rgba(100, 116, 139, 0.14);
+    color: #475569;
+}
+
+.user-flag-chip {
+    background: rgba(245, 158, 11, 0.14);
+    color: #b45309;
+}
+
+.user-access-chip {
+    background: rgba(15, 23, 42, 0.05);
+    color: var(--text-main);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.user-form-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.8fr);
+    gap: 1rem;
+    align-items: start;
+}
+
+.user-form-grid {
+    display: grid;
+    gap: 1rem;
+}
+
+.user-form-section {
+    padding: 1rem 1.05rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.94));
+}
+
+.user-role-explainer {
+    margin-top: 1rem;
+    padding: 0.95rem 1rem;
+    border-radius: 0.95rem;
+    background: radial-gradient(circle at top right, rgba(37, 99, 235, 0.08), transparent 40%), rgba(239, 246, 255, 0.9);
+    border: 1px solid rgba(147, 197, 253, 0.35);
+}
+
+.user-role-explainer strong {
+    display: block;
+    color: var(--ink);
+    margin-bottom: 0.2rem;
+}
+
+.user-role-explainer p {
+    color: var(--text-muted);
+    font-size: 0.92rem;
+}
+
+.user-persona-grid {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.user-persona-card {
+    padding: 0.9rem 0.95rem;
+    border-radius: 0.95rem;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background: rgba(248, 250, 252, 0.88);
+}
+
+.user-persona-card strong {
+    display: block;
+    color: var(--ink);
+    margin-bottom: 0.25rem;
+}
+
+.user-persona-card p,
+.user-side-stat span,
+.user-super-flag + .form-text {
+    margin: 0;
+    font-size: 0.88rem;
+    color: var(--text-muted);
+}
+
+.user-side-stat {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.65rem 0;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.user-side-stat:last-child {
+    border-bottom: none;
+}
+
+.user-side-stat strong {
+    color: var(--ink);
+}
+
+.user-super-flag {
+    margin-top: 0.2rem;
+}
+
+@media (max-width: 991px) {
+    .user-form-shell {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .users-identity {
+        min-width: 210px;
+    }
+
+    .users-table td {
+        padding-top: 0.8rem;
+        padding-bottom: 0.8rem;
+    }
+}
+
 .ops-inline-pill {
     display: inline-flex;
     align-items: center;
