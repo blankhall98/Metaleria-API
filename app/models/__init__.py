@@ -35,7 +35,13 @@ from .note import (
     NotaDevolucionParcialAplicacion,
     NotaDevolucionTotal,
 )
-from .inventory import Inventario, InventarioMovimiento, MovimientoContable, InventarioAjusteManual
+from .inventory import (
+    Inventario,
+    InventarioMovimiento,
+    MovimientoContable,
+    InventarioAjusteManual,
+    InventarioValorPrecio,
+)
 
 __all__ = [
     "User",
@@ -86,5 +92,6 @@ __all__ = [
     "InventarioMovimiento",
     "MovimientoContable",
     "InventarioAjusteManual",
+    "InventarioValorPrecio",
 ]
 

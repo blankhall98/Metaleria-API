@@ -32,6 +32,7 @@
             {% endif %}
             <div class="col-md-4 d-grid d-md-flex gap-2">
                 <a class="btn btn-outline-primary" href="/web/admin/inventario/movimientos">Ver movimientos</a>
+                <a class="btn btn-outline-primary" href="/web/admin/inventario/valor{% if sucursal_id %}?sucursal_id={{ sucursal_id }}{% endif %}">Valor inventario</a>
                 {% if can_manage_inventory %}
                     <a class="btn btn-primary" href="/web/admin/inventario/ajuste">Ajuste</a>
                 {% endif %}

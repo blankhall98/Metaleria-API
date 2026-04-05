@@ -61,6 +61,7 @@ from app.models import (
     MovimientoContable,
     Material,
     InventarioMovimiento,
+    InventarioValorPrecio,
     NotaDevolucionParcial,
     NotaDevolucionParcialLinea,
     NotaDevolucionTotal,
@@ -2785,6 +2786,108 @@ def _inventory_local_date_range_to_utc(
             .replace(tzinfo=None)
         )
     return start_utc, end_utc
+
+
+def _get_inventory_valuation_default_prices(
+    db: Session,
+    material_ids: list[int],
+) -> dict[int, Decimal]:
+    if not material_ids:
+        return {}
+    precios = (
+        db.query(TablaPrecio)
+        .filter(
+            TablaPrecio.material_id.in_(material_ids),
+            TablaPrecio.tipo_operacion == TipoOperacion.venta,
+            TablaPrecio.tipo_cliente == TipoCliente.regular,
+            TablaPrecio.activo.is_(True),
+        )
+        .order_by(TablaPrecio.material_id.asc(), TablaPrecio.version.desc())
+        .all()
+    )
+    result: dict[int, Decimal] = {}
+    for precio in precios:
+        if precio.material_id not in result:
+            result[precio.material_id] = Decimal(str(precio.precio_por_unidad or 0))
+    return result
+
+
+def _build_inventario_valor_rows(
+    db: Session,
+    *,
+    sucursal_id: int,
+) -> tuple[list[dict], Decimal, Decimal, int]:
+    materiales = db.query(Material).order_by(Material.nombre.asc()).all()
+    material_ids = [m.id for m in materiales]
+    inventarios = (
+        db.query(Inventario)
+        .filter(Inventario.sucursal_id == sucursal_id)
+        .all()
+    )
+    inventario_map = {inv.material_id: inv for inv in inventarios}
+    valuation_map = {
+        row.material_id: row
+        for row in db.query(InventarioValorPrecio)
+        .filter(InventarioValorPrecio.sucursal_id == sucursal_id)
+        .all()
+    }
+    default_price_map = _get_inventory_valuation_default_prices(db, material_ids)
+
+    rows: list[dict] = []
+    total_kg = Decimal("0")
+    total_valor = Decimal("0")
+    materiales_con_stock = 0
+    for material in materiales:
+        inventario = inventario_map.get(material.id)
+        stock = Decimal(str(inventario.stock_actual if inventario else 0))
+        valuation = valuation_map.get(material.id)
+        precio_referencia = (
+            Decimal(str(valuation.precio_referencia))
+            if valuation is not None
+            else default_price_map.get(material.id, Decimal("0"))
+        )
+        valor_total = stock * precio_referencia
+        if stock > 0:
+            materiales_con_stock += 1
+        total_kg += stock
+        total_valor += valor_total
+        rows.append(
+            {
+                "material_id": material.id,
+                "material": material,
+                "inventario": inventario,
+                "stock_actual": stock,
+                "precio_referencia": precio_referencia,
+                "precio_guardado": valuation,
+                "usa_default": valuation is None and material.id in default_price_map,
+                "valor_total": valor_total,
+                "updated_at": valuation.updated_at if valuation else None,
+            }
+        )
+    return rows, total_kg, total_valor, materiales_con_stock
+
+
+def _build_inventario_valor_summary(
+    db: Session,
+    *,
+    sucursales: list[Sucursal],
+) -> list[dict]:
+    summary_rows: list[dict] = []
+    for sucursal in sucursales:
+        rows, total_kg, total_valor, materiales_con_stock = _build_inventario_valor_rows(
+            db,
+            sucursal_id=sucursal.id,
+        )
+        summary_rows.append(
+            {
+                "sucursal": sucursal,
+                "total_kg": total_kg,
+                "total_valor": total_valor,
+                "materiales_con_stock": materiales_con_stock,
+                "materiales_total": len(rows),
+            }
+        )
+    return summary_rows
 
 
 def _build_partner_record_context(
@@ -12236,6 +12339,133 @@ async def inventario_list(
             "can_manage_inventory": not _is_read_only_admin_user(current_user),
         },
     )
+
+
+@router.get("/inventario/valor")
+async def inventario_valor_get(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_viewer_or_admin_or_superadmin),
+):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
+
+    sel = request.query_params.get("sucursal_id")
+    sucursal_id = None
+    if sel:
+        try:
+            sucursal_id = int(sel)
+        except ValueError:
+            sucursal_id = None
+    if allowed_suc_ids is not None:
+        if sucursal_id and sucursal_id not in allowed_suc_ids:
+            sucursal_id = None
+        if sucursal_id is None and len(allowed_suc_ids) == 1:
+            sucursal_id = allowed_suc_ids[0]
+
+    selected_sucursal = db.get(Sucursal, sucursal_id) if sucursal_id else None
+    rows: list[dict] = []
+    total_kg = Decimal("0")
+    total_valor = Decimal("0")
+    materiales_con_stock = 0
+    sucursal_summary: list[dict] = []
+    if selected_sucursal:
+        rows, total_kg, total_valor, materiales_con_stock = _build_inventario_valor_rows(
+            db,
+            sucursal_id=selected_sucursal.id,
+        )
+    else:
+        sucursal_summary = _build_inventario_valor_summary(db, sucursales=sucursales)
+
+    return templates.TemplateResponse(
+        "admin/inventario_valor.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "sucursales": sucursales,
+            "sucursal_id": sucursal_id,
+            "selected_sucursal": selected_sucursal,
+            "rows": rows,
+            "total_kg": total_kg,
+            "total_valor": total_valor,
+            "materiales_con_stock": materiales_con_stock,
+            "sucursal_summary": sucursal_summary,
+            "saved": request.query_params.get("saved") == "1",
+            "error": request.query_params.get("error"),
+            "can_manage_inventory_value": not _is_read_only_admin_user(current_user),
+        },
+    )
+
+
+@router.post("/inventario/valor")
+async def inventario_valor_post(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    if _is_read_only_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="No tienes permisos para editar el valor del inventario.")
+
+    form = await request.form()
+    sucursal_raw = (form.get("sucursal_id") or "").strip()
+    try:
+        sucursal_id = int(sucursal_raw)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Sucursal invalida.")
+
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    if allowed_suc_ids is not None and sucursal_id not in allowed_suc_ids:
+        raise HTTPException(status_code=403, detail="Sucursal no autorizada.")
+
+    sucursal = db.get(Sucursal, sucursal_id)
+    if not sucursal:
+        raise HTTPException(status_code=404, detail="Sucursal no encontrada.")
+
+    materiales = db.query(Material).all()
+    existing_map = {
+        row.material_id: row
+        for row in db.query(InventarioValorPrecio)
+        .filter(InventarioValorPrecio.sucursal_id == sucursal_id)
+        .all()
+    }
+
+    for material in materiales:
+        raw = (form.get(f"precio_{material.id}") or "").strip()
+        existing = existing_map.get(material.id)
+        if not raw:
+            if existing:
+                db.delete(existing)
+            continue
+        try:
+            precio = Decimal(str(raw))
+        except (InvalidOperation, TypeError):
+            return RedirectResponse(
+                url=f"/web/admin/inventario/valor?sucursal_id={sucursal_id}&error=Precio%20invalido%20en%20la%20tabla",
+                status_code=303,
+            )
+        if precio < Decimal("0"):
+            return RedirectResponse(
+                url=f"/web/admin/inventario/valor?sucursal_id={sucursal_id}&error=El%20precio%20no%20puede%20ser%20negativo",
+                status_code=303,
+            )
+        if existing:
+            existing.precio_referencia = precio
+            existing.usuario_id = current_user.get("id")
+            existing.updated_at = datetime.utcnow()
+            db.add(existing)
+        else:
+            db.add(
+                InventarioValorPrecio(
+                    sucursal_id=sucursal_id,
+                    material_id=material.id,
+                    precio_referencia=precio,
+                    usuario_id=current_user.get("id"),
+                )
+            )
+    db.commit()
+    return RedirectResponse(url=f"/web/admin/inventario/valor?sucursal_id={sucursal_id}&saved=1", status_code=303)
 
 
 @router.get("/contabilidad")

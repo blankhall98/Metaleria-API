@@ -97,3 +97,19 @@ class InventarioAjusteManual(Base):
     usuario = relationship("User", foreign_keys=[usuario_id])
     reverted_by = relationship("User", foreign_keys=[reverted_by_user_id])
     reversal_of = relationship("InventarioAjusteManual", remote_side=[id])
+
+
+class InventarioValorPrecio(Base):
+    __tablename__ = "inventario_valor_precios"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sucursal_id = Column(Integer, ForeignKey("sucursales.id"), nullable=False, index=True)
+    material_id = Column(Integer, ForeignKey("materiales.id"), nullable=False, index=True)
+    precio_referencia = Column(Numeric(12, 5), nullable=False, default=0)
+    usuario_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    sucursal = relationship("Sucursal")
+    material = relationship("Material")
+    usuario = relationship("User", foreign_keys=[usuario_id])
