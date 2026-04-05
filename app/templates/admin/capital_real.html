@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+
+{% block title %}Capital real &middot; Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="text-uppercase text-muted small mb-1">Finanzas</p>
+        <h1 class="h4 text-white mb-0">Capital real</h1>
+    </div>
+    <a href="/web" class="btn btn-outline-secondary btn-sm">Volver al inicio</a>
+</div>
+
+<div class="card hover-lift mb-3">
+    <div class="card-body d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center">
+        <div>
+            <p class="text-uppercase text-muted small mb-1">Resumen</p>
+            <h2 class="h5 text-white mb-1">{{ scope_label }}</h2>
+            <p class="text-muted small mb-0">
+                Activos = clientes + cuentas Scrap360 + efectivo + valor inventario. Pasivos = proveedores + comisionistas.
+            </p>
+        </div>
+        <div class="text-muted small">
+            La valuacion de inventario usa los precios de referencia configurados en <a href="/web/admin/inventario/valor">Valor inventario</a>.
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-xl-4 col-md-6">
+        <div class="card hover-lift h-100">
+            <div class="card-body">
+                <p class="text-uppercase text-muted small mb-2">Capital real</p>
+                <div class="h3 text-white mb-1">${{ "{:,.2f}".format(capital_real or 0) }}</div>
+                <div class="text-muted small">Activos totales menos pasivos totales.</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-4 col-md-6">
+        <div class="card hover-lift h-100">
+            <div class="card-body">
+                <p class="text-uppercase text-muted small mb-2">Activos</p>
+                <div class="h4 text-white mb-1">${{ "{:,.2f}".format(activos_totales or 0) }}</div>
+                <div class="text-muted small">Clientes, cuentas, efectivo e inventario.</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-4 col-md-6">
+        <div class="card hover-lift h-100">
+            <div class="card-body">
+                <p class="text-uppercase text-muted small mb-2">Pasivos</p>
+                <div class="h4 text-white mb-1">${{ "{:,.2f}".format(pasivos_totales or 0) }}</div>
+                <div class="text-muted small">Proveedores y comisionistas pendientes.</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-lg-6">
+        <div class="card hover-lift h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                    <div>
+                        <p class="text-uppercase text-muted small mb-1">Activos</p>
+                        <h2 class="h5 text-white mb-0">Lo que suma a tu capital</h2>
+                    </div>
+                    <span class="badge bg-success">${{ "{:,.2f}".format(activos_totales or 0) }}</span>
+                </div>
+                <div class="d-grid gap-3">
+                    {% for row in asset_rows %}
+                        <div class="d-flex justify-content-between gap-3 align-items-start border-top pt-3 {% if loop.first %}border-top-0 pt-0{% endif %}">
+                            <div>
+                                <div class="fw-semibold text-white">{{ row.label }}</div>
+                                <div class="text-muted small">{{ row.detail }}</div>
+                            </div>
+                            <div class="fw-semibold text-white text-end">${{ "{:,.2f}".format(row.amount or 0) }}</div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card hover-lift h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                    <div>
+                        <p class="text-uppercase text-muted small mb-1">Pasivos</p>
+                        <h2 class="h5 text-white mb-0">Lo que resta a tu capital</h2>
+                    </div>
+                    <span class="badge bg-danger">${{ "{:,.2f}".format(pasivos_totales or 0) }}</span>
+                </div>
+                <div class="d-grid gap-3">
+                    {% for row in liability_rows %}
+                        <div class="d-flex justify-content-between gap-3 align-items-start border-top pt-3 {% if loop.first %}border-top-0 pt-0{% endif %}">
+                            <div>
+                                <div class="fw-semibold text-white">{{ row.label }}</div>
+                                <div class="text-muted small">{{ row.detail }}</div>
+                            </div>
+                            <div class="fw-semibold text-white text-end">${{ "{:,.2f}".format(row.amount or 0) }}</div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-xl-4 col-md-6">
+        <div class="card hover-lift h-100">
+            <div class="card-body">
+                <p class="text-uppercase text-muted small mb-2">Clientes neto</p>
+                <div class="h4 text-white mb-1">${{ "{:,.2f}".format(clientes_neto or 0) }}</div>
+                <div class="text-muted small">Saldo por cobrar neto a clientes.</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-4 col-md-6">
+        <div class="card hover-lift h-100">
+            <div class="card-body">
+                <p class="text-uppercase text-muted small mb-2">Chequeras / transferencias</p>
+                <div class="h4 text-white mb-1">${{ "{:,.2f}".format(saldo_bancos_chequeras or 0) }}</div>
+                <div class="text-muted small">Saldo actual de cuentas Scrap360 bancarias.</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-4 col-md-6">
+        <div class="card hover-lift h-100">
+            <div class="card-body">
+                <p class="text-uppercase text-muted small mb-2">Efectivo</p>
+                <div class="h4 text-white mb-1">${{ "{:,.2f}".format(saldo_efectivo or 0) }}</div>
+                <div class="text-muted small">Saldo actual de cuentas Scrap360 tipo efectivo.</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-4 col-md-6">
+        <div class="card hover-lift h-100">
+            <div class="card-body">
+                <p class="text-uppercase text-muted small mb-2">Valor inventario</p>
+                <div class="h4 text-white mb-1">${{ "{:,.2f}".format(valor_inventario or 0) }}</div>
+                <div class="text-muted small">Valuacion total del inventario actual.</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-4 col-md-6">
+        <div class="card hover-lift h-100">
+            <div class="card-body">
+                <p class="text-uppercase text-muted small mb-2">Proveedores neto</p>
+                <div class="h4 text-white mb-1">${{ "{:,.2f}".format(proveedores_neto or 0) }}</div>
+                <div class="text-muted small">Saldo por pagar neto a proveedores.</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-4 col-md-6">
+        <div class="card hover-lift h-100">
+            <div class="card-body">
+                <p class="text-uppercase text-muted small mb-2">Comisionistas</p>
+                <div class="h4 text-white mb-1">${{ "{:,.2f}".format(comisionarios_pendientes or 0) }}</div>
+                <div class="text-muted small">Comisiones pendientes por pagar.</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-xl-7">
+        <div class="card hover-lift h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                    <div>
+                        <p class="text-uppercase text-muted small mb-1">Cuentas Scrap360</p>
+                        <h2 class="h5 text-white mb-0">Saldos incluidos</h2>
+                    </div>
+                    <a href="/web/admin/cuentas-scrap360" class="btn btn-outline-primary btn-sm">Ver cuentas</a>
+                </div>
+                <div class="table-scroll-shell">
+                    <div class="table-responsive scroll-x">
+                        <table class="table table-hover table-sm align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Cuenta</th>
+                                    <th>Tipo</th>
+                                    <th>Sucursales</th>
+                                    <th class="text-end">Saldo actual</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in cuentas_rows %}
+                                    <tr>
+                                        <td class="fw-semibold">{{ row.cuenta.nombre }}</td>
+                                        <td>{{ row.cuenta.tipo|capitalize }}</td>
+                                        <td>{{ row.sucursales_label }}</td>
+                                        <td class="text-end">${{ "{:,.2f}".format(row.saldo_actual or 0) }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para revisar cuentas, sucursales y saldos.</div>
+                </div>
+                {% if cuentas_rows|length == 0 %}
+                    <p class="text-muted small mt-3 mb-0">No hay cuentas Scrap360 activas dentro de tu alcance.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-5">
+        <div class="card hover-lift h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                    <div>
+                        <p class="text-uppercase text-muted small mb-1">Inventario</p>
+                        <h2 class="h5 text-white mb-0">Valor por sucursal</h2>
+                    </div>
+                    <a href="/web/admin/inventario/valor" class="btn btn-outline-primary btn-sm">Valuacion</a>
+                </div>
+                <div class="d-grid gap-3">
+                    {% for row in inventario_summary %}
+                        <div class="d-flex justify-content-between gap-3 align-items-start border-top pt-3 {% if loop.first %}border-top-0 pt-0{% endif %}">
+                            <div>
+                                <div class="fw-semibold text-white">{{ row.sucursal.nombre }}</div>
+                                <div class="text-muted small">{{ row.materiales_con_stock }} materiales con stock &middot; {{ "{:,.2f}".format(row.total_kg or 0) }} kg</div>
+                            </div>
+                            <div class="fw-semibold text-white text-end">${{ "{:,.2f}".format(row.total_valor or 0) }}</div>
+                        </div>
+                    {% endfor %}
+                </div>
+                {% if inventario_summary|length == 0 %}
+                    <p class="text-muted small mt-3 mb-0">No hay sucursales accesibles para calcular valor inventario.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -2890,6 +2890,195 @@ def _build_inventario_valor_summary(
     return summary_rows
 
 
+def _build_capital_real_context(
+    db: Session,
+    *,
+    allowed_suc_ids: list[int] | None = None,
+) -> dict:
+    sucursales_query = db.query(Sucursal).order_by(Sucursal.nombre.asc())
+    sucursales = _filter_sucursales_for_admin(sucursales_query.all(), allowed_suc_ids)
+    sucursal_names = {s.nombre for s in sucursales if s.nombre}
+
+    proveedores = db.query(Proveedor).order_by(Proveedor.nombre_completo.asc()).all()
+    clientes = db.query(Cliente).order_by(Cliente.nombre_completo.asc()).all()
+    proveedores_map = {p.id: p.nombre_completo for p in proveedores}
+    clientes_map = {c.id: c.nombre_completo for c in clientes}
+
+    notas_query = db.query(Nota).filter(Nota.estado == NotaEstado.aprobada)
+    notas_query = _apply_sucursal_filter(notas_query, allowed_suc_ids, None, Nota.sucursal_id)
+    notas = notas_query.all()
+    note_adjustment_totals = _get_note_balance_adjustment_totals_map(
+        db,
+        [nota.id for nota in notas if nota.id],
+    )
+
+    def _is_internal_partner(nombre: str | None) -> bool:
+        if not nombre or not nombre.startswith("Sucursal "):
+            return False
+        suc_name = nombre.replace("Sucursal ", "", 1).strip()
+        return suc_name in sucursal_names
+
+    total_por_cobrar_clientes = Decimal("0")
+    saldo_favor_clientes = Decimal("0")
+    total_por_pagar_proveedores = Decimal("0")
+    saldo_favor_empresa = Decimal("0")
+
+    for nota in notas:
+        note_delta = Decimal(str(note_adjustment_totals.get(nota.id, Decimal("0")) or 0))
+        total = Decimal(str(nota.total_monto or 0))
+        pagado = Decimal(str(nota.monto_pagado or 0))
+        saldo = total - pagado + note_delta
+
+        partner_kind, partner_id = _nota_partner_key(nota)
+        if partner_kind == "cliente":
+            nombre = clientes_map.get(partner_id)
+        else:
+            nombre = proveedores_map.get(partner_id)
+        if _is_internal_partner(nombre):
+            continue
+
+        if nota.tipo_operacion == TipoOperacion.venta:
+            if saldo >= Decimal("0"):
+                total_por_cobrar_clientes += saldo
+            else:
+                saldo_favor_clientes += -saldo
+        elif nota.tipo_operacion == TipoOperacion.compra:
+            if saldo >= Decimal("0"):
+                total_por_pagar_proveedores += saldo
+            else:
+                saldo_favor_empresa += -saldo
+
+    ajustes_query = db.query(AjusteSaldoPartner)
+    if allowed_suc_ids is not None:
+        ajustes_query = ajustes_query.filter(AjusteSaldoPartner.sucursal_id.in_(allowed_suc_ids))
+    ajustes = ajustes_query.all()
+    for ajuste in ajustes:
+        delta = Decimal(str(ajuste.monto or 0))
+        if ajuste.partner_type == "cliente":
+            nombre = clientes_map.get(ajuste.partner_id)
+            if _is_internal_partner(nombre):
+                continue
+            if delta >= Decimal("0"):
+                total_por_cobrar_clientes += delta
+            else:
+                saldo_favor_clientes += -delta
+        elif ajuste.partner_type == "proveedor":
+            nombre = proveedores_map.get(ajuste.partner_id)
+            if _is_internal_partner(nombre):
+                continue
+            if delta >= Decimal("0"):
+                total_por_pagar_proveedores += delta
+            else:
+                saldo_favor_empresa += -delta
+
+    comisionarios_query = db.query(ComisionarioNota).filter(
+        ComisionarioNota.estado == ComisionarioNotaEstado.aprobada
+    )
+    if allowed_suc_ids is not None:
+        comisionarios_query = comisionarios_query.filter(ComisionarioNota.sucursal_id.in_(allowed_suc_ids))
+    comisionarios_pendientes = Decimal("0")
+    comisionarios_total = Decimal("0")
+    for nota in comisionarios_query.all():
+        total = Decimal(str(nota.total_monto or 0))
+        pagado = Decimal(str(nota.monto_pagado or 0))
+        pendiente = total - pagado
+        comisionarios_total += total
+        if pendiente > Decimal("0"):
+            comisionarios_pendientes += pendiente
+
+    cuentas_query = db.query(CuentaScrap360).filter(CuentaScrap360.activo.is_(True))
+    if allowed_suc_ids:
+        cuentas_query = cuentas_query.join(CuentaScrap360.sucursales).filter(Sucursal.id.in_(allowed_suc_ids))
+    cuentas_scrap360 = cuentas_query.distinct().order_by(CuentaScrap360.nombre.asc()).all()
+
+    saldo_bancos_chequeras = Decimal("0")
+    saldo_efectivo = Decimal("0")
+    cuentas_rows: list[dict] = []
+    for cuenta in cuentas_scrap360:
+        saldo_actual = Decimal(str(cuenta.saldo_actual or 0))
+        if cuenta.tipo == "efectivo":
+            saldo_efectivo += saldo_actual
+        else:
+            saldo_bancos_chequeras += saldo_actual
+        cuentas_rows.append(
+            {
+                "cuenta": cuenta,
+                "saldo_actual": saldo_actual,
+                "sucursales_label": ", ".join(s.nombre for s in cuenta.sucursales) if cuenta.sucursales else "-",
+            }
+        )
+
+    inventario_summary = _build_inventario_valor_summary(db, sucursales=sucursales)
+    valor_inventario = sum((Decimal(str(row["total_valor"] or 0)) for row in inventario_summary), Decimal("0"))
+
+    activos_totales = (
+        total_por_cobrar_clientes
+        - saldo_favor_clientes
+        + saldo_bancos_chequeras
+        + saldo_efectivo
+        + valor_inventario
+    )
+    pasivos_totales = (
+        total_por_pagar_proveedores
+        - saldo_favor_empresa
+        + comisionarios_pendientes
+    )
+    capital_real = activos_totales - pasivos_totales
+
+    asset_rows = [
+        {
+            "label": "Saldos de clientes",
+            "amount": total_por_cobrar_clientes - saldo_favor_clientes,
+            "detail": "Por cobrar menos saldos a favor de clientes.",
+        },
+        {
+            "label": "Saldos de chequeras / transferencias",
+            "amount": saldo_bancos_chequeras,
+            "detail": "Cuentas Scrap360 tipo transferencia y cheques.",
+        },
+        {
+            "label": "Saldo en efectivo",
+            "amount": saldo_efectivo,
+            "detail": "Cuentas Scrap360 tipo efectivo.",
+        },
+        {
+            "label": "Valor inventario",
+            "amount": valor_inventario,
+            "detail": "Valuacion por material usando tus precios de referencia.",
+        },
+    ]
+    liability_rows = [
+        {
+            "label": "Saldos de proveedores",
+            "amount": total_por_pagar_proveedores - saldo_favor_empresa,
+            "detail": "Por pagar menos saldos a favor de la empresa.",
+        },
+        {
+            "label": "Saldos de comisionistas",
+            "amount": comisionarios_pendientes,
+            "detail": "Comisiones aprobadas pendientes por pagar.",
+        },
+    ]
+
+    return {
+        "scope_label": "Capital global autorizado",
+        "activos_totales": activos_totales,
+        "pasivos_totales": pasivos_totales,
+        "capital_real": capital_real,
+        "clientes_neto": total_por_cobrar_clientes - saldo_favor_clientes,
+        "proveedores_neto": total_por_pagar_proveedores - saldo_favor_empresa,
+        "saldo_bancos_chequeras": saldo_bancos_chequeras,
+        "saldo_efectivo": saldo_efectivo,
+        "valor_inventario": valor_inventario,
+        "comisionarios_pendientes": comisionarios_pendientes,
+        "comisionarios_total": comisionarios_total,
+        "asset_rows": asset_rows,
+        "liability_rows": liability_rows,
+        "cuentas_rows": cuentas_rows,
+        "inventario_summary": inventario_summary,
+    }
+
+
 def _build_partner_record_context(
     request: Request,
     db: Session,
@@ -12466,6 +12655,28 @@ async def inventario_valor_post(
             )
     db.commit()
     return RedirectResponse(url=f"/web/admin/inventario/valor?sucursal_id={sucursal_id}&saved=1", status_code=303)
+
+
+@router.get("/capital")
+async def capital_real_view(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_viewer_or_admin_or_superadmin),
+):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    capital_context = _build_capital_real_context(
+        db,
+        allowed_suc_ids=allowed_suc_ids,
+    )
+    return templates.TemplateResponse(
+        "admin/capital_real.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            **capital_context,
+        },
+    )
 
 
 @router.get("/contabilidad")
