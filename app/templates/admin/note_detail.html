@@ -593,10 +593,10 @@
                                         <option value="efectivo" {% if selected_metodo == 'efectivo' %}selected{% endif %}>Efectivo</option>
                                         <option value="cheque" {% if selected_metodo == 'cheque' %}selected{% endif %}>Cheque</option>
                                     </select>
-                                    <div class="form-text text-muted">La cuenta financiera solo es obligatoria para transferencia o cheque.</div>
+                                    <div class="form-text text-muted">Define el metodo previsto. Solo se te pedira cuenta del partner y Cuenta Scrap360 si registras un pago inicial hoy.</div>
                                 </div>
                                 <div class="col-12">
-                                    <label class="form-label">Cuenta financiera</label>
+                                    <label class="form-label">Cuenta del proveedor / cliente</label>
                                     {% set cuenta_val = form_cuenta if form_cuenta is not none else (nota.cuenta_financiera_id or "") %}
                                     <select class="form-select" name="cuenta_financiera" id="cuenta_financiera_select">
                                         <option value="" {% if not cuenta_val %}selected{% endif %}>Selecciona cuenta</option>
@@ -617,6 +617,8 @@
                                     </select>
                                     {% if cuentas_sucursal|length == 0 and cuentas_partner|length == 0 %}
                                         <div class="form-text text-muted">No hay cuentas registradas para esta nota.</div>
+                                    {% else %}
+                                        <div class="form-text text-muted">Solo se usa si haces un pago inicial por transferencia o cheque.</div>
                                     {% endif %}
                                 </div>
                                 <div class="col-12">
@@ -639,7 +641,7 @@
                                             <option value="{{ c.id }}" {% if cuenta_scrap_val|string == c.id|string %}selected{% endif %}>{{ c.nombre }} &middot; {{ c.tipo|capitalize }}</option>
                                         {% endfor %}
                                     </select>
-                                    <div class="form-text text-muted">Opcional. Si registras un pago inicial, el movimiento se refleja en la cuenta seleccionada.</div>
+                                    <div class="form-text text-muted">Solo se descuenta si registras un pago inicial por transferencia o cheque. Si la nota queda pendiente, el saldo de la cuenta no cambia todavia.</div>
                                 </div>
                                 <div class="col-md-6 col-12">
                                     <label class="form-label">Pago inicial</label>
@@ -916,7 +918,7 @@
                                         </select>
                                     </div>
                                     <div class="col-12">
-                                        <label class="form-label">Cuenta</label>
+                                        <label class="form-label">Cuenta del proveedor / cliente</label>
                                         {% set pago_inicial_cuenta_val = form_pago_inicial_cuenta if form_pago_inicial_cuenta is not none else (nota.cuenta_financiera_id or "") %}
                                         <select class="form-select form-select-sm" name="pago_inicial_cuenta" id="pago_inicial_cuenta_select">
                                             <option value="" {% if not pago_inicial_cuenta_val %}selected{% endif %}>Selecciona cuenta</option>
@@ -931,6 +933,7 @@
                                             <option value="" {% if not pago_inicial_cuenta_scrap_val %}selected{% endif %}>Selecciona cuenta</option>
                                             {% for c in cuentas_scrap360 %}<option value="{{ c.id }}" {% if pago_inicial_cuenta_scrap_val|string == c.id|string %}selected{% endif %}>{{ c.nombre }} &middot; {{ c.tipo|capitalize }}</option>{% endfor %}
                                         </select>
+                                        <div class="form-text text-muted">Si el pago inicial es por transferencia o cheque, esta cuenta se descuenta al guardar.</div>
                                     </div>
                                     <div class="col-12">
                                         <label class="form-label">Sucursal de caja</label>
@@ -949,7 +952,7 @@
                                         <button type="submit" class="btn btn-outline-secondary btn-sm">Actualizar pago inicial</button>
                                     </div>
                                 </div>
-                                <div class="form-text text-muted mt-2">Util cuando la nota se aprobo con monto inicial incorrecto o en cero por error.</div>
+                                <div class="form-text text-muted mt-2">Util cuando la nota se aprobo con un pago inicial incorrecto. Si subes el monto por transferencia o cheque, el descuento saldra de la Cuenta Scrap360 elegida.</div>
                                 </form>
                                 <form method="post" action="/web/admin/notas/{{ nota.id }}/pago" class="note-payment-form">
                                 <div class="note-form-card-title">Registrar nuevo abono</div>
@@ -970,7 +973,7 @@
                                         </select>
                                     </div>
                                     <div class="col-12">
-                                        <label class="form-label">Cuenta</label>
+                                        <label class="form-label">Cuenta del proveedor / cliente</label>
                                         {% set pago_cuenta_val = form_pago_cuenta if form_pago_cuenta is not none else (nota.cuenta_financiera_id or "") %}
                                         <select class="form-select form-select-sm" name="pago_cuenta" id="pago_cuenta_select">
                                             <option value="" {% if not pago_cuenta_val %}selected{% endif %}>Selecciona cuenta</option>
@@ -985,6 +988,7 @@
                                             <option value="" {% if not pago_cuenta_scrap_val %}selected{% endif %}>Selecciona cuenta</option>
                                             {% for c in cuentas_scrap360 %}<option value="{{ c.id }}" {% if pago_cuenta_scrap_val|string == c.id|string %}selected{% endif %}>{{ c.nombre }} &middot; {{ c.tipo|capitalize }}</option>{% endfor %}
                                         </select>
+                                        <div class="form-text text-muted">Obligatoria para transferencias y cheques. El saldo se descuenta en cuanto registras el abono.</div>
                                     </div>
                                     <div class="col-12">
                                         <label class="form-label">Sucursal de caja</label>
@@ -1720,8 +1724,10 @@
         function toggleCuenta() {
             if (!metodoSelect || !cuentaInput) return;
             const metodo = (metodoSelect.value || '').toLowerCase();
-            const needsAccount = metodo === 'transferencia' || metodo === 'cheque';
-            const needsCajaSucursal = metodo === 'efectivo';
+            const initialPayment = parseFloat(pagoInput && pagoInput.value ? pagoInput.value : '0') || 0;
+            const hasImmediatePayment = initialPayment > 0;
+            const needsAccount = hasImmediatePayment && (metodo === 'transferencia' || metodo === 'cheque');
+            const needsCajaSucursal = hasImmediatePayment && metodo === 'efectivo';
             cuentaInput.disabled = !needsAccount;
             cuentaInput.required = needsAccount;
             if (!needsAccount) {
@@ -1739,9 +1745,10 @@
             if (!cuentaScrapInput) return;
             const metodo = (metodoSelect && metodoSelect.value ? metodoSelect.value : '').toLowerCase();
             const pago = parseFloat(pagoInput && pagoInput.value ? pagoInput.value : '0') || 0;
-            const hasMetodo = !!metodo;
-            cuentaScrapInput.disabled = !hasMetodo && pago <= 0;
-            if (cuentaScrapInput.disabled) {
+            const needsBankAccount = pago > 0 && (metodo === 'transferencia' || metodo === 'cheque');
+            cuentaScrapInput.disabled = !needsBankAccount;
+            cuentaScrapInput.required = needsBankAccount;
+            if (!needsBankAccount) {
                 cuentaScrapInput.value = '';
             }
         }
@@ -1753,13 +1760,16 @@
             toggleCuentaScrap();
         }
         if (pagoInput) {
+            pagoInput.addEventListener('input', toggleCuenta);
             pagoInput.addEventListener('input', toggleCuentaScrap);
+            toggleCuenta();
             toggleCuentaScrap();
         }
 
         const pagoMetodo = document.getElementById('pago_metodo_select');
         const pagoCuenta = document.getElementById('pago_cuenta_select');
         const pagoCajaSucursal = document.getElementById('pago_caja_sucursal_select');
+        const pagoCuentaScrap = document.getElementById('pago_cuenta_scrap360_select');
         function togglePagoCuenta() {
             if (!pagoMetodo || !pagoCuenta) return;
             const metodo = (pagoMetodo.value || '').toLowerCase();
@@ -1776,6 +1786,14 @@
                     pagoCajaSucursal.value = '';
                 }
             }
+            if (pagoCuentaScrap) {
+                const needsScrap360 = metodo === 'transferencia' || metodo === 'cheque';
+                pagoCuentaScrap.disabled = !needsScrap360;
+                pagoCuentaScrap.required = needsScrap360;
+                if (!needsScrap360) {
+                    pagoCuentaScrap.value = '';
+                }
+            }
         }
         if (pagoMetodo) {
             pagoMetodo.addEventListener('change', togglePagoCuenta);
@@ -1789,16 +1807,20 @@
         function togglePagoInicialCuenta() {
             if (!pagoInicialMetodo || !pagoInicialCuenta) return;
             const metodo = (pagoInicialMetodo.value || '').toLowerCase();
+            const pagoInicialMontoInput = document.querySelector('input[name="pago_inicial_monto"]');
+            const targetAmount = parseFloat(pagoInicialMontoInput && pagoInicialMontoInput.value ? pagoInicialMontoInput.value : '0') || 0;
             const needsAccount = metodo === 'transferencia' || metodo === 'cheque';
-            const needsCajaSucursal = metodo === 'efectivo';
-            pagoInicialCuenta.disabled = !needsAccount;
-            pagoInicialCuenta.required = needsAccount;
-            if (!needsAccount) {
+            const needsCajaSucursal = metodo === 'efectivo' && targetAmount > 0;
+            pagoInicialCuenta.disabled = !(needsAccount && targetAmount > 0);
+            pagoInicialCuenta.required = needsAccount && targetAmount > 0;
+            if (!(needsAccount && targetAmount > 0)) {
                 pagoInicialCuenta.value = '';
             }
             if (pagoInicialCuentaScrap) {
-                pagoInicialCuentaScrap.disabled = !metodo;
-                if (!metodo) {
+                const needsScrap360 = needsAccount && targetAmount > 0;
+                pagoInicialCuentaScrap.disabled = !needsScrap360;
+                pagoInicialCuentaScrap.required = needsScrap360;
+                if (!needsScrap360) {
                     pagoInicialCuentaScrap.value = '';
                 }
             }
@@ -1811,6 +1833,10 @@
         }
         if (pagoInicialMetodo) {
             pagoInicialMetodo.addEventListener('change', togglePagoInicialCuenta);
+            const pagoInicialMontoInput = document.querySelector('input[name="pago_inicial_monto"]');
+            if (pagoInicialMontoInput) {
+                pagoInicialMontoInput.addEventListener('input', togglePagoInicialCuenta);
+            }
             togglePagoInicialCuenta();
         }
 

@@ -73,6 +73,7 @@ from app.services import (
     invoice_service,
     contabilidad_report_service,
     partner_report_service,
+    scrap360_account_report_service,
     conversion_service,
     corte_caja_report_service,
     comision_service,
@@ -91,6 +92,16 @@ _TRANSFER_RELATED_NOTE_RE = re.compile(r"Nota (?:entrada|salida) #(\d+)")
 _FOLIO_QUERY_RE = re.compile(r"^\s*(\d+)[-_]([CV])[_-](\d+)\s*$", re.IGNORECASE)
 _CUENTA_TIPOS = ("cuenta bancaria", "cuenta cheques")
 _SCRAP360_TIPOS = ("transferencia", "cheques", "efectivo")
+_SCRAP360_AJUSTE_DIRECCIONES = (
+    ("entrada", "Entrada / deposito"),
+    ("salida", "Salida / cargo"),
+)
+_SCRAP360_AJUSTE_CONCEPTOS = (
+    ("deposito", "Deposito / dinero recibido"),
+    ("comision_bancaria", "Comision bancaria"),
+    ("ajuste_manual", "Ajuste manual"),
+    ("otro", "Otro"),
+)
 _CORTE_MOV_TIPOS = (
     ("INGRESO", "Ingreso"),
     ("EGRESO", "Egreso"),
@@ -2520,6 +2531,78 @@ def _apply_scrap360_adjustment(
     db.add(cuenta)
     db.add(mov)
     return mov
+
+
+def _scrap360_concept_label(concepto: str | None) -> str:
+    mapping = {key: label for key, label in _SCRAP360_AJUSTE_CONCEPTOS}
+    return mapping.get((concepto or "").strip().lower(), "Ajuste manual")
+
+
+def _scrap360_movement_breakdown(mov: CuentaScrap360Movimiento) -> tuple[Decimal, Decimal, str]:
+    monto = Decimal(str(mov.monto or 0))
+    tipo = (mov.tipo or "").strip().lower()
+    if tipo == "ingreso":
+        return abs(monto), Decimal("0"), "Entrada"
+    if tipo == "egreso":
+        return Decimal("0"), abs(monto), "Salida"
+    if monto >= 0:
+        return monto, Decimal("0"), "Ajuste a favor"
+    return Decimal("0"), abs(monto), "Ajuste en contra"
+
+
+def _build_cuenta_scrap360_detail_context(
+    db: Session,
+    *,
+    request: Request,
+    current_user: dict,
+    cuenta: CuentaScrap360,
+    error: str | None = None,
+    ajuste_ok: bool = False,
+    form_state: dict | None = None,
+) -> dict:
+    movimientos = (
+        db.query(CuentaScrap360Movimiento)
+        .filter(CuentaScrap360Movimiento.cuenta_id == cuenta.id)
+        .order_by(CuentaScrap360Movimiento.created_at.desc(), CuentaScrap360Movimiento.id.desc())
+        .limit(200)
+        .all()
+    )
+    movimientos_full = (
+        db.query(CuentaScrap360Movimiento)
+        .filter(CuentaScrap360Movimiento.cuenta_id == cuenta.id)
+        .order_by(CuentaScrap360Movimiento.created_at.asc(), CuentaScrap360Movimiento.id.asc())
+        .all()
+    )
+    total_entradas = Decimal("0")
+    total_salidas = Decimal("0")
+    for mov in movimientos_full:
+        entrada, salida, _ = _scrap360_movement_breakdown(mov)
+        total_entradas += entrada
+        total_salidas += salida
+
+    suc_labels = ", ".join([s.nombre for s in cuenta.sucursales]) if cuenta.sucursales else "-"
+    latest_comment = movimientos[0].comentario if movimientos else None
+    form_state = form_state or {}
+    return {
+        "request": request,
+        "env": settings.ENV,
+        "user": current_user,
+        "cuenta": cuenta,
+        "sucursales_label": suc_labels,
+        "movimientos": movimientos,
+        "movimientos_total": len(movimientos_full),
+        "total_entradas": total_entradas,
+        "total_salidas": total_salidas,
+        "ultimo_movimiento_comment": latest_comment,
+        "ajuste_ok": ajuste_ok,
+        "error": error,
+        "ajuste_direcciones": _SCRAP360_AJUSTE_DIRECCIONES,
+        "ajuste_conceptos": _SCRAP360_AJUSTE_CONCEPTOS,
+        "form_ajuste_monto": form_state.get("form_ajuste_monto", ""),
+        "form_ajuste_direccion": form_state.get("form_ajuste_direccion", "entrada"),
+        "form_ajuste_concepto": form_state.get("form_ajuste_concepto", "deposito"),
+        "form_ajuste_comentario": form_state.get("form_ajuste_comentario", ""),
+    }
 
 def _aggregate_partner_record_summary(
     notas: list[Nota],
@@ -8189,30 +8272,16 @@ async def cuenta_scrap360_detail(
         raise HTTPException(status_code=404, detail="Cuenta Scrap360 no encontrada.")
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     _ensure_scrap360_access(cuenta, allowed_suc_ids)
-
-    movimientos = (
-        db.query(CuentaScrap360Movimiento)
-        .filter(CuentaScrap360Movimiento.cuenta_id == cuenta_id)
-        .order_by(CuentaScrap360Movimiento.created_at.desc())
-        .limit(200)
-        .all()
-    )
-    suc_labels = ", ".join([s.nombre for s in cuenta.sucursales]) if cuenta.sucursales else "-"
     ajuste_ok = request.query_params.get("ajuste") == "1"
-
     return templates.TemplateResponse(
         "admin/cuenta_scrap360_detail.html",
-        {
-            "request": request,
-            "env": settings.ENV,
-            "user": current_user,
-            "cuenta": cuenta,
-            "sucursales_label": suc_labels,
-            "movimientos": movimientos,
-            "movimientos_total": len(movimientos),
-            "ajuste_ok": ajuste_ok,
-            "error": None,
-        },
+        _build_cuenta_scrap360_detail_context(
+            db,
+            request=request,
+            current_user=current_user,
+            cuenta=cuenta,
+            ajuste_ok=ajuste_ok,
+        ),
     )
 
 
@@ -8365,32 +8434,28 @@ async def cuenta_scrap360_ajuste(
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     _ensure_scrap360_access(cuenta, allowed_suc_ids)
 
-    movimientos = (
-        db.query(CuentaScrap360Movimiento)
-        .filter(CuentaScrap360Movimiento.cuenta_id == cuenta_id)
-        .order_by(CuentaScrap360Movimiento.created_at.desc())
-        .limit(200)
-        .all()
-    )
-    suc_labels = ", ".join([s.nombre for s in cuenta.sucursales]) if cuenta.sucursales else "-"
-
     form = await request.form()
     monto_raw = (form.get("monto") or "").strip()
     comentario = (form.get("comentario") or "").strip()
+    direccion = (form.get("direccion") or "").strip().lower() or "entrada"
+    concepto = (form.get("concepto") or "").strip().lower() or "deposito"
+    form_state = {
+        "form_ajuste_monto": monto_raw,
+        "form_ajuste_direccion": direccion,
+        "form_ajuste_concepto": concepto,
+        "form_ajuste_comentario": comentario,
+    }
     def render_error(msg: str):
         return templates.TemplateResponse(
             "admin/cuenta_scrap360_detail.html",
-            {
-                "request": request,
-                "env": settings.ENV,
-                "user": current_user,
-                "cuenta": cuenta,
-                "sucursales_label": suc_labels,
-                "movimientos": movimientos,
-                "movimientos_total": len(movimientos),
-                "ajuste_ok": False,
-                "error": msg,
-            },
+            _build_cuenta_scrap360_detail_context(
+                db,
+                request=request,
+                current_user=current_user,
+                cuenta=cuenta,
+                error=msg,
+                form_state=form_state,
+            ),
             status_code=400,
         )
 
@@ -8400,18 +8465,61 @@ async def cuenta_scrap360_ajuste(
         monto_val = Decimal(str(monto_raw))
     except (InvalidOperation, TypeError):
         return render_error("El monto del ajuste es invalido.")
-    if monto_val == Decimal("0"):
-        return render_error("El ajuste no puede ser 0.")
+    if monto_val <= Decimal("0"):
+        return render_error("El monto del movimiento debe ser mayor a cero.")
+    if direccion not in {key for key, _label in _SCRAP360_AJUSTE_DIRECCIONES}:
+        return render_error("Selecciona si el movimiento es entrada o salida.")
+    if concepto not in {key for key, _label in _SCRAP360_AJUSTE_CONCEPTOS}:
+        return render_error("Selecciona un concepto valido.")
+    if concepto == "otro" and not comentario:
+        return render_error("Describe el movimiento cuando el concepto es Otro.")
+
+    monto_signed = monto_val if direccion == "entrada" else -monto_val
+    concepto_label = _scrap360_concept_label(concepto)
+    comentario_full = concepto_label if not comentario else f"{concepto_label}: {comentario}"
 
     _apply_scrap360_adjustment(
         db,
         cuenta=cuenta,
-        monto=monto_val,
-        comentario=comentario or "Ajuste manual",
+        monto=monto_signed,
+        comentario=comentario_full,
         usuario_id=current_user.get("id"),
     )
     db.commit()
     return RedirectResponse(url=f"/web/admin/cuentas-scrap360/{cuenta.id}?ajuste=1", status_code=303)
+
+
+@router.get("/cuentas-scrap360/{cuenta_id}/estado")
+async def cuenta_scrap360_statement(
+    cuenta_id: int,
+    request: Request,
+    format: str = "pdf",
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    cuenta = db.get(CuentaScrap360, cuenta_id)
+    if not cuenta:
+        raise HTTPException(status_code=404, detail="Cuenta Scrap360 no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_scrap360_access(cuenta, allowed_suc_ids)
+
+    movimientos = (
+        db.query(CuentaScrap360Movimiento)
+        .filter(CuentaScrap360Movimiento.cuenta_id == cuenta_id)
+        .order_by(CuentaScrap360Movimiento.created_at.asc(), CuentaScrap360Movimiento.id.asc())
+        .all()
+    )
+    report = scrap360_account_report_service.build_scrap360_account_statement(cuenta, movimientos)
+    format_clean = (format or "pdf").strip().lower()
+    if format_clean == "excel":
+        content, filename = scrap360_account_report_service.build_scrap360_account_statement_excel(report)
+        media_type = "application/vnd.ms-excel"
+    else:
+        content, filename = scrap360_account_report_service.build_scrap360_account_statement_pdf(report)
+        media_type = "application/pdf"
+
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return StreamingResponse(io.BytesIO(content), media_type=media_type, headers=headers)
 
 
 # ---------- NOTAS ----------

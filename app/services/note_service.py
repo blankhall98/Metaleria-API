@@ -51,6 +51,16 @@ def _is_compra_like(tipo_operacion: TipoOperacion | None) -> bool:
     return tipo_operacion == TipoOperacion.compra
 
 
+def _uses_bank_payment_method(metodo_pago: str | None) -> bool:
+    metodo = (metodo_pago or "").strip().lower()
+    return metodo in ("transferencia", "cheque")
+
+
+def _uses_cash_payment_method(metodo_pago: str | None) -> bool:
+    metodo = (metodo_pago or "").strip().lower()
+    return metodo == "efectivo"
+
+
 def _partial_return_contable_amount(nota: Nota, monto_devolucion: Decimal, *, reverse: bool = False) -> Decimal:
     amount = Decimal(str(monto_devolucion or 0))
     signed = amount if _is_compra_like(nota.tipo_operacion) else -amount
@@ -465,13 +475,13 @@ def _validate_cuenta_scrap360_for_nota(
     if metodo_pago:
         metodo = metodo_pago.strip().lower()
         tipo = (cuenta.tipo or "").strip().lower()
-        tipo_map = {
-            "transferencia": "transferencia",
-            "cheque": "cheques",
-            "efectivo": "efectivo",
-        }
-        expected = tipo_map.get(metodo)
-        if expected and tipo and tipo != expected:
+        if _uses_cash_payment_method(metodo):
+            if tipo and tipo != "efectivo":
+                raise ValueError("La cuenta Scrap360 no coincide con el metodo de pago.")
+        elif _uses_bank_payment_method(metodo):
+            if tipo and tipo not in {"transferencia", "cheques"}:
+                raise ValueError("La cuenta Scrap360 debe ser bancaria para transferencias o cheques.")
+        elif tipo and tipo == "efectivo":
             raise ValueError("La cuenta Scrap360 no coincide con el metodo de pago.")
     return cuenta
 
@@ -969,21 +979,25 @@ def add_payment(
     metodo = (metodo_pago or nota.metodo_pago or "").strip().lower() or None
     cuenta_id: int | None = None
     cuenta_label: str | None = None
-    if metodo in ("transferencia", "cheque") and not cuenta_financiera:
-        raise ValueError("Debes indicar la cuenta para transferencia o cheque.")
-    if metodo in ("transferencia", "cheque"):
+    if _uses_bank_payment_method(metodo) and not cuenta_financiera:
+        raise ValueError("Debes indicar la cuenta del proveedor o cliente para transferencia o cheque.")
+    if _uses_bank_payment_method(metodo):
         cuenta_id = _resolve_cuenta_id(db, nota, cuenta_financiera)
         if cuenta_id is None:
             raise ValueError("Selecciona una cuenta valida.")
         cuenta = _validate_cuenta_for_nota(db, nota, cuenta_id)
         cuenta_label = cuenta.display_label
     caja_sucursal_resolved: int | None = None
-    if metodo == "efectivo":
+    if _uses_cash_payment_method(metodo):
         caja_sucursal_resolved = int(caja_sucursal_id or nota.sucursal_id or 0) or None
         if caja_sucursal_resolved is None or not db.get(Sucursal, caja_sucursal_resolved):
             raise ValueError("Selecciona una sucursal de caja valida para efectivo.")
+    elif caja_sucursal_id:
+        caja_sucursal_resolved = None
 
     cuenta_scrap = _validate_cuenta_scrap360_for_nota(db, nota, cuenta_scrap360_id, metodo)
+    if _uses_bank_payment_method(metodo) and cuenta_scrap is None:
+        raise ValueError("Debes indicar la Cuenta Scrap360 desde la que saldra o entrara el pago.")
 
     pago = NotaPago(
         nota_id=nota.id,
@@ -1151,8 +1165,6 @@ def adjust_initial_payment(
 
     if delta > 0:
         metodo = (metodo_pago or nota.metodo_pago or "").strip().lower() or None
-        if metodo in ("transferencia", "cheque") and not cuenta_financiera:
-            raise ValueError("Debes indicar la cuenta para transferencia o cheque.")
         add_payment(
             db,
             nota,
@@ -1476,20 +1488,24 @@ def approve_note(
     cuenta_id: int | None = None
     cuenta_label: str | None = None
     caja_sucursal_resolved: int | None = None
-    if metodo_pago_clean in ("transferencia", "cheque"):
+    pago_inicial: Decimal | None = None
+    if monto_pagado is not None and Decimal(str(monto_pagado)) > Decimal("0"):
+        pago_inicial = Decimal(str(monto_pagado))
+    if _uses_bank_payment_method(metodo_pago_clean):
         if cuenta_financiera:
             cuenta_id = _resolve_cuenta_id(db, nota, cuenta_financiera)
             if cuenta_id is None:
                 raise ValueError("Selecciona una cuenta valida.")
             cuenta = _validate_cuenta_for_nota(db, nota, cuenta_id)
             cuenta_label = cuenta.display_label
-        else:
-            raise ValueError("Debes indicar la cuenta para transferencia o cheque.")
-    elif metodo_pago_clean == "efectivo":
+        elif pago_inicial and pago_inicial > Decimal("0"):
+            raise ValueError("Debes indicar la cuenta del proveedor o cliente si registras un pago inicial por transferencia o cheque.")
+    elif _uses_cash_payment_method(metodo_pago_clean):
         cuenta_id = None
-        caja_sucursal_resolved = int(caja_sucursal_id or nota.sucursal_id or 0) or None
-        if caja_sucursal_resolved is None or not db.get(Sucursal, caja_sucursal_resolved):
-            raise ValueError("Selecciona una sucursal de caja valida para efectivo.")
+        if pago_inicial and pago_inicial > Decimal("0"):
+            caja_sucursal_resolved = int(caja_sucursal_id or nota.sucursal_id or 0) or None
+            if caja_sucursal_resolved is None or not db.get(Sucursal, caja_sucursal_resolved):
+                raise ValueError("Selecciona una sucursal de caja valida para efectivo.")
     nota.metodo_pago = metodo_pago_clean
     nota.cuenta_financiera_id = cuenta_id
     update_state(
@@ -1516,9 +1532,6 @@ def approve_note(
             caja_sucursal_id=caja_sucursal_resolved,
             tipo=nota.tipo_operacion.value,
         )
-    pago_inicial: Decimal | None = None
-    if monto_pagado is not None and Decimal(str(monto_pagado)) > Decimal("0"):
-        pago_inicial = monto_pagado
     if pago_inicial is not None and Decimal(str(pago_inicial)) > Decimal("0"):
         add_payment(
             db,

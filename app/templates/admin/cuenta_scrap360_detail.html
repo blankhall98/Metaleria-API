@@ -1,4 +1,4 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 
 {% block title %}Cuenta Scrap360 {{ cuenta.nombre }}{% endblock %}
 
@@ -6,12 +6,14 @@
 <div class="page-header">
     <div>
         <p class="text-uppercase text-muted small mb-1">Finanzas</p>
-        <h1 class="h4 text-white mb-0">{{ cuenta.nombre }}</h1>
+        <h1 class="h4 text-dark mb-1">{{ cuenta.nombre }}</h1>
         <div class="text-muted small">{{ cuenta.tipo|capitalize }} &middot; {{ sucursales_label }}</div>
     </div>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="/web/admin/cuentas-scrap360/{{ cuenta.id }}/estado?format=pdf" class="btn btn-outline-primary btn-sm">Estado PDF</a>
+        <a href="/web/admin/cuentas-scrap360/{{ cuenta.id }}/estado?format=excel" class="btn btn-outline-primary btn-sm">Estado Excel</a>
+        <a href="/web/admin/cuentas-scrap360/{{ cuenta.id }}/editar" class="btn btn-outline-secondary btn-sm">Editar</a>
         <a href="/web/admin/cuentas-scrap360" class="btn btn-outline-secondary btn-sm">Volver</a>
-        <a href="/web/admin/cuentas-scrap360/{{ cuenta.id }}/editar" class="btn btn-outline-primary btn-sm">Editar</a>
     </div>
 </div>
 
@@ -19,38 +21,47 @@
     <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
 {% endif %}
 {% if ajuste_ok %}
-    <div class="alert alert-success py-2 small mb-3">Ajuste registrado.</div>
+    <div class="alert alert-success py-2 small mb-3">Movimiento manual registrado correctamente.</div>
 {% endif %}
 
 <div class="card hover-lift mb-3">
     <div class="card-body">
-        <div class="d-flex align-items-center gap-2 mb-2">
-            <span class="chip-strong">Resumen</span>
-            <span class="text-muted small">Saldos y estado</span>
+        <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-start">
+            <div>
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="chip-strong">Estado de cuenta</span>
+                    <span class="text-muted small">Saldo corrido y control bancario</span>
+                </div>
+                <h2 class="h5 text-dark mb-1">{{ cuenta.nombre }}</h2>
+                <p class="text-muted small mb-0">Las notas aprobadas por transferencia o cheque no descuentan esta cuenta hasta que registres el pago real desde la nota.</p>
+            </div>
+            {% if ultimo_movimiento_comment %}
+                <div class="scrap360-last-move">
+                    <span class="scrap360-last-move__label">Ultimo concepto</span>
+                    <strong>{{ ultimo_movimiento_comment }}</strong>
+                </div>
+            {% endif %}
         </div>
-        <div class="note-meta-grid">
-            <div class="note-meta-item">
-                <span class="note-meta-label">Saldo inicial</span>
+
+        <div class="scrap360-kpi-grid mt-3">
+            <div class="scrap360-kpi-card tone-neutral">
+                <span class="scrap360-kpi-label">Saldo inicial</span>
                 <strong>${{ "{:,.2f}".format(cuenta.saldo_inicial or 0) }}</strong>
             </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Saldo actual</span>
-                <strong class="{{ 'text-success' if cuenta.saldo_actual >= 0 else 'text-danger' }}">
-                    {{ '+' if cuenta.saldo_actual >= 0 else '-' }}${{ "{:,.2f}".format(cuenta.saldo_actual|abs) }}
-                </strong>
+            <div class="scrap360-kpi-card tone-green">
+                <span class="scrap360-kpi-label">Entradas</span>
+                <strong>${{ "{:,.2f}".format(total_entradas or 0) }}</strong>
             </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Sucursales</span>
-                <strong>{{ sucursales_label }}</strong>
+            <div class="scrap360-kpi-card tone-rose">
+                <span class="scrap360-kpi-label">Salidas</span>
+                <strong>${{ "{:,.2f}".format(total_salidas or 0) }}</strong>
             </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Estado</span>
-                <span class="badge {{ 'bg-success' if cuenta.activo else 'bg-secondary' }}">
-                    {{ 'Activa' if cuenta.activo else 'Inactiva' }}
-                </span>
+            <div class="scrap360-kpi-card {{ 'tone-green' if cuenta.saldo_actual >= 0 else 'tone-rose' }}">
+                <span class="scrap360-kpi-label">Saldo actual</span>
+                <strong>{{ '+' if cuenta.saldo_actual >= 0 else '-' }}${{ "{:,.2f}".format(cuenta.saldo_actual|abs) }}</strong>
             </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Movimientos</span>
+            <div class="scrap360-kpi-card tone-neutral">
+                <span class="scrap360-kpi-label">Movimientos</span>
                 <strong>{{ movimientos_total }}</strong>
             </div>
         </div>
@@ -59,21 +70,37 @@
 
 <div class="card hover-lift mb-3">
     <div class="card-body">
-        <div class="d-flex align-items-center gap-2 mb-2">
-            <span class="chip-strong">Ajuste de balance</span>
-            <span class="text-muted small">Registra un ajuste manual con comentario.</span>
+        <div class="d-flex align-items-center gap-2 mb-3">
+            <span class="chip-strong">Movimiento manual</span>
+            <span class="text-muted small">Registra depositos, cargos, comisiones o ajustes sin tocar notas existentes.</span>
         </div>
-        <form method="post" action="/web/admin/cuentas-scrap360/{{ cuenta.id }}/ajuste" class="row g-2 align-items-end">
-            <div class="col-md-3">
+        <form method="post" action="/web/admin/cuentas-scrap360/{{ cuenta.id }}/ajuste" class="row g-3 align-items-end">
+            <div class="col-lg-3 col-md-6">
+                <label class="form-label">Movimiento</label>
+                <select class="form-select" name="direccion" required>
+                    {% for key, label in ajuste_direcciones %}
+                        <option value="{{ key }}" {% if form_ajuste_direccion == key %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <label class="form-label">Concepto</label>
+                <select class="form-select" name="concepto" required>
+                    {% for key, label in ajuste_conceptos %}
+                        <option value="{{ key }}" {% if form_ajuste_concepto == key %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-lg-2 col-md-6">
                 <label class="form-label">Monto</label>
-                <input class="form-control" name="monto" type="number" step="0.01" placeholder="0.00" required>
+                <input class="form-control" name="monto" type="number" min="0.01" step="0.01" value="{{ form_ajuste_monto }}" placeholder="0.00" required>
             </div>
-            <div class="col-md-6">
+            <div class="col-lg-4 col-md-6">
                 <label class="form-label">Comentario</label>
-                <input class="form-control" name="comentario" placeholder="Motivo del ajuste" required>
+                <input class="form-control" name="comentario" value="{{ form_ajuste_comentario }}" placeholder="Referencia, banco, folio o detalle adicional">
             </div>
-            <div class="col-md-3 d-grid">
-                <button class="btn btn-outline-primary">Aplicar ajuste</button>
+            <div class="col-12 d-flex justify-content-end">
+                <button class="btn btn-primary">Guardar movimiento</button>
             </div>
         </form>
     </div>
@@ -81,62 +108,83 @@
 
 <div class="card hover-lift">
     <div class="card-body">
-        <div class="d-flex align-items-center justify-content-between mb-2">
-            <h2 class="h6 text-dark mb-0">Historial de movimientos</h2>
-            <div class="text-muted small">Ultimos {{ movimientos|length }}</div>
+        <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
+            <div>
+                <h2 class="h6 text-dark mb-1">Historial de movimientos</h2>
+                <p class="text-muted small mb-0">El saldo de la derecha refleja el efecto acumulado despues de cada movimiento.</p>
+            </div>
+            <div class="text-muted small">Ultimos {{ movimientos|length }} registros visibles</div>
         </div>
-        <div class="table-responsive">
-            <table class="table table-hover table-sm align-middle mb-0">
-                <thead>
-                <tr>
-                    <th>Fecha</th>
-                    <th>Tipo</th>
-                    <th class="text-end">Monto</th>
-                    <th class="text-end">Saldo</th>
-                    <th>Nota</th>
-                    <th>Usuario</th>
-                    <th>Comentario</th>
-                </tr>
-                </thead>
-                <tbody>
-                {% for mov in movimientos %}
+        <div class="table-scroll-shell">
+            <div class="table-responsive scroll-x">
+                <table class="table table-hover table-sm align-middle mb-0">
+                    <thead>
                     <tr>
-                        <td>{{ mov.created_at|datetime_local if mov.created_at else "-" }}</td>
-                        <td>{{ mov.tipo|upper }}</td>
-                        <td class="text-end">
-                            {% if mov.tipo == 'ingreso' %}
-                                <span class="text-success">+${{ "{:,.2f}".format(mov.monto or 0) }}</span>
-                            {% elif mov.tipo == 'egreso' %}
-                                <span class="text-danger">-${{ "{:,.2f}".format(mov.monto or 0) }}</span>
-                            {% else %}
-                                {% if mov.monto >= 0 %}
-                                    <span class="text-success">+${{ "{:,.2f}".format(mov.monto or 0) }}</span>
-                                {% else %}
-                                    <span class="text-danger">-${{ "{:,.2f}".format(-mov.monto) }}</span>
-                                {% endif %}
-                            {% endif %}
-                        </td>
-                        <td class="text-end">${{ "{:,.2f}".format(mov.saldo_resultante or 0) }}</td>
-                        <td>
-                            {% if mov.nota_id %}
-                                <a href="/web/admin/notas/{{ mov.nota_id }}">#{{ mov.nota_id }}</a>
-                            {% else %}
-                                -
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if mov.usuario %}
-                                <div class="fw-semibold">{{ mov.usuario.nombre_completo or mov.usuario.username }}</div>
-                                <div class="text-muted small">{{ mov.usuario.username }}</div>
-                            {% else %}
-                                <span class="text-muted">-</span>
-                            {% endif %}
-                        </td>
-                        <td class="text-muted small">{{ mov.comentario or "-" }}</td>
+                        <th>Fecha</th>
+                        <th>Movimiento</th>
+                        <th>Referencia</th>
+                        <th class="text-end">Entrada</th>
+                        <th class="text-end">Salida</th>
+                        <th class="text-end">Saldo</th>
+                        <th>Usuario</th>
+                        <th>Comentario</th>
                     </tr>
-                {% endfor %}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                    {% for mov in movimientos %}
+                        {% set monto = mov.monto or 0 %}
+                        {% set is_ingreso = mov.tipo == 'ingreso' or (mov.tipo == 'ajuste' and monto >= 0) %}
+                        {% set is_egreso = mov.tipo == 'egreso' or (mov.tipo == 'ajuste' and monto < 0) %}
+                        <tr>
+                            <td>{{ mov.created_at|datetime_local if mov.created_at else "-" }}</td>
+                            <td>
+                                {% if mov.tipo == 'ingreso' %}
+                                    <span class="badge bg-success-subtle text-success-emphasis border">Entrada</span>
+                                {% elif mov.tipo == 'egreso' %}
+                                    <span class="badge bg-danger-subtle text-danger-emphasis border">Salida</span>
+                                {% elif monto >= 0 %}
+                                    <span class="badge bg-info-subtle text-info-emphasis border">Ajuste a favor</span>
+                                {% else %}
+                                    <span class="badge bg-warning-subtle text-dark border">Ajuste en contra</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if mov.nota_id %}
+                                    <a href="/web/admin/notas/{{ mov.nota_id }}">Nota #{{ mov.nota_id }}</a>
+                                {% else %}
+                                    <span class="text-muted">Manual</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if is_ingreso %}
+                                    <span class="text-success fw-semibold">${{ "{:,.2f}".format(monto if monto >= 0 else -monto) }}</span>
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if is_egreso %}
+                                    <span class="text-danger fw-semibold">${{ "{:,.2f}".format((-monto) if monto < 0 else monto) }}</span>
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end fw-semibold">${{ "{:,.2f}".format(mov.saldo_resultante or 0) }}</td>
+                            <td>
+                                {% if mov.usuario %}
+                                    <div class="fw-semibold">{{ mov.usuario.nombre_completo or mov.usuario.username }}</div>
+                                    <div class="text-muted small">{{ mov.usuario.username }}</div>
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-muted small">{{ mov.comentario or "-" }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para revisar completo el estado de cuenta.</div>
         </div>
         {% if movimientos|length == 0 %}
             <p class="text-muted small mt-3 mb-0">No hay movimientos registrados.</p>
@@ -144,4 +192,3 @@
     </div>
 </div>
 {% endblock %}
-
