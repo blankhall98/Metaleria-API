@@ -2812,11 +2812,47 @@ def _get_inventory_valuation_default_prices(
     return result
 
 
+def _get_inventory_valuation_average_purchase_prices(
+    db: Session,
+    *,
+    sucursal_id: int,
+    material_ids: list[int],
+) -> dict[int, Decimal]:
+    if not material_ids:
+        return {}
+    rows = (
+        db.query(
+            NotaMaterial.material_id,
+            func.coalesce(func.sum(NotaMaterial.kg_neto), 0),
+            func.coalesce(func.sum(NotaMaterial.subtotal), 0),
+        )
+        .join(InventarioMovimiento, InventarioMovimiento.nota_material_id == NotaMaterial.id)
+        .join(Inventario, Inventario.id == InventarioMovimiento.inventario_id)
+        .join(Nota, Nota.id == NotaMaterial.nota_id)
+        .filter(
+            Inventario.sucursal_id == sucursal_id,
+            InventarioMovimiento.tipo == "compra",
+            Nota.estado == NotaEstado.aprobada,
+            Nota.tipo_operacion == TipoOperacion.compra,
+            NotaMaterial.material_id.in_(material_ids),
+        )
+        .group_by(NotaMaterial.material_id)
+        .all()
+    )
+    result: dict[int, Decimal] = {}
+    for material_id, total_kg, total_subtotal in rows:
+        kg = Decimal(str(total_kg or 0))
+        subtotal = Decimal(str(total_subtotal or 0))
+        if kg > Decimal("0"):
+            result[int(material_id)] = subtotal / kg
+    return result
+
+
 def _build_inventario_valor_rows(
     db: Session,
     *,
     sucursal_id: int,
-) -> tuple[list[dict], Decimal, Decimal, int]:
+) -> tuple[list[dict], Decimal, Decimal, int, int, int, int]:
     materiales = db.query(Material).order_by(Material.nombre.asc()).all()
     material_ids = [m.id for m in materiales]
     inventarios = (
@@ -2832,23 +2868,46 @@ def _build_inventario_valor_rows(
         .all()
     }
     default_price_map = _get_inventory_valuation_default_prices(db, material_ids)
+    average_purchase_map = _get_inventory_valuation_average_purchase_prices(
+        db,
+        sucursal_id=sucursal_id,
+        material_ids=material_ids,
+    )
 
     rows: list[dict] = []
     total_kg = Decimal("0")
     total_valor = Decimal("0")
     materiales_con_stock = 0
+    materiales_con_precio = 0
+    manual_count = 0
+    automatic_count = 0
     for material in materiales:
         inventario = inventario_map.get(material.id)
         stock = Decimal(str(inventario.stock_actual if inventario else 0))
         valuation = valuation_map.get(material.id)
-        precio_referencia = (
-            Decimal(str(valuation.precio_referencia))
-            if valuation is not None
-            else default_price_map.get(material.id, Decimal("0"))
-        )
+        source_key = "none"
+        source_help = "Sin precio manual, sin precio de venta activo y sin historial suficiente de compra en la sucursal."
+        precio_referencia = Decimal("0")
+        if valuation is not None:
+            source_key = "manual"
+            source_help = "Precio capturado manualmente para esta sucursal."
+            precio_referencia = Decimal(str(valuation.precio_referencia))
+            manual_count += 1
+        elif material.id in default_price_map:
+            source_key = "sale"
+            source_help = "Referencia automatica tomada del precio de venta regular activo."
+            precio_referencia = default_price_map.get(material.id, Decimal("0"))
+            automatic_count += 1
+        elif material.id in average_purchase_map:
+            source_key = "purchase_avg"
+            source_help = "Referencia automatica tomada del promedio historico de compra en esta sucursal."
+            precio_referencia = average_purchase_map.get(material.id, Decimal("0"))
+            automatic_count += 1
         valor_total = stock * precio_referencia
         if stock > 0:
             materiales_con_stock += 1
+            if precio_referencia > Decimal("0"):
+                materiales_con_precio += 1
         total_kg += stock
         total_valor += valor_total
         rows.append(
@@ -2860,11 +2919,15 @@ def _build_inventario_valor_rows(
                 "precio_referencia": precio_referencia,
                 "precio_guardado": valuation,
                 "usa_default": valuation is None and material.id in default_price_map,
+                "usa_promedio_compra": valuation is None and material.id not in default_price_map and material.id in average_purchase_map,
+                "source_key": source_key,
+                "source_help": source_help,
                 "valor_total": valor_total,
                 "updated_at": valuation.updated_at if valuation else None,
             }
         )
-    return rows, total_kg, total_valor, materiales_con_stock
+    sin_precio_count = max(materiales_con_stock - materiales_con_precio, 0)
+    return rows, total_kg, total_valor, materiales_con_stock, manual_count, automatic_count, sin_precio_count
 
 
 def _build_inventario_valor_summary(
@@ -2874,7 +2937,7 @@ def _build_inventario_valor_summary(
 ) -> list[dict]:
     summary_rows: list[dict] = []
     for sucursal in sucursales:
-        rows, total_kg, total_valor, materiales_con_stock = _build_inventario_valor_rows(
+        rows, total_kg, total_valor, materiales_con_stock, manual_count, automatic_count, sin_precio_count = _build_inventario_valor_rows(
             db,
             sucursal_id=sucursal.id,
         )
@@ -2885,6 +2948,9 @@ def _build_inventario_valor_summary(
                 "total_valor": total_valor,
                 "materiales_con_stock": materiales_con_stock,
                 "materiales_total": len(rows),
+                "manual_count": manual_count,
+                "automatic_count": automatic_count,
+                "sin_precio_count": sin_precio_count,
             }
         )
     return summary_rows
@@ -12558,9 +12624,12 @@ async def inventario_valor_get(
     total_kg = Decimal("0")
     total_valor = Decimal("0")
     materiales_con_stock = 0
+    manual_count = 0
+    automatic_count = 0
+    sin_precio_count = 0
     sucursal_summary: list[dict] = []
     if selected_sucursal:
-        rows, total_kg, total_valor, materiales_con_stock = _build_inventario_valor_rows(
+        rows, total_kg, total_valor, materiales_con_stock, manual_count, automatic_count, sin_precio_count = _build_inventario_valor_rows(
             db,
             sucursal_id=selected_sucursal.id,
         )
@@ -12580,6 +12649,9 @@ async def inventario_valor_get(
             "total_kg": total_kg,
             "total_valor": total_valor,
             "materiales_con_stock": materiales_con_stock,
+            "manual_count": manual_count,
+            "automatic_count": automatic_count,
+            "sin_precio_count": sin_precio_count,
             "sucursal_summary": sucursal_summary,
             "saved": request.query_params.get("saved") == "1",
             "error": request.query_params.get("error"),
