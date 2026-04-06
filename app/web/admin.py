@@ -2849,11 +2849,17 @@ def _get_inventory_valuation_average_purchase_prices(
     return result
 
 
+def _normalize_inventory_valuation_mode(mode_raw: str | None) -> str:
+    return "promedio" if (mode_raw or "").strip().lower() == "promedio" else "manual"
+
+
 def _build_inventario_valor_rows(
     db: Session,
     *,
     sucursal_id: int,
+    valuation_mode: str = "manual",
 ) -> tuple[list[dict], Decimal, Decimal, int, int, int, int]:
+    valuation_mode = _normalize_inventory_valuation_mode(valuation_mode)
     materiales = db.query(Material).order_by(Material.nombre.asc()).all()
     material_ids = [m.id for m in materiales]
     inventarios = (
@@ -2889,21 +2895,38 @@ def _build_inventario_valor_rows(
         source_key = "none"
         source_help = "Sin precio manual, sin precio de venta activo y sin historial suficiente de compra en la sucursal."
         precio_referencia = Decimal("0")
-        if valuation is not None:
-            source_key = "manual"
-            source_help = "Precio capturado manualmente para esta sucursal."
-            precio_referencia = Decimal(str(valuation.precio_referencia))
-            manual_count += 1
-        elif material.id in default_price_map:
-            source_key = "sale"
-            source_help = "Referencia automatica tomada del precio de venta regular activo."
-            precio_referencia = default_price_map.get(material.id, Decimal("0"))
-            automatic_count += 1
-        elif material.id in average_purchase_map:
-            source_key = "purchase_avg"
-            source_help = "Referencia automatica tomada del promedio historico de compra en esta sucursal."
-            precio_referencia = average_purchase_map.get(material.id, Decimal("0"))
-            automatic_count += 1
+        if valuation_mode == "promedio":
+            if material.id in average_purchase_map:
+                source_key = "purchase_avg"
+                source_help = "Modo promedio activo: se usa el promedio historico de compra en esta sucursal."
+                precio_referencia = average_purchase_map.get(material.id, Decimal("0"))
+                automatic_count += 1
+            elif valuation is not None:
+                source_key = "manual"
+                source_help = "No hay promedio historico suficiente; se usa tu configuracion manual."
+                precio_referencia = Decimal(str(valuation.precio_referencia))
+                manual_count += 1
+            elif material.id in default_price_map:
+                source_key = "sale"
+                source_help = "No hay promedio historico ni precio manual; se usa el precio de venta regular activo."
+                precio_referencia = default_price_map.get(material.id, Decimal("0"))
+                automatic_count += 1
+        else:
+            if valuation is not None:
+                source_key = "manual"
+                source_help = "Modo manual activo: se usa el precio capturado manualmente para esta sucursal."
+                precio_referencia = Decimal(str(valuation.precio_referencia))
+                manual_count += 1
+            elif material.id in default_price_map:
+                source_key = "sale"
+                source_help = "No hay precio manual; se usa el precio de venta regular activo."
+                precio_referencia = default_price_map.get(material.id, Decimal("0"))
+                automatic_count += 1
+            elif material.id in average_purchase_map:
+                source_key = "purchase_avg"
+                source_help = "No hay precio manual ni precio de venta activo; se usa el promedio historico de compra."
+                precio_referencia = average_purchase_map.get(material.id, Decimal("0"))
+                automatic_count += 1
         valor_total = stock * precio_referencia
         if stock > 0:
             materiales_con_stock += 1
@@ -2935,12 +2958,15 @@ def _build_inventario_valor_summary(
     db: Session,
     *,
     sucursales: list[Sucursal],
+    valuation_mode: str = "manual",
 ) -> list[dict]:
+    valuation_mode = _normalize_inventory_valuation_mode(valuation_mode)
     summary_rows: list[dict] = []
     for sucursal in sucursales:
         rows, total_kg, total_valor, materiales_con_stock, manual_count, automatic_count, sin_precio_count = _build_inventario_valor_rows(
             db,
             sucursal_id=sucursal.id,
+            valuation_mode=valuation_mode,
         )
         summary_rows.append(
             {
@@ -2961,7 +2987,9 @@ def _build_capital_real_context(
     db: Session,
     *,
     allowed_suc_ids: list[int] | None = None,
+    valuation_mode: str = "manual",
 ) -> dict:
+    valuation_mode = _normalize_inventory_valuation_mode(valuation_mode)
     sucursales_query = db.query(Sucursal).order_by(Sucursal.nombre.asc())
     sucursales = _filter_sucursales_for_admin(sucursales_query.all(), allowed_suc_ids)
     sucursal_names = {s.nombre for s in sucursales if s.nombre}
@@ -3075,8 +3103,16 @@ def _build_capital_real_context(
             }
         )
 
-    inventario_summary = _build_inventario_valor_summary(db, sucursales=sucursales)
+    inventario_summary = _build_inventario_valor_summary(
+        db,
+        sucursales=sucursales,
+        valuation_mode=valuation_mode,
+    )
     valor_inventario = sum((Decimal(str(row["total_valor"] or 0)) for row in inventario_summary), Decimal("0"))
+    inventario_materiales_con_stock = sum((int(row.get("materiales_con_stock") or 0) for row in inventario_summary), 0)
+    inventario_manual_count = sum((int(row.get("manual_count") or 0) for row in inventario_summary), 0)
+    inventario_automatic_count = sum((int(row.get("automatic_count") or 0) for row in inventario_summary), 0)
+    inventario_sin_precio_count = sum((int(row.get("sin_precio_count") or 0) for row in inventario_summary), 0)
 
     activos_totales = (
         total_por_cobrar_clientes
@@ -3111,7 +3147,11 @@ def _build_capital_real_context(
         {
             "label": "Valor inventario",
             "amount": valor_inventario,
-            "detail": "Valuacion por material usando tus precios de referencia.",
+            "detail": (
+                "Valuacion por material usando configuracion manual por sucursal."
+                if valuation_mode == "manual"
+                else "Valuacion por material usando promedio historico de compra por sucursal."
+            ),
         },
     ]
     liability_rows = [
@@ -3143,6 +3183,17 @@ def _build_capital_real_context(
         "liability_rows": liability_rows,
         "cuentas_rows": cuentas_rows,
         "inventario_summary": inventario_summary,
+        "inventario_materiales_con_stock": inventario_materiales_con_stock,
+        "inventario_manual_count": inventario_manual_count,
+        "inventario_automatic_count": inventario_automatic_count,
+        "inventario_sin_precio_count": inventario_sin_precio_count,
+        "valuation_mode": valuation_mode,
+        "valuation_mode_label": "Promedio de compra" if valuation_mode == "promedio" else "Configuracion manual",
+        "valuation_mode_help": (
+            "Prioriza el promedio historico de compra por sucursal; si no existe, usa precio manual y luego precio de venta."
+            if valuation_mode == "promedio"
+            else "Prioriza los precios manuales capturados por sucursal; si faltan, usa precio de venta y luego promedio de compra."
+        ),
     }
 
 
@@ -12737,9 +12788,11 @@ async def capital_real_view(
     current_user: dict = Depends(require_viewer_or_admin_or_superadmin),
 ):
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    valuation_mode = _normalize_inventory_valuation_mode(request.query_params.get("inventario_base"))
     capital_context = _build_capital_real_context(
         db,
         allowed_suc_ids=allowed_suc_ids,
+        valuation_mode=valuation_mode,
     )
     return templates.TemplateResponse(
         "admin/capital_real.html",
