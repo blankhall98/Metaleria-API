@@ -44,6 +44,7 @@ from app.models import (
     NotaEstado,
     NotaMaterial,
     Subpesaje,
+    NotaEvidenciaExtra,
     NotaPago,
     NotaAjusteSaldo,
     ConversionMaterial,
