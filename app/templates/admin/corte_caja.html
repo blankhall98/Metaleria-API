@@ -57,13 +57,40 @@
                 <span class="chip-strong">Apertura</span>
                 <span class="text-muted small">Saldo inicial del efectivo del dia</span>
             </div>
+            <div class="row g-3 align-items-stretch mb-3">
+                <div class="col-lg-7">
+                    <div class="alert alert-info h-100 mb-0">
+                        <div class="fw-semibold mb-1">Saldo inicial sugerido automaticamente</div>
+                        {% if previous_closed_corte %}
+                            <div class="small">
+                                Se propone el saldo final del ultimo corte cerrado de esta sucursal:
+                                <strong>${{ "{:,.2f}".format(auto_saldo_inicial or 0) }}</strong>
+                                correspondiente al
+                                <strong>{{ previous_closed_corte.fecha|date_local if previous_closed_corte.fecha else '-' }}</strong>.
+                            </div>
+                        {% else %}
+                            <div class="small">
+                                Todavia no hay un corte cerrado previo en esta sucursal. El sistema propone
+                                <strong>$0.00</strong> como apertura inicial, pero puedes editarlo antes de abrir caja.
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="col-lg-5">
+                    <div class="note-meta-item h-100">
+                        <span class="note-meta-label">Regla de apertura</span>
+                        <strong>{{ "{:,.2f}".format(auto_saldo_inicial or 0) }}</strong>
+                        <div class="note-meta-sub">Si no cambias el campo, este sera el saldo inicial usado al abrir la caja.</div>
+                    </div>
+                </div>
+            </div>
             <form method="post" action="/web/admin/corte-caja/abrir" class="row g-3 align-items-end">
                 <input type="hidden" name="sucursal_id" value="{{ sucursal_id or '' }}">
                 <input type="hidden" name="fecha" value="{{ fecha }}">
                 <div class="col-lg-4 col-md-6">
                     <label class="form-label">Saldo inicial</label>
                     <input class="form-control" name="saldo_inicial" type="number" step="0.01" min="0" value="{{ form_saldo_inicial }}" placeholder="0.00">
-                    <div class="form-text text-muted">Monto disponible en caja al inicio del dia.</div>
+                    <div class="form-text text-muted">Monto disponible en caja al inicio del dia. Puedes corregirlo manualmente antes de abrir.</div>
                 </div>
                 <div class="col-lg-2 col-md-4 d-grid">
                     <button class="btn btn-primary" type="submit">Abrir caja</button>

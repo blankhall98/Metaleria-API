@@ -13721,6 +13721,24 @@ def _corte_mov_sign(tipo_raw: CorteCajaMovimientoTipo | str | None) -> Decimal:
     return Decimal("-1")
 
 
+def _get_previous_closed_corte(
+    db: Session,
+    *,
+    sucursal_id: int,
+    fecha: date,
+) -> CorteCaja | None:
+    return (
+        db.query(CorteCaja)
+        .filter(
+            CorteCaja.sucursal_id == sucursal_id,
+            CorteCaja.estado == CorteCajaEstado.cerrado,
+            CorteCaja.fecha < fecha,
+        )
+        .order_by(CorteCaja.fecha.desc(), CorteCaja.id.desc())
+        .first()
+    )
+
+
 def _build_corte_manual_movimientos(
     db: Session,
     *,
@@ -13906,6 +13924,12 @@ def _render_corte_caja(
             .filter(CorteCaja.sucursal_id == sucursal_id, CorteCaja.fecha == fecha)
             .first()
         )
+    previous_closed_corte = None
+    auto_saldo_inicial = Decimal("0")
+    if sucursal_id and not corte:
+        previous_closed_corte = _get_previous_closed_corte(db, sucursal_id=sucursal_id, fecha=fecha)
+        if previous_closed_corte and previous_closed_corte.saldo_cierre is not None:
+            auto_saldo_inicial = Decimal(str(previous_closed_corte.saldo_cierre or 0))
     historial = []
     if sucursal_id:
         historial = (
@@ -13991,6 +14015,9 @@ def _render_corte_caja(
         saldo_calculado = Decimal(str(corte.saldo_calculado or 0))
 
     form_data = form_data or {}
+    form_saldo_inicial = (form_data.get("saldo_inicial") or "").strip()
+    if not form_saldo_inicial and not corte:
+        form_saldo_inicial = f"{auto_saldo_inicial:.2f}"
     (
         denom_inputs,
         denom_monedas,
@@ -14076,7 +14103,9 @@ def _render_corte_caja(
             "corte_mov_tipos": _CORTE_MOV_TIPOS,
             "corte_mov_categorias": _CORTE_MOV_CATEGORIAS,
             "corte_gasto_categorias": _CORTE_GASTO_CATEGORIAS,
-            "form_saldo_inicial": form_data.get("saldo_inicial", ""),
+            "form_saldo_inicial": form_saldo_inicial,
+            "auto_saldo_inicial": auto_saldo_inicial,
+            "previous_closed_corte": previous_closed_corte,
             "form_gasto_desc": form_data.get("gasto_desc", ""),
             "form_gasto_monto": form_data.get("gasto_monto", ""),
             "form_gasto_categoria": form_data.get("gasto_categoria", ""),
@@ -14162,6 +14191,13 @@ async def corte_caja_abrir(
         )
     if allowed_suc_ids is not None and sucursal_id not in allowed_suc_ids:
         raise HTTPException(status_code=403, detail="No tienes acceso a esta sucursal.")
+
+    if not saldo_raw:
+        previous_closed_corte = _get_previous_closed_corte(db, sucursal_id=sucursal_id, fecha=fecha)
+        if previous_closed_corte and previous_closed_corte.saldo_cierre is not None:
+            saldo_raw = f"{Decimal(str(previous_closed_corte.saldo_cierre or 0)):.2f}"
+        else:
+            saldo_raw = "0.00"
 
     try:
         saldo_inicial = Decimal(str(saldo_raw))
