@@ -254,7 +254,8 @@
                     <th>Tipo</th>
                     <th>Cantidad</th>
                     <th>Saldo</th>
-                    <th>Nota</th>
+                    <th>Folio</th>
+                    <th>Proveedor / cliente</th>
                     <th>Fecha</th>
                     <th>Comentario</th>
                     <th class="text-end"></th>
@@ -262,6 +263,7 @@
                 </thead>
                 <tbody>
                 {% for mov in movimientos %}
+                    {% set note_meta = movimiento_note_meta.get(mov.nota_id) if mov.nota_id else None %}
                     {% set qty = mov.cantidad_kg or 0 %}
                     {% if mov.tipo == 'venta' %}
                         {% set qty = qty * -1 %}
@@ -272,13 +274,8 @@
                         <td class="text-uppercase">{{ mov.tipo }}</td>
                         <td>{{ "{:,.2f}".format(qty) }} kg</td>
                         <td>{{ "{:,.2f}".format(mov.saldo_resultante or 0) }} kg</td>
-                        <td>
-                            {% if mov.nota_id %}
-                                <a href="/web/admin/notas/{{ mov.nota_id }}">#{{ mov.nota_id }}</a>
-                            {% else %}
-                                -
-                            {% endif %}
-                        </td>
+                        <td>{% if mov.nota_id %}<a href="/web/admin/notas/{{ mov.nota_id }}">{{ note_meta.folio if note_meta else ('#' ~ mov.nota_id) }}</a>{% else %}-{% endif %}</td>
+                        <td>{{ note_meta.partner if note_meta else '-' }}</td>
                         <td>{{ mov.created_at|datetime_local if mov.created_at else '-' }}</td>
                         <td class="small text-muted">{{ mov.comentario or '-' }}</td>
                         <td class="text-end">

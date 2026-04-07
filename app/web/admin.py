@@ -14725,6 +14725,36 @@ async def inventario_movimientos(
             .filter(InventarioAjusteManual.inventario_movimiento_id.in_(mov_ids))
             .all()
         }
+    movimiento_note_meta: dict[int, dict] = {}
+    movimiento_note_ids = sorted({mov.nota_id for mov in movimientos if mov.nota_id})
+    if movimiento_note_ids:
+        movimiento_notas = db.query(Nota).filter(Nota.id.in_(movimiento_note_ids)).all()
+        movimiento_folio_map = _build_folio_map(movimiento_notas)
+        movimiento_prov_ids = {nota.proveedor_id for nota in movimiento_notas if nota.proveedor_id}
+        movimiento_cli_ids = {nota.cliente_id for nota in movimiento_notas if nota.cliente_id}
+        movimiento_proveedores_map = (
+            {
+                proveedor.id: proveedor.nombre_completo
+                for proveedor in db.query(Proveedor).filter(Proveedor.id.in_(movimiento_prov_ids)).all()
+            }
+            if movimiento_prov_ids
+            else {}
+        )
+        movimiento_clientes_map = (
+            {
+                cliente.id: cliente.nombre_completo
+                for cliente in db.query(Cliente).filter(Cliente.id.in_(movimiento_cli_ids)).all()
+            }
+            if movimiento_cli_ids
+            else {}
+        )
+        movimiento_note_meta = {
+            nota.id: {
+                "folio": movimiento_folio_map.get(nota.id) or f"#{nota.id}",
+                "partner": _partner_name_for_nota(nota, movimiento_proveedores_map, movimiento_clientes_map),
+            }
+            for nota in movimiento_notas
+        }
     total_firmado = 0
     for mov in movimientos:
         total_firmado += float(_signed_inventario_qty(mov))
@@ -14899,6 +14929,7 @@ async def inventario_movimientos(
             "compra_material_rows": compra_material_rows,
             "precio_promedio_compra": precio_promedio_compra,
             "ajustes_by_mov_id": ajustes_by_mov_id,
+            "movimiento_note_meta": movimiento_note_meta,
             "can_manage_inventory": not _is_read_only_admin_user(current_user),
             "can_export_inventory": not _is_read_only_admin_user(current_user),
         },
