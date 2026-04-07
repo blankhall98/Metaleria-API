@@ -13583,13 +13583,30 @@ def _partner_name_for_nota(
     return "-"
 
 
+def _resolve_corte_window(
+    *,
+    corte: CorteCaja | None,
+    fecha: date,
+) -> tuple[datetime, datetime]:
+    if corte:
+        start_dt = corte.opened_at or _corte_local_day_bounds(fecha)[0]
+        if corte.estado == CorteCajaEstado.cerrado and corte.closed_at:
+            end_dt = corte.closed_at
+        else:
+            end_dt = datetime.utcnow()
+        if end_dt <= start_dt:
+            end_dt = start_dt + timedelta(seconds=1)
+        return start_dt, end_dt
+    return _corte_local_day_bounds(fecha)
+
+
 def _build_corte_cash_movimientos(
     db: Session,
     *,
     sucursal_id: int,
-    fecha: date,
+    start_dt: datetime,
+    end_dt: datetime,
 ) -> dict:
-    start_dt, end_dt = _corte_local_day_bounds(fecha)
     movs = (
         db.query(MovimientoContable)
         .filter(
@@ -13801,9 +13818,9 @@ def _build_corte_note_relations(
     db: Session,
     *,
     sucursal_id: int,
-    fecha: date,
+    start_dt: datetime,
+    end_dt: datetime,
 ) -> dict:
-    start_dt, end_dt = _corte_local_day_bounds(fecha)
     base_movs = (
         db.query(MovimientoContable)
         .filter(
@@ -13953,9 +13970,16 @@ def _render_corte_caja(
         for gasto in gastos:
             gastos_total += Decimal(str(gasto.monto or 0))
 
+    corte_window_start, corte_window_end = _resolve_corte_window(corte=corte, fecha=fecha)
+
     cash_data = None
     if sucursal_id:
-        cash_data = _build_corte_cash_movimientos(db, sucursal_id=sucursal_id, fecha=fecha)
+        cash_data = _build_corte_cash_movimientos(
+            db,
+            sucursal_id=sucursal_id,
+            start_dt=corte_window_start,
+            end_dt=corte_window_end,
+        )
     else:
         cash_data = {
             "movimientos": [],
@@ -13983,7 +14007,12 @@ def _render_corte_caja(
         manual_data = _build_corte_manual_movimientos(db, corte_id=corte.id)
 
     relaciones = (
-        _build_corte_note_relations(db, sucursal_id=sucursal_id, fecha=fecha)
+        _build_corte_note_relations(
+            db,
+            sucursal_id=sucursal_id,
+            start_dt=corte_window_start,
+            end_dt=corte_window_end,
+        )
         if sucursal_id
         else {
             "compras_rows": [],
@@ -14054,6 +14083,8 @@ def _render_corte_caja(
             "sucursal_id": sucursal_id,
             "fecha": fecha.strftime("%Y-%m-%d"),
             "corte": corte,
+            "corte_window_start": corte_window_start,
+            "corte_window_end": corte_window_end,
             "gastos": gastos,
             "gastos_total": gastos_total,
             "cash_movs": cash_data["movimientos"],
@@ -14100,6 +14131,8 @@ def _render_corte_caja(
             "historial": historial,
             "error": error,
             "success": success,
+            "next_ready": request.query_params.get("next_ready") == "1",
+            "next_fecha_query": request.query_params.get("next_fecha") or "",
             "corte_mov_tipos": _CORTE_MOV_TIPOS,
             "corte_mov_categorias": _CORTE_MOV_CATEGORIAS,
             "corte_gasto_categorias": _CORTE_GASTO_CATEGORIAS,
@@ -14559,7 +14592,14 @@ async def corte_caja_cerrar(
         )
     form_data["saldo_cierre"] = f"{saldo_cierre:.2f}"
 
-    cash_data = _build_corte_cash_movimientos(db, sucursal_id=corte.sucursal_id, fecha=corte.fecha)
+    corte_window_start, _ = _resolve_corte_window(corte=corte, fecha=corte.fecha)
+    closed_at = datetime.utcnow()
+    cash_data = _build_corte_cash_movimientos(
+        db,
+        sucursal_id=corte.sucursal_id,
+        start_dt=corte_window_start,
+        end_dt=closed_at,
+    )
     manual_data = _build_corte_manual_movimientos(db, corte_id=corte.id)
     gastos_total = sum((Decimal(str(g.monto or 0)) for g in corte.gastos), Decimal("0"))
     saldo_calculado = Decimal(str(corte.saldo_inicial or 0)) + cash_data["neto"] + manual_data["neto"] - gastos_total
@@ -14583,14 +14623,32 @@ async def corte_caja_cerrar(
     corte.comentarios_cierre = comentarios or None
     corte.estado = CorteCajaEstado.cerrado
     corte.cerrado_por_id = current_user.get("id")
-    corte.closed_at = datetime.utcnow()
+    corte.closed_at = closed_at
     corte.updated_at = datetime.utcnow()
     db.add(corte)
     _replace_corte_denominaciones(db, corte, denom_entries)
+    next_fecha = corte.fecha + timedelta(days=1)
+    next_corte = (
+        db.query(CorteCaja)
+        .filter(CorteCaja.sucursal_id == corte.sucursal_id, CorteCaja.fecha == next_fecha)
+        .first()
+    )
+    if not next_corte:
+        next_corte = CorteCaja(
+            sucursal_id=corte.sucursal_id,
+            fecha=next_fecha,
+            estado=CorteCajaEstado.abierto,
+            saldo_inicial=saldo_cierre,
+            abierto_por_id=current_user.get("id"),
+            opened_at=closed_at,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        db.add(next_corte)
     db.commit()
 
     return RedirectResponse(
-        url=f"/web/admin/corte-caja?sucursal_id={corte.sucursal_id}&fecha={corte.fecha.isoformat()}&success=close",
+        url=f"/web/admin/corte-caja?sucursal_id={corte.sucursal_id}&fecha={corte.fecha.isoformat()}&success=close&next_ready=1&next_fecha={next_fecha.isoformat()}",
         status_code=303,
     )
 
@@ -14610,9 +14668,20 @@ async def corte_caja_reporte(
         raise HTTPException(status_code=403, detail="No tienes acceso a esta sucursal.")
 
     sucursal = db.get(Sucursal, corte.sucursal_id)
-    cash_data = _build_corte_cash_movimientos(db, sucursal_id=corte.sucursal_id, fecha=corte.fecha)
+    corte_window_start, corte_window_end = _resolve_corte_window(corte=corte, fecha=corte.fecha)
+    cash_data = _build_corte_cash_movimientos(
+        db,
+        sucursal_id=corte.sucursal_id,
+        start_dt=corte_window_start,
+        end_dt=corte_window_end,
+    )
     manual_data = _build_corte_manual_movimientos(db, corte_id=corte.id)
-    relaciones = _build_corte_note_relations(db, sucursal_id=corte.sucursal_id, fecha=corte.fecha)
+    relaciones = _build_corte_note_relations(
+        db,
+        sucursal_id=corte.sucursal_id,
+        start_dt=corte_window_start,
+        end_dt=corte_window_end,
+    )
     gastos = (
         db.query(CorteCajaGasto)
         .filter(CorteCajaGasto.corte_id == corte.id)

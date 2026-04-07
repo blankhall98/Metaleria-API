@@ -47,6 +47,14 @@
         {% elif success == 'close' %}
             <div class="alert alert-success py-2 small mt-3 mb-0">Corte cerrado correctamente.</div>
         {% endif %}
+        {% if next_ready and sucursal_id and next_fecha_query %}
+            <div class="alert alert-info py-2 small mt-3 mb-0">
+                El siguiente corte quedo listo automaticamente para
+                <strong>{{ next_fecha_query }}</strong>
+                con el saldo final heredado de este cierre.
+                <a class="ms-2" href="/web/admin/corte-caja?sucursal_id={{ sucursal_id }}&fecha={{ next_fecha_query }}">Abrir siguiente corte</a>
+            </div>
+        {% endif %}
     </div>
 </div>
 
@@ -285,6 +293,11 @@
                     </div>
                     <h2 class="h5 text-dark mb-1">Corte de Caja Scrap360{% if sucursal_actual %} - {{ sucursal_actual.nombre }}{% endif %}</h2>
                     <p class="text-muted small mb-0">El corte separa operacion diaria, movimientos reales de efectivo y ajustes manuales auditables.</p>
+                    <div class="text-muted small mt-2">
+                        Jornada operativa: <strong>{{ corte_window_start|datetime_local if corte_window_start else '-' }}</strong>
+                        a
+                        <strong>{% if corte and corte.estado.value == 'CERRADO' %}{{ corte_window_end|datetime_local if corte_window_end else '-' }}{% else %}ahora{% endif %}</strong>.
+                    </div>
                 </div>
                 <div class="btn-group btn-group-sm">
                     <a class="btn btn-outline-secondary" href="/web/admin/corte-caja/{{ corte.id }}/reporte?format=pdf">Reporte PDF</a>
