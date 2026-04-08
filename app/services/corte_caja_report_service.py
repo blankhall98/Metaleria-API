@@ -25,6 +25,16 @@ def _format_money(value: Decimal) -> str:
         return "$0.00"
 
 
+def _format_summary_value(value: Decimal, value_type: str) -> str:
+    value_type = (value_type or "money").lower()
+    if value_type == "kg":
+        try:
+            return f"{value:,.3f} kg"
+        except (ValueError, InvalidOperation):
+            return "0.000 kg"
+    return _format_money(value)
+
+
 def _xml_escape(value: str) -> str:
     return (
         value.replace("&", "&amp;")
@@ -112,6 +122,7 @@ def build_report(
         {"label": "Dotacion efectivo", "value": _safe_decimal(manual_data.get("totals_by_categoria", {}).get("DOTACION_EFECTIVO", 0)), "type": "money"},
         {"label": "Ventas efectivo", "value": _safe_decimal(cash_data.get("ventas_efectivo_total")), "type": "money"},
         {"label": "Compras efectivo", "value": _safe_decimal(cash_data.get("compras_efectivo_total")), "type": "money"},
+        {"label": "Kg comprados del dia", "value": sum((_safe_decimal(row.get("kg_neto")) for row in compras_rows), Decimal("0")), "type": "kg"},
         {"label": "Sobrantes viaticos", "value": _safe_decimal(manual_data.get("totals_by_categoria", {}).get("SOBRANTE_VIATICOS", 0)), "type": "money"},
         {"label": "Sobrantes gastos", "value": _safe_decimal(manual_data.get("totals_by_categoria", {}).get("SOBRANTE_GASTOS", 0)), "type": "money"},
         {"label": "Otros ajustes", "value": sum((_safe_decimal(m.get("monto")) for m in otros_ajustes), Decimal("0")), "type": "money"},
@@ -209,7 +220,7 @@ def build_report_excel(report: dict) -> tuple[bytes, str]:
 
     add_row(["Resumen"])
     for item in report["summary_items"]:
-        add_row([item["label"], _format_money(_safe_decimal(item["value"]))])
+        add_row([item["label"], _format_summary_value(_safe_decimal(item["value"]), str(item.get("type") or "money"))])
     if report.get("motivo_diferencia"):
         add_row(["Motivo diferencia", report["motivo_diferencia"]])
     if report.get("comentarios_cierre"):
@@ -557,12 +568,12 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
     start_y = y
     for idx, item in enumerate(left_items):
         label = item["label"]
-        value_str = _format_money(_safe_decimal(item["value"]))
+        value_str = _format_summary_value(_safe_decimal(item["value"]), str(item.get("type") or "money"))
         page.text(left + 8, start_y - idx * line_h, label, size=9)
         page.text(value_x, start_y - idx * line_h, value_str, size=9, font="F2")
     for idx, item in enumerate(right_items):
         label = item["label"]
-        value_str = _format_money(_safe_decimal(item["value"]))
+        value_str = _format_summary_value(_safe_decimal(item["value"]), str(item.get("type") or "money"))
         page.text(left + col_gap, start_y - idx * line_h, label, size=9)
         page.text(value_x_right, start_y - idx * line_h, value_str, size=9, font="F2")
 
