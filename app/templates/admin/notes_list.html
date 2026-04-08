@@ -14,7 +14,10 @@
             <p class="text-muted mb-0">Busca, revisa y filtra notas de compra y venta con foco en estatus, cobranza y seguimiento.</p>
         </div>
         {% if user.rol == 'super_admin' %}
-            <a href="/web/admin/notas/compra-administrativa" class="btn btn-primary btn-sm">Nueva compra administrativa</a>
+            <div class="d-flex gap-2 flex-wrap">
+                <a href="/web/admin/notas/compra-administrativa" class="btn btn-primary btn-sm">Nueva compra administrativa</a>
+                <a href="/web/admin/notas/venta-administrativa" class="btn btn-outline-primary btn-sm">Nueva venta administrativa</a>
+            </div>
         {% endif %}
     </div>
 

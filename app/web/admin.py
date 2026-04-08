@@ -9006,10 +9006,20 @@ def _render_admin_purchase_note_form(
     status_code: int = 200,
     initial_state: dict | None = None,
     form_sucursal_id: str | None = None,
+    form_title: str = "Nueva compra administrativa",
+    action_url: str = "/web/admin/notas/compra-administrativa",
+    force_tipo_operacion: str = "compra",
 ):
     materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
-    proveedores = db.query(Proveedor).filter(Proveedor.activo.is_(True)).order_by(Proveedor.nombre_completo).all()
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    proveedores_query = db.query(Proveedor).filter(Proveedor.activo.is_(True))
+    clientes_query = db.query(Cliente).filter(Cliente.activo.is_(True))
+    if allowed_suc_ids:
+        proveedores_query = proveedores_query.filter(Proveedor.sucursal_id.in_(allowed_suc_ids))
+        clientes_query = clientes_query.filter(Cliente.sucursal_id.in_(allowed_suc_ids))
+    proveedores = proveedores_query.order_by(Proveedor.nombre_completo).all()
+    proveedores_venta = [p for p in proveedores if bool(getattr(p, "permite_ventas", False))]
+    clientes = clientes_query.order_by(Cliente.nombre_completo).all()
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     return templates.TemplateResponse(
@@ -9020,13 +9030,13 @@ def _render_admin_purchase_note_form(
             "user": current_user,
             "materiales": materiales,
             "proveedores": proveedores,
-            "proveedores_venta": [],
-            "clientes": [],
+            "proveedores_venta": proveedores_venta,
+            "clientes": clientes,
             "error": error,
             "price_map": _build_note_price_map(db),
             "max_mb": settings.FIREBASE_MAX_MB,
-            "form_title": "Nueva compra administrativa",
-            "action_url": "/web/admin/notas/compra-administrativa",
+            "form_title": form_title,
+            "action_url": action_url,
             "submit_label": "Crear borrador administrativo",
             "initial_note_json": json.dumps(initial_state or {}, ensure_ascii=True),
             "review_comment": "",
@@ -9034,7 +9044,7 @@ def _render_admin_purchase_note_form(
             "show_sucursal_picker": True,
             "sucursales": sucursales,
             "form_sucursal_id": form_sucursal_id or "",
-            "force_tipo_operacion": "compra",
+            "force_tipo_operacion": force_tipo_operacion,
         },
         status_code=status_code,
     )
@@ -9051,6 +9061,9 @@ async def notas_compra_administrativa_get(
         db,
         current_user,
         initial_state={"tipo_operacion": "compra", "venta_partner_kind": "proveedor", "materiales": [], "extra_evidencias": []},
+        form_title="Nueva compra administrativa",
+        action_url="/web/admin/notas/compra-administrativa",
+        force_tipo_operacion="compra",
     )
 
 
@@ -9124,6 +9137,116 @@ async def notas_compra_administrativa_post(
             materiales_payload=materiales_payload,
             comentarios_trabajador=comentarios_trabajador,
             proveedor_id=int(proveedor_compra_id),
+            extra_evidencias_payload=extra_evidencias_payload,
+        )
+    except ValueError as exc:
+        return render_error(str(exc))
+
+    return RedirectResponse(url=f"/web/admin/notas/{nota.id}", status_code=303)
+
+
+@router.get("/notas/venta-administrativa")
+async def notas_venta_administrativa_get(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    return _render_admin_purchase_note_form(
+        request,
+        db,
+        current_user,
+        initial_state={"tipo_operacion": "venta", "venta_partner_kind": "cliente", "materiales": [], "extra_evidencias": []},
+        form_title="Nueva venta administrativa",
+        action_url="/web/admin/notas/venta-administrativa",
+        force_tipo_operacion="venta",
+    )
+
+
+@router.post("/notas/venta-administrativa")
+async def notas_venta_administrativa_post(
+    request: Request,
+    sucursal_contable_id: str = Form(...),
+    venta_partner_kind: str = Form("cliente"),
+    proveedor_venta_id: str = Form(""),
+    cliente_id: str = Form(""),
+    material_id: List[str] = Form([]),
+    kg_bruto: List[str] = Form([]),
+    kg_descuento: List[str] = Form([]),
+    subpesajes: List[str] = Form([]),
+    tipo_cliente: List[str] = Form([]),
+    comentarios_trabajador: str = Form(""),
+    extra_evidencias: str = Form(""),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    venta_partner_kind_clean = "proveedor" if (venta_partner_kind or "").strip().lower() == "proveedor" else "cliente"
+    proveedor_id = (proveedor_venta_id or "").strip() if venta_partner_kind_clean == "proveedor" else ""
+    cliente_id_clean = (cliente_id or "").strip() if venta_partner_kind_clean == "cliente" else ""
+    initial_state = {
+        "tipo_operacion": "venta",
+        "venta_partner_kind": venta_partner_kind_clean,
+        "proveedor_venta_id": proveedor_id,
+        "cliente_id": cliente_id_clean,
+        "comentarios_trabajador": comentarios_trabajador or "",
+        "materiales": [],
+        "extra_evidencias": [],
+    }
+
+    def render_error(message: str):
+        return _render_admin_purchase_note_form(
+            request,
+            db,
+            current_user,
+            error=message,
+            status_code=400,
+            initial_state=initial_state,
+            form_sucursal_id=sucursal_contable_id,
+            form_title="Nueva venta administrativa",
+            action_url="/web/admin/notas/venta-administrativa",
+            force_tipo_operacion="venta",
+        )
+
+    try:
+        sucursal_id = int(sucursal_contable_id)
+    except (TypeError, ValueError):
+        return render_error("Selecciona una sucursal contable valida.")
+
+    if venta_partner_kind_clean == "proveedor":
+        if not proveedor_id:
+            return render_error("Selecciona un proveedor para la venta.")
+    else:
+        if not cliente_id_clean:
+            return render_error("Selecciona un cliente para la venta.")
+
+    try:
+        materiales_payload = _parse_note_materials_from_form(material_id, kg_bruto, kg_descuento, subpesajes, tipo_cliente)
+        initial_state["materiales"] = materiales_payload
+    except ValueError as exc:
+        return render_error(str(exc))
+    if not materiales_payload:
+        return render_error("Debes agregar al menos un material con peso.")
+
+    extra_evidencias_payload: list[str] = []
+    if extra_evidencias:
+        try:
+            loaded = json.loads(extra_evidencias)
+        except json.JSONDecodeError:
+            return render_error("Formato de evidencia extra invalido.")
+        if not isinstance(loaded, list):
+            return render_error("Formato de evidencia extra invalido.")
+        extra_evidencias_payload = [str(url) for url in loaded if url]
+        initial_state["extra_evidencias"] = extra_evidencias_payload
+
+    try:
+        nota = note_service.create_draft_note(
+            db,
+            sucursal_id=sucursal_id,
+            trabajador_id=current_user.get("id"),
+            tipo_operacion=TipoOperacion.venta,
+            materiales_payload=materiales_payload,
+            comentarios_trabajador=comentarios_trabajador,
+            proveedor_id=int(proveedor_id) if proveedor_id else None,
+            cliente_id=int(cliente_id_clean) if cliente_id_clean else None,
             extra_evidencias_payload=extra_evidencias_payload,
         )
     except ValueError as exc:
