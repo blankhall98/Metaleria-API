@@ -5133,6 +5133,10 @@ async def proveedores_list(
         compras = compras_query.order_by(Nota.created_at.desc()).all()
 
         ventas = bundle["ventas"]
+        note_adjustment_totals = _get_note_balance_adjustment_totals_map(
+            db,
+            [nota.id for nota in (compras + ventas) if nota.id],
+        )
 
         ajustes_proveedor = _get_partner_adjustments_total(
             db,
@@ -5156,6 +5160,7 @@ async def proveedores_list(
             ventas=ventas,
             ajustes_proveedor=ajustes_proveedor,
             ajustes_cliente=ajustes_cliente,
+            note_adjustment_totals=note_adjustment_totals,
         )
         proveedores_view.append(
             {
@@ -6066,6 +6071,10 @@ async def clientes_list(
                 Nota.sucursal_id,
             )
             compras = compras_query.order_by(Nota.created_at.desc()).all()
+        note_adjustment_totals = _get_note_balance_adjustment_totals_map(
+            db,
+            [nota.id for nota in (compras + ventas) if nota.id],
+        )
 
         ajustes_cliente = _get_partner_adjustments_total(
             db,
@@ -6089,6 +6098,7 @@ async def clientes_list(
             ventas=ventas,
             ajustes_proveedor=ajustes_proveedor,
             ajustes_cliente=ajustes_cliente,
+            note_adjustment_totals=note_adjustment_totals,
         )
         clientes_view.append(
             {
@@ -12964,6 +12974,10 @@ async def contabilidad_list(
     notas_query = db.query(Nota).filter(Nota.estado == NotaEstado.aprobada)
     notas_query = _apply_sucursal_filter(notas_query, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
     notas_aprobadas = notas_query.all()
+    note_adjustment_totals = _get_note_balance_adjustment_totals_map(
+        db,
+        [nota.id for nota in notas_aprobadas if nota.id],
+    )
     total_por_cobrar = Decimal("0")
     total_por_pagar = Decimal("0")
     saldo_favor_clientes = Decimal("0")
@@ -12983,7 +12997,7 @@ async def contabilidad_list(
     for nota in notas_aprobadas:
         total = Decimal(str(nota.total_monto or 0))
         pagado = Decimal(str(nota.monto_pagado or 0))
-        diff = total - pagado
+        diff = total - pagado + Decimal(str(note_adjustment_totals.get(nota.id, Decimal("0")) or 0))
         if nota.tipo_operacion == TipoOperacion.venta:
             partner_kind, partner_id = _nota_partner_key(nota)
             nombre = clientes_map.get(partner_id) if partner_kind == "cliente" else proveedores_map.get(partner_id)

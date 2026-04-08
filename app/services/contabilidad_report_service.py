@@ -347,6 +347,10 @@ def build_report_data(
         notas_query = notas_query.filter(Nota.created_at <= dt_to)
 
     notas = notas_query.order_by(Nota.created_at.desc()).all()
+    note_adjustment_totals = note_service._get_note_balance_adjustment_totals_map(
+        db,
+        [nota.id for nota in notas if nota.id],
+    )
     notas_sucursal_ids = {n.sucursal_id for n in notas if n.sucursal_id}
     missing_suc_ids = notas_sucursal_ids.difference(sucursal_map.keys())
     if missing_suc_ids:
@@ -365,15 +369,19 @@ def build_report_data(
     total_facturado_compras = Decimal("0")
     total_pagado_ventas = Decimal("0")
     total_pagado_compras = Decimal("0")
+    total_ajustes_nota_ventas = Decimal("0")
+    total_ajustes_nota_compras = Decimal("0")
     notas_pendientes: list[dict] = []
 
     for nota in notas:
         total = _safe_decimal(nota.total_monto)
         pagado = _safe_decimal(nota.monto_pagado)
-        saldo = total - pagado
+        ajuste_nota = _safe_decimal(note_adjustment_totals.get(nota.id))
+        saldo = total - pagado + ajuste_nota
         if nota.tipo_operacion == TipoOperacion.compra:
             total_facturado_compras += total
             total_pagado_compras += pagado
+            total_ajustes_nota_compras += ajuste_nota
             partner_kind, partner_id = _nota_partner_key(nota)
             if partner_kind == "cliente":
                 partner = cli_map.get(partner_id)
@@ -382,6 +390,7 @@ def build_report_data(
         else:
             total_facturado_ventas += total
             total_pagado_ventas += pagado
+            total_ajustes_nota_ventas += ajuste_nota
             partner_kind, partner_id = _nota_partner_key(nota)
             if partner_kind == "proveedor":
                 partner = prov_map.get(partner_id)
@@ -401,6 +410,7 @@ def build_report_data(
                     "partner": partner.nombre_completo if partner else "-",
                     "total": total,
                     "pagado": pagado,
+                    "ajuste_nota": ajuste_nota,
                     "saldo": saldo,
                     "fecha": nota.created_at,
                     "sucursal": sucursal_map.get(nota.sucursal_id, "-"),
@@ -425,10 +435,10 @@ def build_report_data(
         {"label": "Notas aprobadas", "value": len(notas), "type": "count"},
         {"label": "Facturado ventas", "value": total_facturado_ventas, "type": "money"},
         {"label": "Pagado ventas", "value": total_pagado_ventas, "type": "money"},
-        {"label": "Saldo pendiente ventas", "value": total_facturado_ventas - total_pagado_ventas, "type": "money"},
+        {"label": "Saldo pendiente ventas", "value": total_facturado_ventas - total_pagado_ventas + total_ajustes_nota_ventas, "type": "money"},
         {"label": "Facturado compras", "value": total_facturado_compras, "type": "money"},
         {"label": "Pagado compras", "value": total_pagado_compras, "type": "money"},
-        {"label": "Saldo pendiente compras", "value": total_facturado_compras - total_pagado_compras, "type": "money"},
+        {"label": "Saldo pendiente compras", "value": total_facturado_compras - total_pagado_compras + total_ajustes_nota_compras, "type": "money"},
     ]
 
     return {
