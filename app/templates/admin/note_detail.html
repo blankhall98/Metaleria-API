@@ -593,7 +593,7 @@
                                         <option value="efectivo" {% if selected_metodo == 'efectivo' %}selected{% endif %}>Efectivo</option>
                                         <option value="cheque" {% if selected_metodo == 'cheque' %}selected{% endif %}>Cheque</option>
                                     </select>
-                                    <div class="form-text text-muted">Define el metodo previsto. Solo se te pedira cuenta del partner y Cuenta Scrap360 si registras un pago inicial hoy.</div>
+                                    <div class="form-text text-muted">Define el metodo previsto. Si el pago inicial pasa por cuentas registradas, seleccionalas. Si fue una transferencia o cheque externo, puedes dejar ambas cuentas vacias.</div>
                                 </div>
                                 <div class="col-12">
                                     <label class="form-label">Cuenta del proveedor / cliente</label>
@@ -618,7 +618,7 @@
                                     {% if cuentas_sucursal|length == 0 and cuentas_partner|length == 0 %}
                                         <div class="form-text text-muted">No hay cuentas registradas para esta nota.</div>
                                     {% else %}
-                                        <div class="form-text text-muted">Solo se usa si haces un pago inicial por transferencia o cheque.</div>
+                                        <div class="form-text text-muted">Opcional. Usala si la transferencia o cheque cae en una cuenta registrada del partner; si es un movimiento externo, puedes dejarla vacia.</div>
                                     {% endif %}
                                 </div>
                                 <div class="col-12">
@@ -641,7 +641,7 @@
                                             <option value="{{ c.id }}" {% if cuenta_scrap_val|string == c.id|string %}selected{% endif %}>{{ c.nombre }} &middot; {{ c.tipo|capitalize }}</option>
                                         {% endfor %}
                                     </select>
-                                    <div class="form-text text-muted">Solo se descuenta si registras un pago inicial por transferencia o cheque. Si la nota queda pendiente, el saldo de la cuenta no cambia todavia.</div>
+                                    <div class="form-text text-muted">Opcional. Solo se descuenta si registras un pago inicial y eliges una Cuenta Scrap360. Si la transferencia o cheque fue externo, dejala vacia.</div>
                                 </div>
                                 <div class="col-md-6 col-12">
                                     <label class="form-label">Pago inicial</label>
@@ -925,6 +925,7 @@
                                             {% if cuentas_sucursal %}<optgroup label="Sucursal">{% for cuenta in cuentas_sucursal %}<option value="{{ cuenta.id }}" {% if pago_inicial_cuenta_val|string == cuenta.id|string %}selected{% endif %}>{{ cuenta.display_label }}</option>{% endfor %}</optgroup>{% endif %}
                                             {% if cuentas_partner %}<optgroup label="{{ cuentas_partner_label }}">{% for cuenta in cuentas_partner %}<option value="{{ cuenta.id }}" {% if pago_inicial_cuenta_val|string == cuenta.id|string %}selected{% endif %}>{{ cuenta.display_label }}</option>{% endfor %}</optgroup>{% endif %}
                                         </select>
+                                        <div class="form-text text-muted">Opcional. Seleccionala solo si el pago inicial por transferencia o cheque llega a una cuenta registrada del partner.</div>
                                     </div>
                                     <div class="col-12">
                                         <label class="form-label">Cuenta Scrap360</label>
@@ -933,7 +934,7 @@
                                             <option value="" {% if not pago_inicial_cuenta_scrap_val %}selected{% endif %}>Selecciona cuenta</option>
                                             {% for c in cuentas_scrap360 %}<option value="{{ c.id }}" {% if pago_inicial_cuenta_scrap_val|string == c.id|string %}selected{% endif %}>{{ c.nombre }} &middot; {{ c.tipo|capitalize }}</option>{% endfor %}
                                         </select>
-                                        <div class="form-text text-muted">Si el pago inicial es por transferencia o cheque, esta cuenta se descuenta al guardar.</div>
+                                        <div class="form-text text-muted">Opcional. Solo se descuenta al guardar si eliges una Cuenta Scrap360. Para transferencias o cheques externos, dejala vacia.</div>
                                     </div>
                                     <div class="col-12">
                                         <label class="form-label">Sucursal de caja</label>
@@ -952,7 +953,7 @@
                                         <button type="submit" class="btn btn-outline-secondary btn-sm">Actualizar pago inicial</button>
                                     </div>
                                 </div>
-                                <div class="form-text text-muted mt-2">Util cuando la nota se aprobo con un pago inicial incorrecto. Si subes el monto por transferencia o cheque, el descuento saldra de la Cuenta Scrap360 elegida.</div>
+                                <div class="form-text text-muted mt-2">Util cuando la nota se aprobo con un pago inicial incorrecto. Si eliges una Cuenta Scrap360, el descuento saldra de ahi; si fue una transferencia o cheque externo, puedes dejar las cuentas vacias.</div>
                                 </form>
                                 <form method="post" action="/web/admin/notas/{{ nota.id }}/pago" class="note-payment-form">
                                 <div class="note-form-card-title">Registrar nuevo abono</div>
@@ -980,6 +981,7 @@
                                             {% if cuentas_sucursal %}<optgroup label="Sucursal">{% for cuenta in cuentas_sucursal %}<option value="{{ cuenta.id }}" {% if pago_cuenta_val|string == cuenta.id|string %}selected{% endif %}>{{ cuenta.display_label }}</option>{% endfor %}</optgroup>{% endif %}
                                             {% if cuentas_partner %}<optgroup label="{{ cuentas_partner_label }}">{% for cuenta in cuentas_partner %}<option value="{{ cuenta.id }}" {% if pago_cuenta_val|string == cuenta.id|string %}selected{% endif %}>{{ cuenta.display_label }}</option>{% endfor %}</optgroup>{% endif %}
                                         </select>
+                                        <div class="form-text text-muted">Opcional. Usala solo si el abono por transferencia o cheque cae en una cuenta registrada del partner.</div>
                                     </div>
                                     <div class="col-12">
                                         <label class="form-label">Cuenta Scrap360</label>
@@ -988,7 +990,7 @@
                                             <option value="" {% if not pago_cuenta_scrap_val %}selected{% endif %}>Selecciona cuenta</option>
                                             {% for c in cuentas_scrap360 %}<option value="{{ c.id }}" {% if pago_cuenta_scrap_val|string == c.id|string %}selected{% endif %}>{{ c.nombre }} &middot; {{ c.tipo|capitalize }}</option>{% endfor %}
                                         </select>
-                                        <div class="form-text text-muted">Obligatoria para transferencias y cheques. El saldo se descuenta en cuanto registras el abono.</div>
+                                        <div class="form-text text-muted">Opcional. Si eliges una Cuenta Scrap360, el saldo se descuenta en cuanto registras el abono. Si la transferencia o cheque fue externo, puedes dejarla vacia.</div>
                                     </div>
                                     <div class="col-12">
                                         <label class="form-label">Sucursal de caja</label>
@@ -1729,7 +1731,7 @@
             const needsAccount = hasImmediatePayment && (metodo === 'transferencia' || metodo === 'cheque');
             const needsCajaSucursal = hasImmediatePayment && metodo === 'efectivo';
             cuentaInput.disabled = !needsAccount;
-            cuentaInput.required = needsAccount;
+            cuentaInput.required = false;
             if (!needsAccount) {
                 cuentaInput.value = '';
             }
@@ -1747,7 +1749,7 @@
             const pago = parseFloat(pagoInput && pagoInput.value ? pagoInput.value : '0') || 0;
             const needsBankAccount = pago > 0 && (metodo === 'transferencia' || metodo === 'cheque');
             cuentaScrapInput.disabled = !needsBankAccount;
-            cuentaScrapInput.required = needsBankAccount;
+            cuentaScrapInput.required = false;
             if (!needsBankAccount) {
                 cuentaScrapInput.value = '';
             }
@@ -1776,7 +1778,7 @@
             const needsAccount = metodo === 'transferencia' || metodo === 'cheque';
             const needsCajaSucursal = metodo === 'efectivo';
             pagoCuenta.disabled = !needsAccount;
-            pagoCuenta.required = needsAccount;
+            pagoCuenta.required = false;
             if (!needsAccount) {
                 pagoCuenta.value = '';
             }
@@ -1789,7 +1791,7 @@
             if (pagoCuentaScrap) {
                 const needsScrap360 = metodo === 'transferencia' || metodo === 'cheque';
                 pagoCuentaScrap.disabled = !needsScrap360;
-                pagoCuentaScrap.required = needsScrap360;
+                pagoCuentaScrap.required = false;
                 if (!needsScrap360) {
                     pagoCuentaScrap.value = '';
                 }
@@ -1812,14 +1814,14 @@
             const needsAccount = metodo === 'transferencia' || metodo === 'cheque';
             const needsCajaSucursal = metodo === 'efectivo' && targetAmount > 0;
             pagoInicialCuenta.disabled = !(needsAccount && targetAmount > 0);
-            pagoInicialCuenta.required = needsAccount && targetAmount > 0;
+            pagoInicialCuenta.required = false;
             if (!(needsAccount && targetAmount > 0)) {
                 pagoInicialCuenta.value = '';
             }
             if (pagoInicialCuentaScrap) {
                 const needsScrap360 = needsAccount && targetAmount > 0;
                 pagoInicialCuentaScrap.disabled = !needsScrap360;
-                pagoInicialCuentaScrap.required = needsScrap360;
+                pagoInicialCuentaScrap.required = false;
                 if (!needsScrap360) {
                     pagoInicialCuentaScrap.value = '';
                 }

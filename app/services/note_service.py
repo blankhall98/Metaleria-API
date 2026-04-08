@@ -979,9 +979,7 @@ def add_payment(
     metodo = (metodo_pago or nota.metodo_pago or "").strip().lower() or None
     cuenta_id: int | None = None
     cuenta_label: str | None = None
-    if _uses_bank_payment_method(metodo) and not cuenta_financiera:
-        raise ValueError("Debes indicar la cuenta del proveedor o cliente para transferencia o cheque.")
-    if _uses_bank_payment_method(metodo):
+    if _uses_bank_payment_method(metodo) and cuenta_financiera:
         cuenta_id = _resolve_cuenta_id(db, nota, cuenta_financiera)
         if cuenta_id is None:
             raise ValueError("Selecciona una cuenta valida.")
@@ -996,8 +994,6 @@ def add_payment(
         caja_sucursal_resolved = None
 
     cuenta_scrap = _validate_cuenta_scrap360_for_nota(db, nota, cuenta_scrap360_id, metodo)
-    if _uses_bank_payment_method(metodo) and cuenta_scrap is None:
-        raise ValueError("Debes indicar la Cuenta Scrap360 desde la que saldra o entrara el pago.")
 
     pago = NotaPago(
         nota_id=nota.id,
@@ -1498,8 +1494,6 @@ def approve_note(
                 raise ValueError("Selecciona una cuenta valida.")
             cuenta = _validate_cuenta_for_nota(db, nota, cuenta_id)
             cuenta_label = cuenta.display_label
-        elif pago_inicial and pago_inicial > Decimal("0"):
-            raise ValueError("Debes indicar la cuenta del proveedor o cliente si registras un pago inicial por transferencia o cheque.")
     elif _uses_cash_payment_method(metodo_pago_clean):
         cuenta_id = None
         if pago_inicial and pago_inicial > Decimal("0"):
