@@ -123,6 +123,7 @@ def build_report(
         {"label": "Ventas efectivo", "value": _safe_decimal(cash_data.get("ventas_efectivo_total")), "type": "money"},
         {"label": "Compras efectivo", "value": _safe_decimal(cash_data.get("compras_efectivo_total")), "type": "money"},
         {"label": "Kg comprados del dia", "value": sum((_safe_decimal(row.get("kg_neto")) for row in compras_rows), Decimal("0")), "type": "kg"},
+        {"label": "Kg vendidos del dia", "value": sum((_safe_decimal(row.get("kg_neto")) for row in ventas_rows), Decimal("0")), "type": "kg"},
         {"label": "Sobrantes viaticos", "value": _safe_decimal(manual_data.get("totals_by_categoria", {}).get("SOBRANTE_VIATICOS", 0)), "type": "money"},
         {"label": "Sobrantes gastos", "value": _safe_decimal(manual_data.get("totals_by_categoria", {}).get("SOBRANTE_GASTOS", 0)), "type": "money"},
         {"label": "Otros ajustes", "value": sum((_safe_decimal(m.get("monto")) for m in otros_ajustes), Decimal("0")), "type": "money"},

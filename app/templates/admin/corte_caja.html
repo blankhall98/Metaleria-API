@@ -925,6 +925,7 @@
                 <div class="note-payment-summary">
                     <span>Saldo esperado: <strong>${{ "{:,.2f}".format(saldo_calculado or 0) }}</strong></span>
                     <span>Kg comprados del día: <strong>{{ "{:,.3f}".format(compras_kg or 0) }} kg</strong></span>
+                    <span>Kg vendidos del día: <strong>{{ "{:,.3f}".format(ventas_kg or 0) }} kg</strong></span>
                     {% if corte.estado.value == 'CERRADO' %}
                         <span>Saldo final: <strong>${{ "{:,.2f}".format(corte.saldo_cierre or 0) }}</strong></span>
                     {% endif %}
@@ -1157,6 +1158,11 @@
                         <span class="note-meta-label">Kg comprados del día</span>
                         <strong>{{ "{:,.3f}".format(compras_kg or 0) }} kg</strong>
                         <div class="note-meta-sub">{{ compras_notas }} notas de compra consideradas</div>
+                    </div>
+                    <div class="note-meta-item">
+                        <span class="note-meta-label">Kg vendidos del día</span>
+                        <strong>{{ "{:,.3f}".format(ventas_kg or 0) }} kg</strong>
+                        <div class="note-meta-sub">{{ ventas_notas }} notas de venta consideradas</div>
                     </div>
                     <div class="note-meta-item">
                         <span class="note-meta-label">Saldo esperado</span>
