@@ -12352,19 +12352,6 @@ async def inventario_aumentar_post(
     if not mat:
         return _render_inventario_aumentar(request, db, current_user, error="Material no encontrado.", form_data=form_data)
 
-    inv_actual = db.query(Inventario).filter(
-        Inventario.sucursal_id == suc_id, Inventario.material_id == mat_id
-    ).first()
-    stock_actual = Decimal(str(inv_actual.stock_actual or 0)) if inv_actual else Decimal("0")
-    if operacion == "disminuir" and cantidad_val > stock_actual:
-        return _render_inventario_aumentar(
-            request,
-            db,
-            current_user,
-            error="La disminucion supera el stock actual. Usa Actualizar Stock si necesitas fijar un valor absoluto.",
-            form_data=form_data,
-        )
-
     delta = cantidad_val if operacion == "aumentar" else -cantidad_val
     comentario = (comentario or "").strip()
     if not comentario:
@@ -12462,8 +12449,6 @@ async def inventario_ajuste_post(
             nuevo_stock = Decimal(str(nuevo_stock_raw))
         except (InvalidOperation, TypeError):
             return render_error("El nuevo stock es inválido.")
-        if nuevo_stock < 0:
-            nuevo_stock = Decimal("0")
         delta = nuevo_stock - stock_actual
     else:
         try:
@@ -12757,6 +12742,9 @@ async def inventario_list(
     elif sucursal_id:
         query = query.filter(Inventario.sucursal_id == sucursal_id)
     inventarios = query.order_by(Inventario.sucursal_id, Inventario.material_id).all()
+    negative_inventarios = [inv for inv in inventarios if Decimal(str(inv.stock_actual or 0)) < Decimal("0")]
+    negative_inventory_count = len(negative_inventarios)
+    negative_inventory_kg = sum((Decimal(str(inv.stock_actual or 0)) for inv in negative_inventarios), Decimal("0"))
     return templates.TemplateResponse(
         "admin/inventario_list.html",
         {
@@ -12766,6 +12754,8 @@ async def inventario_list(
             "inventarios": inventarios,
             "sucursales": sucursales,
             "sucursal_id": sucursal_id,
+            "negative_inventory_count": negative_inventory_count,
+            "negative_inventory_kg": negative_inventory_kg,
             "can_manage_inventory": not _is_read_only_admin_user(current_user),
         },
     )

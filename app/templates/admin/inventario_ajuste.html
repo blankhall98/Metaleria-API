@@ -45,7 +45,12 @@
             <div class="col-md-6">
                 <label class="form-label">Nuevo stock (kg)</label>
                 <input class="form-control" type="number" step="0.01" name="nuevo_stock" placeholder="Ingresa el stock objetivo">
-                <div class="form-text">Calcularemos el ajuste automáticamente a partir del stock actual.</div>
+                <div class="form-text">Calcularemos el ajuste automáticamente a partir del stock actual. Puedes capturar un saldo negativo si necesitas reflejar material vendido o comprometido de más.</div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Stock objetivo visible</label>
+                <div class="form-control-plaintext fw-semibold" id="stock_resultante_display">--</div>
+                <div class="form-text">Este será el saldo final guardado para la sucursal y material seleccionados.</div>
             </div>
             <div class="col-12">
                 <label class="form-label">Comentario</label>
@@ -62,7 +67,9 @@
     const invMap = {{ inv_map|default({})|tojson }};
     const sucursalSelect = document.querySelector('select[name="sucursal_id"]');
     const materialSelect = document.querySelector('select[name="material_id"]');
+    const nuevoStockInput = document.querySelector('input[name="nuevo_stock"]');
     const stockDisplay = document.getElementById('stock_actual_display');
+    const stockResultante = document.getElementById('stock_resultante_display');
     function formatNumber(value, decimals) {
         const safe = Number(value || 0);
         return safe.toLocaleString('en-US', {
@@ -76,10 +83,17 @@
         const stock = (invMap[String(sId)] && invMap[String(sId)][String(mId)]) || (invMap[sId] && invMap[sId][mId]) || 0;
         if (stockDisplay) {
             stockDisplay.textContent = `${formatNumber(parseFloat(stock), 2)} kg`;
+            stockDisplay.classList.toggle('text-danger', Number(stock) < 0);
+        }
+        if (stockResultante) {
+            const target = nuevoStockInput && nuevoStockInput.value !== '' ? Number(nuevoStockInput.value || '0') : Number(stock);
+            stockResultante.textContent = `${formatNumber(target, 2)} kg`;
+            stockResultante.classList.toggle('text-danger', target < 0);
         }
     }
     if (sucursalSelect) sucursalSelect.addEventListener('change', updateStock);
     if (materialSelect) materialSelect.addEventListener('change', updateStock);
+    if (nuevoStockInput) nuevoStockInput.addEventListener('input', updateStock);
     updateStock();
 </script>
 {% endblock %}

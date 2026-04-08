@@ -38,6 +38,13 @@
                 {% endif %}
             </div>
         </form>
+        {% if negative_inventory_count %}
+            <div class="alert alert-warning py-2 small mb-3">
+                Hay <strong>{{ negative_inventory_count }}</strong> saldos negativos en esta vista por un total de
+                <strong>{{ "{:,.2f}".format(negative_inventory_kg|abs) }} kg</strong>.
+                Esto representa material ya vendido o comprometido pendiente de compensar con compras, traspasos o ajustes posteriores.
+            </div>
+        {% endif %}
         <div class="table-responsive">
             <table class="table table-hover table-sm align-middle mb-0">
                 <thead>
@@ -55,7 +62,12 @@
                         <td>{{ inv.sucursal.nombre if inv.sucursal else inv.sucursal_id }}</td>
                         <td>{{ inv.material.nombre if inv.material else inv.material_id }}</td>
                         <td>{{ "{:,.2f}".format(inv.stock_inicial or 0) }} kg</td>
-                        <td>{{ "{:,.2f}".format(inv.stock_actual or 0) }} kg</td>
+                        <td class="{% if (inv.stock_actual or 0) < 0 %}text-danger fw-semibold{% endif %}">
+                            {{ "{:,.2f}".format(inv.stock_actual or 0) }} kg
+                            {% if (inv.stock_actual or 0) < 0 %}
+                                <div class="small text-danger">Saldo en contra</div>
+                            {% endif %}
+                        </td>
                         <td>{{ inv.updated_at|datetime_local if inv.updated_at else "-" }}</td>
                     </tr>
                 {% endfor %}

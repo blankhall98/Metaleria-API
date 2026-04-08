@@ -273,7 +273,9 @@
                         <td>{{ mov.inventario.material.nombre if mov.inventario and mov.inventario.material else '-' }}</td>
                         <td class="text-uppercase">{{ mov.tipo }}</td>
                         <td>{{ "{:,.2f}".format(qty) }} kg</td>
-                        <td>{{ "{:,.2f}".format(mov.saldo_resultante or 0) }} kg</td>
+                        <td class="{% if (mov.saldo_resultante or 0) < 0 %}text-danger fw-semibold{% endif %}">
+                            {{ "{:,.2f}".format(mov.saldo_resultante or 0) }} kg
+                        </td>
                         <td>{% if mov.nota_id %}<a href="/web/admin/notas/{{ mov.nota_id }}">{{ note_meta.folio if note_meta else ('#' ~ mov.nota_id) }}</a>{% else %}-{% endif %}</td>
                         <td>{{ note_meta.partner if note_meta else '-' }}</td>
                         <td>{{ mov.created_at|datetime_local if mov.created_at else '-' }}</td>

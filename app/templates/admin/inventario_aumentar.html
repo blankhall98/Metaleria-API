@@ -55,11 +55,12 @@
             <div class="col-md-4">
                 <label class="form-label">Cantidad (kg)</label>
                 <input class="form-control" type="number" step="0.01" min="0.01" name="cantidad_kg" value="{{ form_cantidad }}" placeholder="0.00" required>
-                <div class="form-text">Ingresa el ajuste en kilogramos.</div>
+                <div class="form-text">Ingresa el ajuste en kilogramos. Si disminuyes más de lo disponible, el saldo podrá quedar en negativo.</div>
             </div>
             <div class="col-md-4">
                 <label class="form-label">Stock resultante</label>
                 <div class="form-control-plaintext fw-semibold" id="stock_resultante_display">--</div>
+                <div class="form-text">El saldo negativo representa material pendiente de compensar con compras, traspasos o ajustes posteriores.</div>
             </div>
             <div class="col-12">
                 <label class="form-label">Comentario</label>
@@ -112,12 +113,14 @@
         const operacion = (operacionSelect?.value || 'aumentar').toLowerCase();
         const cantidad = parseFloat(cantidadInput?.value || '0') || 0;
         const delta = operacion === 'disminuir' ? -cantidad : cantidad;
-        const result = Math.max(0, Number(stock) + delta);
+        const result = Number(stock) + delta;
         if (stockDisplay) {
             stockDisplay.textContent = `${formatNumber(parseFloat(stock), 2)} kg`;
+            stockDisplay.classList.toggle('text-danger', Number(stock) < 0);
         }
         if (stockResultante) {
             stockResultante.textContent = `${formatNumber(result, 2)} kg`;
+            stockResultante.classList.toggle('text-danger', result < 0);
         }
     }
 

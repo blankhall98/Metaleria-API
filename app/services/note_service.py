@@ -866,12 +866,16 @@ def _get_or_create_inventario(db: Session, sucursal_id: int, material_id: int) -
 def _validar_stock_para_venta(
     db: Session,
     nota: Nota,
+    *,
+    allow_negative: bool = False,
 ) -> None:
     if nota.tipo_operacion != TipoOperacion.venta:
         return
     inventario_sucursal_id = get_inventory_sucursal_id(nota)
     if not inventario_sucursal_id:
         raise ValueError("La nota no tiene una sucursal de inventario asignada.")
+    if allow_negative:
+        return
     for nm in nota.materiales:
         inv = _get_or_create_inventario(db, inventario_sucursal_id, nm.material_id)
         disponible = Decimal(str(inv.stock_actual or 0))
@@ -899,9 +903,6 @@ def _registrar_movimiento_inventario(
         delta = -delta
     inv = _get_or_create_inventario(db, inventario_sucursal_id, nm.material_id)
     nuevo_saldo = Decimal(str(inv.stock_actual or 0)) + delta
-    # evitar negativos drásticos
-    if nuevo_saldo < Decimal("0"):
-        nuevo_saldo = Decimal("0")
     inv.stock_actual = nuevo_saldo
     inv.updated_at = datetime.utcnow()
     mov = InventarioMovimiento(
@@ -1252,8 +1253,6 @@ def ajustar_stock(
     saldo_actual = Decimal(str(inv.stock_actual or 0))
     delta = Decimal(str(cantidad_kg or 0))
     nuevo_saldo = saldo_actual + delta
-    if nuevo_saldo < Decimal("0"):
-        raise ValueError("El ajuste deja el inventario en negativo.")
     inv.stock_actual = nuevo_saldo
     inv.updated_at = datetime.utcnow()
 
@@ -1321,11 +1320,6 @@ def reverse_manual_inventory_adjustment(
 
     delta_original = Decimal(str(ajuste.cantidad_kg or 0))
     delta_reversion = -delta_original
-    inv = _get_or_create_inventario(db, ajuste.sucursal_id, ajuste.material_id)
-    stock_actual = Decimal(str(inv.stock_actual or 0))
-    nuevo_saldo = stock_actual + delta_reversion
-    if nuevo_saldo < Decimal("0"):
-        raise ValueError("No hay stock suficiente para revertir este ajuste manual.")
 
     comment = comentario or f"Reversion ajuste manual #{ajuste.id}"
     ajustar_stock(
@@ -1479,7 +1473,7 @@ def approve_note(
         nota.inventario_sucursal_id = nota.sucursal_id
     apply_prices(db, nota)
     _apply_precio_overrides(nota, precio_override_map)
-    _validar_stock_para_venta(db, nota)
+    _validar_stock_para_venta(db, nota, allow_negative=True)
     metodo_pago_clean = (metodo_pago or "").strip().lower() or None
     cuenta_id: int | None = None
     cuenta_label: str | None = None
@@ -1838,9 +1832,6 @@ def reverse_total_return(
         signed_delta = delta if nota.tipo_operacion == TipoOperacion.compra else -delta
         inv = _get_or_create_inventario(db, get_inventory_sucursal_id(nota), nm.material_id)
         nuevo_saldo = Decimal(str(inv.stock_actual or 0)) + signed_delta
-        if nuevo_saldo < Decimal("0"):
-            nombre_mat = nm.material.nombre if nm.material else f"Material {nm.material_id}"
-            raise ValueError(f"Stock insuficiente para restaurar {nombre_mat}.")
         inv.stock_actual = nuevo_saldo
         inv.updated_at = datetime.utcnow()
         db.add(inv)
@@ -2271,7 +2262,7 @@ def edit_note_by_superadmin(
             stock_delta = delta if nota.tipo_operacion == TipoOperacion.compra else -delta
             inv = _get_or_create_inventario(db, get_inventory_sucursal_id(nota), nm.material_id)
             new_stock = Decimal(str(inv.stock_actual or 0)) + stock_delta
-            if new_stock < Decimal("0"):
+            if new_stock < Decimal("0") and nota.tipo_operacion != TipoOperacion.venta:
                 nombre_mat = nm.material.nombre if nm.material else f"Material {nm.material_id}"
                 raise ValueError(f"Stock insuficiente para ajustar {nombre_mat}.")
             inv.stock_actual = new_stock
