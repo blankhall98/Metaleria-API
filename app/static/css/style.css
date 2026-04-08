@@ -2458,6 +2458,30 @@ body.modal-open {
 .note-page-header {
     align-items: flex-start;
 }
+.notes-admin-cta {
+    min-width: min(420px, 100%);
+    display: grid;
+    gap: 0.8rem;
+    padding: 1rem 1.05rem;
+    border: 1px solid rgba(37, 99, 235, 0.14);
+    border-radius: 1.1rem;
+    background:
+        radial-gradient(circle at top right, rgba(37, 99, 235, 0.12), transparent 34%),
+        linear-gradient(135deg, #ffffff, #eff6ff);
+    box-shadow: 0 16px 32px rgba(15, 23, 42, 0.08);
+}
+.notes-admin-cta-head {
+    display: grid;
+    gap: 0.35rem;
+}
+.notes-admin-cta-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.7rem;
+}
+.notes-admin-cta-actions .btn {
+    min-height: 44px;
+}
 .note-workspace-grid {
     display: grid;
     gap: 1rem;
@@ -3164,8 +3188,12 @@ body.modal-open {
     .page-header > .d-flex.gap-2.flex-wrap .btn {
         width: 100%;
     }
-    .note-page-header > .d-flex.gap-2.flex-wrap {
+    .note-page-header > .d-flex.gap-2.flex-wrap,
+    .notes-admin-cta-actions {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .notes-admin-cta {
+        min-width: 100%;
     }
     .note-hero-card .card-body,
     .note-editor-card .card-body,
