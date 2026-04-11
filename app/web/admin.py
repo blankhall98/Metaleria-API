@@ -384,6 +384,55 @@ def _nota_partner_key(nota: Nota) -> tuple[str | None, int | None]:
     return None, None
 
 
+def _build_partner_balance_group_maps(
+    proveedores: list[Proveedor],
+    clientes: list[Cliente],
+) -> tuple[dict[int, tuple[str, int]], dict[int, tuple[str, int]]]:
+    proveedores_map = {proveedor.id: proveedor for proveedor in proveedores if proveedor.id}
+    clientes_map = {cliente.id: cliente for cliente in clientes if cliente.id}
+    proveedor_groups = {
+        proveedor_id: ("proveedor", proveedor_id)
+        for proveedor_id in proveedores_map
+    }
+    cliente_groups: dict[int, tuple[str, int]] = {}
+
+    for proveedor in proveedores:
+        if not proveedor.id:
+            continue
+        linked_cliente_id = getattr(proveedor, "linked_cliente_id", None)
+        if linked_cliente_id and linked_cliente_id in clientes_map:
+            cliente_groups[linked_cliente_id] = ("proveedor", proveedor.id)
+
+    for cliente in clientes:
+        if not cliente.id:
+            continue
+        if cliente.id in cliente_groups:
+            continue
+        linked_proveedor_id = getattr(cliente, "linked_proveedor_id", None)
+        if linked_proveedor_id and linked_proveedor_id in proveedores_map:
+            cliente_groups[cliente.id] = ("proveedor", linked_proveedor_id)
+        else:
+            cliente_groups[cliente.id] = ("cliente", cliente.id)
+
+    return proveedor_groups, cliente_groups
+
+
+def _resolve_partner_balance_group_key(
+    *,
+    proveedor_id: int | None = None,
+    cliente_id: int | None = None,
+    proveedor_groups: dict[int, tuple[str, int]] | None = None,
+    cliente_groups: dict[int, tuple[str, int]] | None = None,
+) -> tuple[str, int] | None:
+    if proveedor_id:
+        proveedor_groups = proveedor_groups or {}
+        return proveedor_groups.get(proveedor_id, ("proveedor", proveedor_id))
+    if cliente_id:
+        cliente_groups = cliente_groups or {}
+        return cliente_groups.get(cliente_id, ("cliente", cliente_id))
+    return None
+
+
 def _partner_note_sign(partner_type: str | None, nota: Nota) -> Decimal:
     if partner_type == "proveedor":
         return Decimal("-1") if nota.tipo_operacion == TipoOperacion.venta else Decimal("1")
@@ -12970,6 +13019,10 @@ async def contabilidad_list(
     sucursal_names = {s.nombre for s in sucursales_all if s.nombre}
     proveedores_map = {p.id: p.nombre_completo for p in proveedores}
     clientes_map = {c.id: c.nombre_completo for c in clientes}
+    proveedor_balance_groups, cliente_balance_groups = _build_partner_balance_group_maps(
+        proveedores,
+        clientes,
+    )
 
     notas_query = db.query(Nota).filter(Nota.estado == NotaEstado.aprobada)
     notas_query = _apply_sucursal_filter(notas_query, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
@@ -12982,6 +13035,7 @@ async def contabilidad_list(
     total_por_pagar = Decimal("0")
     saldo_favor_clientes = Decimal("0")
     saldo_favor_empresa = Decimal("0")
+    partner_group_balances: dict[tuple[str, int], Decimal] = defaultdict(lambda: Decimal("0"))
     total_ventas_aprobadas = Decimal("0")
     total_compras_aprobadas = Decimal("0")
     total_cobrado_clientes = Decimal("0")
@@ -13003,13 +13057,18 @@ async def contabilidad_list(
             nombre = clientes_map.get(partner_id) if partner_kind == "cliente" else proveedores_map.get(partner_id)
             if _is_internal_partner(nombre):
                 continue
+            group_key = _resolve_partner_balance_group_key(
+                proveedor_id=nota.proveedor_id,
+                cliente_id=nota.cliente_id,
+                proveedor_groups=proveedor_balance_groups,
+                cliente_groups=cliente_balance_groups,
+            )
+            if not group_key:
+                continue
             notas_consideradas += 1
             total_ventas_aprobadas += total
             total_cobrado_clientes += pagado
-            if diff >= Decimal("0"):
-                total_por_cobrar += diff
-            else:
-                saldo_favor_clientes += -diff
+            partner_group_balances[group_key] -= diff
         elif nota.tipo_operacion == TipoOperacion.compra:
             partner_kind, partner_id = _nota_partner_key(nota)
             if partner_kind == "cliente":
@@ -13018,13 +13077,18 @@ async def contabilidad_list(
                 nombre = proveedores_map.get(partner_id)
             if _is_internal_partner(nombre):
                 continue
+            group_key = _resolve_partner_balance_group_key(
+                proveedor_id=nota.proveedor_id,
+                cliente_id=nota.cliente_id,
+                proveedor_groups=proveedor_balance_groups,
+                cliente_groups=cliente_balance_groups,
+            )
+            if not group_key:
+                continue
             notas_consideradas += 1
             total_compras_aprobadas += total
             total_pagado_proveedores += pagado
-            if diff >= Decimal("0"):
-                total_por_pagar += diff
-            else:
-                saldo_favor_empresa += -diff
+            partner_group_balances[group_key] += diff
 
     def _apply_ajuste_sucursal_filter(query):
         if allowed_suc_ids is not None:
@@ -13043,10 +13107,14 @@ async def contabilidad_list(
         if _is_internal_partner(nombre):
             continue
         delta = Decimal(str(ajuste.monto or 0))
-        if delta >= Decimal("0"):
-            total_por_cobrar += delta
-        else:
-            saldo_favor_clientes += -delta
+        group_key = _resolve_partner_balance_group_key(
+            cliente_id=ajuste.partner_id,
+            proveedor_groups=proveedor_balance_groups,
+            cliente_groups=cliente_balance_groups,
+        )
+        if not group_key:
+            continue
+        partner_group_balances[group_key] -= delta
 
     ajustes_proveedores = _apply_ajuste_sucursal_filter(
         db.query(AjusteSaldoPartner).filter(AjusteSaldoPartner.partner_type == "proveedor")
@@ -13056,10 +13124,24 @@ async def contabilidad_list(
         if _is_internal_partner(nombre):
             continue
         delta = Decimal(str(ajuste.monto or 0))
-        if delta >= Decimal("0"):
-            total_por_pagar += delta
-        else:
-            saldo_favor_empresa += -delta
+        group_key = _resolve_partner_balance_group_key(
+            proveedor_id=ajuste.partner_id,
+            proveedor_groups=proveedor_balance_groups,
+            cliente_groups=cliente_balance_groups,
+        )
+        if not group_key:
+            continue
+        partner_group_balances[group_key] += delta
+
+    total_por_cobrar = Decimal("0")
+    total_por_pagar = Decimal("0")
+    saldo_favor_clientes = Decimal("0")
+    saldo_favor_empresa = Decimal("0")
+    for balance in partner_group_balances.values():
+        if balance > Decimal("0"):
+            total_por_pagar += balance
+        elif balance < Decimal("0"):
+            total_por_cobrar += -balance
 
     comisiones_pendientes = Decimal("0")
     comisiones_query = db.query(ComisionarioNota).filter(ComisionarioNota.estado == ComisionarioNotaEstado.aprobada)

@@ -16,6 +16,7 @@ from app.models import (
     NotaEstado,
     Proveedor,
     Cliente,
+    AjusteSaldoPartner,
     Sucursal,
     TipoOperacion,
     Cuenta,
@@ -58,6 +59,49 @@ def _nota_partner_key(nota: Nota) -> tuple[str | None, int | None]:
     if nota.cliente_id:
         return "cliente", nota.cliente_id
     return None, None
+
+
+def _build_partner_balance_group_maps(
+    proveedores: dict[int, Proveedor],
+    clientes: dict[int, Cliente],
+) -> tuple[dict[int, tuple[str, int]], dict[int, tuple[str, int]]]:
+    proveedor_groups = {
+        proveedor_id: ("proveedor", proveedor_id)
+        for proveedor_id in proveedores.keys()
+    }
+    cliente_groups: dict[int, tuple[str, int]] = {}
+
+    for proveedor in proveedores.values():
+        linked_cliente_id = getattr(proveedor, "linked_cliente_id", None)
+        if linked_cliente_id and linked_cliente_id in clientes:
+            cliente_groups[linked_cliente_id] = ("proveedor", proveedor.id)
+
+    for cliente in clientes.values():
+        if cliente.id in cliente_groups:
+            continue
+        linked_proveedor_id = getattr(cliente, "linked_proveedor_id", None)
+        if linked_proveedor_id and linked_proveedor_id in proveedores:
+            cliente_groups[cliente.id] = ("proveedor", linked_proveedor_id)
+        else:
+            cliente_groups[cliente.id] = ("cliente", cliente.id)
+
+    return proveedor_groups, cliente_groups
+
+
+def _resolve_partner_balance_group_key(
+    *,
+    proveedor_id: int | None = None,
+    cliente_id: int | None = None,
+    proveedor_groups: dict[int, tuple[str, int]] | None = None,
+    cliente_groups: dict[int, tuple[str, int]] | None = None,
+) -> tuple[str, int] | None:
+    if proveedor_id:
+        proveedor_groups = proveedor_groups or {}
+        return proveedor_groups.get(proveedor_id, ("proveedor", proveedor_id))
+    if cliente_id:
+        cliente_groups = cliente_groups or {}
+        return cliente_groups.get(cliente_id, ("cliente", cliente_id))
+    return None
 
 
 def _movimiento_label(tipo_raw: str, tipo_op: str | None) -> str:
@@ -364,6 +408,7 @@ def build_report_data(
         prov_map = {p.id: p for p in db.query(Proveedor).filter(Proveedor.id.in_(prov_ids)).all()}
     if cli_ids:
         cli_map = {c.id: c for c in db.query(Cliente).filter(Cliente.id.in_(cli_ids)).all()}
+    prov_groups, cli_groups = _build_partner_balance_group_maps(prov_map, cli_map)
 
     total_facturado_ventas = Decimal("0")
     total_facturado_compras = Decimal("0")
@@ -371,6 +416,7 @@ def build_report_data(
     total_pagado_compras = Decimal("0")
     total_ajustes_nota_ventas = Decimal("0")
     total_ajustes_nota_compras = Decimal("0")
+    partner_group_balances: dict[tuple[str, int], Decimal] = {}
     notas_pendientes: list[dict] = []
 
     for nota in notas:
@@ -378,6 +424,12 @@ def build_report_data(
         pagado = _safe_decimal(nota.monto_pagado)
         ajuste_nota = _safe_decimal(note_adjustment_totals.get(nota.id))
         saldo = total - pagado + ajuste_nota
+        group_key = _resolve_partner_balance_group_key(
+            proveedor_id=nota.proveedor_id,
+            cliente_id=nota.cliente_id,
+            proveedor_groups=prov_groups,
+            cliente_groups=cli_groups,
+        )
         if nota.tipo_operacion == TipoOperacion.compra:
             total_facturado_compras += total
             total_pagado_compras += pagado
@@ -387,6 +439,8 @@ def build_report_data(
                 partner = cli_map.get(partner_id)
             else:
                 partner = prov_map.get(partner_id)
+            if group_key:
+                partner_group_balances[group_key] = partner_group_balances.get(group_key, Decimal("0")) + saldo
         else:
             total_facturado_ventas += total
             total_pagado_ventas += pagado
@@ -396,6 +450,8 @@ def build_report_data(
                 partner = prov_map.get(partner_id)
             else:
                 partner = cli_map.get(partner_id)
+            if group_key:
+                partner_group_balances[group_key] = partner_group_balances.get(group_key, Decimal("0")) - saldo
         if saldo > Decimal("0"):
             folio = note_service.format_folio(
                 sucursal_id=nota.sucursal_id,
@@ -416,6 +472,43 @@ def build_report_data(
                     "sucursal": sucursal_map.get(nota.sucursal_id, "-"),
                 }
             )
+
+    ajustes_query = db.query(AjusteSaldoPartner)
+    if allowed_suc_ids is not None:
+        if sucursal_id:
+            ajustes_query = ajustes_query.filter(AjusteSaldoPartner.sucursal_id == sucursal_id)
+        else:
+            ajustes_query = ajustes_query.filter(AjusteSaldoPartner.sucursal_id.in_(allowed_suc_ids))
+    elif sucursal_id:
+        ajustes_query = ajustes_query.filter(AjusteSaldoPartner.sucursal_id == sucursal_id)
+    if date_from:
+        dt_from = datetime.strptime(date_from.isoformat(), "%Y-%m-%d")
+        ajustes_query = ajustes_query.filter(AjusteSaldoPartner.created_at >= dt_from)
+    if date_to:
+        dt_to = datetime.strptime(date_to.isoformat(), "%Y-%m-%d")
+        ajustes_query = ajustes_query.filter(AjusteSaldoPartner.created_at <= dt_to)
+    ajustes_rows = ajustes_query.all()
+    for ajuste in ajustes_rows:
+        delta = _safe_decimal(ajuste.monto)
+        if ajuste.partner_type == "proveedor":
+            group_key = _resolve_partner_balance_group_key(
+                proveedor_id=ajuste.partner_id,
+                proveedor_groups=prov_groups,
+                cliente_groups=cli_groups,
+            )
+            if group_key:
+                partner_group_balances[group_key] = partner_group_balances.get(group_key, Decimal("0")) + delta
+        elif ajuste.partner_type == "cliente":
+            group_key = _resolve_partner_balance_group_key(
+                cliente_id=ajuste.partner_id,
+                proveedor_groups=prov_groups,
+                cliente_groups=cli_groups,
+            )
+            if group_key:
+                partner_group_balances[group_key] = partner_group_balances.get(group_key, Decimal("0")) - delta
+
+    neto_por_cobrar = sum((-value for value in partner_group_balances.values() if value < 0), Decimal("0"))
+    neto_por_pagar = sum((value for value in partner_group_balances.values() if value > 0), Decimal("0"))
 
     total_ingresos = total_pagos_venta
     total_egresos = total_pagos_compra
@@ -439,6 +532,8 @@ def build_report_data(
         {"label": "Facturado compras", "value": total_facturado_compras, "type": "money"},
         {"label": "Pagado compras", "value": total_pagado_compras, "type": "money"},
         {"label": "Saldo pendiente compras", "value": total_facturado_compras - total_pagado_compras + total_ajustes_nota_compras, "type": "money"},
+        {"label": "Por cobrar neto clientes", "value": neto_por_cobrar, "type": "money"},
+        {"label": "Por pagar neto proveedores", "value": neto_por_pagar, "type": "money"},
     ]
 
     return {
