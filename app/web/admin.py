@@ -433,6 +433,81 @@ def _resolve_partner_balance_group_key(
     return None
 
 
+def _build_partner_balance_group_metadata(
+    proveedores: list[Proveedor],
+    clientes: list[Cliente],
+    *,
+    proveedor_groups: dict[int, tuple[str, int]] | None = None,
+    cliente_groups: dict[int, tuple[str, int]] | None = None,
+) -> dict[tuple[str, int], dict[str, bool]]:
+    metadata: dict[tuple[str, int], dict[str, bool]] = {}
+    proveedor_groups = proveedor_groups or {}
+    cliente_groups = cliente_groups or {}
+
+    for proveedor in proveedores:
+        if not proveedor.id:
+            continue
+        key = proveedor_groups.get(proveedor.id, ("proveedor", proveedor.id))
+        bucket = metadata.setdefault(
+            key,
+            {"has_proveedor": False, "has_cliente": False},
+        )
+        bucket["has_proveedor"] = True
+
+    for cliente in clientes:
+        if not cliente.id:
+            continue
+        key = cliente_groups.get(cliente.id, ("cliente", cliente.id))
+        bucket = metadata.setdefault(
+            key,
+            {"has_proveedor": False, "has_cliente": False},
+        )
+        bucket["has_cliente"] = True
+
+    return metadata
+
+
+def _classify_partner_group_balances(
+    partner_group_balances: dict[tuple[str, int], Decimal],
+    *,
+    group_metadata: dict[tuple[str, int], dict[str, bool]] | None = None,
+) -> dict[str, Decimal]:
+    totals = {
+        "total_por_cobrar_clientes": Decimal("0"),
+        "saldo_favor_clientes": Decimal("0"),
+        "total_por_pagar_proveedores": Decimal("0"),
+        "saldo_favor_empresa": Decimal("0"),
+    }
+    group_metadata = group_metadata or {}
+
+    for group_key, balance in partner_group_balances.items():
+        meta = group_metadata.get(group_key, {})
+        has_proveedor = bool(meta.get("has_proveedor", group_key[0] == "proveedor"))
+        has_cliente = bool(meta.get("has_cliente", group_key[0] == "cliente"))
+
+        if has_proveedor and has_cliente:
+            if balance > Decimal("0"):
+                totals["total_por_pagar_proveedores"] += balance
+            elif balance < Decimal("0"):
+                totals["total_por_cobrar_clientes"] += -balance
+            continue
+
+        if has_proveedor:
+            if balance > Decimal("0"):
+                totals["total_por_pagar_proveedores"] += balance
+            elif balance < Decimal("0"):
+                totals["saldo_favor_empresa"] += -balance
+            continue
+
+        if has_cliente:
+            if balance < Decimal("0"):
+                totals["total_por_cobrar_clientes"] += -balance
+            elif balance > Decimal("0"):
+                totals["saldo_favor_clientes"] += balance
+
+    return totals
+
+
 def _partner_note_sign(partner_type: str | None, nota: Nota) -> Decimal:
     if partner_type == "proveedor":
         return Decimal("-1") if nota.tipo_operacion == TipoOperacion.venta else Decimal("1")
@@ -13164,6 +13239,12 @@ async def contabilidad_list(
         proveedores,
         clientes,
     )
+    partner_group_metadata = _build_partner_balance_group_metadata(
+        proveedores,
+        clientes,
+        proveedor_groups=proveedor_balance_groups,
+        cliente_groups=cliente_balance_groups,
+    )
 
     notas_query = db.query(Nota).filter(Nota.estado == NotaEstado.aprobada)
     notas_query = _apply_sucursal_filter(notas_query, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
@@ -13172,10 +13253,6 @@ async def contabilidad_list(
         db,
         [nota.id for nota in notas_aprobadas if nota.id],
     )
-    total_por_cobrar = Decimal("0")
-    total_por_pagar = Decimal("0")
-    saldo_favor_clientes = Decimal("0")
-    saldo_favor_empresa = Decimal("0")
     partner_group_balances: dict[tuple[str, int], Decimal] = defaultdict(lambda: Decimal("0"))
     total_ventas_aprobadas = Decimal("0")
     total_compras_aprobadas = Decimal("0")
@@ -13274,15 +13351,14 @@ async def contabilidad_list(
             continue
         partner_group_balances[group_key] += delta
 
-    total_por_cobrar = Decimal("0")
-    total_por_pagar = Decimal("0")
-    saldo_favor_clientes = Decimal("0")
-    saldo_favor_empresa = Decimal("0")
-    for balance in partner_group_balances.values():
-        if balance > Decimal("0"):
-            total_por_pagar += balance
-        elif balance < Decimal("0"):
-            total_por_cobrar += -balance
+    classified_totals = _classify_partner_group_balances(
+        partner_group_balances,
+        group_metadata=partner_group_metadata,
+    )
+    total_por_cobrar = classified_totals["total_por_cobrar_clientes"]
+    saldo_favor_clientes = classified_totals["saldo_favor_clientes"]
+    total_por_pagar = classified_totals["total_por_pagar_proveedores"]
+    saldo_favor_empresa = classified_totals["saldo_favor_empresa"]
 
     comisiones_pendientes = Decimal("0")
     comisiones_query = db.query(ComisionarioNota).filter(ComisionarioNota.estado == ComisionarioNotaEstado.aprobada)

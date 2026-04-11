@@ -17,6 +17,8 @@ from app.models import (
     Proveedor,
     Cliente,
     AjusteSaldoPartner,
+    ComisionarioNota,
+    ComisionarioNotaEstado,
     Sucursal,
     TipoOperacion,
     Cuenta,
@@ -102,6 +104,81 @@ def _resolve_partner_balance_group_key(
         cliente_groups = cliente_groups or {}
         return cliente_groups.get(cliente_id, ("cliente", cliente_id))
     return None
+
+
+def _build_partner_balance_group_metadata(
+    proveedores: dict[int, Proveedor],
+    clientes: dict[int, Cliente],
+    *,
+    proveedor_groups: dict[int, tuple[str, int]] | None = None,
+    cliente_groups: dict[int, tuple[str, int]] | None = None,
+) -> dict[tuple[str, int], dict[str, bool]]:
+    metadata: dict[tuple[str, int], dict[str, bool]] = {}
+    proveedor_groups = proveedor_groups or {}
+    cliente_groups = cliente_groups or {}
+
+    for proveedor in proveedores.values():
+        if not proveedor.id:
+            continue
+        key = proveedor_groups.get(proveedor.id, ("proveedor", proveedor.id))
+        bucket = metadata.setdefault(
+            key,
+            {"has_proveedor": False, "has_cliente": False},
+        )
+        bucket["has_proveedor"] = True
+
+    for cliente in clientes.values():
+        if not cliente.id:
+            continue
+        key = cliente_groups.get(cliente.id, ("cliente", cliente.id))
+        bucket = metadata.setdefault(
+            key,
+            {"has_proveedor": False, "has_cliente": False},
+        )
+        bucket["has_cliente"] = True
+
+    return metadata
+
+
+def _classify_partner_group_balances(
+    partner_group_balances: dict[tuple[str, int], Decimal],
+    *,
+    group_metadata: dict[tuple[str, int], dict[str, bool]] | None = None,
+) -> dict[str, Decimal]:
+    totals = {
+        "total_por_cobrar_clientes": Decimal("0"),
+        "saldo_favor_clientes": Decimal("0"),
+        "total_por_pagar_proveedores": Decimal("0"),
+        "saldo_favor_empresa": Decimal("0"),
+    }
+    group_metadata = group_metadata or {}
+
+    for group_key, balance in partner_group_balances.items():
+        meta = group_metadata.get(group_key, {})
+        has_proveedor = bool(meta.get("has_proveedor", group_key[0] == "proveedor"))
+        has_cliente = bool(meta.get("has_cliente", group_key[0] == "cliente"))
+
+        if has_proveedor and has_cliente:
+            if balance > Decimal("0"):
+                totals["total_por_pagar_proveedores"] += balance
+            elif balance < Decimal("0"):
+                totals["total_por_cobrar_clientes"] += -balance
+            continue
+
+        if has_proveedor:
+            if balance > Decimal("0"):
+                totals["total_por_pagar_proveedores"] += balance
+            elif balance < Decimal("0"):
+                totals["saldo_favor_empresa"] += -balance
+            continue
+
+        if has_cliente:
+            if balance < Decimal("0"):
+                totals["total_por_cobrar_clientes"] += -balance
+            elif balance > Decimal("0"):
+                totals["saldo_favor_clientes"] += balance
+
+    return totals
 
 
 def _movimiento_label(tipo_raw: str, tipo_op: str | None) -> str:
@@ -409,6 +486,12 @@ def build_report_data(
     if cli_ids:
         cli_map = {c.id: c for c in db.query(Cliente).filter(Cliente.id.in_(cli_ids)).all()}
     prov_groups, cli_groups = _build_partner_balance_group_maps(prov_map, cli_map)
+    group_metadata = _build_partner_balance_group_metadata(
+        prov_map,
+        cli_map,
+        proveedor_groups=prov_groups,
+        cliente_groups=cli_groups,
+    )
 
     total_facturado_ventas = Decimal("0")
     total_facturado_compras = Decimal("0")
@@ -507,8 +590,32 @@ def build_report_data(
             if group_key:
                 partner_group_balances[group_key] = partner_group_balances.get(group_key, Decimal("0")) - delta
 
-    neto_por_cobrar = sum((-value for value in partner_group_balances.values() if value < 0), Decimal("0"))
-    neto_por_pagar = sum((value for value in partner_group_balances.values() if value > 0), Decimal("0"))
+    classified_totals = _classify_partner_group_balances(
+        partner_group_balances,
+        group_metadata=group_metadata,
+    )
+    total_por_cobrar_clientes = classified_totals["total_por_cobrar_clientes"]
+    saldo_favor_clientes = classified_totals["saldo_favor_clientes"]
+    total_por_pagar_proveedores = classified_totals["total_por_pagar_proveedores"]
+    saldo_favor_empresa = classified_totals["saldo_favor_empresa"]
+    comisiones_pendientes = Decimal("0")
+    comisiones_query = db.query(ComisionarioNota).filter(
+        ComisionarioNota.estado == ComisionarioNotaEstado.aprobada
+    )
+    if allowed_suc_ids is not None:
+        if sucursal_id:
+            comisiones_query = comisiones_query.filter(ComisionarioNota.sucursal_id == sucursal_id)
+        else:
+            comisiones_query = comisiones_query.filter(ComisionarioNota.sucursal_id.in_(allowed_suc_ids))
+    elif sucursal_id:
+        comisiones_query = comisiones_query.filter(ComisionarioNota.sucursal_id == sucursal_id)
+    for nota in comisiones_query.all():
+        pendiente = _safe_decimal(nota.total_monto) - _safe_decimal(nota.monto_pagado)
+        if pendiente > Decimal("0"):
+            comisiones_pendientes += pendiente
+
+    neto_por_cobrar = total_por_cobrar_clientes - saldo_favor_clientes
+    neto_por_pagar = (total_por_pagar_proveedores - saldo_favor_empresa) + comisiones_pendientes
 
     total_ingresos = total_pagos_venta
     total_egresos = total_pagos_compra
@@ -532,6 +639,9 @@ def build_report_data(
         {"label": "Facturado compras", "value": total_facturado_compras, "type": "money"},
         {"label": "Pagado compras", "value": total_pagado_compras, "type": "money"},
         {"label": "Saldo pendiente compras", "value": total_facturado_compras - total_pagado_compras + total_ajustes_nota_compras, "type": "money"},
+        {"label": "Saldo a favor clientes", "value": saldo_favor_clientes, "type": "money"},
+        {"label": "A favor de la empresa (proveedores)", "value": saldo_favor_empresa, "type": "money"},
+        {"label": "Comisiones pendientes", "value": comisiones_pendientes, "type": "money"},
         {"label": "Por cobrar neto clientes", "value": neto_por_cobrar, "type": "money"},
         {"label": "Por pagar neto proveedores", "value": neto_por_pagar, "type": "money"},
     ]

@@ -24,7 +24,8 @@
                 {% else %}
                     <strong class="text-warning">-${{ "{:,.2f}".format(-neto_por_cobrar) }}</strong>
                 {% endif %}
-                <div class="note-meta-sub">Por cobrar - saldo a favor</div>
+                <div class="note-meta-sub">Por cobrar clientes - saldo a favor de clientes</div>
+                <div class="note-meta-sub">Saldo a favor clientes: ${{ "{:,.2f}".format(saldo_favor_clientes) }}</div>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Por pagar neto proveedores</span>
@@ -33,7 +34,9 @@
                 {% else %}
                     <strong class="text-warning">-${{ "{:,.2f}".format(-neto_por_pagar) }}</strong>
                 {% endif %}
-                <div class="note-meta-sub">Incluye comisiones por pagar</div>
+                <div class="note-meta-sub">Por pagar proveedores - proveedores a favor de la empresa + comisiones</div>
+                <div class="note-meta-sub">A favor de la empresa: ${{ "{:,.2f}".format(saldo_favor_empresa) }}</div>
+                <div class="note-meta-sub">Comisiones pendientes: ${{ "{:,.2f}".format(comisiones_pendientes) }}</div>
             </div>
             <div class="note-meta-item">
                 <span class="note-meta-label">Saldo neto ajustado</span>
@@ -47,8 +50,9 @@
             </div>
         </div>
         <div class="text-muted small mt-2">
-            Neto = pendiente menos saldos a favor. Por pagar neto incluye comisiones pendientes.
-            No incluye transferencias internas.
+            Neto = pendiente menos saldos a favor dentro del mismo tipo de entidad.
+            Los partners compra/venta se reclasifican segun su saldo neto.
+            Por pagar neto incluye comisiones pendientes. No incluye transferencias internas.
             Los filtros de fecha aplican solo al log de movimientos.
         </div>
     </div>
