@@ -2062,6 +2062,9 @@ def _build_notas_estado_links(
     folio_query: str | None,
     pago_filter: str | None = None,
     sucursal_id: int | None = None,
+    proveedor_id: int | None = None,
+    vencimiento_from: str | None = None,
+    vencimiento_to: str | None = None,
 ) -> dict[str, str]:
     def build(estado: str | None) -> str:
         params: dict[str, str] = {}
@@ -2069,6 +2072,12 @@ def _build_notas_estado_links(
             params["folio"] = folio_query
         if sucursal_id:
             params["sucursal_id"] = str(sucursal_id)
+        if proveedor_id:
+            params["proveedor_id"] = str(proveedor_id)
+        if vencimiento_from:
+            params["vence_desde"] = vencimiento_from
+        if vencimiento_to:
+            params["vence_hasta"] = vencimiento_to
         if pago_filter and pago_filter != "TODAS":
             params["pago"] = pago_filter
         if estado:
@@ -2089,6 +2098,9 @@ def _build_notas_pago_links(
     folio_query: str | None,
     estado_filter: str | None = None,
     sucursal_id: int | None = None,
+    proveedor_id: int | None = None,
+    vencimiento_from: str | None = None,
+    vencimiento_to: str | None = None,
 ) -> dict[str, str]:
     def build(pago: str | None) -> str:
         params: dict[str, str] = {}
@@ -2096,6 +2108,12 @@ def _build_notas_pago_links(
             params["folio"] = folio_query
         if sucursal_id:
             params["sucursal_id"] = str(sucursal_id)
+        if proveedor_id:
+            params["proveedor_id"] = str(proveedor_id)
+        if vencimiento_from:
+            params["vence_desde"] = vencimiento_from
+        if vencimiento_to:
+            params["vence_hasta"] = vencimiento_to
         if estado_filter and estado_filter != "TODAS":
             params["estado"] = estado_filter
         if pago and pago != "TODAS":
@@ -2116,6 +2134,9 @@ def _build_notas_sucursal_links(
     folio_query: str | None = None,
     estado_filter: str | None = None,
     pago_filter: str | None = None,
+    proveedor_id: int | None = None,
+    vencimiento_from: str | None = None,
+    vencimiento_to: str | None = None,
 ) -> dict[str, str]:
     def build(target_sucursal_id: int | None) -> str:
         params: dict[str, str] = {}
@@ -2125,6 +2146,12 @@ def _build_notas_sucursal_links(
             params["estado"] = estado_filter
         if pago_filter and pago_filter != "TODAS":
             params["pago"] = pago_filter
+        if proveedor_id:
+            params["proveedor_id"] = str(proveedor_id)
+        if vencimiento_from:
+            params["vence_desde"] = vencimiento_from
+        if vencimiento_to:
+            params["vence_hasta"] = vencimiento_to
         if target_sucursal_id:
             params["sucursal_id"] = str(target_sucursal_id)
         qs = urlencode(params)
@@ -2142,6 +2169,9 @@ def _build_notas_seguimiento_links(
     estado_filter: str | None = None,
     pago_filter: str | None = None,
     sucursal_id: int | None = None,
+    proveedor_id: int | None = None,
+    vencimiento_from: str | None = None,
+    vencimiento_to: str | None = None,
 ) -> dict[str, str]:
     def build(seguimiento: str | None) -> str:
         params: dict[str, str] = {}
@@ -2153,6 +2183,12 @@ def _build_notas_seguimiento_links(
             params["pago"] = pago_filter
         if sucursal_id:
             params["sucursal_id"] = str(sucursal_id)
+        if proveedor_id:
+            params["proveedor_id"] = str(proveedor_id)
+        if vencimiento_from:
+            params["vence_desde"] = vencimiento_from
+        if vencimiento_to:
+            params["vence_hasta"] = vencimiento_to
         if seguimiento and seguimiento != "TODOS":
             params["seguimiento"] = seguimiento
         qs = urlencode(params)
@@ -9336,6 +9372,14 @@ async def notas_list(
         if sucursal_id is None and len(allowed_suc_ids) == 1:
             sucursal_id = allowed_suc_ids[0]
     folio_query = (request.query_params.get("folio") or "").strip()
+    proveedor_raw = (request.query_params.get("proveedor_id") or "").strip()
+    proveedor_filter_id: int | None = None
+    proveedor_filter_error = None
+    if proveedor_raw:
+        try:
+            proveedor_filter_id = int(proveedor_raw)
+        except ValueError:
+            proveedor_filter_error = "Proveedor invalido."
     estado_raw = (request.query_params.get("estado") or "").strip().upper()
     pago_raw = (request.query_params.get("pago") or "").strip().upper()
     estado_aliases = {
@@ -9409,11 +9453,40 @@ async def notas_list(
     hoy = date.today()
     alerta_dias = max(1, int(getattr(settings, "NOTA_VENCIMIENTO_ALERTA_DIAS", 5)))
     limite_alerta = hoy + timedelta(days=alerta_dias)
+    vencimiento_from_raw = (request.query_params.get("vence_desde") or "").strip()
+    vencimiento_to_raw = (request.query_params.get("vence_hasta") or "").strip()
+    vencimiento_from = None
+    vencimiento_to = None
+    vencimiento_error = None
+    if vencimiento_from_raw:
+        try:
+            vencimiento_from = datetime.strptime(vencimiento_from_raw, "%Y-%m-%d").date()
+        except ValueError:
+            vencimiento_error = "La fecha inicial de vencimiento no es valida."
+    if vencimiento_to_raw:
+        try:
+            vencimiento_to = datetime.strptime(vencimiento_to_raw, "%Y-%m-%d").date()
+        except ValueError:
+            vencimiento_error = "La fecha final de vencimiento no es valida."
+    if vencimiento_from and vencimiento_to and vencimiento_from > vencimiento_to:
+        vencimiento_from, vencimiento_to = vencimiento_to, vencimiento_from
+        vencimiento_from_raw = vencimiento_from.isoformat()
+        vencimiento_to_raw = vencimiento_to.isoformat()
+    proveedores_query = db.query(Proveedor).filter(Proveedor.activo.is_(True)).order_by(Proveedor.nombre_completo)
+    if allowed_suc_ids:
+        proveedores_query = proveedores_query.filter(Proveedor.sucursal_id.in_(allowed_suc_ids))
+    proveedores_list = proveedores_query.all()
+    proveedores = {p.id: p for p in proveedores_list}
+    if proveedor_filter_id and proveedor_filter_id not in proveedores:
+        proveedor_filter_error = "No tienes acceso a ese proveedor o no existe."
+        proveedor_filter_id = None
 
     notas_scope_query = db.query(Nota).filter(
         Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]),
     )
     notas_scope_query = _apply_sucursal_filter(notas_scope_query, allowed_suc_ids, sucursal_id, Nota.sucursal_id)
+    if proveedor_filter_id:
+        notas_scope_query = notas_scope_query.filter(Nota.proveedor_id == proveedor_filter_id)
     notas_scope = notas_scope_query.order_by(Nota.created_at.desc(), Nota.id.desc()).all()
     note_effective_balances = _build_effective_note_balance_map(
         db,
@@ -9429,6 +9502,17 @@ async def notas_list(
             "saldo_cubierto_por_ajuste": False,
             "saldo_parcialmente_cubierto": False,
         }
+
+    def note_matches_due_window(nota: Nota) -> bool:
+        if not vencimiento_from and not vencimiento_to:
+            return True
+        if not nota.fecha_caducidad_pago:
+            return False
+        if vencimiento_from and nota.fecha_caducidad_pago < vencimiento_from:
+            return False
+        if vencimiento_to and nota.fecha_caducidad_pago > vencimiento_to:
+            return False
+        return True
 
     def is_note_effectively_pending(nota: Nota) -> bool:
         if nota.estado != NotaEstado.aprobada:
@@ -9450,11 +9534,15 @@ async def notas_list(
     ]
     estado_counts = {e.value: 0 for e in NotaEstado}
     for nota in notas_scope:
+        if not note_matches_due_window(nota):
+            continue
         if nota.estado and nota.estado.value in estado_counts:
             estado_counts[nota.estado.value] += 1
-    estado_total = len(notas_scope)
+    estado_total = sum(1 for nota in notas_scope if note_matches_due_window(nota))
 
     pago_source = notas_scope
+    if vencimiento_from or vencimiento_to:
+        pago_source = [nota for nota in pago_source if note_matches_due_window(nota)]
     if estado_filter:
         pago_source = [nota for nota in pago_source if nota.estado == estado_filter]
     pago_counts = {
@@ -9464,6 +9552,8 @@ async def notas_list(
     pago_total = pago_counts["PAGADAS"] + pago_counts["PENDIENTES"]
 
     seguimiento_source = notas_scope
+    if vencimiento_from or vencimiento_to:
+        seguimiento_source = [nota for nota in seguimiento_source if note_matches_due_window(nota)]
     if estado_filter:
         seguimiento_source = [nota for nota in seguimiento_source if nota.estado == estado_filter]
     if pago_filter == "PAGADAS":
@@ -9494,6 +9584,8 @@ async def notas_list(
     }
 
     notas_estado = list(notas_scope)
+    if vencimiento_from or vencimiento_to:
+        notas_estado = [nota for nota in notas_estado if note_matches_due_window(nota)]
     if estado_filter:
         notas_estado = [nota for nota in notas_estado if nota.estado == estado_filter]
     if pago_filter == "PAGADAS":
@@ -9508,11 +9600,23 @@ async def notas_list(
 
     saldo_vivo_total = Decimal("0")
     for nota in notas_aprobadas:
+        if not note_matches_due_window(nota):
+            continue
         saldo_vivo_total += Decimal(str(note_balance_view(nota)["saldo_pendiente"]))
+
+    total_seleccion = Decimal("0")
+    for nota in notas_estado:
+        balance = note_balance_view(nota)
+        if nota.estado == NotaEstado.aprobada:
+            total_seleccion += Decimal(str(balance["saldo_pendiente"]))
+        else:
+            total_seleccion += Decimal(str(nota.total_monto or 0))
 
     notas_vencidas = []
     notas_por_vencer = []
     for nota in sorted(notas_con_vencimiento, key=lambda item: item.fecha_caducidad_pago or hoy):
+        if not note_matches_due_window(nota):
+            continue
         balance = note_balance_view(nota)
         saldo = Decimal(str(balance["saldo_pendiente"]))
         if saldo <= Decimal("0"):
@@ -9559,7 +9663,6 @@ async def notas_list(
             if not folio_result and not folio_error:
                 folio_error = "No se encontr\u00f3 una nota con ese folio."
     sucursales = {s.id: s for s in db.query(Sucursal).order_by(Sucursal.nombre).all()}
-    proveedores = {p.id: p for p in db.query(Proveedor).all()}
     clientes = {c.id: c for c in db.query(Cliente).all()}
     notas_folio = []
     notas_folio.extend(notas_revision)
@@ -9570,24 +9673,53 @@ async def notas_list(
     if folio_result:
         notas_folio.append(folio_result)
     folio_map = _build_folio_map(notas_folio)
-    estado_links = _build_notas_estado_links(folio_query, pago_current, sucursal_id)
-    pago_links = _build_notas_pago_links(folio_query, estado_current, sucursal_id)
+    estado_links = _build_notas_estado_links(
+        folio_query,
+        pago_current,
+        sucursal_id,
+        proveedor_filter_id,
+        vencimiento_from_raw,
+        vencimiento_to_raw,
+    )
+    pago_links = _build_notas_pago_links(
+        folio_query,
+        estado_current,
+        sucursal_id,
+        proveedor_filter_id,
+        vencimiento_from_raw,
+        vencimiento_to_raw,
+    )
     sucursal_links = _build_notas_sucursal_links(
         sucursales_list,
         folio_query=folio_query,
         estado_filter=estado_current,
         pago_filter=pago_current,
+        proveedor_id=proveedor_filter_id,
+        vencimiento_from=vencimiento_from_raw,
+        vencimiento_to=vencimiento_to_raw,
     )
     seguimiento_links = _build_notas_seguimiento_links(
         folio_query=folio_query,
         estado_filter=estado_current,
         pago_filter=pago_current,
         sucursal_id=sucursal_id,
+        proveedor_id=proveedor_filter_id,
+        vencimiento_from=vencimiento_from_raw,
+        vencimiento_to=vencimiento_to_raw,
     )
     sucursal_label = "Todas las sucursales"
     if sucursal_id:
         sucursal = sucursales.get(sucursal_id)
         sucursal_label = sucursal.nombre if sucursal else f"Sucursal {sucursal_id}"
+    proveedor_filter = proveedores.get(proveedor_filter_id) if proveedor_filter_id else None
+    if vencimiento_from and vencimiento_to:
+        vencimiento_scope_label = f"{format_date_local(vencimiento_from)} al {format_date_local(vencimiento_to)}"
+    elif vencimiento_from:
+        vencimiento_scope_label = f"Desde {format_date_local(vencimiento_from)}"
+    elif vencimiento_to:
+        vencimiento_scope_label = f"Hasta {format_date_local(vencimiento_to)}"
+    else:
+        vencimiento_scope_label = "Todas"
 
     return templates.TemplateResponse(
         "admin/notes_list.html",
@@ -9609,11 +9741,19 @@ async def notas_list(
             "sucursal_label": sucursal_label,
             "sucursal_links": sucursal_links,
             "proveedores": proveedores,
+            "proveedores_list": proveedores_list,
             "clientes": clientes,
             "folio_query": folio_query,
             "folio_error": folio_error,
             "folio_result": folio_result,
             "folio_map": folio_map,
+            "proveedor_filter_id": proveedor_filter_id,
+            "proveedor_filter": proveedor_filter,
+            "proveedor_filter_error": proveedor_filter_error,
+            "vencimiento_from": vencimiento_from_raw,
+            "vencimiento_to": vencimiento_to_raw,
+            "vencimiento_scope_label": vencimiento_scope_label,
+            "vencimiento_error": vencimiento_error,
             "note_effective_balances": note_effective_balances,
             "notas_estado": notas_estado,
             "estado_current": estado_current,
@@ -9626,6 +9766,7 @@ async def notas_list(
             "pago_counts": pago_counts,
             "pago_total": pago_total,
             "pago_links": pago_links,
+            "total_seleccion": total_seleccion,
             "seguimiento_current": seguimiento_current,
             "seguimiento_label": seguimiento_label,
             "seguimiento_counts": seguimiento_counts,

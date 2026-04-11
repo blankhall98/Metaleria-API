@@ -11,7 +11,7 @@
         <div>
             <p class="text-uppercase text-muted small mb-1">Operacion diaria</p>
             <h1 class="h4 text-dark mb-1">Control de notas</h1>
-            <p class="text-muted mb-0">Busca, revisa y filtra notas de compra y venta con foco en estatus, cobranza y seguimiento.</p>
+            <p class="text-muted mb-0">Busca, revisa y filtra notas de compra y venta con foco en estatus, cobranza, proveedor y vencimiento.</p>
         </div>
         {% if user.rol == 'super_admin' %}
             <div class="notes-admin-cta">
@@ -41,11 +41,11 @@
                 <div class="notes-search-panel">
                     <div class="d-flex align-items-center gap-2 mb-3">
                         <span class="chip-strong">Busqueda</span>
-                        <span class="text-muted small">Acceso rapido por folio, sucursal y estado de pago</span>
+                        <span class="text-muted small">Acceso rapido por folio, sucursal, proveedor, pago y ventana de vencimiento</span>
                     </div>
                     <form method="get" class="notes-search-form">
                         <div class="row g-3 align-items-end">
-                            <div class="col-lg-5">
+                            <div class="col-lg-4">
                                 <label class="form-label">Buscar por folio</label>
                                 <input class="form-control" name="folio" placeholder="01_C_1" value="{{ folio_query }}">
                             </div>
@@ -55,6 +55,17 @@
                                     <option value="">Todas las sucursales</option>
                                     {% for suc in sucursales.values()|sort(attribute='nombre') %}
                                         <option value="{{ suc.id }}" {% if sucursal_id == suc.id %}selected{% endif %}>{{ suc.nombre }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-lg-3">
+                                <label class="form-label">Proveedor</label>
+                                <select class="form-select" name="proveedor_id">
+                                    <option value="">Todos los proveedores</option>
+                                    {% for proveedor in proveedores_list %}
+                                        <option value="{{ proveedor.id }}" {% if proveedor_filter_id == proveedor.id %}selected{% endif %}>
+                                            {{ proveedor.nombre_completo }}{% if proveedor.sucursal_id and sucursales.get(proveedor.sucursal_id) %} · {{ sucursales.get(proveedor.sucursal_id).nombre }}{% endif %}
+                                        </option>
                                     {% endfor %}
                                 </select>
                             </div>
@@ -74,6 +85,14 @@
                                     <option value="POR_VENCER" {% if seguimiento_current == 'POR_VENCER' %}selected{% endif %}>Por vencer</option>
                                 </select>
                             </div>
+                            <div class="col-lg-3">
+                                <label class="form-label">Vence desde</label>
+                                <input class="form-control" type="date" name="vence_desde" value="{{ vencimiento_from }}">
+                            </div>
+                            <div class="col-lg-3">
+                                <label class="form-label">Vence hasta</label>
+                                <input class="form-control" type="date" name="vence_hasta" value="{{ vencimiento_to }}">
+                            </div>
                             <div class="col-lg-12 d-grid d-lg-flex justify-content-lg-end">
                                 <button class="btn btn-primary">Buscar</button>
                             </div>
@@ -84,6 +103,8 @@
                         <div class="mt-3 d-flex flex-wrap align-items-center gap-2">
                             <span class="chip-strong">Vista actual</span>
                             <span class="text-muted small">Sucursal: {{ sucursal_label }}</span>
+                            <span class="text-muted small">Proveedor: {{ proveedor_filter.nombre_completo if proveedor_filter else 'Todos' }}</span>
+                            <span class="text-muted small">Vencimiento: {{ vencimiento_scope_label }}</span>
                         </div>
                         <div class="ops-inline-toolbar mt-3">
                             <a href="{{ sucursal_links['ALL'] }}" class="ops-inline-pill {{ 'active' if not sucursal_id else '' }}">Todas las sucursales</a>
@@ -91,7 +112,7 @@
                                 <a href="{{ sucursal_links[suc.id ~ ''] }}" class="ops-inline-pill {{ 'active' if sucursal_id == suc.id else '' }}">{{ suc.nombre }}</a>
                             {% endfor %}
                         </div>
-                        {% if folio_query or pago_current != 'TODAS' or sucursal_id or seguimiento_current != 'TODOS' %}
+                        {% if folio_query or pago_current != 'TODAS' or sucursal_id or seguimiento_current != 'TODOS' or proveedor_filter_id or vencimiento_from or vencimiento_to %}
                             <div class="mt-3">
                                 <a class="btn btn-outline-secondary btn-sm" href="/web/admin/notas">Limpiar filtros</a>
                             </div>
@@ -99,6 +120,12 @@
                     </form>
                     {% if folio_error %}
                         <div class="alert alert-danger py-2 small mt-3 mb-0">{{ folio_error }}</div>
+                    {% endif %}
+                    {% if proveedor_filter_error %}
+                        <div class="alert alert-danger py-2 small mt-3 mb-0">{{ proveedor_filter_error }}</div>
+                    {% endif %}
+                    {% if vencimiento_error %}
+                        <div class="alert alert-danger py-2 small mt-3 mb-0">{{ vencimiento_error }}</div>
                     {% endif %}
                     {% if folio_result %}
                         {% if folio_result.proveedor_id and proveedores.get(folio_result.proveedor_id) %}
@@ -142,6 +169,11 @@
                         <span class="notes-kpi-label">Saldo vivo</span>
                         <strong>${{ "{:,.2f}".format(saldo_vivo_total or 0) }}</strong>
                         <div class="notes-kpi-sub">{{ pago_counts['PENDIENTES'] }} notas aprobadas con saldo</div>
+                    </div>
+                    <div class="notes-kpi-card tone-neutral">
+                        <span class="notes-kpi-label">Total seleccion</span>
+                        <strong>${{ "{:,.2f}".format(total_seleccion or 0) }}</strong>
+                        <div class="notes-kpi-sub">Suma de la vista filtrada actual</div>
                     </div>
                 </div>
             </div>
@@ -248,9 +280,11 @@
                     <div class="text-muted small">
                         Mostrando {{ notas_estado|length }} de {{ estado_total }} notas
                         &middot; Sucursal: {{ sucursal_label }}
+                        &middot; Proveedor: {{ proveedor_filter.nombre_completo if proveedor_filter else 'Todos' }}
                         &middot; Estado: {{ estado_label }}
                         &middot; Pago: {{ pago_label }}
                         &middot; Seguimiento: {{ seguimiento_label }}
+                        &middot; Vence: {{ vencimiento_scope_label }}
                     </div>
                 </div>
                 <div class="d-flex flex-column gap-2 align-items-start align-items-lg-end">
@@ -470,7 +504,7 @@
             {% if notas_estado|length == 0 %}
                 <div class="notes-empty-state">
                     <h3 class="h6 text-dark mb-1">No hay notas para este filtro</h3>
-                    <p class="text-muted small mb-0">Prueba cambiando el estado, el filtro de pago o buscando otro folio.</p>
+                    <p class="text-muted small mb-0">Prueba cambiando el proveedor, la ventana de vencimiento, el estado o el filtro de pago.</p>
                 </div>
             {% endif %}
         </div>
