@@ -55,6 +55,7 @@ class Nota(Base):
     total_kg_bruto = Column(Numeric(12, 3), nullable=False, default=0)
     total_kg_descuento = Column(Numeric(12, 3), nullable=False, default=0)
     total_kg_neto = Column(Numeric(12, 3), nullable=False, default=0)
+    total_kg_real = Column(Numeric(12, 3), nullable=False, default=0)
     total_monto = Column(Numeric(12, 2), nullable=False, default=0)
     monto_pagado = Column(Numeric(12, 2), nullable=False, default=0)
     folio_seq = Column(Integer, nullable=True, index=True)
@@ -103,6 +104,7 @@ class NotaMaterial(Base):
     kg_bruto = Column(Numeric(12, 3), nullable=False, default=0)
     kg_descuento = Column(Numeric(12, 3), nullable=False, default=0)
     kg_neto = Column(Numeric(12, 3), nullable=False, default=0)
+    kg_real = Column(Numeric(12, 3), nullable=False, default=0)
 
     precio_unitario = Column(Numeric(12, 5), nullable=True)
     subtotal = Column(Numeric(12, 2), nullable=True)
@@ -233,6 +235,7 @@ class NotaDevolucionParcialLinea(Base):
     material_id = Column(Integer, ForeignKey("materiales.id"), nullable=True, index=True)
 
     kg_devolucion = Column(Numeric(12, 3), nullable=False, default=0)
+    kg_real_devolucion = Column(Numeric(12, 3), nullable=False, default=0)
     precio_unitario_devolucion = Column(Numeric(12, 5), nullable=False, default=0)
     monto_devolucion = Column(Numeric(12, 2), nullable=False, default=0)
 

@@ -2536,6 +2536,32 @@ def _parse_kg_overrides(
 
     return kg_neto_map, kg_desc_map, form_kg_neto_map, form_kg_desc_map, error
 
+
+def _parse_real_kg_overrides(
+    form,
+    nota: Nota,
+) -> tuple[dict[int, Decimal], dict[int, str], str | None]:
+    kg_real_map: dict[int, Decimal] = {}
+    form_kg_real_map: dict[int, str] = {}
+    error = None
+
+    for nm in nota.materiales:
+        raw_real = (form.get(f"kg_real_{nm.id}") or "").strip()
+        if raw_real == "":
+            continue
+        form_kg_real_map[nm.id] = raw_real
+        try:
+            kg_real = Decimal(str(raw_real))
+        except (InvalidOperation, TypeError):
+            error = "Kg reales invalidos para un material."
+            break
+        if kg_real < Decimal("0"):
+            error = "Los kilos reales no pueden ser negativos."
+            break
+        kg_real_map[nm.id] = kg_real
+
+    return kg_real_map, form_kg_real_map, error
+
 def _parse_owner_key(owner_key: str | None) -> tuple[str | None, int | None]:
     if not owner_key:
         return None, None
@@ -10437,6 +10463,7 @@ def _render_nota_detail(
         "form_precio_unit_map": {},
         "form_subtotal_map": {},
         "form_precio_mode_map": {},
+        "form_kg_real_map": {},
         "form_ajuste_nota_material_id": None,
         "form_ajuste_operacion": "aumentar",
         "form_ajuste_cantidad": None,
@@ -10552,6 +10579,7 @@ def _render_nota_edit(
     form_precio_mode_map: dict[int, str] | None = None,
     form_kg_neto_map: dict[int, str] | None = None,
     form_kg_desc_map: dict[int, str] | None = None,
+    form_kg_real_map: dict[int, str] | None = None,
     saved: bool = False,
 ):
     sucursal = db.get(Sucursal, nota.sucursal_id) if nota.sucursal_id else None
@@ -10638,6 +10666,7 @@ def _render_nota_edit(
             "form_precio_mode_map": form_precio_mode_map or {},
             "form_kg_neto_map": form_kg_neto_map or {},
             "form_kg_desc_map": form_kg_desc_map or {},
+            "form_kg_real_map": form_kg_real_map or {},
             "saved": saved,
             "error": error,
         },
@@ -10859,6 +10888,11 @@ async def notas_edit_post(
         form_kg_desc_map,
         kg_error,
     ) = _parse_kg_overrides(form, nota)
+    (
+        kg_real_override_map,
+        form_kg_real_map,
+        kg_real_error,
+    ) = _parse_real_kg_overrides(form, nota)
     if kg_error:
         return _render_nota_edit(
             request,
@@ -10869,6 +10903,19 @@ async def notas_edit_post(
             comentario_edicion=comentario_edicion,
             form_kg_neto_map=form_kg_neto_map,
             form_kg_desc_map=form_kg_desc_map,
+            form_kg_real_map=form_kg_real_map,
+        )
+    if kg_real_error:
+        return _render_nota_edit(
+            request,
+            db,
+            current_user,
+            nota,
+            error=kg_real_error,
+            comentario_edicion=comentario_edicion,
+            form_kg_neto_map=form_kg_neto_map,
+            form_kg_desc_map=form_kg_desc_map,
+            form_kg_real_map=form_kg_real_map,
         )
     (
         precio_override_map,
@@ -10887,6 +10934,7 @@ async def notas_edit_post(
             comentario_edicion=comentario_edicion,
             form_kg_neto_map=form_kg_neto_map,
             form_kg_desc_map=form_kg_desc_map,
+            form_kg_real_map=form_kg_real_map,
             form_precio_unit_map=form_precio_unit_map,
             form_subtotal_map=form_subtotal_map,
             form_precio_mode_map=form_precio_mode_map,
@@ -10951,6 +10999,7 @@ async def notas_edit_post(
             tipo_cliente_map=tipo_cliente_map,
             kg_override_map=kg_override_map,
             subpesaje_map=subpesaje_map,
+            kg_real_override_map=kg_real_override_map or None,
             precio_override_map=precio_override_map or None,
             admin_id=current_user.get("id"),
             comentario=comentario_edicion,
@@ -10966,6 +11015,7 @@ async def notas_edit_post(
             comentario_edicion=comentario_edicion,
             form_kg_neto_map=form_kg_neto_map,
             form_kg_desc_map=form_kg_desc_map,
+            form_kg_real_map=form_kg_real_map,
             form_precio_unit_map=form_precio_unit_map,
             form_subtotal_map=form_subtotal_map,
             form_precio_mode_map=form_precio_mode_map,
@@ -11130,6 +11180,7 @@ async def notas_aprobar(
     kg_neto_override_map = None
     kg_desc_override_map = None
     precio_override_map = None
+    kg_real_override_map = None
     if current_user.get("rol") == UserRole.super_admin.value:
         (
             kg_neto_override_map,
@@ -11138,10 +11189,16 @@ async def notas_aprobar(
             form_kg_desc_map,
             kg_error,
         ) = _parse_kg_overrides(form, nota)
+        (
+            kg_real_override_map,
+            form_kg_real_map,
+            kg_real_error,
+        ) = _parse_real_kg_overrides(form, nota)
         form_state.update(
             {
                 "form_kg_neto_map": form_kg_neto_map,
                 "form_kg_desc_map": form_kg_desc_map,
+                "form_kg_real_map": form_kg_real_map,
             }
         )
         if kg_error:
@@ -11151,6 +11208,15 @@ async def notas_aprobar(
                 current_user,
                 nota,
                 error=kg_error,
+                form_state=form_state,
+            )
+        if kg_real_error:
+            return _render_nota_detail(
+                request,
+                db,
+                current_user,
+                nota,
+                error=kg_real_error,
                 form_state=form_state,
             )
         (
@@ -11182,6 +11248,8 @@ async def notas_aprobar(
             kg_neto_override_map = None
         if not kg_desc_override_map:
             kg_desc_override_map = None
+        if not kg_real_override_map:
+            kg_real_override_map = None
 
     fecha_caducidad_pago = None
     if fecha_caducidad_pago_raw:
@@ -11335,6 +11403,10 @@ async def notas_aprobar(
 
                 nm.kg_neto = kg_neto
                 nm.kg_descuento = kg_desc
+                if kg_real_override_map and nm.id in kg_real_override_map:
+                    nm.kg_real = kg_real_override_map[nm.id]
+                else:
+                    nm.kg_real = kg_neto
                 db.add(nm)
             note_service._recalc_totals(nota)
             db.add(nota)
@@ -11343,6 +11415,7 @@ async def notas_aprobar(
             nota,
             tipo_cliente_map=tipo_cliente_map or None,
             precio_override_map=precio_override_map,
+            kg_real_override_map=kg_real_override_map,
             admin_id=current_user.get("id"),
             comentarios_admin=comentarios_admin,
             fecha_caducidad_pago=fecha_caducidad_pago,

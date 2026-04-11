@@ -61,6 +61,39 @@ def _uses_cash_payment_method(metodo_pago: str | None) -> bool:
     return metodo == "efectivo"
 
 
+def _inventory_qty(nm: NotaMaterial) -> Decimal:
+    real_qty = getattr(nm, "kg_real", None)
+    if real_qty is None:
+        return Decimal(str(nm.kg_neto or 0))
+    return Decimal(str(real_qty or 0))
+
+
+def _ensure_inventory_qty(nm: NotaMaterial) -> Decimal:
+    qty = _inventory_qty(nm)
+    if getattr(nm, "kg_real", None) is None:
+        nm.kg_real = qty
+    return qty
+
+
+def _normalize_kg_real(value: Decimal | float | int | str | None) -> Decimal:
+    qty = Decimal(str(value or 0))
+    if qty < Decimal("0"):
+        raise ValueError("Los kilos reales no pueden ser negativos.")
+    return qty.quantize(Decimal("0.001"))
+
+
+def _apply_real_kg_overrides(
+    nota: Nota,
+    kg_real_override_map: dict[int, Decimal] | None = None,
+) -> None:
+    override_map = kg_real_override_map or {}
+    for nm in nota.materiales:
+        if nm.id in override_map:
+            nm.kg_real = _normalize_kg_real(override_map[nm.id])
+        else:
+            nm.kg_real = Decimal(str(nm.kg_neto or 0))
+
+
 def _partial_return_contable_amount(nota: Nota, monto_devolucion: Decimal, *, reverse: bool = False) -> Decimal:
     amount = Decimal(str(monto_devolucion or 0))
     signed = amount if _is_compra_like(nota.tipo_operacion) else -amount
@@ -95,6 +128,7 @@ def _recalc_material(nm: NotaMaterial) -> None:
     else:
         kg_desc = Decimal(str(nm.kg_descuento or 0))
         nm.kg_neto = Decimal(str(nm.kg_bruto or 0)) - kg_desc
+    _ensure_inventory_qty(nm)
 
 
 def _recalc_totals(nota: Nota) -> None:
@@ -108,11 +142,13 @@ def _recalc_totals(nota: Nota) -> None:
     total_bruto = _sum_decimal(m.kg_bruto for m in nota.materiales)
     total_desc = _sum_decimal(m.kg_descuento for m in nota.materiales)
     total_neto = _sum_decimal(m.kg_neto for m in nota.materiales)
+    total_real = _sum_decimal(_inventory_qty(m) for m in nota.materiales)
     base_total = _sum_decimal(m.subtotal for m in nota.materiales if m.subtotal is not None)
 
     nota.total_kg_bruto = total_bruto
     nota.total_kg_descuento = total_desc
     nota.total_kg_neto = total_neto
+    nota.total_kg_real = total_real
 
     iva_incluido = bool(nota.iva_incluido)
     iva_pct_raw = nota.iva_porcentaje if nota.iva_porcentaje is not None else Decimal("16.00")
@@ -157,6 +193,7 @@ def _build_nota_snapshot(nota: Nota) -> dict:
                 "kg_bruto": _as_str(nm.kg_bruto),
                 "kg_descuento": _as_str(nm.kg_descuento),
                 "kg_neto": _as_str(nm.kg_neto),
+                "kg_real": _as_str(getattr(nm, "kg_real", None)),
                 "precio_unitario": _as_str(nm.precio_unitario),
                 "subtotal": _as_str(nm.subtotal),
                 "orden": nm.orden,
@@ -188,6 +225,7 @@ def _build_nota_snapshot(nota: Nota) -> dict:
             "kg_bruto": _as_str(nota.total_kg_bruto),
             "kg_descuento": _as_str(nota.total_kg_descuento),
             "kg_neto": _as_str(nota.total_kg_neto),
+            "kg_real": _as_str(getattr(nota, "total_kg_real", None)),
             "monto": _as_str(nota.total_monto),
             "iva_incluido": bool(nota.iva_incluido),
             "iva_porcentaje": _as_str(nota.iva_porcentaje),
@@ -681,6 +719,7 @@ def create_draft_note(
             kg_bruto=kg_bruto,
             kg_descuento=kg_descuento,
             kg_neto=kg_neto,
+            kg_real=kg_neto,
             orden=idx,
             evidencia_url=mp.get("evidencia_url") or None,
             tipo_cliente=tipo_cli,
@@ -801,6 +840,7 @@ def update_worker_note(
             kg_bruto=kg_bruto,
             kg_descuento=kg_descuento,
             kg_neto=kg_neto,
+            kg_real=kg_neto,
             orden=idx,
             evidencia_url=mp.get("evidencia_url") or None,
             tipo_cliente=tipo_cli,
@@ -879,7 +919,7 @@ def _validar_stock_para_venta(
     for nm in nota.materiales:
         inv = _get_or_create_inventario(db, inventario_sucursal_id, nm.material_id)
         disponible = Decimal(str(inv.stock_actual or 0))
-        requerido = Decimal(str(nm.kg_neto or 0))
+        requerido = _inventory_qty(nm)
         if requerido > disponible:
             nombre_mat = nm.material.nombre if nm.material else f"Material {nm.material_id}"
             raise ValueError(f"Stock insuficiente de {nombre_mat}: disponible {disponible}, requerido {requerido}.")
@@ -897,7 +937,7 @@ def _registrar_movimiento_inventario(
     inventario_sucursal_id = get_inventory_sucursal_id(nota)
     if not inventario_sucursal_id:
         raise ValueError("La nota no tiene una sucursal de inventario asignada.")
-    delta = Decimal(str(nm.kg_neto or 0))
+    delta = _inventory_qty(nm)
     tipo_mov = "compra" if nota.tipo_operacion == TipoOperacion.compra else "venta"
     if tipo_mov == "venta":
         delta = -delta
@@ -1421,6 +1461,7 @@ def approve_note(
     *,
     tipo_cliente_map: dict[int, TipoCliente] | None = None,
     precio_override_map: dict[int, dict[str, Decimal]] | None = None,
+    kg_real_override_map: dict[int, Decimal] | None = None,
     admin_id: int | None = None,
     comentarios_admin: str | None = None,
     fecha_caducidad_pago: date | None = None,
@@ -1473,6 +1514,8 @@ def approve_note(
         nota.inventario_sucursal_id = nota.sucursal_id
     apply_prices(db, nota)
     _apply_precio_overrides(nota, precio_override_map)
+    _apply_real_kg_overrides(nota, kg_real_override_map)
+    _recalc_totals(nota)
     _validar_stock_para_venta(db, nota, allow_negative=True)
     metodo_pago_clean = (metodo_pago or "").strip().lower() or None
     cuenta_id: int | None = None
@@ -1590,6 +1633,7 @@ def reverse_partial_return_line(
         raise ValueError("No se encontro el material original de la devolucion.")
 
     kg_restore = Decimal(str(linea.kg_devolucion or 0))
+    kg_real_restore = _normalize_kg_real(getattr(linea, "kg_real_devolucion", None) or kg_restore)
     monto_restore = Decimal(str(linea.monto_devolucion or 0))
     if kg_restore <= Decimal("0"):
         raise ValueError("La linea no tiene kg validos para revertir.")
@@ -1612,6 +1656,7 @@ def reverse_partial_return_line(
         nm.kg_descuento = desc_actual - kg_restore
 
     _recalc_material(nm)
+    nm.kg_real = _normalize_kg_real(_inventory_qty(nm) + kg_real_restore)
     nm.subtotal = Decimal(str(nm.subtotal or 0)) + monto_restore
     if Decimal(str(nm.kg_neto or 0)) > Decimal("0"):
         nm.precio_unitario = Decimal(str(nm.subtotal or 0)) / Decimal(str(nm.kg_neto or 0))
@@ -1620,7 +1665,7 @@ def reverse_partial_return_line(
     nm.version_precio_id = None
     db.add(nm)
 
-    stock_delta = kg_restore if _is_compra_like(nota.tipo_operacion) else -kg_restore
+    stock_delta = kg_real_restore if _is_compra_like(nota.tipo_operacion) else -kg_real_restore
     inv = _get_or_create_inventario(db, get_inventory_sucursal_id(nota), nm.material_id)
     new_stock = Decimal(str(inv.stock_actual or 0)) + stock_delta
     if new_stock < Decimal("0"):
@@ -1729,7 +1774,7 @@ def cancel_approved_note(
     db.add(devolucion_total)
 
     for nm in nota.materiales:
-        delta = Decimal(str(nm.kg_neto or 0))
+        delta = _inventory_qty(nm)
         signed_delta = -delta if nota.tipo_operacion == TipoOperacion.compra else delta
         inv = _get_or_create_inventario(db, get_inventory_sucursal_id(nota), nm.material_id)
         nuevo_saldo = Decimal(str(inv.stock_actual or 0)) + signed_delta
@@ -1828,7 +1873,7 @@ def reverse_total_return(
     comment_base = comentario or f"Reversion devolucion total #{devolucion_total.id} nota #{nota.id}"
 
     for nm in nota.materiales:
-        delta = Decimal(str(nm.kg_neto or 0))
+        delta = _inventory_qty(nm)
         signed_delta = delta if nota.tipo_operacion == TipoOperacion.compra else -delta
         inv = _get_or_create_inventario(db, get_inventory_sucursal_id(nota), nm.material_id)
         nuevo_saldo = Decimal(str(inv.stock_actual or 0)) + signed_delta
@@ -1967,6 +2012,7 @@ def partial_return_approved_note(
         if not nm:
             raise ValueError("Un material de devolucion no pertenece a la nota.")
         kg_actual = Decimal(str(nm.kg_neto or 0))
+        kg_real_actual = _inventory_qty(nm)
         subtotal_actual = Decimal(str(nm.subtotal or 0))
         kg_devolucion = payload["kg_devolucion"]
         monto_devolucion = payload["monto_devolucion"]
@@ -1978,8 +2024,14 @@ def partial_return_approved_note(
         if monto_devolucion > subtotal_actual:
             mat_name = nm.material.nombre if nm.material else f"Material {nm.material_id}"
             raise ValueError(f"El monto de devolucion excede el subtotal disponible de {mat_name}.")
+        kg_real_devolucion = Decimal("0")
+        if kg_actual > Decimal("0") and kg_real_actual > Decimal("0"):
+            kg_real_devolucion = _normalize_kg_real((kg_real_actual * kg_devolucion) / kg_actual)
+            if kg_real_devolucion > kg_real_actual:
+                kg_real_devolucion = _normalize_kg_real(kg_real_actual)
 
         kg_nuevo = kg_actual - kg_devolucion
+        kg_real_nuevo = kg_real_actual - kg_real_devolucion
         subtotal_nuevo = subtotal_actual - monto_devolucion
         if subtotal_nuevo < Decimal("0"):
             subtotal_nuevo = Decimal("0")
@@ -1994,7 +2046,9 @@ def partial_return_approved_note(
             subtotal_nuevo = Decimal("0")
         ajustes_material[nm_id] = {
             "kg_devolucion": kg_devolucion,
+            "kg_real_devolucion": kg_real_devolucion,
             "kg_nuevo": kg_nuevo,
+            "kg_real_nuevo": kg_real_nuevo,
             "subtotal_nuevo": subtotal_nuevo,
             "monto_devolucion": monto_devolucion,
             "precio_unitario_devolucion": payload["precio_unitario_devolucion"],
@@ -2039,6 +2093,7 @@ def partial_return_approved_note(
                 raise ValueError("La devolucion excede el kg bruto del material.")
 
         _recalc_material(nm)
+        nm.kg_real = _normalize_kg_real(ajuste["kg_real_nuevo"])
         subtotal_nuevo = ajuste["subtotal_nuevo"]
         nm.subtotal = subtotal_nuevo
         if Decimal(str(nm.kg_neto or 0)) > Decimal("0"):
@@ -2051,7 +2106,8 @@ def partial_return_approved_note(
     for nm_id, ajuste in ajustes_material.items():
         nm = materiales_by_id[nm_id]
         kg_devolucion = ajuste["kg_devolucion"]
-        stock_delta = -kg_devolucion if _is_compra_like(nota.tipo_operacion) else kg_devolucion
+        kg_real_devolucion = ajuste["kg_real_devolucion"]
+        stock_delta = -kg_real_devolucion if _is_compra_like(nota.tipo_operacion) else kg_real_devolucion
         inv = _get_or_create_inventario(db, get_inventory_sucursal_id(nota), nm.material_id)
         new_stock = Decimal(str(inv.stock_actual or 0)) + stock_delta
         if new_stock < Decimal("0"):
@@ -2077,6 +2133,7 @@ def partial_return_approved_note(
             nota_material_id=nm.id,
             material_id=nm.material_id,
             kg_devolucion=kg_devolucion,
+            kg_real_devolucion=kg_real_devolucion,
             precio_unitario_devolucion=ajuste["precio_unitario_devolucion"],
             monto_devolucion=ajuste["monto_devolucion"],
             created_at=datetime.utcnow(),
@@ -2180,6 +2237,7 @@ def edit_note_by_superadmin(
     *,
     tipo_cliente_map: dict[int, TipoCliente] | None = None,
     kg_override_map: dict[int, tuple[Decimal, Decimal]] | None = None,
+    kg_real_override_map: dict[int, Decimal] | None = None,
     subpesaje_map: dict[int, tuple[Decimal, Decimal]] | None = None,
     precio_override_map: dict[int, dict[str, Decimal]] | None = None,
     admin_id: int | None = None,
@@ -2192,10 +2250,12 @@ def edit_note_by_superadmin(
         raise ValueError("Tipo de operacion no soportado para edicion.")
     old_total = Decimal(str(nota.total_monto or 0))
     old_kg_map = {nm.id: Decimal(str(nm.kg_neto or 0)) for nm in nota.materiales}
+    old_real_kg_map = {nm.id: _inventory_qty(nm) for nm in nota.materiales}
     old_tipo_cli_map = {nm.id: nm.tipo_cliente for nm in nota.materiales}
 
     tipo_cliente_map = tipo_cliente_map or {}
     kg_override_map = kg_override_map or {}
+    kg_real_override_map = kg_real_override_map or {}
     subpesaje_map = subpesaje_map or {}
 
     for nm in nota.materiales:
@@ -2216,6 +2276,15 @@ def edit_note_by_superadmin(
 
     for nm in nota.materiales:
         _recalc_material(nm)
+        old_kg = old_kg_map.get(nm.id, Decimal("0"))
+        old_real = old_real_kg_map.get(nm.id, old_kg)
+        current_kg = Decimal(str(nm.kg_neto or 0))
+        if nm.id in kg_real_override_map:
+            nm.kg_real = _normalize_kg_real(kg_real_override_map[nm.id])
+        elif old_real == old_kg:
+            nm.kg_real = _normalize_kg_real(current_kg)
+        else:
+            nm.kg_real = _normalize_kg_real(old_real)
         tipo_cli = nm.tipo_cliente or TipoCliente.regular
         needs_reprice = old_tipo_cli_map.get(nm.id) != tipo_cli or nm.precio_unitario is None
         if needs_reprice:
@@ -2254,8 +2323,8 @@ def edit_note_by_superadmin(
             comment_base = f"{comment_base}: {comentario}"
 
         for nm in nota.materiales:
-            old_kg = old_kg_map.get(nm.id, Decimal("0"))
-            new_kg = Decimal(str(nm.kg_neto or 0))
+            old_kg = old_real_kg_map.get(nm.id, Decimal("0"))
+            new_kg = _inventory_qty(nm)
             delta = new_kg - old_kg
             if delta == 0:
                 continue
@@ -2368,6 +2437,7 @@ def create_transfer_notes(
                 kg_bruto=kg_bruto,
                 kg_descuento=kg_desc,
                 kg_neto=kg_neto,
+                kg_real=kg_neto,
                 orden=idx,
                 tipo_cliente=tipo_cli,
             )
