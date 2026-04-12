@@ -610,7 +610,9 @@
                                 </td>
                             {% endif %}
                             <td>
-                                {% if nota.estado.value == 'BORRADOR' %}
+                                {% if row.is_paid %}
+                                    <span class="badge bg-success">Pagada</span>
+                                {% elif nota.estado.value == 'BORRADOR' %}
                                     <span class="badge bg-secondary">Borrador</span>
                                 {% elif nota.estado.value == 'EN_REVISION' %}
                                     <span class="badge bg-warning text-dark">En revision</span>

@@ -2296,21 +2296,42 @@ def _build_partner_record_rows(
     folio_map: dict[int, str],
     partner_type: str | None = None,
     note_adjustment_totals: dict[int, Decimal] | None = None,
+    effective_balance_map: dict[int, dict[str, Decimal | bool]] | None = None,
 ) -> list[dict]:
     rows: list[dict] = []
     note_adjustment_totals = note_adjustment_totals or {}
+    effective_balance_map = effective_balance_map or {}
     for nota in notas:
         total, pagado = _signed_partner_amounts(nota, partner_type)
-        saldo_aplicable = nota.estado == NotaEstado.aprobada
-        note_delta_signed = _note_balance_adjustment_signed(
-            nota,
-            note_delta=note_adjustment_totals.get(nota.id, Decimal("0")),
-            partner_type=partner_type,
-        )
-        saldo_original = (total - pagado) if saldo_aplicable else Decimal("0")
-        saldo = (saldo_original + note_delta_signed) if saldo_aplicable else Decimal("0")
-        saldo_pendiente = saldo if saldo > Decimal("0") else Decimal("0")
-        saldo_favor = -saldo if saldo < Decimal("0") else Decimal("0")
+        balance_view = effective_balance_map.get(nota.id)
+        if balance_view:
+            saldo_aplicable = nota.estado == NotaEstado.aprobada
+            note_delta_signed = Decimal(str(balance_view.get("ajuste_saldo_nota") or 0))
+            saldo_original = Decimal(str(balance_view.get("saldo_original") or 0))
+            saldo = Decimal(str(balance_view.get("saldo") or 0))
+            saldo_pendiente = Decimal(str(balance_view.get("saldo_pendiente") or 0))
+            saldo_favor = Decimal(str(balance_view.get("saldo_favor") or 0))
+            saldo_pendiente_original = Decimal(str(balance_view.get("saldo_pendiente_original") or 0))
+            saldo_favor_original = Decimal(str(balance_view.get("saldo_favor_original") or 0))
+            ajuste_aplicado = Decimal(str(balance_view.get("ajuste_aplicado") or 0))
+            saldo_cubierto_por_ajuste = bool(balance_view.get("saldo_cubierto_por_ajuste"))
+            saldo_parcialmente_cubierto = bool(balance_view.get("saldo_parcialmente_cubierto"))
+        else:
+            saldo_aplicable = nota.estado == NotaEstado.aprobada
+            note_delta_signed = _note_balance_adjustment_signed(
+                nota,
+                note_delta=note_adjustment_totals.get(nota.id, Decimal("0")),
+                partner_type=partner_type,
+            )
+            saldo_original = (total - pagado) if saldo_aplicable else Decimal("0")
+            saldo = (saldo_original + note_delta_signed) if saldo_aplicable else Decimal("0")
+            saldo_pendiente = saldo if saldo > Decimal("0") else Decimal("0")
+            saldo_favor = -saldo if saldo < Decimal("0") else Decimal("0")
+            saldo_pendiente_original = saldo_original if saldo_original > Decimal("0") else Decimal("0")
+            saldo_favor_original = -saldo_original if saldo_original < Decimal("0") else Decimal("0")
+            ajuste_aplicado = Decimal("0")
+            saldo_cubierto_por_ajuste = False
+            saldo_parcialmente_cubierto = False
         rows.append(
             {
                 "nota": nota,
@@ -2321,13 +2342,14 @@ def _build_partner_record_rows(
                 "saldo_pendiente": saldo_pendiente,
                 "saldo_favor": saldo_favor,
                 "saldo_original": saldo_original,
-                "saldo_pendiente_original": saldo_original if saldo_original > Decimal("0") else Decimal("0"),
-                "saldo_favor_original": -saldo_original if saldo_original < Decimal("0") else Decimal("0"),
+                "saldo_pendiente_original": saldo_pendiente_original,
+                "saldo_favor_original": saldo_favor_original,
                 "ajuste_saldo_nota": note_delta_signed,
-                "ajuste_aplicado": Decimal("0"),
-                "saldo_cubierto_por_ajuste": False,
-                "saldo_parcialmente_cubierto": False,
+                "ajuste_aplicado": ajuste_aplicado,
+                "saldo_cubierto_por_ajuste": saldo_cubierto_por_ajuste,
+                "saldo_parcialmente_cubierto": saldo_parcialmente_cubierto,
                 "saldo_aplicable": saldo_aplicable,
+                "is_paid": saldo_aplicable and saldo_pendiente <= Decimal("0") and saldo_favor <= Decimal("0"),
             }
         )
     return rows
@@ -3602,11 +3624,19 @@ def _build_partner_record_context(
         db,
         [nota.id for nota in record_notes if nota.id],
     )
+    effective_note_balances: dict[int, dict[str, Decimal | bool]] = {}
+    if not unified_summary and record_partner_type in {"cliente", "proveedor"}:
+        effective_note_balances = _build_effective_note_balance_map(
+            db,
+            record_notes,
+            allowed_suc_ids=allowed_suc_ids,
+        )
     all_rows = _build_partner_record_rows(
         record_notes,
         folio_map,
         partner_type=record_partner_type,
         note_adjustment_totals=note_adjustment_totals,
+        effective_balance_map=effective_note_balances,
     )
     coverage_summary = {
         "credito_total": Decimal("0"),
@@ -3614,10 +3644,16 @@ def _build_partner_record_context(
         "credito_restante": Decimal("0"),
     }
     if not unified_summary and record_partner_type in {"cliente", "proveedor"}:
-        coverage_summary = _apply_partner_adjustment_coverage(
-            all_rows,
-            ajustes_delta=ajustes_delta,
-        )
+        credito_total = _partner_adjustment_credit_pool(ajustes_delta)
+        credito_aplicado = sum((Decimal(str(row.get("ajuste_aplicado") or 0)) for row in all_rows), Decimal("0"))
+        credito_restante = credito_total - credito_aplicado
+        if credito_restante < Decimal("0"):
+            credito_restante = Decimal("0")
+        coverage_summary = {
+            "credito_total": credito_total,
+            "credito_aplicado": credito_aplicado,
+            "credito_restante": credito_restante,
+        }
         summary = _aggregate_partner_record_summary(
             notas,
             partner_type=partner_type,
@@ -3775,7 +3811,9 @@ def _partner_record_note_operation_label(nota: Nota, unified_enabled: bool) -> s
     return "Venta"
 
 
-def _partner_record_note_state_label(nota: Nota) -> str:
+def _partner_record_note_state_label(nota: Nota, *, is_paid: bool = False) -> str:
+    if is_paid:
+        return "Pagada"
     if nota.estado == NotaEstado.borrador:
         return "Borrador"
     if nota.estado == NotaEstado.en_revision:
@@ -3843,7 +3881,7 @@ def _build_partner_statement_report(context: dict) -> dict:
             {
                 "folio": row.get("folio") or f"#{nota.id}",
                 "operacion": _partner_record_note_operation_label(nota, unified_enabled),
-                "estado": _partner_record_note_state_label(nota),
+                "estado": _partner_record_note_state_label(nota, is_paid=bool(row.get("is_paid"))),
                 "fecha": nota.created_at,
                 "sucursal": sucursal.nombre if sucursal else "-",
                 "total": row.get("total") or Decimal("0"),
