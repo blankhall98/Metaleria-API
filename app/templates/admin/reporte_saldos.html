@@ -67,8 +67,9 @@
         </div>
 
         {% if proveedores_rows %}
+        <div class="table-scroll-shell">
         <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0">
+            <table class="table table-sm table-hover mb-0 report-table">
                 <thead>
                     <tr>
                         <th>Proveedor</th>
@@ -128,6 +129,7 @@
                 </tfoot>
             </table>
         </div>
+        </div>
         {% else %}
             <div class="text-muted small py-3 text-center">Sin saldos pendientes en proveedores.</div>
         {% endif %}
@@ -143,8 +145,9 @@
         </div>
 
         {% if clientes_rows %}
+        <div class="table-scroll-shell">
         <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0">
+            <table class="table table-sm table-hover mb-0 report-table">
                 <thead>
                     <tr>
                         <th>Cliente</th>
@@ -203,6 +206,7 @@
                     </tr>
                 </tfoot>
             </table>
+        </div>
         </div>
         {% else %}
             <div class="text-muted small py-3 text-center">Sin saldos pendientes en clientes.</div>

@@ -45,8 +45,9 @@
                 Esto representa material ya vendido o comprometido pendiente de compensar con compras, traspasos o ajustes posteriores.
             </div>
         {% endif %}
+        <div class="table-scroll-shell">
         <div class="table-responsive">
-            <table class="table table-hover table-sm align-middle mb-0">
+            <table class="table table-hover table-sm align-middle mb-0 data-table">
                 <thead>
                 <tr>
                     <th>Sucursal</th>
@@ -73,6 +74,7 @@
                 {% endfor %}
                 </tbody>
             </table>
+        </div>
         </div>
         {% if inventarios|length == 0 %}
             <p class="text-muted small mt-3 mb-0">AÃºn no hay inventario registrado.</p>

@@ -3443,3 +3443,47 @@ body.modal-open {
         font-size: 0.64rem;
     }
 }
+
+/* ── REPORT TABLES ── */
+.report-table {
+    min-width: 580px;
+}
+.report-table thead th {
+    background: linear-gradient(180deg, #f1f5f9, #e8edf5);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    font-weight: 800;
+    color: var(--ink);
+    border-bottom: 2px solid rgba(148, 163, 184, 0.3);
+    white-space: nowrap;
+    padding-top: 0.6rem;
+    padding-bottom: 0.6rem;
+}
+.report-table tbody td {
+    vertical-align: middle;
+}
+.report-table tfoot td {
+    background: linear-gradient(180deg, #f8fafc, #f1f5f9);
+    font-size: 0.82rem;
+}
+.report-table tfoot .table-group-divider td {
+    border-top: 2px solid rgba(148, 163, 184, 0.32);
+}
+
+/* ── GENERIC DATA TABLES (contabilidad, inventario, partner sections) ── */
+.data-table thead th {
+    background: linear-gradient(180deg, #f1f5f9, #e8edf5);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 700;
+    color: var(--ink);
+    border-bottom: 2px solid rgba(148, 163, 184, 0.28);
+    white-space: nowrap;
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
+}
+.data-table tbody td {
+    vertical-align: middle;
+}

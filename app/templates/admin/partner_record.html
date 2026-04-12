@@ -365,8 +365,9 @@
                         <strong>{{ attendance_range_label }}</strong>
                     </div>
                 </div>
-                <div class="table-responsive mt-3">
-                    <table class="table table-hover table-sm align-middle mb-0">
+                <div class="table-scroll-shell mt-3">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm align-middle mb-0 data-table">
                         <thead>
                         <tr>
                             <th>Fecha</th>
@@ -398,6 +399,7 @@
                         {% endfor %}
                         </tbody>
                     </table>
+                </div>
                 </div>
                 {% if attendance_rows|length == 0 %}
                     <p class="text-muted small mt-3 mb-0">No hay asistencias para el rango seleccionado.</p>
@@ -471,8 +473,9 @@
                 </div>
             </div>
             <div class="text-muted small mt-1">{{ ledger_saldo_help }}</div>
-            <div class="table-responsive mt-3">
-                <table class="table table-hover table-sm align-middle mb-0">
+            <div class="table-scroll-shell mt-3">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm align-middle mb-0 data-table">
                     <thead>
                     <tr>
                         <th>Fecha</th>
@@ -515,6 +518,7 @@
                     {% endfor %}
                     </tbody>
                 </table>
+            </div>
             </div>
             {% if ledger_rows|length == 0 %}
                 <p class="text-muted small mt-3 mb-0">No hay movimientos para generar el estado de cuenta.</p>
@@ -571,8 +575,9 @@
                 </div>
             {% endif %}
 
-            <div class="table-responsive mt-3">
-                <table class="table table-hover table-sm align-middle mb-0">
+            <div class="table-scroll-shell mt-3">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm align-middle mb-0 data-table">
                     <thead>
                     <tr>
                         <th>Folio</th>
@@ -680,6 +685,7 @@
                     </tbody>
                 </table>
             </div>
+            </div>
             {% if record_rows|length == 0 %}
                 <p class="text-muted small mt-3 mb-0">No hay notas para este {{ partner_label|lower }}.</p>
             {% endif %}
@@ -694,8 +700,9 @@
                     <div class="text-muted small">Pagos registrados en notas de {{ payments_scope_label|lower }}.</div>
                 </div>
             </div>
-            <div class="table-responsive mt-3">
-                <table class="table table-hover table-sm align-middle mb-0">
+            <div class="table-scroll-shell mt-3">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm align-middle mb-0 data-table">
                     <thead>
                     <tr>
                         <th>Fecha</th>
@@ -765,6 +772,7 @@
                     {% endfor %}
                     </tbody>
                 </table>
+            </div>
             </div>
             {% if pagos|length == 0 %}
                 <p class="text-muted small mt-3 mb-0">No hay pagos registrados.</p>

@@ -231,8 +231,9 @@
                     <h3 class="h6 text-dark mb-0">Historial de notas</h3>
                     <div class="text-muted small">Total {{ partner_context.record_total_count }}</div>
                 </div>
-                <div class="table-responsive mt-2">
-                    <table class="table table-hover table-sm align-middle mb-0">
+                <div class="table-scroll-shell mt-2">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm align-middle mb-0 data-table">
                         <thead>
                         <tr>
                             <th>Folio</th>
@@ -306,6 +307,7 @@
                         </tbody>
                     </table>
                 </div>
+                </div>
                 {% if partner_context.record_rows|length == 0 %}
                     <p class="text-muted small mt-3 mb-0">No hay notas para esta entidad.</p>
                 {% endif %}
@@ -314,8 +316,9 @@
                     <h3 class="h6 text-dark mb-0">Historial de pagos</h3>
                     <div class="text-muted small">Total {{ partner_context.pagos|length }}</div>
                 </div>
-                <div class="table-responsive mt-2">
-                    <table class="table table-hover table-sm align-middle mb-0">
+                <div class="table-scroll-shell mt-2">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm align-middle mb-0 data-table">
                         <thead>
                         <tr>
                             <th>Fecha</th>
@@ -356,6 +359,7 @@
                         {% endfor %}
                         </tbody>
                     </table>
+                </div>
                 </div>
                 {% if partner_context.pagos|length == 0 %}
                     <p class="text-muted small mt-3 mb-0">No hay pagos registrados.</p>
@@ -436,8 +440,9 @@
         <div class="d-flex justify-content-end text-muted small mb-2">
             Total firmado: <strong class="ms-1">${{ "{:,.2f}".format(total_filtrado or 0) }}</strong>
         </div>
-        <div class="table-responsive scroll-x">
-            <table class="table table-hover table-sm align-middle mb-0">
+        <div class="table-scroll-shell">
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle mb-0 data-table">
                 <thead>
                 <tr>
                     <th>ID</th>
@@ -473,6 +478,7 @@
                 {% endfor %}
                 </tbody>
             </table>
+        </div>
         </div>
         {% if movimientos|length == 0 %}
             <p class="text-muted small mt-3 mb-0">AÃºn no hay movimientos.</p>
