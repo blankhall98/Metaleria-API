@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block title %}Reporte de Asistencias{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <p class="text-uppercase text-muted small mb-1">Reportes</p>
+        <h1 class="h4 text-white mb-0">Asistencias de Proveedores</h1>
+    </div>
+</div>
+
+{# ── FILTER FORM ── #}
+<div class="card hover-lift mb-4">
+    <div class="card-body">
+        <form method="get" action="/web/admin/reporte-asistencias" class="row g-3 align-items-end">
+            {% if sucursales | length > 1 %}
+            <div class="col-12 col-sm-6 col-md-3">
+                <label class="form-label small fw-semibold" for="sucursal_id">Sucursal</label>
+                <select class="form-select form-select-sm" id="sucursal_id" name="sucursal_id">
+                    <option value="">Todas</option>
+                    {% for s in sucursales %}
+                        <option value="{{ s.id }}" {% if sucursal_id == s.id %}selected{% endif %}>{{ s.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% elif sucursales | length == 1 %}
+                <input type="hidden" name="sucursal_id" value="{{ sucursales[0].id }}">
+            {% endif %}
+
+            <div class="col-12 col-sm-6 col-md-3">
+                <label class="form-label small fw-semibold" for="fecha_inicio">Desde</label>
+                <input type="date" class="form-control form-control-sm" id="fecha_inicio" name="fecha_inicio"
+                       value="{{ fecha_inicio }}">
+            </div>
+
+            <div class="col-12 col-sm-6 col-md-3">
+                <label class="form-label small fw-semibold" for="fecha_fin">Hasta</label>
+                <input type="date" class="form-control form-control-sm" id="fecha_fin" name="fecha_fin"
+                       value="{{ fecha_fin }}">
+            </div>
+
+            <div class="col-12 col-sm-6 col-md-3">
+                <button type="submit" class="btn btn-primary btn-sm w-100">Generar reporte</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# ── RESULTS ── #}
+{% if rows is defined %}
+
+    {% if rows | length == 0 %}
+        <div class="card mb-4">
+            <div class="card-body text-center text-muted py-5">
+                Sin asistencias registradas en el periodo seleccionado.
+            </div>
+        </div>
+    {% else %}
+
+        {# Stats bar #}
+        <div class="note-meta-grid mb-4">
+            <div class="note-meta-item">
+                <span class="note-meta-label">Total asistencias</span>
+                <strong class="fs-4">{{ total_asistencias }}</strong>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Proveedores distintos</span>
+                <strong class="fs-4">{{ total_proveedores }}</strong>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Periodo</span>
+                <strong>{{ fecha_inicio }} &rarr; {{ fecha_fin }}</strong>
+            </div>
+        </div>
+
+        {# Summary table #}
+        <div class="card hover-lift mb-4">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-2 mb-3">
+                    <span class="chip-strong">Resumen por proveedor</span>
+                    <span class="text-muted small">{{ total_proveedores }} proveedores</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Proveedor</th>
+                                <th class="text-end">Total asistencias</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for s in summary %}
+                            <tr>
+                                <td class="text-muted">{{ loop.index }}</td>
+                                <td class="fw-semibold">{{ s.nombre }}</td>
+                                <td class="text-end">
+                                    <span class="badge bg-primary">{{ s.total }}</span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        {# Detail table #}
+        <div class="card hover-lift mb-4">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-2 mb-3">
+                    <span class="chip-strong">Detalle de asistencias</span>
+                    <span class="text-muted small">{{ total_asistencias }} registros</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Proveedor</th>
+                                <th>Fecha</th>
+                                <th>Folio</th>
+                                <th class="text-end">Asistencias en periodo</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% set ns = namespace(last_prov_id=None) %}
+                            {% for row in rows %}
+                                {% set is_new_prov = (row.proveedor_id != ns.last_prov_id) %}
+                                {% if is_new_prov %}
+                                    {% set ns.last_prov_id = row.proveedor_id %}
+                                {% endif %}
+                                <tr class="{% if is_new_prov %}border-top-2{% endif %}">
+                                    <td>
+                                        {% if is_new_prov %}
+                                            <span class="fw-semibold">{{ row.proveedor_nombre }}</span>
+                                        {% else %}
+                                            <span class="text-muted small">&nbsp;&nbsp;&nbsp;&nbsp;↳</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if row.fecha %}
+                                            {{ row.fecha.strftime('%d/%m/%Y') }}
+                                            <span class="text-muted small">{{ row.fecha.strftime('%H:%M') }}</span>
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <a href="/web/admin/notas/{{ row.nota_id }}" class="text-decoration-none font-monospace small">
+                                            {{ row.folio }}
+                                        </a>
+                                    </td>
+                                    <td class="text-end">
+                                        {% if is_new_prov %}
+                                            {% for s in summary if s.nombre == row.proveedor_nombre %}
+                                                <span class="badge bg-primary">{{ s.total }}</span>
+                                            {% endfor %}
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    {% endif %}
+{% endif %}
+
+<style>
+.border-top-2 td {
+    border-top: 2px solid #dee2e6 !important;
+}
+</style>
+{% endblock %}

@@ -15890,3 +15890,111 @@ async def inventario_movimientos_export(
     buffer.seek(0)
     return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
 
+
+# ---------- REPORTE DE ASISTENCIAS ----------
+
+
+@router.get("/reporte-asistencias")
+async def reporte_asistencias(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    params = request.query_params
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+
+    sucursal_id = None
+    if params.get("sucursal_id"):
+        try:
+            sucursal_id = int(params["sucursal_id"])
+        except ValueError:
+            pass
+
+    tz = get_app_timezone()
+    today = date.today()
+
+    fecha_inicio_raw = (params.get("fecha_inicio") or "").strip()
+    fecha_fin_raw = (params.get("fecha_fin") or "").strip()
+
+    try:
+        fecha_inicio = datetime.strptime(fecha_inicio_raw, "%Y-%m-%d").date() if fecha_inicio_raw else today.replace(day=1)
+    except ValueError:
+        fecha_inicio = today.replace(day=1)
+
+    try:
+        fecha_fin = datetime.strptime(fecha_fin_raw, "%Y-%m-%d").date() if fecha_fin_raw else today
+    except ValueError:
+        fecha_fin = today
+
+    start_local = datetime.combine(fecha_inicio, time.min).replace(tzinfo=tz)
+    end_local = datetime.combine(fecha_fin + timedelta(days=1), time.min).replace(tzinfo=tz)
+    start_utc = start_local.astimezone(timezone.utc).replace(tzinfo=None)
+    end_utc = end_local.astimezone(timezone.utc).replace(tzinfo=None)
+
+    q = db.query(Nota).filter(
+        Nota.estado == NotaEstado.aprobada,
+        Nota.proveedor_id.isnot(None),
+        Nota.created_at >= start_utc,
+        Nota.created_at < end_utc,
+    )
+    if sucursal_id is not None:
+        q = q.filter(Nota.sucursal_id == sucursal_id)
+    if allowed_suc_ids is not None:
+        q = q.filter(Nota.sucursal_id.in_(allowed_suc_ids))
+
+    notas = q.order_by(Nota.created_at.asc()).all()
+
+    prov_ids = {n.proveedor_id for n in notas}
+    proveedores_map: dict[int, str] = (
+        {p.id: p.nombre_completo for p in db.query(Proveedor).filter(Proveedor.id.in_(prov_ids)).all()}
+        if prov_ids
+        else {}
+    )
+    folio_map = _build_folio_map(notas)
+
+    rows: list[dict] = []
+    for nota in notas:
+        prov_name = proveedores_map.get(nota.proveedor_id) or f"Proveedor #{nota.proveedor_id}"
+        fecha_local = to_local_datetime(nota.created_at) if nota.created_at else None
+        rows.append({
+            "proveedor_id": nota.proveedor_id,
+            "proveedor_nombre": prov_name,
+            "fecha": fecha_local,
+            "folio": folio_map.get(nota.id) or f"#{nota.id}",
+            "nota_id": nota.id,
+        })
+
+    rows.sort(key=lambda r: (r["proveedor_nombre"].lower(), r["fecha"] or datetime.min))
+
+    summary_map: dict[int, dict] = {}
+    for row in rows:
+        pid = row["proveedor_id"]
+        if pid not in summary_map:
+            summary_map[pid] = {"nombre": row["proveedor_nombre"], "total": 0}
+        summary_map[pid]["total"] += 1
+
+    summary = sorted(summary_map.values(), key=lambda s: (-s["total"], s["nombre"].lower()))
+
+    sucursales = _filter_sucursales_for_admin(
+        db.query(Sucursal).order_by(Sucursal.nombre).all(),
+        allowed_suc_ids,
+    )
+
+    return templates.TemplateResponse(
+        "admin/reporte_asistencias.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "sucursales": sucursales,
+            "sucursal_id": sucursal_id,
+            "fecha_inicio": fecha_inicio.isoformat(),
+            "fecha_fin": fecha_fin.isoformat(),
+            "rows": rows,
+            "summary": summary,
+            "total_asistencias": len(rows),
+            "total_proveedores": len(summary_map),
+            "searched": bool(fecha_inicio_raw or fecha_fin_raw or params.get("sucursal_id")),
+        },
+    )
+
