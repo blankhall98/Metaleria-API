@@ -3,6 +3,7 @@
 {% block title %}Corte de Caja{% endblock %}
 
 {% block content %}
+<div class="corte-caja-page">
 <div class="page-header">
     <div>
         <p class="text-uppercase text-muted small mb-1">Caja</p>
@@ -1229,6 +1230,8 @@
         </div>
     </div>
 {% endif %}
+</div>
+
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const countInputs = Array.from(document.querySelectorAll('.denom-count-input'));
