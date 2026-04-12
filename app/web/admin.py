@@ -15998,3 +15998,171 @@ async def reporte_asistencias(
         },
     )
 
+
+# ---------- REPORTE DE SALDOS ----------
+
+
+@router.get("/reporte-saldos")
+async def reporte_saldos(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    params = request.query_params
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+
+    sucursal_id = None
+    if params.get("sucursal_id"):
+        try:
+            sucursal_id = int(params["sucursal_id"])
+        except ValueError:
+            pass
+
+    sucursales = _filter_sucursales_for_admin(
+        db.query(Sucursal).order_by(Sucursal.nombre).all(),
+        allowed_suc_ids,
+    )
+
+    # ── PROVEEDORES ──────────────────────────────────────────────────────────
+    proveedores_q = _apply_sucursal_filter(
+        db.query(Proveedor), allowed_suc_ids, sucursal_id, Proveedor.sucursal_id
+    ).order_by(Proveedor.nombre_completo).all()
+
+    proveedores_rows: list[dict] = []
+    for proveedor in proveedores_q:
+        if _is_internal_partner_name(db, proveedor.nombre_completo):
+            continue
+        bundle = _collect_proveedor_sales_bundle(
+            db, proveedor=proveedor, allowed_suc_ids=allowed_suc_ids, sucursal_id=sucursal_id
+        )
+        compras_q = _apply_sucursal_filter(
+            db.query(Nota).filter(
+                Nota.proveedor_id == proveedor.id,
+                Nota.tipo_operacion == TipoOperacion.compra,
+            ),
+            allowed_suc_ids, sucursal_id, Nota.sucursal_id,
+        ).order_by(Nota.created_at.desc()).all()
+        ventas = bundle["ventas"]
+        linked_cliente = bundle["linked_cliente"]
+
+        note_adj = _get_note_balance_adjustment_totals_map(
+            db, [n.id for n in (compras_q + ventas) if n.id]
+        )
+        ajustes_p = _get_partner_adjustments_total(
+            db, partner_type="proveedor", partner_id=proveedor.id,
+            allowed_suc_ids=allowed_suc_ids, sucursal_id=sucursal_id,
+        )
+        ajustes_c = Decimal("0")
+        if linked_cliente:
+            ajustes_c = _get_partner_adjustments_total(
+                db, partner_type="cliente", partner_id=linked_cliente.id,
+                allowed_suc_ids=allowed_suc_ids, sucursal_id=sucursal_id,
+            )
+
+        unified = _aggregate_unified_partner_summary(
+            compras=compras_q, ventas=ventas,
+            ajustes_proveedor=ajustes_p, ajustes_cliente=ajustes_c,
+            note_adjustment_totals=note_adj,
+        )
+        saldo_neto = Decimal(str(unified["saldo_neto"] or 0))
+        if abs(saldo_neto) < Decimal("0.01"):
+            continue
+        proveedores_rows.append({
+            "nombre": proveedor.nombre_completo,
+            "partner_url": f"/web/admin/proveedores/{proveedor.id}/record",
+            "saldo_neto": saldo_neto,
+            "a_pagar": saldo_neto if saldo_neto > 0 else Decimal("0"),
+            "a_cobrar": -saldo_neto if saldo_neto < 0 else Decimal("0"),
+        })
+
+    # ── CLIENTES ──────────────────────────────────────────────────────────────
+    clientes_q = _apply_sucursal_filter(
+        db.query(Cliente), allowed_suc_ids, sucursal_id, Cliente.sucursal_id
+    ).order_by(Cliente.nombre_completo).all()
+
+    clientes_rows: list[dict] = []
+    for cliente in clientes_q:
+        if _is_internal_partner_name(db, cliente.nombre_completo):
+            continue
+        linked_proveedor = _get_formally_linked_proveedor(db, cliente)
+        if linked_proveedor and _is_internal_partner_name(db, linked_proveedor.nombre_completo):
+            linked_proveedor = None
+
+        ventas_q = _apply_sucursal_filter(
+            db.query(Nota).filter(
+                Nota.cliente_id == cliente.id,
+                Nota.tipo_operacion == TipoOperacion.venta,
+            ),
+            allowed_suc_ids, sucursal_id, Nota.sucursal_id,
+        ).order_by(Nota.created_at.desc()).all()
+
+        compras_cli: list[Nota] = []
+        if linked_proveedor:
+            compras_cli = _apply_sucursal_filter(
+                db.query(Nota).filter(
+                    Nota.proveedor_id == linked_proveedor.id,
+                    Nota.tipo_operacion == TipoOperacion.compra,
+                ),
+                allowed_suc_ids, sucursal_id, Nota.sucursal_id,
+            ).order_by(Nota.created_at.desc()).all()
+
+        note_adj = _get_note_balance_adjustment_totals_map(
+            db, [n.id for n in (compras_cli + ventas_q) if n.id]
+        )
+        ajustes_c = _get_partner_adjustments_total(
+            db, partner_type="cliente", partner_id=cliente.id,
+            allowed_suc_ids=allowed_suc_ids, sucursal_id=sucursal_id,
+        )
+        ajustes_p = Decimal("0")
+        if linked_proveedor:
+            ajustes_p = _get_partner_adjustments_total(
+                db, partner_type="proveedor", partner_id=linked_proveedor.id,
+                allowed_suc_ids=allowed_suc_ids, sucursal_id=sucursal_id,
+            )
+
+        unified = _aggregate_unified_partner_summary(
+            compras=compras_cli, ventas=ventas_q,
+            ajustes_proveedor=ajustes_p, ajustes_cliente=ajustes_c,
+            note_adjustment_totals=note_adj,
+        )
+        saldo_neto = Decimal(str(unified["saldo_neto"] or 0))
+        if abs(saldo_neto) < Decimal("0.01"):
+            continue
+        clientes_rows.append({
+            "nombre": cliente.nombre_completo,
+            "partner_url": f"/web/admin/clientes/{cliente.id}/record",
+            "saldo_neto": saldo_neto,
+            "a_pagar": saldo_neto if saldo_neto > 0 else Decimal("0"),
+            "a_cobrar": -saldo_neto if saldo_neto < 0 else Decimal("0"),
+        })
+
+    # ── TOTALS ───────────────────────────────────────────────────────────────
+    prov_total_a_pagar = sum((r["a_pagar"] for r in proveedores_rows), Decimal("0"))
+    prov_total_a_cobrar = sum((r["a_cobrar"] for r in proveedores_rows), Decimal("0"))
+    cli_total_a_cobrar = sum((r["a_cobrar"] for r in clientes_rows), Decimal("0"))
+    cli_total_a_pagar = sum((r["a_pagar"] for r in clientes_rows), Decimal("0"))
+
+    global_a_pagar = prov_total_a_pagar + cli_total_a_pagar
+    global_a_cobrar = prov_total_a_cobrar + cli_total_a_cobrar
+    global_neto = global_a_cobrar - global_a_pagar  # positive = we collect more than we owe
+
+    return templates.TemplateResponse(
+        "admin/reporte_saldos.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "sucursales": sucursales,
+            "sucursal_id": sucursal_id,
+            "proveedores_rows": proveedores_rows,
+            "clientes_rows": clientes_rows,
+            "prov_total_a_pagar": prov_total_a_pagar,
+            "prov_total_a_cobrar": prov_total_a_cobrar,
+            "cli_total_a_cobrar": cli_total_a_cobrar,
+            "cli_total_a_pagar": cli_total_a_pagar,
+            "global_a_pagar": global_a_pagar,
+            "global_a_cobrar": global_a_cobrar,
+            "global_neto": global_neto,
+        },
+    )
+
