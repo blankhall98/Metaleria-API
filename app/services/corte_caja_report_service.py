@@ -434,27 +434,84 @@ def _truncate_text(text: str, max_width: float, size: int) -> str:
     return f"{text[:max_chars]}{ellipsis}"
 
 
+def _wrap_text(text: str, max_width: float, size: int) -> list[str]:
+    value = str(text or "").strip()
+    if not value:
+        return [""]
+    words = value.split()
+    if not words:
+        return [value]
+    lines: list[str] = []
+    current = words[0]
+    for word in words[1:]:
+        candidate = f"{current} {word}"
+        if _text_width(candidate, size) <= max_width:
+            current = candidate
+            continue
+        lines.append(current)
+        current = word
+    lines.append(current)
+    return lines or [value]
+
+
 class _PdfPage:
     def __init__(self) -> None:
         self.commands: list[str] = []
 
-    def text(self, x: float, y: float, text: str, size: int = 10, font: str = "F1") -> None:
+    def text(
+        self,
+        x: float,
+        y: float,
+        text: str,
+        size: int = 10,
+        font: str = "F1",
+        *,
+        fill_gray: float | None = None,
+        fill_rgb: tuple[float, float, float] | None = None,
+    ) -> None:
         safe = _escape_pdf(text)
+        if fill_rgb is not None:
+            self.commands.append(f"{fill_rgb[0]:.3f} {fill_rgb[1]:.3f} {fill_rgb[2]:.3f} rg")
+        elif fill_gray is not None:
+            self.commands.append(f"{fill_gray:.2f} g")
         self.commands.append(f"BT /{font} {size} Tf {x:.2f} {y:.2f} Td ({safe}) Tj ET")
+        if fill_rgb is not None or fill_gray is not None:
+            self.commands.append("0 g")
 
     def line(self, x1: float, y1: float, x2: float, y2: float) -> None:
         self.commands.append(f"{x1:.2f} {y1:.2f} m {x2:.2f} {y2:.2f} l S")
 
-    def rect(self, x: float, y: float, w: float, h: float, fill_gray: float | None = None, stroke_gray: float | None = None) -> None:
-        if fill_gray is not None:
+    def rect(
+        self,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        fill_gray: float | None = None,
+        stroke_gray: float | None = None,
+        *,
+        fill_rgb: tuple[float, float, float] | None = None,
+        stroke_rgb: tuple[float, float, float] | None = None,
+    ) -> None:
+        if fill_rgb is not None:
+            self.commands.append(f"{fill_rgb[0]:.3f} {fill_rgb[1]:.3f} {fill_rgb[2]:.3f} rg")
+        elif fill_gray is not None:
             self.commands.append(f"{fill_gray:.2f} g")
-        if stroke_gray is not None:
+        if stroke_rgb is not None:
+            self.commands.append(f"{stroke_rgb[0]:.3f} {stroke_rgb[1]:.3f} {stroke_rgb[2]:.3f} RG")
+        elif stroke_gray is not None:
             self.commands.append(f"{stroke_gray:.2f} G")
         op = "f" if fill_gray is not None else "S"
+        if fill_rgb is not None:
+            op = "f"
+        elif (fill_gray is not None or fill_rgb is not None) and (stroke_gray is not None or stroke_rgb is not None):
+            op = "B"
+        elif stroke_gray is not None or stroke_rgb is not None:
+            op = "S"
         self.commands.append(f"{x:.2f} {y:.2f} {w:.2f} {h:.2f} re {op}")
-        if fill_gray is not None:
+        if fill_gray is not None or fill_rgb is not None:
             self.commands.append("0 g")
-        if stroke_gray is not None:
+        if stroke_gray is not None or stroke_rgb is not None:
             self.commands.append("0 G")
 
 
@@ -476,6 +533,7 @@ class _PdfDocument:
         page_count = len(self.pages)
         font_regular_id = 3 + (page_count * 2)
         font_bold_id = font_regular_id + 1
+        font_italic_id = font_regular_id + 2
 
         obj(1, b"<< /Type /Catalog /Pages 2 0 R >>")
 
@@ -495,13 +553,14 @@ class _PdfDocument:
                 (
                     f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
                     f"/Contents {content_obj_id} 0 R /Resources << /Font << "
-                    f"/F1 {font_regular_id} 0 R /F2 {font_bold_id} 0 R >> >> >>"
+                    f"/F1 {font_regular_id} 0 R /F2 {font_bold_id} 0 R /F3 {font_italic_id} 0 R >> >> >>"
                 ).encode("latin-1"),
             )
             obj(content_obj_id, f"<< /Length {len(stream_content)} >>\nstream\n".encode() + stream_content + b"\nendstream")
 
         obj(font_regular_id, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
         obj(font_bold_id, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>")
+        obj(font_italic_id, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique >>")
 
         buffer = io.BytesIO()
         buffer.write(b"%PDF-1.4\n")
@@ -530,71 +589,89 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
     right = 566
     top = 760
     y = top
+    brand = (0.078, 0.133, 0.247)
+    accent = (0.118, 0.227, 0.404)
+    accent_soft = (0.898, 0.937, 0.988)
+    line_soft = (0.812, 0.867, 0.933)
+    green_soft = (0.906, 0.973, 0.933)
+    amber_soft = (0.996, 0.953, 0.831)
+    red_soft = (0.992, 0.914, 0.914)
 
     generated = format_datetime_local(report["generated_at"])
     fecha = report["fecha"].isoformat()
 
-    page.text(left, y, f"Corte de Caja Scrap360 - {report['sucursal']}", size=16, font="F2")
-    page.text(left, y - 16, f"Sucursal: {report['sucursal']}", size=9)
-    page.text(left, y - 28, f"Fecha: {fecha}", size=9)
-    page.text(left, y - 40, f"Estado: {report['estado']}", size=9)
+    page.rect(left, y - 74, right - left, 82, fill_rgb=brand)
+    page.text(left + 12, y - 8, "Corte de Caja Scrap360", size=18, font="F2", fill_rgb=(1, 1, 1))
+    page.text(left + 12, y - 24, report["sucursal"], size=12, font="F3", fill_rgb=(0.92, 0.95, 1))
+    page.text(left + 12, y - 40, f"Fecha operativa: {fecha}", size=9, fill_rgb=(0.92, 0.95, 1))
+    page.text(left + 12, y - 52, f"Estado: {report['estado']}", size=9, fill_rgb=(0.92, 0.95, 1))
     page.text(
-        left,
-        y - 52,
+        left + 220,
+        y - 40,
         f"Abierto por: {report.get('abierto_por') or '-'} ({format_datetime_local(report['opened_at']) if report.get('opened_at') else '-'})",
         size=9,
+        fill_rgb=(0.92, 0.95, 1),
     )
     page.text(
-        left,
-        y - 64,
+        left + 220,
+        y - 52,
         f"Cerrado por: {report.get('cerrado_por') or '-'} ({format_datetime_local(report['closed_at']) if report.get('closed_at') else '-'})",
         size=9,
+        fill_rgb=(0.92, 0.95, 1),
     )
-    page.text(right - 150, y - 16, f"Generado: {generated}", size=9)
-    page.line(left, y - 72, right, y - 72)
+    page.text(right - 145, y - 18, f"Generado: {generated}", size=9, fill_rgb=(0.92, 0.95, 1))
 
-    y = y - 88
-    page.rect(left, y - 18, right - left, 18, fill_gray=0.93, stroke_gray=0.85)
-    page.text(left + 8, y - 6, "Resumen", size=10, font="F2")
-    y = y - 26
+    y = y - 98
+    page.text(left, y, "Resumen financiero y operativo", size=11, font="F2", fill_rgb=brand)
+    page.text(left, y - 13, "Lectura rapida del corte, la caja esperada y la diferencia del dia.", size=9, font="F3", fill_gray=0.35)
+    y = y - 30
 
     items = report["summary_items"]
-    half = (len(items) + 1) // 2
-    left_items = items[:half]
-    right_items = items[half:]
-    line_h = 12
-    col_gap = 260
-    value_x = left + 170
-    value_x_right = left + col_gap + 170
-    start_y = y
-    for idx, item in enumerate(left_items):
+    card_cols = 3
+    card_gap = 10
+    card_w = ((right - left) - (card_gap * (card_cols - 1))) / card_cols
+    card_h = 36
+    for idx, item in enumerate(items):
+        row = idx // card_cols
+        col = idx % card_cols
+        x = left + col * (card_w + card_gap)
+        card_y = y - row * (card_h + 8)
         label = item["label"]
-        value_str = _format_summary_value(_safe_decimal(item["value"]), str(item.get("type") or "money"))
-        page.text(left + 8, start_y - idx * line_h, label, size=9)
-        page.text(value_x, start_y - idx * line_h, value_str, size=9, font="F2")
-    for idx, item in enumerate(right_items):
-        label = item["label"]
-        value_str = _format_summary_value(_safe_decimal(item["value"]), str(item.get("type") or "money"))
-        page.text(left + col_gap, start_y - idx * line_h, label, size=9)
-        page.text(value_x_right, start_y - idx * line_h, value_str, size=9, font="F2")
+        value = _safe_decimal(item["value"])
+        value_str = _format_summary_value(value, str(item.get("type") or "money"))
+        fill = accent_soft
+        if "diferencia" in label.lower():
+            fill = green_soft if value >= 0 else red_soft
+        elif "gastos" in label.lower():
+            fill = amber_soft
+        page.rect(x, card_y - card_h, card_w, card_h, fill_rgb=fill, stroke_rgb=line_soft)
+        page.text(x + 8, card_y - 12, label.upper(), size=7, font="F2", fill_gray=0.42)
+        page.text(x + 8, card_y - 26, value_str, size=11, font="F2", fill_rgb=brand)
 
-    y = start_y - max(len(left_items), len(right_items)) * line_h - 16
+    y = y - (((len(items) + card_cols - 1) // card_cols) * (card_h + 8)) - 8
 
     if report.get("motivo_diferencia"):
-        page.text(left, y, f"Motivo diferencia: {report['motivo_diferencia']}", size=9)
-        y -= 14
+        page.rect(left, y - 22, right - left, 18, fill_rgb=amber_soft, stroke_rgb=line_soft)
+        page.text(left + 8, y - 10, f"Motivo diferencia: {report['motivo_diferencia']}", size=9, font="F2")
+        y -= 26
     if report.get("comentarios_cierre"):
-        page.text(left, y, f"Comentarios cierre: {report['comentarios_cierre']}", size=9)
-        y -= 14
+        wrapped_comments = _wrap_text(f"Comentarios cierre: {report['comentarios_cierre']}", right - left - 16, 9)
+        box_h = max(24, 12 * len(wrapped_comments) + 8)
+        page.rect(left, y - box_h, right - left, box_h, fill_rgb=(0.965, 0.973, 0.985), stroke_rgb=line_soft)
+        line_y = y - 12
+        for line in wrapped_comments:
+            page.text(left + 8, line_y, line, size=9)
+            line_y -= 11
+        y -= box_h + 8
 
     def new_page_header(title: str) -> None:
         nonlocal page, y
         page = doc.new_page()
         y = top
-        page.text(left, y, title, size=12, font="F2")
-        page.text(left, y - 14, f"Sucursal: {report['sucursal']}", size=9)
-        page.text(left, y - 26, f"Fecha: {fecha}", size=9)
-        y -= 44
+        page.rect(left, y - 34, right - left, 42, fill_rgb=brand)
+        page.text(left + 10, y - 10, title, size=13, font="F2", fill_rgb=(1, 1, 1))
+        page.text(left + 10, y - 24, f"Sucursal: {report['sucursal']}  |  Fecha: {fecha}", size=9, fill_rgb=(0.92, 0.95, 1))
+        y -= 48
 
     def ensure_space(min_y: float) -> None:
         nonlocal y
@@ -604,26 +681,41 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
     def draw_table_header(title: str, cols: list[tuple[str, float, float, str]]) -> None:
         nonlocal y
         ensure_space(120)
-        page.text(left, y, title, size=11, font="F2")
+        page.text(left, y, title, size=11, font="F2", fill_rgb=brand)
         y -= 12
-        page.rect(left, y - 12, right - left, 12, fill_gray=0.93, stroke_gray=0.85)
+        page.text(left, y - 1, "Detalle cronologico y subtotalizado del corte.", size=8, font="F3", fill_gray=0.45)
+        y -= 12
+        page.rect(left, y - 14, right - left, 14, fill_rgb=accent, stroke_rgb=accent)
         for col_title, x, width, align in cols:
             draw_x = x + 2
             if align == "right":
                 draw_x = x + width - _text_width(col_title, 8) - 2
-            page.text(draw_x, y - 4, col_title, size=8, font="F2")
-        y -= 22
+            page.text(draw_x, y - 5, col_title, size=8, font="F2", fill_rgb=(1, 1, 1))
+        y -= 24
 
     def draw_row(cols: list[tuple[str, float, float, str]], values: list[str]) -> None:
         nonlocal y
-        ensure_space(80)
-        for (col_title, x, width, align), text in zip(cols, values):
-            display = _truncate_text(str(text), width - 4, 8)
-            draw_x = x + 2
+        cell_lines: list[list[str]] = []
+        max_lines = 1
+        for (_, _, width, align), text in zip(cols, values):
             if align == "right":
-                draw_x = x + width - _text_width(display, 8) - 2
-            page.text(draw_x, y, display, size=8)
-        y -= 12
+                lines = [_truncate_text(str(text), width - 4, 8)]
+            else:
+                lines = _wrap_text(str(text), width - 4, 8)
+            max_lines = max(max_lines, len(lines))
+            cell_lines.append(lines)
+        row_h = max(12, max_lines * 10 + 2)
+        ensure_space(70 + row_h)
+        line_y_start = y
+        for (col_title, x, width, align), lines in zip(cols, cell_lines):
+            if align == "right":
+                for idx, display in enumerate(lines):
+                    draw_x = x + width - _text_width(display, 8) - 2
+                    page.text(draw_x, line_y_start - idx * 10, display, size=8)
+            else:
+                for idx, display in enumerate(lines):
+                    page.text(x + 2, line_y_start - idx * 10, display, size=8)
+        y -= row_h
 
     compra_cols = [
         ("Orden", left, 60, "left"),
@@ -867,20 +959,27 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
     else:
         draw_row(gasto_cols, ["Sin gastos registrados", "", "", "", ""])
 
-    ensure_space(110)
-    page.text(left, y, "Firmas", size=11, font="F2")
-    y -= 16
-    page.text(left, y, f"Elaboro: {report.get('abierto_por') or '-'}", size=9)
-    page.line(left + 160, y - 2, left + 320, y - 2)
-    y -= 16
-    page.text(left, y, f"Reviso: {report.get('cerrado_por') or '-'}", size=9)
-    page.line(left + 160, y - 2, left + 320, y - 2)
-    y -= 16
-    page.text(left, y, "Autorizo:", size=9)
-    page.line(left + 160, y - 2, left + 320, y - 2)
-    y -= 16
-    page.text(left, y, "Responsable de caja:", size=9)
-    page.line(left + 160, y - 2, left + 320, y - 2)
+    ensure_space(150)
+    page.text(left, y, "Firmas y validacion", size=11, font="F2", fill_rgb=brand)
+    page.text(left, y - 12, "Espacio para validar la elaboracion, revision y autorizacion del corte.", size=8, font="F3", fill_gray=0.45)
+    y -= 28
+    signature_rows = [
+        ("Elaboro", report.get("abierto_por") or "-"),
+        ("Reviso", report.get("cerrado_por") or "-"),
+        ("Autorizo", ""),
+        ("Responsable de caja", ""),
+    ]
+    sig_w = (right - left - 14) / 2
+    sig_h = 34
+    for idx, (label, name) in enumerate(signature_rows):
+        col = idx % 2
+        row = idx // 2
+        x = left + col * (sig_w + 14)
+        box_y = y - row * (sig_h + 16)
+        page.rect(x, box_y - sig_h, sig_w, sig_h, fill_rgb=(0.988, 0.992, 0.998), stroke_rgb=line_soft)
+        page.text(x + 8, box_y - 11, label.upper(), size=8, font="F2", fill_gray=0.42)
+        page.text(x + 8, box_y - 23, name or "________________", size=9)
+        page.line(x + 8, box_y - 30, x + sig_w - 8, box_y - 30)
 
     pdf_bytes = doc.render()
     filename = f"corte_caja_{_safe_filename(report['sucursal'])}_{report['fecha'].isoformat()}.pdf"
