@@ -2948,6 +2948,62 @@ body.modal-open {
     min-width: 110px;
 }
 
+.corte-caja-table {
+    width: 100%;
+    min-width: 0;
+    table-layout: auto;
+}
+
+.corte-caja-table th,
+.corte-caja-table td {
+    vertical-align: top;
+}
+
+.corte-caja-table .text-end {
+    white-space: nowrap;
+}
+
+.corte-caja-col-partner {
+    min-width: 15rem;
+}
+
+.corte-caja-col-material {
+    min-width: 12rem;
+}
+
+.corte-caja-col-description {
+    min-width: 18rem;
+}
+
+.corte-caja-text-cell {
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    line-height: 1.4;
+}
+
+.corte-caja-col-partner-cell {
+    min-width: 15rem;
+    font-weight: 600;
+}
+
+.corte-caja-col-material-cell {
+    min-width: 12rem;
+}
+
+.corte-caja-col-description-cell {
+    min-width: 18rem;
+}
+
+.corte-caja-table--ops .corte-caja-col-partner-cell,
+.corte-caja-table--ops .corte-caja-col-material-cell {
+    max-width: 22rem;
+}
+
+.corte-caja-table--gastos .corte-caja-col-description-cell {
+    max-width: 28rem;
+}
+
 .cash-count-footer {
     margin-top: 1rem;
     border-top: 1px dashed rgba(148, 163, 184, 0.28);

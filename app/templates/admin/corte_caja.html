@@ -531,12 +531,12 @@
             </div>
             <div class="table-scroll-shell">
                 <div class="table-responsive scroll-x note-table-scroll">
-                    <table class="table table-sm align-middle mb-0">
+                    <table class="table table-sm align-middle mb-0 corte-caja-table corte-caja-table--ops">
                         <thead>
                             <tr>
                                 <th>Orden</th>
-                                <th>Proveedor</th>
-                                <th>Material</th>
+                                <th class="corte-caja-col-partner">Proveedor</th>
+                                <th class="corte-caja-col-material">Material</th>
                                 <th class="text-end">Kg</th>
                                 <th class="text-end">Precio</th>
                                 <th class="text-end">Total linea</th>
@@ -548,8 +548,8 @@
                             {% for row in compras_rows %}
                                 <tr>
                                     <td>{{ row.folio }}</td>
-                                    <td>{{ row.partner }}</td>
-                                    <td>{{ row.material }}</td>
+                                    <td class="corte-caja-text-cell corte-caja-col-partner-cell">{{ row.partner }}</td>
+                                    <td class="corte-caja-text-cell corte-caja-col-material-cell">{{ row.material }}</td>
                                     <td class="text-end">{{ "{:,.3f}".format(row.kg_neto or 0) }}</td>
                                     <td class="text-end">${{ "{:,.5f}".format(row.precio_unitario or 0) }}</td>
                                     <td class="text-end">${{ "{:,.2f}".format(row.subtotal or 0) }}</td>
@@ -583,12 +583,12 @@
             </div>
             <div class="table-scroll-shell">
                 <div class="table-responsive scroll-x note-table-scroll">
-                    <table class="table table-sm align-middle mb-0">
+                    <table class="table table-sm align-middle mb-0 corte-caja-table corte-caja-table--ops">
                         <thead>
                             <tr>
                                 <th>Orden</th>
-                                <th>Cliente</th>
-                                <th>Material</th>
+                                <th class="corte-caja-col-partner">Cliente</th>
+                                <th class="corte-caja-col-material">Material</th>
                                 <th class="text-end">Kg</th>
                                 <th class="text-end">Precio</th>
                                 <th class="text-end">Total linea</th>
@@ -600,8 +600,8 @@
                             {% for row in ventas_rows %}
                                 <tr>
                                     <td>{{ row.folio }}</td>
-                                    <td>{{ row.partner }}</td>
-                                    <td>{{ row.material }}</td>
+                                    <td class="corte-caja-text-cell corte-caja-col-partner-cell">{{ row.partner }}</td>
+                                    <td class="corte-caja-text-cell corte-caja-col-material-cell">{{ row.material }}</td>
                                     <td class="text-end">{{ "{:,.3f}".format(row.kg_neto or 0) }}</td>
                                     <td class="text-end">${{ "{:,.5f}".format(row.precio_unitario or 0) }}</td>
                                     <td class="text-end">${{ "{:,.2f}".format(row.subtotal or 0) }}</td>
@@ -633,12 +633,12 @@
                     </div>
                     <div class="table-scroll-shell">
                         <div class="table-responsive scroll-x note-table-scroll">
-                            <table class="table table-sm align-middle mb-0">
+                        <table class="table table-sm align-middle mb-0 corte-caja-table">
                                 <thead>
                                     <tr>
                                         <th>Fecha</th>
                                         <th>Orden</th>
-                                        <th>Cliente</th>
+                                        <th class="corte-caja-col-partner">Cliente</th>
                                         <th class="text-end">Cobro</th>
                                         <th>Caja</th>
                                     </tr>
@@ -648,7 +648,7 @@
                                         <tr>
                                             <td>{{ row.fecha|datetime_local if row.fecha else '-' }}</td>
                                             <td>{{ row.folio }}</td>
-                                            <td>{{ row.partner }}</td>
+                                            <td class="corte-caja-text-cell corte-caja-col-partner-cell">{{ row.partner }}</td>
                                             <td class="text-end text-success">${{ "{:,.2f}".format(row.monto_abs or 0) }}</td>
                                             <td>{{ row.caja_sucursal }}</td>
                                         </tr>
@@ -675,12 +675,12 @@
                     </div>
                     <div class="table-scroll-shell">
                         <div class="table-responsive scroll-x note-table-scroll">
-                            <table class="table table-sm align-middle mb-0">
+                            <table class="table table-sm align-middle mb-0 corte-caja-table">
                                 <thead>
                                     <tr>
                                         <th>Fecha</th>
                                         <th>Orden</th>
-                                        <th>Proveedor</th>
+                                        <th class="corte-caja-col-partner">Proveedor</th>
                                         <th class="text-end">Pago</th>
                                         <th>Caja</th>
                                     </tr>
@@ -690,7 +690,7 @@
                                         <tr>
                                             <td>{{ row.fecha|datetime_local if row.fecha else '-' }}</td>
                                             <td>{{ row.folio }}</td>
-                                            <td>{{ row.partner }}</td>
+                                            <td class="corte-caja-text-cell corte-caja-col-partner-cell">{{ row.partner }}</td>
                                             <td class="text-end text-danger">${{ "{:,.2f}".format(row.monto_abs or 0) }}</td>
                                             <td>{{ row.caja_sucursal }}</td>
                                         </tr>
@@ -716,13 +716,13 @@
                         <span class="badge bg-light text-dark border">${{ "{:,.2f}".format(dotaciones_total or 0) }}</span>
                     </div>
                     <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-0">
-                            <thead><tr><th>Fecha</th><th>Concepto</th><th class="text-end">Monto</th></tr></thead>
+                        <table class="table table-sm align-middle mb-0 corte-caja-table">
+                            <thead><tr><th>Fecha</th><th class="corte-caja-col-description">Concepto</th><th class="text-end">Monto</th></tr></thead>
                             <tbody>
                                 {% for row in dotaciones_rows %}
                                     <tr>
                                         <td>{{ row.fecha|datetime_local if row.fecha else '-' }}</td>
-                                        <td>{{ row.descripcion }}</td>
+                                        <td class="corte-caja-text-cell corte-caja-col-description-cell">{{ row.descripcion }}</td>
                                         <td class="text-end">${{ "{:,.2f}".format(row.monto_abs or 0) }}</td>
                                     </tr>
                                 {% endfor %}
@@ -743,13 +743,13 @@
                         <span class="badge bg-light text-dark border">${{ "{:,.2f}".format(sobrantes_viaticos_total or 0) }}</span>
                     </div>
                     <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-0">
-                            <thead><tr><th>Fecha</th><th>Concepto</th><th class="text-end">Monto</th></tr></thead>
+                        <table class="table table-sm align-middle mb-0 corte-caja-table">
+                            <thead><tr><th>Fecha</th><th class="corte-caja-col-description">Concepto</th><th class="text-end">Monto</th></tr></thead>
                             <tbody>
                                 {% for row in sobrantes_viaticos_rows %}
                                     <tr>
                                         <td>{{ row.fecha|datetime_local if row.fecha else '-' }}</td>
-                                        <td>{{ row.descripcion }}</td>
+                                        <td class="corte-caja-text-cell corte-caja-col-description-cell">{{ row.descripcion }}</td>
                                         <td class="text-end">${{ "{:,.2f}".format(row.monto_abs or 0) }}</td>
                                     </tr>
                                 {% endfor %}
@@ -770,13 +770,13 @@
                         <span class="badge bg-light text-dark border">${{ "{:,.2f}".format(sobrantes_gastos_total or 0) }}</span>
                     </div>
                     <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-0">
-                            <thead><tr><th>Fecha</th><th>Concepto</th><th class="text-end">Monto</th></tr></thead>
+                        <table class="table table-sm align-middle mb-0 corte-caja-table">
+                            <thead><tr><th>Fecha</th><th class="corte-caja-col-description">Concepto</th><th class="text-end">Monto</th></tr></thead>
                             <tbody>
                                 {% for row in sobrantes_gastos_rows %}
                                     <tr>
                                         <td>{{ row.fecha|datetime_local if row.fecha else '-' }}</td>
-                                        <td>{{ row.descripcion }}</td>
+                                        <td class="corte-caja-text-cell corte-caja-col-description-cell">{{ row.descripcion }}</td>
                                         <td class="text-end">${{ "{:,.2f}".format(row.monto_abs or 0) }}</td>
                                     </tr>
                                 {% endfor %}
@@ -801,11 +801,11 @@
                     </div>
                     <div class="table-scroll-shell">
                         <div class="table-responsive scroll-x note-table-scroll">
-                            <table class="table table-sm align-middle mb-0">
+                            <table class="table table-sm align-middle mb-0 corte-caja-table corte-caja-table--gastos">
                                 <thead>
                                     <tr>
                                         <th>Fecha</th>
-                                        <th>Descripcion</th>
+                                        <th class="corte-caja-col-description">Descripcion</th>
                                         <th>Categoria</th>
                                         <th>Usuario</th>
                                         <th class="text-end">Monto</th>
@@ -815,7 +815,7 @@
                                     {% for gasto in gastos %}
                                         <tr>
                                             <td>{{ gasto.created_at|datetime_local if gasto.created_at else '-' }}</td>
-                                            <td>{{ gasto.descripcion }}</td>
+                                            <td class="corte-caja-text-cell corte-caja-col-description-cell">{{ gasto.descripcion }}</td>
                                             <td>{{ gasto.categoria|replace('_', ' ')|title if gasto.categoria else '-' }}</td>
                                             <td>{{ gasto.usuario.nombre_completo if gasto.usuario else '-' }}</td>
                                             <td class="text-end">${{ "{:,.2f}".format(gasto.monto or 0) }}</td>
@@ -839,12 +839,12 @@
                         <span class="badge bg-light text-dark border">${{ "{:,.2f}".format(otros_ajustes_total or 0) }}</span>
                     </div>
                     <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-0">
+                            <table class="table table-sm align-middle mb-0 corte-caja-table">
                             <thead>
                                 <tr>
                                     <th>Fecha</th>
                                     <th>Categoria</th>
-                                    <th>Descripcion</th>
+                                    <th class="corte-caja-col-description">Descripcion</th>
                                     <th class="text-end">Monto</th>
                                 </tr>
                             </thead>
@@ -853,7 +853,7 @@
                                     <tr>
                                         <td>{{ row.fecha|datetime_local if row.fecha else '-' }}</td>
                                         <td>{{ row.categoria_label }}</td>
-                                        <td>{{ row.descripcion }}</td>
+                                        <td class="corte-caja-text-cell corte-caja-col-description-cell">{{ row.descripcion }}</td>
                                         <td class="text-end {% if row.monto < 0 %}text-danger{% else %}text-success{% endif %}">{% if row.monto >= 0 %}+{% endif %}${{ "{:,.2f}".format((row.monto or 0)|abs) }}</td>
                                     </tr>
                                 {% endfor %}
@@ -880,16 +880,16 @@
             </div>
             <div class="table-scroll-shell">
                 <div class="table-responsive scroll-x note-table-scroll">
-                    <table class="table table-sm align-middle mb-0">
+                    <table class="table table-sm align-middle mb-0 corte-caja-table">
                         <thead>
                             <tr>
                                 <th>Fecha</th>
                                 <th>Tipo</th>
                                 <th>Orden</th>
-                                <th>Partner</th>
+                                <th class="corte-caja-col-partner">Partner</th>
                                 <th>Caja</th>
                                 <th class="text-end">Monto</th>
-                                <th>Comentario</th>
+                                <th class="corte-caja-col-description">Comentario</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -898,10 +898,10 @@
                                     <td>{{ row.fecha|datetime_local if row.fecha else '-' }}</td>
                                     <td>{{ row.tipo }}</td>
                                     <td>{{ row.folio }}</td>
-                                    <td>{{ row.partner }}</td>
+                                    <td class="corte-caja-text-cell corte-caja-col-partner-cell">{{ row.partner }}</td>
                                     <td>{{ row.caja_sucursal }}</td>
                                     <td class="text-end {% if row.monto < 0 %}text-danger{% else %}text-success{% endif %}">{% if row.monto >= 0 %}+{% endif %}${{ "{:,.2f}".format((row.monto or 0)|abs) }}</td>
-                                    <td>{{ row.comentario or '-' }}</td>
+                                    <td class="corte-caja-text-cell corte-caja-col-description-cell">{{ row.comentario or '-' }}</td>
                                 </tr>
                             {% endfor %}
                         </tbody>
