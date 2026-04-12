@@ -530,6 +530,13 @@
                     <span>Total: <strong>${{ "{:,.2f}".format(compras_total or 0) }}</strong></span>
                 </div>
             </div>
+            {% if corte_color_legend %}
+            <div class="d-flex flex-wrap gap-2 mb-3 corte-color-legend">
+                {% for item in corte_color_legend %}
+                    <span class="corte-legend-badge corte-row-{{ item.color_key }}">{{ item.label }}</span>
+                {% endfor %}
+            </div>
+            {% endif %}
             <div class="table-scroll-shell">
                 <div class="table-responsive scroll-x note-table-scroll">
                     <table class="table table-sm align-middle mb-0 corte-caja-table corte-caja-table--ops">
@@ -543,11 +550,13 @@
                                 <th class="text-end">Total linea</th>
                                 <th class="text-end">Total orden</th>
                                 <th>Metodo</th>
+                                <th>Cuenta</th>
+                                <th>No. Cheque</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for row in compras_rows %}
-                                <tr>
+                                <tr class="corte-row-{{ row.color_key }}">
                                     <td>{{ row.folio }}</td>
                                     <td class="corte-caja-text-cell corte-caja-col-partner-cell">{{ row.partner }}</td>
                                     <td class="corte-caja-text-cell corte-caja-col-material-cell">{{ row.material }}</td>
@@ -556,6 +565,8 @@
                                     <td class="text-end">${{ "{:,.2f}".format(row.subtotal or 0) }}</td>
                                     <td class="text-end">${{ "{:,.2f}".format(row.total_nota or 0) }}</td>
                                     <td>{{ row.metodo_pago|capitalize if row.metodo_pago else '-' }}</td>
+                                    <td class="corte-caja-text-cell">{{ row.cuenta_financiera_label if row.cuenta_financiera_label else '-' }}</td>
+                                    <td>{{ row.numero_cheque if row.numero_cheque else '-' }}</td>
                                 </tr>
                             {% endfor %}
                         </tbody>
@@ -595,11 +606,13 @@
                                 <th class="text-end">Total linea</th>
                                 <th class="text-end">Total orden</th>
                                 <th>Metodo</th>
+                                <th>Cuenta</th>
+                                <th>No. Cheque</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for row in ventas_rows %}
-                                <tr>
+                                <tr class="corte-row-{{ row.color_key }}">
                                     <td>{{ row.folio }}</td>
                                     <td class="corte-caja-text-cell corte-caja-col-partner-cell">{{ row.partner }}</td>
                                     <td class="corte-caja-text-cell corte-caja-col-material-cell">{{ row.material }}</td>
@@ -608,6 +621,8 @@
                                     <td class="text-end">${{ "{:,.2f}".format(row.subtotal or 0) }}</td>
                                     <td class="text-end">${{ "{:,.2f}".format(row.total_nota or 0) }}</td>
                                     <td>{{ row.metodo_pago|capitalize if row.metodo_pago else '-' }}</td>
+                                    <td class="corte-caja-text-cell">{{ row.cuenta_financiera_label if row.cuenta_financiera_label else '-' }}</td>
+                                    <td>{{ row.numero_cheque if row.numero_cheque else '-' }}</td>
                                 </tr>
                             {% endfor %}
                         </tbody>
@@ -1300,4 +1315,31 @@ document.addEventListener('DOMContentLoaded', () => {
     updateTotals();
 });
 </script>
+<style>
+/* Corte de caja — row color coding by payment method / account */
+.corte-row-cash td { background-color: #d4edda !important; }
+.corte-row-account-1 td { background-color: #cce5ff !important; }
+.corte-row-account-2 td { background-color: #fff3cd !important; }
+.corte-row-account-3 td { background-color: #f8d7da !important; }
+.corte-row-account-4 td { background-color: #d6d8f7 !important; }
+.corte-row-account-5 td { background-color: #d1ecf1 !important; }
+.corte-row-transfer td { background-color: #e2e3e5 !important; }
+
+/* Legend badges */
+.corte-color-legend { font-size: 0.78rem; }
+.corte-legend-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-weight: 600;
+    border: 1px solid rgba(0,0,0,0.1);
+}
+.corte-legend-badge.corte-row-cash { background-color: #d4edda; color: #155724; }
+.corte-legend-badge.corte-row-account-1 { background-color: #cce5ff; color: #004085; }
+.corte-legend-badge.corte-row-account-2 { background-color: #fff3cd; color: #856404; }
+.corte-legend-badge.corte-row-account-3 { background-color: #f8d7da; color: #721c24; }
+.corte-legend-badge.corte-row-account-4 { background-color: #d6d8f7; color: #383d75; }
+.corte-legend-badge.corte-row-account-5 { background-color: #d1ecf1; color: #0c5460; }
+.corte-legend-badge.corte-row-transfer { background-color: #e2e3e5; color: #383d41; }
+</style>
 {% endblock %}

@@ -668,11 +668,7 @@ def create_draft_note(
         tipo_operacion=tipo_operacion,
         estado=NotaEstado.borrador,
         comentarios_trabajador=(comentarios_trabajador or "").strip() or None,
-        folio_seq=_next_folio_seq(
-            db,
-            sucursal_id=sucursal_id,
-            tipo_operacion=tipo_operacion,
-        ),
+        folio_seq=None,
     )
     # Asignar partner si viene
     if tipo_operacion == TipoOperacion.compra:
@@ -779,11 +775,9 @@ def update_worker_note(
 
     old_tipo = nota.tipo_operacion
     if old_tipo != tipo_operacion:
-        nota.folio_seq = _next_folio_seq(
-            db,
-            sucursal_id=nota.sucursal_id,
-            tipo_operacion=tipo_operacion,
-        )
+        # Folio is assigned at approval time; just clear it if type changes so it
+        # gets the right sequence (C vs V) when eventually approved.
+        nota.folio_seq = None
 
     _validate_partner_for_nota_sucursal(
         db,
@@ -1466,6 +1460,7 @@ def approve_note(
     comentarios_admin: str | None = None,
     fecha_caducidad_pago: date | None = None,
     metodo_pago: str | None = None,
+    numero_cheque: str | None = None,
     cuenta_financiera: str | None = None,
     cuenta_scrap360_id: int | None = None,
     monto_pagado: Decimal | None = None,
@@ -1538,7 +1533,14 @@ def approve_note(
             if caja_sucursal_resolved is None or not db.get(Sucursal, caja_sucursal_resolved):
                 raise ValueError("Selecciona una sucursal de caja valida para efectivo.")
     nota.metodo_pago = metodo_pago_clean
+    nota.numero_cheque = (numero_cheque or "").strip() or None
     nota.cuenta_financiera_id = cuenta_id
+    # Assign folio at approval time so that the approval order determines the sequence
+    nota.folio_seq = _next_folio_seq(
+        db,
+        sucursal_id=nota.sucursal_id,
+        tipo_operacion=nota.tipo_operacion,
+    )
     update_state(
         db,
         nota,

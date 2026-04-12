@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -v \"{:,\\\\.\")",
+      "Bash(grep -v \"{:,\\\\.\\\\|%.2f\\\\|value=\\\\|input\\\\|toFixed\\\\|step=\\\\|//\")",
+      "Bash(grep -v \"{:,\\\\.\\\\|value=\\\\|input\\\\|toFixed\\\\|%.3f\\\\|%.2f\\\\|//\\\\|data-\")",
+      "Bash(python -c \"from app.main import app; print\\('OK'\\)\")",
+      "Bash(python3 -c ':*)",
+      "Bash(python -c ':*)",
+      "Bash(python -m alembic upgrade head)"
+    ]
+  }
+}

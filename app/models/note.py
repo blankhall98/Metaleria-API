@@ -68,6 +68,7 @@ class Nota(Base):
     factura_generada_at = Column(DateTime, nullable=True)
 
     metodo_pago = Column(String(50), nullable=True)
+    numero_cheque = Column(String(80), nullable=True)
     cuenta_financiera_id = Column(Integer, ForeignKey("cuentas.id"), nullable=True)
     fecha_caducidad_pago = Column(Date, nullable=True)
 
@@ -116,6 +117,10 @@ class NotaMaterial(Base):
     nota = relationship("Nota", back_populates="materiales")
     material = relationship("Material")
     subpesajes = relationship("Subpesaje", back_populates="nota_material", cascade="all, delete-orphan")
+
+    @property
+    def display_order(self) -> int:
+        return self.material.orden_display if self.material else 999
 
 
 class Subpesaje(Base):

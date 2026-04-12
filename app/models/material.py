@@ -13,5 +13,6 @@ class Material(Base):
     descripcion = Column(String(255), nullable=True)
     unidad_medida = Column(String(50), nullable=False, default="kg")
     activo = Column(Boolean, nullable=False, default=True)
+    orden_display = Column(Integer, nullable=False, default=999)
 
     tablas_precios = relationship("TablaPrecio", back_populates="material")

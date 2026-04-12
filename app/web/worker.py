@@ -192,7 +192,12 @@ async def notes_list(
             tipo_operacion=nota.tipo_operacion,
             folio_seq=nota.folio_seq,
         )
-        folio_map[nota.id] = folio or "-"
+        if folio:
+            folio_map[nota.id] = folio
+        elif nota.estado.value in ("BORRADOR", "EN_REVISION"):
+            folio_map[nota.id] = "Pendiente"
+        else:
+            folio_map[nota.id] = "-"
     partner_map = _build_worker_note_partner_map(db, notas)
     return templates.TemplateResponse(
         "worker/notes_list.html",
@@ -254,7 +259,7 @@ async def notes_new_get(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_worker),
 ):
-    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
+    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.orden_display, Material.nombre).all()
     proveedores, proveedores_venta, clientes = _get_worker_partners(db, current_user)
     price_map = _get_price_map(db)
     return _render_worker_note_form(
@@ -382,7 +387,7 @@ async def notes_new_post(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_worker),
 ):
-    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
+    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.orden_display, Material.nombre).all()
     proveedores, proveedores_venta, clientes = _get_worker_partners(db, current_user)
     price_map = _get_price_map(db)
     initial_state = {
@@ -497,7 +502,7 @@ async def notes_edit_get(
     if nota.estado != NotaEstado.borrador:
         return RedirectResponse(url="/web/worker/notes?success=2", status_code=303)
 
-    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
+    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.orden_display, Material.nombre).all()
     proveedores, proveedores_venta, clientes = _get_worker_partners(db, current_user)
     price_map = _get_price_map(db)
     initial_state = _build_worker_note_initial_state(nota)
@@ -547,7 +552,7 @@ async def notes_edit_post(
     if nota.estado != NotaEstado.borrador:
         return RedirectResponse(url="/web/worker/notes?success=2", status_code=303)
 
-    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
+    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.orden_display, Material.nombre).all()
     proveedores, proveedores_venta, clientes = _get_worker_partners(db, current_user)
     price_map = _get_price_map(db)
     initial_state = _build_worker_note_initial_state(nota)

@@ -2129,7 +2129,12 @@ def _build_folio_map(notas: Iterable[Nota]) -> dict[int, str]:
             tipo_operacion=nota.tipo_operacion,
             folio_seq=nota.folio_seq,
         )
-        folio_map[nota.id] = folio or "-"
+        if folio:
+            folio_map[nota.id] = folio
+        elif nota.estado in (NotaEstado.borrador, NotaEstado.en_revision):
+            folio_map[nota.id] = "Pendiente"
+        else:
+            folio_map[nota.id] = "-"
     return folio_map
 
 
@@ -4846,7 +4851,7 @@ async def materiales_list(
     params = request.query_params
     delete_ok = params.get("deleted") == "1"
     delete_error = (params.get("delete_error") or "").strip() or None
-    materiales = db.query(Material).order_by(Material.nombre).all()
+    materiales = db.query(Material).order_by(Material.orden_display, Material.nombre).all()
     return templates.TemplateResponse(
         "admin/materiales_list.html",
         {
@@ -7479,7 +7484,7 @@ async def comisionario_nota_new_get(
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     comisionarios = _get_accessible_comisionarios(db, current_user, activos_solamente=True)
-    materiales = db.query(Material).order_by(Material.nombre).all()
+    materiales = db.query(Material).order_by(Material.orden_display, Material.nombre).all()
     preselect_id = None
     if request.query_params.get("comisionario_id"):
         try:
@@ -7520,7 +7525,7 @@ async def comisionario_nota_new_post(
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     comisionarios = _get_accessible_comisionarios(db, current_user, activos_solamente=True)
-    materiales = db.query(Material).order_by(Material.nombre).all()
+    materiales = db.query(Material).order_by(Material.orden_display, Material.nombre).all()
 
     def render_error(msg: str, rows: list[dict]):
         return templates.TemplateResponse(
@@ -9244,7 +9249,7 @@ def _render_admin_purchase_note_form(
     action_url: str = "/web/admin/notas/compra-administrativa",
     force_tipo_operacion: str = "compra",
 ):
-    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
+    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.orden_display, Material.nombre).all()
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     proveedores_query = db.query(Proveedor).filter(Proveedor.activo.is_(True))
     clientes_query = db.query(Cliente).filter(Cliente.activo.is_(True))
@@ -9921,7 +9926,7 @@ async def transferencias_get(
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
-    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
+    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.orden_display, Material.nombre).all()
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     origin_locked = (
@@ -9996,7 +10001,7 @@ async def transferencias_post(
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
-    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
+    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.orden_display, Material.nombre).all()
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     origin_locked = (
@@ -10423,6 +10428,8 @@ def _render_nota_detail(
         tipo_operacion=nota.tipo_operacion,
         folio_seq=nota.folio_seq,
     )
+    if not folio and nota.estado in (NotaEstado.borrador, NotaEstado.en_revision):
+        folio = "Pendiente"
     is_transfer = _is_transfer_note(db, nota, proveedor, cliente)
     transfer_related = None
     transfer_related_sucursal = None
@@ -10661,6 +10668,8 @@ def _render_nota_edit(
         tipo_operacion=nota.tipo_operacion,
         folio_seq=nota.folio_seq,
     )
+    if not folio and nota.estado in (NotaEstado.borrador, NotaEstado.en_revision):
+        folio = "Pendiente"
     is_transfer = _is_transfer_note(db, nota, proveedor, cliente)
     transfer_related = None
     transfer_related_sucursal = None
@@ -11196,6 +11205,7 @@ async def notas_aprobar(
     print_window = (form.get("print_window") or "").strip()
     fecha_caducidad_pago_raw = (form.get("fecha_caducidad_pago") or "").strip()
     metodo_pago = (form.get("metodo_pago") or "").strip().lower()
+    numero_cheque = (form.get("numero_cheque") or "").strip()
     cuenta_financiera = (form.get("cuenta_financiera") or "").strip()
     cuenta_scrap360_raw = (form.get("cuenta_scrap360_id") or "").strip()
     inventario_sucursal_raw = (form.get("inventario_sucursal_id") or "").strip()
@@ -11205,6 +11215,7 @@ async def notas_aprobar(
     iva_porcentaje_raw = (form.get("iva_porcentaje") or "").strip()
     form_state = {
         "form_metodo": metodo_pago,
+        "form_numero_cheque": numero_cheque,
         "form_cuenta": cuenta_financiera,
         "form_fecha": fecha_caducidad_pago_raw,
         "form_comentarios": comentarios_admin,
@@ -11458,6 +11469,7 @@ async def notas_aprobar(
             comentarios_admin=comentarios_admin,
             fecha_caducidad_pago=fecha_caducidad_pago,
             metodo_pago=metodo_pago,
+            numero_cheque=numero_cheque or None,
             cuenta_financiera=cuenta_financiera or None,
             cuenta_scrap360_id=cuenta_scrap360_id,
             monto_pagado=monto_pagado,
@@ -11502,6 +11514,48 @@ async def notas_aprobar(
         )
 
     return RedirectResponse(url="/web/admin/notas?approved=1", status_code=303)
+
+
+@router.post("/notas/{nota_id}/referencia-pago")
+async def notas_referencia_pago(
+    nota_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    nota = db.get(Nota, nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_nota_access(nota, allowed_suc_ids)
+    if nota.estado != NotaEstado.aprobada:
+        return _render_nota_detail(
+            request, db, current_user, nota,
+            error="Solo puedes editar la referencia de pago en notas aprobadas.",
+        )
+    form = await request.form()
+    metodo_pago_raw = (form.get("metodo_pago") or "").strip().lower()
+    numero_cheque_raw = (form.get("numero_cheque") or "").strip()
+    cuenta_financiera_raw = (form.get("cuenta_financiera") or "").strip()
+
+    cuenta_id: int | None = None
+    if cuenta_financiera_raw:
+        try:
+            cuenta_id = int(cuenta_financiera_raw)
+            if not db.get(Cuenta, cuenta_id):
+                cuenta_id = None
+        except (TypeError, ValueError):
+            cuenta_id = None
+
+    nota.metodo_pago = metodo_pago_raw or None
+    nota.numero_cheque = numero_cheque_raw or None
+    nota.cuenta_financiera_id = cuenta_id
+    db.add(nota)
+    db.commit()
+    return RedirectResponse(
+        url=f"/web/admin/notas/{nota.id}?success=referencia_pago",
+        status_code=303,
+    )
 
 
 @router.post("/notas/{nota_id}/precios")
@@ -12611,7 +12665,7 @@ async def inventario_ajuste_get(
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
-    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
+    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.orden_display, Material.nombre).all()
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     suc_ids = [s.id for s in sucursales]
@@ -12642,7 +12696,7 @@ def _render_inventario_aumentar(
     form_data: dict | None = None,
 ):
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
-    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
+    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.orden_display, Material.nombre).all()
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     suc_ids = [s.id for s in sucursales]
@@ -12775,7 +12829,7 @@ async def inventario_ajuste_post(
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
-    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
+    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.orden_display, Material.nombre).all()
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
 
@@ -12868,7 +12922,7 @@ def _render_conversiones_materiales(
     form_data: dict | None = None,
 ):
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
-    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.nombre).all()
+    materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.orden_display, Material.nombre).all()
     conversions = (
         db.query(ConversionMaterial)
         .order_by(ConversionMaterial.created_at.desc())
@@ -14409,6 +14463,7 @@ def _build_corte_note_relations(
             continue
         partner = _partner_name_for_nota(nota, proveedores_map, clientes_map)
         target_rows = compras_rows if nota.tipo_operacion == TipoOperacion.compra else ventas_rows
+        cuenta_label = nota.cuenta.display_label if nota.cuenta else None
         for nm in nota.materiales:
             material_name = nm.material.nombre if nm.material else f"Material #{nm.material_id}"
             kg_neto = Decimal(str(nm.kg_neto or 0))
@@ -14420,11 +14475,15 @@ def _build_corte_note_relations(
                 "folio": folio_map.get(nota.id) or f"#{nota.id}",
                 "partner": partner,
                 "material": material_name,
+                "material_orden_display": nm.material.orden_display if nm.material else 999,
                 "kg_neto": kg_neto,
                 "precio_unitario": precio_unitario,
                 "subtotal": subtotal,
                 "total_nota": Decimal(str(nota.total_monto or 0)),
                 "metodo_pago": nota.metodo_pago or "-",
+                "numero_cheque": nota.numero_cheque or "",
+                "cuenta_financiera_id": nota.cuenta_financiera_id,
+                "cuenta_financiera_label": cuenta_label or "",
                 "es_efectivo": (nota.metodo_pago or "").strip().lower() == "efectivo",
             }
             target_rows.append(row)
@@ -14435,8 +14494,23 @@ def _build_corte_note_relations(
                 ventas_total += subtotal
                 ventas_kg += kg_neto
 
-    compras_rows.sort(key=lambda row: (row["fecha"] or datetime.min, row["folio"], row["material"]))
-    ventas_rows.sort(key=lambda row: (row["fecha"] or datetime.min, row["folio"], row["material"]))
+    compras_rows.sort(key=lambda row: (row["fecha"] or datetime.min, row["folio"], row["material_orden_display"]))
+    ventas_rows.sort(key=lambda row: (row["fecha"] or datetime.min, row["folio"], row["material_orden_display"]))
+
+    # Assign color keys: cash → "cash", per-account → "account-N", no account → "transfer"
+    account_color_map: dict = {}
+    color_counter = 1
+    for row in compras_rows + ventas_rows:
+        if row["es_efectivo"]:
+            row["color_key"] = "cash"
+        elif row["cuenta_financiera_id"]:
+            acct_id = row["cuenta_financiera_id"]
+            if acct_id not in account_color_map:
+                account_color_map[acct_id] = color_counter
+                color_counter += 1
+            row["color_key"] = f"account-{account_color_map[acct_id]}"
+        else:
+            row["color_key"] = "transfer"
     return {
         "compras_rows": compras_rows,
         "ventas_rows": ventas_rows,
@@ -14447,6 +14521,35 @@ def _build_corte_note_relations(
         "compras_notas": len({row["nota_id"] for row in compras_rows}),
         "ventas_notas": len({row["nota_id"] for row in ventas_rows}),
     }
+
+
+def _build_corte_color_legend(all_rows: list[dict]) -> list[dict]:
+    """Build a list of {color_key, label, metodo, cuenta_label} for the corte legend."""
+    seen: dict[str, dict] = {}
+    for row in all_rows:
+        key = row.get("color_key", "transfer")
+        if key not in seen:
+            metodo = (row.get("metodo_pago") or "-").capitalize()
+            cuenta = row.get("cuenta_financiera_label") or ""
+            if key == "cash":
+                label = "Efectivo"
+            elif cuenta:
+                label = f"{metodo} — {cuenta}"
+            else:
+                label = metodo
+            seen[key] = {"color_key": key, "label": label}
+    # Sort: cash first, then account-N in order, transfer last
+    def sort_key(item: dict) -> tuple:
+        k = item["color_key"]
+        if k == "cash":
+            return (0, 0)
+        if k.startswith("account-"):
+            try:
+                return (1, int(k.split("-")[1]))
+            except (IndexError, ValueError):
+                return (1, 9999)
+        return (2, 0)
+    return sorted(seen.values(), key=sort_key)
 
 
 def _render_corte_caja(
@@ -14654,6 +14757,9 @@ def _render_corte_caja(
             "ventas_kg": relaciones["ventas_kg"],
             "compras_notas": relaciones["compras_notas"],
             "ventas_notas": relaciones["ventas_notas"],
+            "corte_color_legend": _build_corte_color_legend(
+                relaciones["compras_rows"] + relaciones["ventas_rows"]
+            ),
             "saldo_inicial": saldo_inicial,
             "saldo_calculado_actual": saldo_calculado_actual,
             "saldo_calculado": saldo_calculado,
@@ -15278,7 +15384,7 @@ async def inventario_movimientos(
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
-    materiales = db.query(Material).order_by(Material.nombre).all()
+    materiales = db.query(Material).order_by(Material.orden_display, Material.nombre).all()
     params = request.query_params
     sucursal_id = None
     if params.get("sucursal_id"):
@@ -15633,7 +15739,7 @@ async def inventario_movimientos_export(
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
-    materiales = db.query(Material).order_by(Material.nombre).all()
+    materiales = db.query(Material).order_by(Material.orden_display, Material.nombre).all()
     params = request.query_params
     sucursal_id = None
     if params.get("sucursal_id"):

@@ -24,9 +24,9 @@ from app.services.firebase_storage import upload_file
 
 def _format_decimal(value: object, places: int) -> str:
     try:
-        return f"{Decimal(str(value or 0)):.{places}f}"
+        return f"{Decimal(str(value or 0)):,.{places}f}"
     except (InvalidOperation, ValueError):
-        return f"{0:.{places}f}"
+        return f"{0:,.{places}f}"
 
 
 def _escape_pdf(text: str) -> str:
@@ -232,7 +232,7 @@ def build_invoice_pdf(db: Session, nota: Nota, generated_at: datetime | None = N
         pdf.text(draw_x, header_text_y, title, size=9, font="F2")
 
     row_y = header_bottom - 12
-    materiales = sorted(nota.materiales, key=lambda m: (m.orden or 0, m.id or 0))
+    materiales = sorted(nota.materiales, key=lambda m: (m.material.orden_display if m.material else 999, m.id or 0))
     for nm in materiales:
         material_name = nm.material.nombre if nm.material else str(nm.material_id or "")
         material_name = _truncate_text(material_name, 180, 9)
@@ -406,7 +406,7 @@ def build_comisionario_nota_pdf(
         pdf.text(draw_x, header_text_y, title, size=9, font="F2")
 
     row_y = header_bottom - 12
-    materiales = sorted(nota.materiales or [], key=lambda m: (m.id or 0))
+    materiales = sorted(nota.materiales or [], key=lambda m: (m.material.orden_display if m.material else 999, m.id or 0))
     for nm in materiales:
         material_name = nm.material.nombre if nm.material else str(nm.material_id or "")
         material_name = _truncate_text(material_name, 240, 9)

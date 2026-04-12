@@ -148,7 +148,7 @@
                                 </tr>
                                 </thead>
                                 <tbody>
-                                {% for m in nota.materiales %}
+                                {% for m in nota.materiales | sort(attribute='display_order') %}
                                     <tr data-kg-neto="{{ '%.3f'|format(m.kg_neto or 0) }}">
                                         <td>
                                             <div class="fw-semibold">{{ m.material.nombre if m.material else m.material_id }}</div>

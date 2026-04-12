@@ -126,6 +126,9 @@
     {% if devolucion_total_reverted %}
         <div class="alert alert-success py-2 small mb-3">La devolucion total fue revertida. La nota regreso a estado aprobada con sus efectos contables e inventario restaurados.</div>
     {% endif %}
+    {% if request.query_params.get('success') == 'referencia_pago' %}
+        <div class="alert alert-success py-2 small mb-3">Referencia de pago actualizada correctamente.</div>
+    {% endif %}
 
     <div class="card hover-lift mb-3">
         <div class="card-body">
@@ -273,6 +276,9 @@
                     <span class="note-meta-label">Metodo base</span>
                     <strong>{{ nota.metodo_pago|capitalize if nota.metodo_pago else '-' }}</strong>
                     <div class="note-meta-sub">{{ nota.cuenta.display_label if nota.cuenta else '-' }}</div>
+                    {% if nota.numero_cheque %}
+                        <div class="note-meta-sub">No. cheque: <strong>{{ nota.numero_cheque }}</strong></div>
+                    {% endif %}
                 </div>
                 <div class="note-meta-item">
                     <span class="note-meta-label">Vence</span>
@@ -463,7 +469,7 @@
                                     </tr>
                                     </thead>
                                     <tbody>
-                                    {% for m in nota.materiales %}
+                                    {% for m in nota.materiales | sort(attribute='display_order') %}
                                         <tr data-material-id="{{ m.material_id }}"
                                             data-kg-neto="{{ '%.3f'|format(m.kg_neto or 0) }}"
                                             data-precios='{{ price_map_by_material.get(m.material_id, "{}")|e }}'>
@@ -643,6 +649,12 @@
                                         <div class="form-text text-muted">Opcional. Usala si la transferencia o cheque cae en una cuenta registrada del partner; si es un movimiento externo, puedes dejarla vacia.</div>
                                     {% endif %}
                                 </div>
+                                <div class="col-12" id="numero_cheque_group">
+                                    <label class="form-label">Numero de cheque</label>
+                                    {% set cheque_val = form_numero_cheque if form_numero_cheque is not none else (nota.numero_cheque or '') %}
+                                    <input class="form-control" type="text" name="numero_cheque" value="{{ cheque_val }}" placeholder="Ej. 001234" maxlength="80">
+                                    <div class="form-text text-muted">Solo aplica si el metodo es cheque. Opcional.</div>
+                                </div>
                                 <div class="col-12">
                                     <label class="form-label">Sucursal de caja</label>
                                     {% set caja_sucursal_val = form_caja_sucursal_id if form_caja_sucursal_id is not none else (nota.sucursal_id or "") %}
@@ -777,7 +789,7 @@
                         </tr>
                         </thead>
                         <tbody>
-                        {% for m in nota.materiales %}
+                        {% for m in nota.materiales | sort(attribute='display_order') %}
                             <tr data-kg-neto="{{ '%.3f'|format(m.kg_neto or 0) }}">
                                 <td>
                                     <div class="fw-semibold">{{ m.material.nombre if m.material else m.material_id }}</div>
@@ -849,7 +861,7 @@
                                     </tr>
                                     </thead>
                                     <tbody>
-                                    {% for nm in nota.materiales %}
+                                    {% for nm in nota.materiales | sort(attribute='display_order') %}
                                         {% set kg_input = form_devol_kg_map.get(nm.id) if form_devol_kg_map else None %}
                                         {% set precio_input = form_devol_precio_map.get(nm.id) if form_devol_precio_map else None %}
                                         <tr>
@@ -1121,6 +1133,53 @@
                                     <a href="/web/admin/notas/{{ nota.id }}/editar" class="btn btn-outline-primary">Editar nota aprobada</a>
                                 {% endif %}
                             </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="card hover-lift note-side-card mt-3">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center gap-2 mb-3">
+                                <span class="chip-strong">Referencia de pago</span>
+                                <span class="text-muted small">Metodo y cuenta tentativa</span>
+                            </div>
+                            <form method="post" action="/web/admin/notas/{{ nota.id }}/referencia-pago">
+                                <div class="mb-2">
+                                    <label class="form-label">Metodo de pago</label>
+                                    <select class="form-select form-select-sm" name="metodo_pago" id="ref_metodo_pago_select">
+                                        <option value="" {% if not nota.metodo_pago %}selected{% endif %}>Sin definir</option>
+                                        <option value="transferencia" {% if nota.metodo_pago == 'transferencia' %}selected{% endif %}>Transferencia</option>
+                                        <option value="efectivo" {% if nota.metodo_pago == 'efectivo' %}selected{% endif %}>Efectivo</option>
+                                        <option value="cheque" {% if nota.metodo_pago == 'cheque' %}selected{% endif %}>Cheque</option>
+                                    </select>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Cuenta del partner</label>
+                                    <select class="form-select form-select-sm" name="cuenta_financiera">
+                                        <option value="" {% if not nota.cuenta_financiera_id %}selected{% endif %}>Sin cuenta</option>
+                                        {% if cuentas_sucursal %}
+                                            <optgroup label="Sucursal">
+                                                {% for cuenta in cuentas_sucursal %}
+                                                    <option value="{{ cuenta.id }}" {% if nota.cuenta_financiera_id == cuenta.id %}selected{% endif %}>{{ cuenta.display_label }}</option>
+                                                {% endfor %}
+                                            </optgroup>
+                                        {% endif %}
+                                        {% if cuentas_partner %}
+                                            <optgroup label="{{ cuentas_partner_label }}">
+                                                {% for cuenta in cuentas_partner %}
+                                                    <option value="{{ cuenta.id }}" {% if nota.cuenta_financiera_id == cuenta.id %}selected{% endif %}>{{ cuenta.display_label }}</option>
+                                                {% endfor %}
+                                            </optgroup>
+                                        {% endif %}
+                                    </select>
+                                </div>
+                                <div class="mb-3" id="ref_cheque_group">
+                                    <label class="form-label">Numero de cheque</label>
+                                    <input class="form-control form-control-sm" type="text" name="numero_cheque" value="{{ nota.numero_cheque or '' }}" placeholder="Ej. 001234" maxlength="80">
+                                </div>
+                                <div class="d-grid">
+                                    <button type="submit" class="btn btn-outline-secondary btn-sm">Guardar referencia</button>
+                                </div>
                             </form>
                         </div>
                     </div>
@@ -2122,6 +2181,32 @@
 
         updateTotals();
         updateReturnPreview();
+
+        // Show/hide numero_cheque in approval form
+        const approveMetodoSelect = document.getElementById('metodo_pago_select');
+        const approveNumeroChequeGroup = document.getElementById('numero_cheque_group');
+        function toggleApproveNumeroCheque() {
+            if (!approveMetodoSelect || !approveNumeroChequeGroup) return;
+            const visible = approveMetodoSelect.value === 'cheque';
+            approveNumeroChequeGroup.style.display = visible ? '' : 'none';
+        }
+        if (approveMetodoSelect) {
+            approveMetodoSelect.addEventListener('change', toggleApproveNumeroCheque);
+            toggleApproveNumeroCheque();
+        }
+
+        // Show/hide numero_cheque in reference edit form
+        const refMetodoSelect = document.getElementById('ref_metodo_pago_select');
+        const refChequeGroup = document.getElementById('ref_cheque_group');
+        function toggleRefNumeroCheque() {
+            if (!refMetodoSelect || !refChequeGroup) return;
+            const visible = refMetodoSelect.value === 'cheque';
+            refChequeGroup.style.display = visible ? '' : 'none';
+        }
+        if (refMetodoSelect) {
+            refMetodoSelect.addEventListener('change', toggleRefNumeroCheque);
+            toggleRefNumeroCheque();
+        }
     </script>
 </div>
 {% endblock %}
