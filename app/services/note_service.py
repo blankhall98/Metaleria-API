@@ -709,13 +709,15 @@ def create_draft_note(
             except Exception:
                 tipo_cli = None
 
+        kg_real_override = mp.get("kg_real")
+        kg_real = Decimal(str(kg_real_override)) if kg_real_override is not None else kg_neto
         nm = NotaMaterial(
             nota_id=nota.id,
             material_id=material.id,
             kg_bruto=kg_bruto,
             kg_descuento=kg_descuento,
             kg_neto=kg_neto,
-            kg_real=kg_neto,
+            kg_real=kg_real,
             orden=idx,
             evidencia_url=mp.get("evidencia_url") or None,
             tipo_cliente=tipo_cli,

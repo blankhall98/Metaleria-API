@@ -176,6 +176,13 @@
                                 <label class="form-label">Kg descuento total (auto)</label>
                                 <input class="form-control" type="number" step="0.01" min="0" name="kg_descuento" value="0" readonly>
                             </div>
+                            {% if show_kg_real %}
+                            <div class="col-12">
+                                <label class="form-label">Kg reales inventario <span class="text-muted fw-normal">(opcional)</span></label>
+                                <input class="form-control" type="number" step="0.001" min="0" name="kg_real" placeholder="Si se deja vacío, se usa el kg neto">
+                                <div class="form-text">Interno. Afecta existencias de inventario pero no aparece en la orden PDF.</div>
+                            </div>
+                            {% endif %}
                             <div class="col-12">
                                 <div class="material-summary border rounded p-2 bg-white">
                                     <div class="d-flex justify-content-between">
@@ -673,6 +680,10 @@
         const tipoSel = row.querySelector('select[name="tipo_cliente"]');
         if (tipoSel) {
             tipoSel.value = data?.tipo_cliente || '';
+        }
+        const kgRealInput = row.querySelector('input[name="kg_real"]');
+        if (kgRealInput && data?.kg_real != null && data.kg_real !== '') {
+            kgRealInput.value = String(data.kg_real);
         }
 
         const subWrapper = row.querySelector('.subpesajes-wrapper');

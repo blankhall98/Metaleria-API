@@ -422,15 +422,21 @@ def _escape_pdf(text: str) -> str:
     return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
 
 
+# Helvetica proportional-width estimate per character.
+# 0.5 underestimates uppercase-heavy text; 0.6 keeps wrapping/truncation
+# conservative enough that long provider/client names don't overflow columns.
+_CHAR_WIDTH_FACTOR = 0.6
+
+
 def _text_width(text: str, size: int) -> float:
-    return len(text) * size * 0.5
+    return len(text) * size * _CHAR_WIDTH_FACTOR
 
 
 def _truncate_text(text: str, max_width: float, size: int) -> str:
     if _text_width(text, size) <= max_width:
         return text
     ellipsis = "..."
-    max_chars = max(1, int(max_width / (size * 0.5)) - len(ellipsis))
+    max_chars = max(1, int(max_width / (size * _CHAR_WIDTH_FACTOR)) - len(ellipsis))
     return f"{text[:max_chars]}{ellipsis}"
 
 
@@ -693,7 +699,11 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
             page.text(draw_x, y - 5, col_title, size=8, font="F2", fill_rgb=(1, 1, 1))
         y -= 24
 
-    def draw_row(cols: list[tuple[str, float, float, str]], values: list[str]) -> None:
+    def draw_row(
+        cols: list[tuple[str, float, float, str]],
+        values: list[str],
+        bg_rgb: tuple[float, float, float] | None = None,
+    ) -> None:
         nonlocal y
         cell_lines: list[list[str]] = []
         max_lines = 1
@@ -707,6 +717,10 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
         row_h = max(12, max_lines * 10 + 2)
         ensure_space(70 + row_h)
         line_y_start = y
+        if bg_rgb is not None:
+            row_x = cols[0][1]
+            row_w = cols[-1][1] + cols[-1][2] - row_x
+            page.rect(row_x, line_y_start - row_h, row_w, row_h, fill_rgb=bg_rgb)
         for (col_title, x, width, align), lines in zip(cols, cell_lines):
             if align == "right":
                 for idx, display in enumerate(lines):
@@ -716,6 +730,51 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
                 for idx, display in enumerate(lines):
                     page.text(x + 2, line_y_start - idx * 10, display, size=8)
         y -= row_h
+
+    # ── Payment-method helpers ────────────────────────────────────────────
+    _pago_colors: dict[str, tuple[float, float, float]] = {
+        "efectivo": green_soft,       # light green
+        "transferencia": accent_soft,  # light blue
+        "cheque": amber_soft,          # light amber
+    }
+
+    def _row_pago_color(row: dict) -> tuple[float, float, float] | None:
+        return _pago_colors.get((row.get("metodo_pago") or "").strip().lower())
+
+    def _row_folio_display(row: dict) -> str:
+        """Return folio + payment method (+ ref) as a string that _wrap_text
+        will split into up to 3 lines inside the Orden column (width=60)."""
+        folio = row.get("folio") or "-"
+        metodo = (row.get("metodo_pago") or "").strip().lower()
+        if not metodo:
+            return folio
+        if metodo == "efectivo":
+            label, ref = "Efectivo", ""
+        elif metodo == "cheque":
+            label = "Cheque"
+            ref = (row.get("numero_cheque") or row.get("cuenta_financiera_label") or "").strip()
+        else:
+            label = "Transf."
+            ref = (row.get("cuenta_financiera_label") or "").strip()
+        parts = [folio, label]
+        if ref:
+            parts.append(_truncate_text(ref, 56.0, 8))
+        return " ".join(parts)
+
+    def draw_pago_legend() -> None:
+        """Draw a compact colour-key legend just below a table header."""
+        nonlocal y
+        legend_items = [
+            ("Efectivo", green_soft),
+            ("Transferencia", accent_soft),
+            ("Cheque", amber_soft),
+        ]
+        lx = left
+        for label, color in legend_items:
+            page.rect(lx, y - 10, 8, 8, fill_rgb=color, stroke_rgb=line_soft)
+            page.text(lx + 10, y - 9, label, size=7, font="F3", fill_gray=0.4)
+            lx += 85
+        y -= 14
 
     compra_cols = [
         ("Orden", left, 60, "left"),
@@ -727,12 +786,13 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
         ("Orden total", left + 470, 60, "right"),
     ]
     draw_table_header("Relacion de compras del dia", compra_cols)
+    draw_pago_legend()
     if report["compras_rows"]:
         for row in report["compras_rows"]:
             draw_row(
                 compra_cols,
                 [
-                    row.get("folio") or "-",
+                    _row_folio_display(row),
                     row.get("partner") or "-",
                     row.get("material") or "-",
                     f"{_safe_decimal(row.get('kg_neto')):,.3f}",
@@ -740,6 +800,7 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
                     _format_money(_safe_decimal(row.get("subtotal"))),
                     _format_money(_safe_decimal(row.get("total_nota"))),
                 ],
+                bg_rgb=_row_pago_color(row),
             )
     else:
         draw_row(compra_cols, ["Sin compras registradas", "", "", "", "", "", ""])
@@ -754,12 +815,13 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
         ("Orden total", left + 470, 60, "right"),
     ]
     draw_table_header("Relacion de ventas del dia", venta_cols)
+    draw_pago_legend()
     if report["ventas_rows"]:
         for row in report["ventas_rows"]:
             draw_row(
                 venta_cols,
                 [
-                    row.get("folio") or "-",
+                    _row_folio_display(row),
                     row.get("partner") or "-",
                     row.get("material") or "-",
                     f"{_safe_decimal(row.get('kg_neto')):,.3f}",
@@ -767,6 +829,7 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
                     _format_money(_safe_decimal(row.get("subtotal"))),
                     _format_money(_safe_decimal(row.get("total_nota"))),
                 ],
+                bg_rgb=_row_pago_color(row),
             )
     else:
         draw_row(venta_cols, ["Sin ventas registradas", "", "", "", "", "", ""])

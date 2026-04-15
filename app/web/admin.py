@@ -9190,9 +9190,10 @@ def _parse_note_materials_from_form(
     kg_descs: list[str],
     subpesos: list[str],
     tipos_cliente: list[str],
+    kg_reals: list[str] | None = None,
 ) -> list[dict]:
     materiales_payload: list[dict] = []
-    for mid, kg_b, kg_d, sub, tc in zip(material_ids, kg_brutos, kg_descs, subpesos, tipos_cliente):
+    for idx, (mid, kg_b, kg_d, sub, tc) in enumerate(zip(material_ids, kg_brutos, kg_descs, subpesos, tipos_cliente)):
         if not mid:
             continue
         kg_bruto = Decimal(kg_b or "0")
@@ -9224,6 +9225,15 @@ def _parse_note_materials_from_form(
         else:
             if kg_desc > kg_bruto:
                 raise ValueError("El descuento no puede ser mayor que el peso bruto.")
+        kg_real_str = ((kg_reals[idx] if kg_reals and idx < len(kg_reals) else "") or "").strip()
+        kg_real_val: Decimal | None = None
+        if kg_real_str:
+            try:
+                kg_real_val = Decimal(kg_real_str)
+                if kg_real_val < Decimal("0"):
+                    raise ValueError("Los kg reales de inventario no pueden ser negativos.")
+            except InvalidOperation:
+                raise ValueError("Kg reales de inventario invalidos.")
         materiales_payload.append(
             {
                 "material_id": int(mid),
@@ -9231,6 +9241,7 @@ def _parse_note_materials_from_form(
                 "kg_descuento": kg_desc,
                 "subpesajes": sub_list,
                 "tipo_cliente": tc or None,
+                "kg_real": kg_real_val,
             }
         )
     return materiales_payload
@@ -9284,6 +9295,7 @@ def _render_admin_purchase_note_form(
             "sucursales": sucursales,
             "form_sucursal_id": form_sucursal_id or "",
             "force_tipo_operacion": force_tipo_operacion,
+            "show_kg_real": True,
         },
         status_code=status_code,
     )
@@ -9316,6 +9328,7 @@ async def notas_compra_administrativa_post(
     kg_descuento: List[str] = Form([]),
     subpesajes: List[str] = Form([]),
     tipo_cliente: List[str] = Form([]),
+    kg_real: List[str] = Form([]),
     comentarios_trabajador: str = Form(""),
     extra_evidencias: str = Form(""),
     db: Session = Depends(get_db),
@@ -9349,7 +9362,7 @@ async def notas_compra_administrativa_post(
         return render_error("Selecciona un proveedor para la compra.")
 
     try:
-        materiales_payload = _parse_note_materials_from_form(material_id, kg_bruto, kg_descuento, subpesajes, tipo_cliente)
+        materiales_payload = _parse_note_materials_from_form(material_id, kg_bruto, kg_descuento, subpesajes, tipo_cliente, kg_real)
         initial_state["materiales"] = materiales_payload
     except ValueError as exc:
         return render_error(str(exc))
@@ -9413,6 +9426,7 @@ async def notas_venta_administrativa_post(
     kg_descuento: List[str] = Form([]),
     subpesajes: List[str] = Form([]),
     tipo_cliente: List[str] = Form([]),
+    kg_real: List[str] = Form([]),
     comentarios_trabajador: str = Form(""),
     extra_evidencias: str = Form(""),
     db: Session = Depends(get_db),
@@ -9458,7 +9472,7 @@ async def notas_venta_administrativa_post(
             return render_error("Selecciona un cliente para la venta.")
 
     try:
-        materiales_payload = _parse_note_materials_from_form(material_id, kg_bruto, kg_descuento, subpesajes, tipo_cliente)
+        materiales_payload = _parse_note_materials_from_form(material_id, kg_bruto, kg_descuento, subpesajes, tipo_cliente, kg_real)
         initial_state["materiales"] = materiales_payload
     except ValueError as exc:
         return render_error(str(exc))
@@ -15607,6 +15621,40 @@ async def inventario_movimientos(
             if selected_material_row
             else Decimal("0")
         )
+    # Ajuste summary
+    ajuste_summary_query = _build_inventario_movimientos_query(
+        db,
+        allowed_suc_ids=allowed_suc_ids,
+        sucursal_id=sucursal_id,
+        material_id=material_id,
+        tipo="ajuste",
+        created_from=created_from,
+        created_to=created_to,
+    )
+    ajuste_movimientos_all = ajuste_summary_query.order_by(InventarioMovimiento.created_at.desc()).all()
+    ajuste_total_kg = sum((Decimal(str(m.cantidad_kg or 0)) for m in ajuste_movimientos_all), Decimal("0"))
+    ajuste_mov_ids = [m.id for m in ajuste_movimientos_all]
+    ajuste_detail_map: dict[int, int] = {}
+    if ajuste_mov_ids:
+        for aj in db.query(InventarioAjusteManual).filter(
+            InventarioAjusteManual.inventario_movimiento_id.in_(ajuste_mov_ids)
+        ).all():
+            if aj.inventario_movimiento_id:
+                ajuste_detail_map[aj.inventario_movimiento_id] = aj.id
+    ajuste_rows = [
+        {
+            "mov_id": mov.id,
+            "sucursal": mov.inventario.sucursal.nombre if mov.inventario and mov.inventario.sucursal else "-",
+            "material": mov.inventario.material.nombre if mov.inventario and mov.inventario.material else "-",
+            "cantidad_kg": Decimal(str(mov.cantidad_kg or 0)),
+            "saldo_resultante": mov.saldo_resultante,
+            "comentario": mov.comentario,
+            "created_at": mov.created_at,
+            "ajuste_id": ajuste_detail_map.get(mov.id),
+        }
+        for mov in ajuste_movimientos_all
+    ]
+
     date_scope_label = "Todo el historial"
     if date_from and date_to:
         date_scope_label = f"{format_date_local(date_from)} al {format_date_local(date_to)}"
@@ -15640,6 +15688,8 @@ async def inventario_movimientos(
             "compra_notas_rows": compra_notas_rows,
             "compra_material_rows": compra_material_rows,
             "precio_promedio_compra": precio_promedio_compra,
+            "ajuste_rows": ajuste_rows,
+            "ajuste_total_kg": ajuste_total_kg,
             "ajustes_by_mov_id": ajustes_by_mov_id,
             "movimiento_note_meta": movimiento_note_meta,
             "can_manage_inventory": not _is_read_only_admin_user(current_user),

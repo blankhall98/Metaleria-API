@@ -239,6 +239,64 @@
     </div>
 </div>
 
+<div class="card hover-lift mb-3">
+    <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <div>
+                <h2 class="h5 text-white mb-1">Ajustes manuales del rango</h2>
+                <p class="text-muted small mb-0">Ajustes aplicados al inventario dentro del rango seleccionado.</p>
+            </div>
+            <div class="text-muted small">
+                {{ ajuste_rows|length }} ajuste(s) · {{ "{:+,.2f}".format(ajuste_total_kg or 0) }} kg neto
+            </div>
+        </div>
+        <div class="table-scroll-shell">
+            <div class="table-responsive scroll-x note-table-scroll">
+                <table class="table table-hover table-sm align-middle mb-0">
+                    <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Sucursal</th>
+                        <th>Material</th>
+                        <th>Delta</th>
+                        <th>Stock resultante</th>
+                        <th>Comentario</th>
+                        <th class="text-end"></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for row in ajuste_rows %}
+                        <tr>
+                            <td>{{ row.created_at|datetime_local if row.created_at else '-' }}</td>
+                            <td>{{ row.sucursal }}</td>
+                            <td>{{ row.material }}</td>
+                            <td class="fw-semibold {% if (row.cantidad_kg or 0) < 0 %}text-danger{% elif (row.cantidad_kg or 0) > 0 %}text-success{% endif %}">
+                                {{ "{:+,.2f}".format(row.cantidad_kg or 0) }} kg
+                            </td>
+                            <td class="{% if (row.saldo_resultante or 0) < 0 %}text-danger fw-semibold{% endif %}">
+                                {{ "{:,.2f}".format(row.saldo_resultante or 0) }} kg
+                            </td>
+                            <td class="small text-muted">{{ row.comentario or '-' }}</td>
+                            <td class="text-end">
+                                {% if row.ajuste_id %}
+                                    <a class="btn btn-sm btn-outline-secondary" href="/web/admin/inventario/ajustes/{{ row.ajuste_id }}">Detalle</a>
+                                {% else %}
+                                    <span class="text-muted small">-</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para ver el detalle de cada ajuste manual de inventario.</div>
+        </div>
+        {% if ajuste_rows|length == 0 %}
+            <p class="text-muted small mt-3 mb-0">No hay ajustes manuales registrados en el rango seleccionado.</p>
+        {% endif %}
+    </div>
+</div>
+
 <div class="card hover-lift">
     <div class="card-body">
         <div class="d-flex justify-content-end text-muted small mb-2">
