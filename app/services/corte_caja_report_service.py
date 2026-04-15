@@ -918,9 +918,9 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
         ("Fecha", left, 80, "left"),
         ("Tipo", left + 80, 60, "left"),
         ("Categoria", left + 140, 110, "left"),
-        ("Descripcion", left + 250, 150, "left"),
-        ("Usuario", left + 400, 80, "left"),
-        ("Monto", left + 480, 60, "right"),
+        ("Descripcion", left + 250, 130, "left"),  # was 150 → fits page
+        ("Usuario", left + 380, 80, "left"),
+        ("Monto", left + 460, 60, "right"),
     ]
     draw_table_header("Movimientos manuales", manual_cols)
     if report["manual_movs"]:
@@ -1001,10 +1001,10 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
     # Gastos
     gasto_cols = [
         ("Fecha", left, 80, "left"),
-        ("Descripcion", left + 80, 200, "left"),
-        ("Categoria", left + 280, 100, "left"),
-        ("Usuario", left + 380, 100, "left"),
-        ("Monto", left + 480, 70, "right"),
+        ("Descripcion", left + 80, 180, "left"),   # was 200 → fits page
+        ("Categoria", left + 260, 100, "left"),
+        ("Usuario", left + 360, 90, "left"),
+        ("Monto", left + 450, 70, "right"),
     ]
     draw_table_header("Gastos caja chica", gasto_cols)
     if report["gastos"]:
