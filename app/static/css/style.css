@@ -3487,3 +3487,13 @@ body.modal-open {
 .data-table tbody td {
     vertical-align: middle;
 }
+
+/* ── HIDE NUMBER INPUT SPINNERS ── */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+input[type="number"] {
+    -moz-appearance: textfield;
+}
