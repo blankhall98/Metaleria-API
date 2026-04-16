@@ -719,8 +719,11 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
         line_y_start = y
         if bg_rgb is not None:
             row_x = cols[0][1]
-            row_w = cols[-1][1] + cols[-1][2] - row_x
-            page.rect(row_x, line_y_start - row_h, row_w, row_h, fill_rgb=bg_rgb)
+            # Use right-margin width to match the table header rect exactly.
+            row_w = right - row_x
+            # Extend 6 pts above the first text baseline so cap-heights are
+            # covered by the coloured band rather than floating above it.
+            page.rect(row_x, line_y_start - row_h, row_w, row_h + 6, fill_rgb=bg_rgb)
         for (col_title, x, width, align), lines in zip(cols, cell_lines):
             if align == "right":
                 for idx, display in enumerate(lines):
@@ -742,24 +745,27 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
         return _pago_colors.get((row.get("metodo_pago") or "").strip().lower())
 
     def _row_folio_display(row: dict) -> str:
-        """Return folio + payment method (+ ref) as a string that _wrap_text
-        will split into up to 3 lines inside the Orden column (width=60)."""
+        """Return folio with a short inline payment-method tag.
+        The tag stays on the SAME line as the folio so the Orden column
+        never wraps to a visually empty second line in the other columns."""
         folio = row.get("folio") or "-"
         metodo = (row.get("metodo_pago") or "").strip().lower()
         if not metodo:
             return folio
         if metodo == "efectivo":
-            label, ref = "Efectivo", ""
+            abbr, ref = "ef", ""
         elif metodo == "cheque":
-            label = "Cheque"
-            ref = (row.get("numero_cheque") or row.get("cuenta_financiera_label") or "").strip()
+            abbr = "ch"
+            ref = (row.get("numero_cheque") or "").strip()
         else:
-            label = "Transf."
+            abbr = "tr"
             ref = (row.get("cuenta_financiera_label") or "").strip()
-        parts = [folio, label]
+        # "02_C_116 ef" = 11 chars = 52.8 px < 56 px effective → fits one line.
+        result = f"{folio} {abbr}"
         if ref:
-            parts.append(_truncate_text(ref, 56.0, 8))
-        return " ".join(parts)
+            # Reference goes on a second line (only when a cheque/account ref exists).
+            result += f" {_truncate_text(ref, 56.0, 8)}"
+        return result
 
     def draw_pago_legend() -> None:
         """Draw a compact colour-key legend just below a table header."""
@@ -783,7 +789,7 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
         ("Kg", left + 290, 55, "right"),
         ("Precio", left + 345, 70, "right"),
         ("Linea", left + 415, 55, "right"),
-        ("Orden total", left + 470, 60, "right"),
+        ("Orden total", left + 470, 50, "right"),  # 60→50: cols sum = 520 = right-left
     ]
     draw_table_header("Relacion de compras del dia", compra_cols)
     draw_pago_legend()
@@ -812,7 +818,7 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
         ("Kg", left + 290, 55, "right"),
         ("Precio", left + 345, 70, "right"),
         ("Linea", left + 415, 55, "right"),
-        ("Orden total", left + 470, 60, "right"),
+        ("Orden total", left + 470, 50, "right"),  # 60→50: cols sum = 520 = right-left
     ]
     draw_table_header("Relacion de ventas del dia", venta_cols)
     draw_pago_legend()
