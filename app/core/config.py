@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     # Entorno
     ENV: str = "dev"  # dev | prod
-    DEBUG: bool = True
+    DEBUG: bool = False
 
     # App
     PROJECT_NAME: str = "Scrap360 MVP"

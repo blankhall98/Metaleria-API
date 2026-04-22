@@ -10,10 +10,14 @@ database_url = settings.DATABASE_URL
 if database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
 
+_is_sqlite = database_url.startswith("sqlite")
+
 engine = create_engine(
     database_url,
     future=True,
     echo=settings.DEBUG,
+    pool_pre_ping=not _is_sqlite,
+    **({} if _is_sqlite else {"pool_size": 5, "max_overflow": 10}),
 )
 
 SessionLocal = sessionmaker(
