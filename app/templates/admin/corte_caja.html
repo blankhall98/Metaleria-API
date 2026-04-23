@@ -550,12 +550,15 @@
                                 <th class="text-end">Total linea</th>
                                 <th class="text-end">Total orden</th>
                                 <th>Metodo</th>
-                                <th>Cuenta</th>
+                                <th>Cuenta Scrap360</th>
                                 <th>No. Cheque</th>
                             </tr>
                         </thead>
                         <tbody>
+                            {% set ns = namespace(seen_compra_ids=[]) %}
                             {% for row in compras_rows %}
+                                {% set is_first = row.nota_id not in ns.seen_compra_ids %}
+                                {% if is_first %}{% set ns.seen_compra_ids = ns.seen_compra_ids + [row.nota_id] %}{% endif %}
                                 <tr class="corte-row-{{ row.color_key }}">
                                     <td>{{ row.folio }}</td>
                                     <td class="corte-caja-text-cell corte-caja-col-partner-cell">{{ row.partner }}</td>
@@ -564,9 +567,43 @@
                                     <td class="text-end">${{ "{:,.5f}".format(row.precio_unitario or 0) }}</td>
                                     <td class="text-end">${{ "{:,.2f}".format(row.subtotal or 0) }}</td>
                                     <td class="text-end">${{ "{:,.2f}".format(row.total_nota or 0) }}</td>
-                                    <td>{{ row.metodo_pago|capitalize if row.metodo_pago else '-' }}</td>
-                                    <td class="corte-caja-text-cell">{{ row.cuenta_financiera_label if row.cuenta_financiera_label else '-' }}</td>
-                                    <td>{{ row.numero_cheque if row.numero_cheque else '-' }}</td>
+                                    <td>
+                                        {% if is_first and row.metodo_pago in ('cheque', 'transferencia') %}
+                                            {% set pill_complete = (row.metodo_pago == 'cheque' and row.numero_cheque) or (row.metodo_pago == 'transferencia' and row.cuenta_scrap360_nombre) %}
+                                            {% if corte and corte.estado.value == 'ABIERTO' %}
+                                                <button type="button"
+                                                    class="btn btn-sm corte-pago-pill {% if pill_complete %}corte-pago-pill--ok{% else %}corte-pago-pill--pending{% endif %}"
+                                                    data-bs-toggle="modal" data-bs-target="#pagoDetalleModal"
+                                                    data-nota-id="{{ row.nota_id }}"
+                                                    data-metodo="{{ row.metodo_pago }}"
+                                                    data-numero-cheque="{{ row.numero_cheque or '' }}"
+                                                    data-cuenta-scrap360-id="{{ row.cuenta_scrap360_id or '' }}"
+                                                    data-folio="{{ row.folio }}"
+                                                    data-partner="{{ row.partner }}"
+                                                    data-total="{{ row.total_nota or 0 }}">
+                                                    {% if row.metodo_pago == 'cheque' %}
+                                                        {% if row.numero_cheque %}Cheque #{{ row.numero_cheque }}{% else %}Cheque &#9998;{% endif %}
+                                                    {% else %}
+                                                        {% if row.cuenta_scrap360_nombre %}Transf &middot; {{ row.cuenta_scrap360_nombre[:14] }}{% else %}Transferencia &#9998;{% endif %}
+                                                    {% endif %}
+                                                </button>
+                                            {% else %}
+                                                <span class="corte-pago-pill {% if pill_complete %}corte-pago-pill--ok{% else %}corte-pago-pill--pending{% endif %}">
+                                                    {% if row.metodo_pago == 'cheque' %}
+                                                        {% if row.numero_cheque %}Cheque #{{ row.numero_cheque }}{% else %}Cheque{% endif %}
+                                                    {% else %}
+                                                        {% if row.cuenta_scrap360_nombre %}Transf &middot; {{ row.cuenta_scrap360_nombre[:14] }}{% else %}Transferencia{% endif %}
+                                                    {% endif %}
+                                                </span>
+                                            {% endif %}
+                                        {% elif is_first %}
+                                            {{ row.metodo_pago|capitalize if row.metodo_pago and row.metodo_pago != '-' else '-' }}
+                                        {% else %}
+                                            <span class="text-muted">&mdash;</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="corte-caja-text-cell">{% if is_first %}{{ row.cuenta_scrap360_nombre if row.cuenta_scrap360_nombre else '-' }}{% else %}<span class="text-muted">&mdash;</span>{% endif %}</td>
+                                    <td>{% if is_first %}{{ row.numero_cheque if row.numero_cheque else '-' }}{% else %}<span class="text-muted">&mdash;</span>{% endif %}</td>
                                 </tr>
                             {% endfor %}
                         </tbody>
@@ -606,12 +643,15 @@
                                 <th class="text-end">Total linea</th>
                                 <th class="text-end">Total orden</th>
                                 <th>Metodo</th>
-                                <th>Cuenta</th>
+                                <th>Cuenta Scrap360</th>
                                 <th>No. Cheque</th>
                             </tr>
                         </thead>
                         <tbody>
+                            {% set ns2 = namespace(seen_venta_ids=[]) %}
                             {% for row in ventas_rows %}
+                                {% set is_first = row.nota_id not in ns2.seen_venta_ids %}
+                                {% if is_first %}{% set ns2.seen_venta_ids = ns2.seen_venta_ids + [row.nota_id] %}{% endif %}
                                 <tr class="corte-row-{{ row.color_key }}">
                                     <td>{{ row.folio }}</td>
                                     <td class="corte-caja-text-cell corte-caja-col-partner-cell">{{ row.partner }}</td>
@@ -620,9 +660,43 @@
                                     <td class="text-end">${{ "{:,.5f}".format(row.precio_unitario or 0) }}</td>
                                     <td class="text-end">${{ "{:,.2f}".format(row.subtotal or 0) }}</td>
                                     <td class="text-end">${{ "{:,.2f}".format(row.total_nota or 0) }}</td>
-                                    <td>{{ row.metodo_pago|capitalize if row.metodo_pago else '-' }}</td>
-                                    <td class="corte-caja-text-cell">{{ row.cuenta_financiera_label if row.cuenta_financiera_label else '-' }}</td>
-                                    <td>{{ row.numero_cheque if row.numero_cheque else '-' }}</td>
+                                    <td>
+                                        {% if is_first and row.metodo_pago in ('cheque', 'transferencia') %}
+                                            {% set pill_complete = (row.metodo_pago == 'cheque' and row.numero_cheque) or (row.metodo_pago == 'transferencia' and row.cuenta_scrap360_nombre) %}
+                                            {% if corte and corte.estado.value == 'ABIERTO' %}
+                                                <button type="button"
+                                                    class="btn btn-sm corte-pago-pill {% if pill_complete %}corte-pago-pill--ok{% else %}corte-pago-pill--pending{% endif %}"
+                                                    data-bs-toggle="modal" data-bs-target="#pagoDetalleModal"
+                                                    data-nota-id="{{ row.nota_id }}"
+                                                    data-metodo="{{ row.metodo_pago }}"
+                                                    data-numero-cheque="{{ row.numero_cheque or '' }}"
+                                                    data-cuenta-scrap360-id="{{ row.cuenta_scrap360_id or '' }}"
+                                                    data-folio="{{ row.folio }}"
+                                                    data-partner="{{ row.partner }}"
+                                                    data-total="{{ row.total_nota or 0 }}">
+                                                    {% if row.metodo_pago == 'cheque' %}
+                                                        {% if row.numero_cheque %}Cheque #{{ row.numero_cheque }}{% else %}Cheque &#9998;{% endif %}
+                                                    {% else %}
+                                                        {% if row.cuenta_scrap360_nombre %}Transf &middot; {{ row.cuenta_scrap360_nombre[:14] }}{% else %}Transferencia &#9998;{% endif %}
+                                                    {% endif %}
+                                                </button>
+                                            {% else %}
+                                                <span class="corte-pago-pill {% if pill_complete %}corte-pago-pill--ok{% else %}corte-pago-pill--pending{% endif %}">
+                                                    {% if row.metodo_pago == 'cheque' %}
+                                                        {% if row.numero_cheque %}Cheque #{{ row.numero_cheque }}{% else %}Cheque{% endif %}
+                                                    {% else %}
+                                                        {% if row.cuenta_scrap360_nombre %}Transf &middot; {{ row.cuenta_scrap360_nombre[:14] }}{% else %}Transferencia{% endif %}
+                                                    {% endif %}
+                                                </span>
+                                            {% endif %}
+                                        {% elif is_first %}
+                                            {{ row.metodo_pago|capitalize if row.metodo_pago and row.metodo_pago != '-' else '-' }}
+                                        {% else %}
+                                            <span class="text-muted">&mdash;</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="corte-caja-text-cell">{% if is_first %}{{ row.cuenta_scrap360_nombre if row.cuenta_scrap360_nombre else '-' }}{% else %}<span class="text-muted">&mdash;</span>{% endif %}</td>
+                                    <td>{% if is_first %}{{ row.numero_cheque if row.numero_cheque else '-' }}{% else %}<span class="text-muted">&mdash;</span>{% endif %}</td>
                                 </tr>
                             {% endfor %}
                         </tbody>
@@ -635,6 +709,72 @@
             {% endif %}
         </div>
     </div>
+
+    {# ── Modal: editar detalle de pago (cheque / transferencia) ─────────── #}
+    {% if corte and corte.estado.value == 'ABIERTO' %}
+    <div class="modal fade" id="pagoDetalleModal" tabindex="-1" aria-labelledby="pagoDetalleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title" id="pagoDetalleModalLabel">Detalle de pago</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <form method="POST" id="pagoDetalleForm" action="#">
+                    <input type="hidden" name="redirect_to" id="pagoDetalleRedirectTo">
+                    <div class="modal-body">
+                        <div class="p-2 bg-light rounded small mb-3">
+                            <div id="pagoDetalleNotaInfo" class="text-muted mb-1"></div>
+                            <div id="pagoDetalleMetodoLabel" class="fw-semibold"></div>
+                        </div>
+                        <div id="pagoDetalleChequePart" class="mb-3">
+                            <label for="pagoDetalleNumeroCheque" class="form-label small mb-1">N&uacute;mero de cheque</label>
+                            <input type="text" class="form-control form-control-sm" id="pagoDetalleNumeroCheque" name="numero_cheque" placeholder="Ej. 001234">
+                        </div>
+                        <div id="pagoDetalleCuentaPart">
+                            <label for="pagoDetalleCuentaSelect" class="form-label small mb-1">Cuenta Scrap360 <span class="text-muted">(cuenta emisora)</span></label>
+                            <select class="form-select form-select-sm" id="pagoDetalleCuentaSelect" name="cuenta_scrap360_id">
+                                <option value="">— Sin especificar —</option>
+                                {% for c in cuentas_scrap360 %}
+                                    <option value="{{ c.id }}">{{ c.nombre }} ({{ c.tipo }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="modal-footer py-2">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary btn-sm">Guardar detalle</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <script>
+        (function () {
+            var modal = document.getElementById('pagoDetalleModal');
+            if (!modal) return;
+            modal.addEventListener('show.bs.modal', function (event) {
+                var btn = event.relatedTarget;
+                var notaId = btn.dataset.notaId;
+                var metodo = btn.dataset.metodo || '';
+                var numeroCheque = btn.dataset.numeroCheque || '';
+                var cuentaId = btn.dataset.cuentaScrap360Id || '';
+                var folio = btn.dataset.folio || '';
+                var partner = btn.dataset.partner || '';
+                var total = parseFloat(btn.dataset.total || '0');
+
+                document.getElementById('pagoDetalleForm').action = '/web/admin/notas/' + notaId + '/pago-detalle';
+                document.getElementById('pagoDetalleRedirectTo').value = window.location.href;
+                document.getElementById('pagoDetalleNotaInfo').textContent = folio + ' · ' + partner;
+                document.getElementById('pagoDetalleMetodoLabel').textContent = 'Método: ' + metodo.charAt(0).toUpperCase() + metodo.slice(1) + '  •  $' + total.toLocaleString('es-MX', { minimumFractionDigits: 2 });
+
+                var chequePart = document.getElementById('pagoDetalleChequePart');
+                chequePart.style.display = metodo === 'cheque' ? '' : 'none';
+                document.getElementById('pagoDetalleNumeroCheque').value = numeroCheque;
+                document.getElementById('pagoDetalleCuentaSelect').value = cuentaId;
+            });
+        })();
+    </script>
+    {% endif %}
 
     <div class="row g-3 mb-3">
         <div class="col-xl-6">

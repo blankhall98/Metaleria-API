@@ -257,9 +257,13 @@ def build_report_excel(report: dict) -> tuple[bytes, str]:
     add_row([])
 
     add_row(["Relacion de compras del dia"])
-    add_row(["Orden", "Proveedor", "Material", "Kg", "Precio", "Total linea", "Total orden", "Metodo"])
+    add_row(["Orden", "Proveedor", "Material", "Kg", "Precio", "Total linea", "Total orden", "Metodo", "Cuenta Scrap360", "No. Cheque"])
     if report["compras_rows"]:
+        seen_compra = set()
         for row in report["compras_rows"]:
+            is_first = row.get("nota_id") not in seen_compra
+            if is_first:
+                seen_compra.add(row.get("nota_id"))
             add_row([
                 row.get("folio") or "-",
                 row.get("partner") or "-",
@@ -268,17 +272,23 @@ def build_report_excel(report: dict) -> tuple[bytes, str]:
                 _format_money(_safe_decimal(row.get("precio_unitario"))),
                 _format_money(_safe_decimal(row.get("subtotal"))),
                 _format_money(_safe_decimal(row.get("total_nota"))),
-                str(row.get("metodo_pago") or "-"),
+                str(row.get("metodo_pago") or "-") if is_first else "",
+                str(row.get("cuenta_scrap360_nombre") or "-") if is_first else "",
+                str(row.get("numero_cheque") or "-") if is_first else "",
             ])
-        add_row(["Totales compras", "", "", f"{_safe_decimal(report.get('compras_kg')):,.3f}", "", _format_money(_safe_decimal(report.get("compras_total"))), "", ""])
+        add_row(["Totales compras", "", "", f"{_safe_decimal(report.get('compras_kg')):,.3f}", "", _format_money(_safe_decimal(report.get("compras_total"))), "", "", "", ""])
     else:
         add_row(["Sin compras registradas"])
     add_row([])
 
     add_row(["Relacion de ventas del dia"])
-    add_row(["Orden", "Cliente", "Material", "Kg", "Precio", "Total linea", "Total orden", "Metodo"])
+    add_row(["Orden", "Cliente", "Material", "Kg", "Precio", "Total linea", "Total orden", "Metodo", "Cuenta Scrap360", "No. Cheque"])
     if report["ventas_rows"]:
+        seen_venta = set()
         for row in report["ventas_rows"]:
+            is_first = row.get("nota_id") not in seen_venta
+            if is_first:
+                seen_venta.add(row.get("nota_id"))
             add_row([
                 row.get("folio") or "-",
                 row.get("partner") or "-",
@@ -287,9 +297,11 @@ def build_report_excel(report: dict) -> tuple[bytes, str]:
                 _format_money(_safe_decimal(row.get("precio_unitario"))),
                 _format_money(_safe_decimal(row.get("subtotal"))),
                 _format_money(_safe_decimal(row.get("total_nota"))),
-                str(row.get("metodo_pago") or "-"),
+                str(row.get("metodo_pago") or "-") if is_first else "",
+                str(row.get("cuenta_scrap360_nombre") or "-") if is_first else "",
+                str(row.get("numero_cheque") or "-") if is_first else "",
             ])
-        add_row(["Totales ventas", "", "", f"{_safe_decimal(report.get('ventas_kg')):,.3f}", "", _format_money(_safe_decimal(report.get("ventas_total"))), "", ""])
+        add_row(["Totales ventas", "", "", f"{_safe_decimal(report.get('ventas_kg')):,.3f}", "", _format_money(_safe_decimal(report.get("ventas_total"))), "", "", "", ""])
     else:
         add_row(["Sin ventas registradas"])
     add_row([])
@@ -756,10 +768,14 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
             abbr, ref = "ef", ""
         elif metodo == "cheque":
             abbr = "ch"
-            ref = (row.get("numero_cheque") or "").strip()
+            num = (row.get("numero_cheque") or "").strip()
+            cuenta360 = (row.get("cuenta_scrap360_nombre") or "").strip()
+            ref = f"#{num}" if num else ""
+            if cuenta360:
+                ref = f"{ref} {cuenta360}".strip()
         else:
             abbr = "tr"
-            ref = (row.get("cuenta_financiera_label") or "").strip()
+            ref = (row.get("cuenta_scrap360_nombre") or row.get("cuenta_financiera_label") or "").strip()
         # "02_C_116 ef" = 11 chars = 52.8 px < 56 px effective → fits one line.
         result = f"{folio} {abbr}"
         if ref:

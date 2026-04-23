@@ -14447,6 +14447,12 @@ def _build_corte_note_relations(
     folio_map = _build_folio_map(notas)
     prov_ids = {n.proveedor_id for n in notas if n.proveedor_id}
     cli_ids = {n.cliente_id for n in notas if n.cliente_id}
+    scrap360_ids = {n.cuenta_scrap360_id for n in notas if n.cuenta_scrap360_id}
+    scrap360_map = (
+        {c.id: c.nombre for c in db.query(CuentaScrap360).filter(CuentaScrap360.id.in_(scrap360_ids)).all()}
+        if scrap360_ids
+        else {}
+    )
     proveedores_map = (
         {
             p.id: p.nombre_completo
@@ -14498,6 +14504,8 @@ def _build_corte_note_relations(
                 "numero_cheque": nota.numero_cheque or "",
                 "cuenta_financiera_id": nota.cuenta_financiera_id,
                 "cuenta_financiera_label": cuenta_label or "",
+                "cuenta_scrap360_id": nota.cuenta_scrap360_id,
+                "cuenta_scrap360_nombre": scrap360_map.get(nota.cuenta_scrap360_id, "") if nota.cuenta_scrap360_id else "",
                 "es_efectivo": (nota.metodo_pago or "").strip().lower() == "efectivo",
             }
             target_rows.append(row)
@@ -14580,6 +14588,7 @@ def _render_corte_caja(
 ):
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
+    cuentas_scrap360 = db.query(CuentaScrap360).filter(CuentaScrap360.activo.is_(True)).order_by(CuentaScrap360.nombre).all()
     if allowed_suc_ids is not None:
         if sucursal_id and sucursal_id not in allowed_suc_ids:
             sucursal_id = None
@@ -14793,6 +14802,7 @@ def _render_corte_caja(
             "corte_mov_tipos": _CORTE_MOV_TIPOS,
             "corte_mov_categorias": _CORTE_MOV_CATEGORIAS,
             "corte_gasto_categorias": _CORTE_GASTO_CATEGORIAS,
+            "cuentas_scrap360": cuentas_scrap360,
             "form_saldo_inicial": form_saldo_inicial,
             "auto_saldo_inicial": auto_saldo_inicial,
             "previous_closed_corte": previous_closed_corte,
@@ -15387,6 +15397,45 @@ async def corte_caja_reporte(
             headers=headers,
         )
     raise HTTPException(status_code=400, detail="Formato de reporte invalido.")
+
+
+@router.post("/notas/{nota_id}/pago-detalle")
+async def nota_pago_detalle(
+    request: Request,
+    nota_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    form = await request.form()
+    redirect_to = (form.get("redirect_to") or "").strip() or "/web/admin/corte-caja"
+
+    nota = db.get(Nota, nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota no encontrada.")
+
+    metodo = (nota.metodo_pago or "").strip().lower()
+    if metodo not in ("cheque", "transferencia"):
+        raise HTTPException(status_code=400, detail="Solo se puede editar detalle de pago para cheque o transferencia.")
+
+    if metodo == "cheque":
+        numero_cheque_raw = (form.get("numero_cheque") or "").strip()
+        nota.numero_cheque = numero_cheque_raw or None
+
+    cuenta_scrap360_id_raw = (form.get("cuenta_scrap360_id") or "").strip()
+    if cuenta_scrap360_id_raw:
+        try:
+            cuenta_scrap360_id = int(cuenta_scrap360_id_raw)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="ID de cuenta invalido.")
+        cuenta = db.get(CuentaScrap360, cuenta_scrap360_id)
+        if not cuenta:
+            raise HTTPException(status_code=400, detail="Cuenta Scrap360 no encontrada.")
+        nota.cuenta_scrap360_id = cuenta_scrap360_id
+    else:
+        nota.cuenta_scrap360_id = None
+
+    db.commit()
+    return RedirectResponse(url=redirect_to, status_code=303)
 
 
 @router.get("/inventario/movimientos")

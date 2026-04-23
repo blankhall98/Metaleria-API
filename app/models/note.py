@@ -70,6 +70,7 @@ class Nota(Base):
     metodo_pago = Column(String(50), nullable=True)
     numero_cheque = Column(String(80), nullable=True)
     cuenta_financiera_id = Column(Integer, ForeignKey("cuentas.id"), nullable=True)
+    cuenta_scrap360_id = Column(Integer, ForeignKey("cuentas_scrap360.id"), nullable=True, index=True)
     fecha_caducidad_pago = Column(Date, nullable=True)
 
     comentarios_trabajador = Column(Text, nullable=True)
@@ -87,6 +88,7 @@ class Nota(Base):
     )
     original = relationship("NotaOriginal", back_populates="nota", uselist=False, cascade="all, delete-orphan")
     cuenta = relationship("Cuenta", foreign_keys=[cuenta_financiera_id])
+    cuenta_scrap360 = relationship("CuentaScrap360", foreign_keys=[cuenta_scrap360_id])
     evidencias_extra = relationship(
         "NotaEvidenciaExtra",
         back_populates="nota",

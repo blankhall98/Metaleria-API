@@ -3142,6 +3142,37 @@ body.modal-open {
     max-width: 28rem;
 }
 
+/* Pago detail pills (cheque / transferencia) */
+.corte-pago-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    white-space: nowrap;
+    line-height: 1.4;
+    border: 1px solid transparent;
+    cursor: default;
+}
+button.corte-pago-pill {
+    cursor: pointer;
+}
+button.corte-pago-pill:hover {
+    opacity: 0.85;
+}
+.corte-pago-pill--pending {
+    background-color: #fff8e1;
+    border-color: #ffe082;
+    color: #7c5800;
+}
+.corte-pago-pill--ok {
+    background-color: #e3f0ff;
+    border-color: #93c5fd;
+    color: #1e40af;
+}
+
 .cash-count-footer {
     margin-top: 1rem;
     border-top: 1px dashed rgba(148, 163, 184, 0.28);
