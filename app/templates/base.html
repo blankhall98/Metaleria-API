@@ -377,6 +377,12 @@
         dragScrollState = null;
     }
 
+    document.addEventListener('wheel', () => {
+        if (document.activeElement && document.activeElement.type === 'number') {
+            document.activeElement.blur();
+        }
+    }, { passive: true });
+
     document.addEventListener('DOMContentLoaded', () => {
         ensureScrollableTableShells();
         document.querySelectorAll('.nav-drawer a').forEach((link) => {
