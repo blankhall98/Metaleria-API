@@ -776,6 +776,58 @@
     </script>
     {% endif %}
 
+    {# ── Resumen tentativo por cuenta Scrap360 ────────────────────────── #}
+    {% if scrap360_summary %}
+    <div class="card hover-lift mb-3">
+        <div class="card-body">
+            <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
+                <div>
+                    <h2 class="h6 text-dark mb-1">Resumen por cuenta Scrap360</h2>
+                    <p class="text-muted small mb-0">Referencia tentativa de transferencias y cheques del d&iacute;a, seg&uacute;n la cuenta emisora asignada en cada nota.</p>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0 corte-caja-table">
+                    <thead>
+                        <tr>
+                            <th>Cuenta Scrap360</th>
+                            <th class="text-end">Compras (egreso)</th>
+                            <th class="text-center text-muted small">Notas</th>
+                            <th class="text-end">Ventas (ingreso)</th>
+                            <th class="text-center text-muted small">Notas</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in scrap360_summary %}
+                        <tr {% if not item.cuenta_scrap360_id %}class="text-muted"{% endif %}>
+                            <td>
+                                {% if item.cuenta_scrap360_id %}
+                                    <strong>{{ item.nombre }}</strong>
+                                {% else %}
+                                    <span class="text-muted">{{ item.nombre }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end {% if item.compras_notas %}text-danger fw-semibold{% else %}text-muted{% endif %}">
+                                {% if item.compras_notas %}&minus;${{ "{:,.2f}".format(item.compras_total) }}{% else %}&mdash;{% endif %}
+                            </td>
+                            <td class="text-center text-muted small">
+                                {% if item.compras_notas %}{{ item.compras_notas }}{% else %}&mdash;{% endif %}
+                            </td>
+                            <td class="text-end {% if item.ventas_notas %}text-success fw-semibold{% else %}text-muted{% endif %}">
+                                {% if item.ventas_notas %}+${{ "{:,.2f}".format(item.ventas_total) }}{% else %}&mdash;{% endif %}
+                            </td>
+                            <td class="text-center text-muted small">
+                                {% if item.ventas_notas %}{{ item.ventas_notas }}{% else %}&mdash;{% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="row g-3 mb-3">
         <div class="col-xl-6">
             <div class="card hover-lift h-100">

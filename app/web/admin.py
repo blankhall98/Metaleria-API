@@ -14544,6 +14544,45 @@ def _build_corte_note_relations(
             row["color_key"] = f"account-{account_color_map[acct_id]}"
         else:
             row["color_key"] = "transfer"
+
+    # Build Scrap360 account summary (non-cash notes only, deduplicated by nota_id)
+    _s360: dict[int | None, dict] = {}
+    for _row, _side in [(r, "compra") for r in compras_rows] + [(r, "venta") for r in ventas_rows]:
+        if _row["es_efectivo"]:
+            continue
+        _key = _row["cuenta_scrap360_id"] or None
+        _nombre = _row["cuenta_scrap360_nombre"] or "Sin especificar"
+        if _key not in _s360:
+            _s360[_key] = {
+                "nombre": _nombre,
+                "compras_total": Decimal("0"),
+                "ventas_total": Decimal("0"),
+                "compras_notas": set(),
+                "ventas_notas": set(),
+            }
+        _nota_id = _row["nota_id"]
+        _total = Decimal(str(_row.get("total_nota") or 0))
+        if _side == "compra" and _nota_id not in _s360[_key]["compras_notas"]:
+            _s360[_key]["compras_notas"].add(_nota_id)
+            _s360[_key]["compras_total"] += _total
+        elif _side == "venta" and _nota_id not in _s360[_key]["ventas_notas"]:
+            _s360[_key]["ventas_notas"].add(_nota_id)
+            _s360[_key]["ventas_total"] += _total
+    scrap360_summary = sorted(
+        [
+            {
+                "cuenta_scrap360_id": k,
+                "nombre": v["nombre"],
+                "compras_total": v["compras_total"],
+                "ventas_total": v["ventas_total"],
+                "compras_notas": len(v["compras_notas"]),
+                "ventas_notas": len(v["ventas_notas"]),
+            }
+            for k, v in _s360.items()
+        ],
+        key=lambda x: (1 if x["cuenta_scrap360_id"] is None else 0, x["nombre"]),
+    )
+
     return {
         "compras_rows": compras_rows,
         "ventas_rows": ventas_rows,
@@ -14553,6 +14592,7 @@ def _build_corte_note_relations(
         "ventas_kg": ventas_kg,
         "compras_notas": len({row["nota_id"] for row in compras_rows}),
         "ventas_notas": len({row["nota_id"] for row in ventas_rows}),
+        "scrap360_summary": scrap360_summary,
     }
 
 
@@ -14697,6 +14737,7 @@ def _render_corte_caja(
             "ventas_kg": Decimal("0"),
             "compras_notas": 0,
             "ventas_notas": 0,
+            "scrap360_summary": [],
         }
     )
 
@@ -14791,6 +14832,7 @@ def _render_corte_caja(
             "ventas_kg": relaciones["ventas_kg"],
             "compras_notas": relaciones["compras_notas"],
             "ventas_notas": relaciones["ventas_notas"],
+            "scrap360_summary": relaciones["scrap360_summary"],
             "corte_color_legend": _build_corte_color_legend(
                 relaciones["compras_rows"] + relaciones["ventas_rows"]
             ),
