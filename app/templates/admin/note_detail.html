@@ -1173,6 +1173,15 @@
                                         {% endif %}
                                     </select>
                                 </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Cuenta Scrap360 <span class="text-muted small">(cuenta emisora)</span></label>
+                                    <select class="form-select form-select-sm" name="cuenta_scrap360_id">
+                                        <option value="" {% if not nota.cuenta_scrap360_id %}selected{% endif %}>Sin especificar</option>
+                                        {% for c in cuentas_scrap360 %}
+                                            <option value="{{ c.id }}" {% if nota.cuenta_scrap360_id == c.id %}selected{% endif %}>{{ c.nombre }} ({{ c.tipo }})</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
                                 <div class="mb-3" id="ref_cheque_group">
                                     <label class="form-label">Numero de cheque</label>
                                     <input class="form-control form-control-sm" type="text" name="numero_cheque" value="{{ nota.numero_cheque or '' }}" placeholder="Ej. 001234" maxlength="80">

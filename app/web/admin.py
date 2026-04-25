@@ -11561,9 +11561,20 @@ async def notas_referencia_pago(
         except (TypeError, ValueError):
             cuenta_id = None
 
+    cuenta_scrap360_raw = (form.get("cuenta_scrap360_id") or "").strip()
+    cuenta_scrap360_id: int | None = None
+    if cuenta_scrap360_raw:
+        try:
+            cuenta_scrap360_id = int(cuenta_scrap360_raw)
+            if not db.get(CuentaScrap360, cuenta_scrap360_id):
+                cuenta_scrap360_id = None
+        except (TypeError, ValueError):
+            cuenta_scrap360_id = None
+
     nota.metodo_pago = metodo_pago_raw or None
     nota.numero_cheque = numero_cheque_raw or None
     nota.cuenta_financiera_id = cuenta_id
+    nota.cuenta_scrap360_id = cuenta_scrap360_id
     db.add(nota)
     db.commit()
     return RedirectResponse(
