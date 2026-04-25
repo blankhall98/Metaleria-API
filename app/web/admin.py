@@ -15460,7 +15460,8 @@ async def nota_pago_detalle(
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
     form = await request.form()
-    redirect_to = (form.get("redirect_to") or "").strip() or "/web/admin/corte-caja"
+    _raw_redirect = (form.get("redirect_to") or "").strip()
+    redirect_to = _raw_redirect if _raw_redirect.startswith("/web/") else "/web/admin/corte-caja"
 
     nota = db.get(Nota, nota_id)
     if not nota:

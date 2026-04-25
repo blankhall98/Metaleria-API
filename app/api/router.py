@@ -1,5 +1,5 @@
 # app/api/router.py
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.core.config import get_settings
 from app.api import materials as materials_api
@@ -7,8 +7,17 @@ from app.api import pricing as pricing_api
 from app.api import partners as partners_api
 from app.api import notes as notes_api
 
-api_router = APIRouter()
+
+def _require_session(request: Request) -> dict:
+    user = request.session.get("user")
+    if not user:
+        raise HTTPException(status_code=401, detail="Autenticacion requerida.")
+    return user
+
+
 settings = get_settings()
+
+api_router = APIRouter(dependencies=[Depends(_require_session)])
 
 @api_router.get("/health", tags=["health"])
 async def health_check():
