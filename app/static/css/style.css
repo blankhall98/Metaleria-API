@@ -2899,25 +2899,7 @@ body.modal-open {
     z-index: 1;
 }
 
-.corte-caja-page .page-header {
-    padding: 1.35rem 1.5rem;
-    border: 1px solid rgba(191, 219, 254, 0.28);
-    border-radius: 1.35rem;
-    background:
-        linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(29, 78, 216, 0.88)),
-        linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
-    box-shadow: 0 22px 45px rgba(15, 23, 42, 0.18);
-}
-
-.corte-caja-page .page-header .text-muted {
-    color: rgba(226, 232, 240, 0.82) !important;
-    letter-spacing: 0.16em;
-    font-weight: 700;
-}
-
-.corte-caja-page .page-header h1 {
-    letter-spacing: -0.02em;
-}
+/* corte-caja-page page-header handled by corte-page-header-block in template */
 
 .corte-caja-page .card.hover-lift {
     border: 1px solid rgba(191, 219, 254, 0.24);

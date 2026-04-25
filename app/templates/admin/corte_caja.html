@@ -4,106 +4,80 @@
 
 {% block content %}
 <div class="corte-caja-page">
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Caja</p>
-        <h1 class="h4 text-white mb-0">Corte de Caja{% if sucursal_actual %} &mdash; {{ sucursal_actual.nombre }}{% endif %}</h1>
+
+{# ── Page header with integrated controls ─────────────────────────── #}
+<div class="page-header corte-page-header-block mb-3">
+    <div class="corte-ph-left">
+        <p class="corte-ph-eyebrow">Corte de Caja</p>
+        <h1 class="corte-ph-title">{% if sucursal_actual %}{{ sucursal_actual.nombre }}{% else %}Selecciona una sucursal{% endif %}</h1>
+        <p class="corte-ph-date">{{ fecha }}</p>
+    </div>
+    <div class="corte-ph-right">
+        {% if corte %}
+            <span class="corte-status-pill {% if corte.estado.value == 'ABIERTO' %}corte-status-abierto{% else %}corte-status-cerrado{% endif %}">
+                <span class="corte-status-dot"></span>
+                {{ corte.estado.value }}
+            </span>
+        {% else %}
+            <span class="corte-status-pill corte-status-none">&#9679; Sin abrir</span>
+        {% endif %}
+        <form method="get" class="corte-ph-form">
+            <select class="corte-ph-select" name="sucursal_id">
+                {% for s in sucursales %}
+                    <option value="{{ s.id }}" {% if sucursal_id and s.id == sucursal_id %}selected{% endif %}>{{ s.nombre }}</option>
+                {% endfor %}
+            </select>
+            <input class="corte-ph-input" type="date" name="fecha" value="{{ fecha }}">
+            <button class="corte-ph-btn" type="submit">Ir</button>
+        </form>
     </div>
 </div>
 
-<div class="card hover-lift mb-3">
-    <div class="card-body">
-        <div class="d-flex align-items-center gap-2 mb-2">
-            <span class="chip-strong">Configuracion</span>
-            <span class="text-muted small">Sucursal y fecha del corte</span>
-        </div>
-        <form method="get" class="row g-2 align-items-end">
-            <div class="col-lg-4 col-md-5">
-                <label class="form-label">Sucursal</label>
-                <select class="form-select" name="sucursal_id">
-                    {% for s in sucursales %}
-                        <option value="{{ s.id }}" {% if sucursal_id and s.id == sucursal_id %}selected{% endif %}>{{ s.nombre }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-lg-3 col-md-4">
-                <label class="form-label">Fecha</label>
-                <input class="form-control" type="date" name="fecha" value="{{ fecha }}">
-            </div>
-            <div class="col-lg-2 col-md-3 d-grid">
-                <button class="btn btn-outline-primary" type="submit">Consultar</button>
-            </div>
-        </form>
-        {% if error %}
-            <div class="alert alert-danger py-2 small mt-3 mb-0">{{ error }}</div>
-        {% endif %}
-        {% if success == 'open' %}
-            <div class="alert alert-success py-2 small mt-3 mb-0">Caja abierta correctamente.</div>
-        {% elif success == 'gasto' %}
-            <div class="alert alert-success py-2 small mt-3 mb-0">Gasto registrado correctamente.</div>
-        {% elif success == 'movimiento' %}
-            <div class="alert alert-success py-2 small mt-3 mb-0">Movimiento manual registrado correctamente.</div>
-        {% elif success == 'arqueo' %}
-            <div class="alert alert-success py-2 small mt-3 mb-0">Conteo de efectivo guardado correctamente.</div>
-        {% elif success == 'close' %}
-            <div class="alert alert-success py-2 small mt-3 mb-0">Corte cerrado correctamente.</div>
-        {% endif %}
-        {% if next_ready and sucursal_id and next_fecha_query %}
-            <div class="alert alert-info py-2 small mt-3 mb-0">
-                El siguiente corte quedo listo automaticamente para
-                <strong>{{ next_fecha_query }}</strong>
-                con el saldo final heredado de este cierre.
-                <a class="ms-2" href="/web/admin/corte-caja?sucursal_id={{ sucursal_id }}&fecha={{ next_fecha_query }}">Abrir siguiente corte</a>
-            </div>
-        {% endif %}
+{# ── Alerts (success / error / next corte) ────────────────────────── #}
+{% if error %}
+    <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
+{% endif %}
+{% if success == 'open' %}
+    <div class="alert alert-success py-2 small mb-3">Caja abierta correctamente.</div>
+{% elif success == 'gasto' %}
+    <div class="alert alert-success py-2 small mb-3">Gasto registrado correctamente.</div>
+{% elif success == 'movimiento' %}
+    <div class="alert alert-success py-2 small mb-3">Movimiento manual registrado correctamente.</div>
+{% elif success == 'arqueo' %}
+    <div class="alert alert-success py-2 small mb-3">Conteo de efectivo guardado correctamente.</div>
+{% elif success == 'close' %}
+    <div class="alert alert-success py-2 small mb-3">Corte cerrado correctamente.</div>
+{% endif %}
+{% if next_ready and sucursal_id and next_fecha_query %}
+    <div class="alert alert-info py-2 small mb-3">
+        Siguiente corte listo para <strong>{{ next_fecha_query }}</strong> con el saldo heredado.
+        <a class="ms-2 fw-semibold" href="/web/admin/corte-caja?sucursal_id={{ sucursal_id }}&fecha={{ next_fecha_query }}">Abrir &rarr;</a>
     </div>
-</div>
+{% endif %}
 
 {% if not corte %}
-    <div class="card hover-lift mb-3">
-        <div class="card-body">
-            <div class="d-flex align-items-center gap-2 mb-2">
-                <span class="chip-strong">Apertura</span>
-                <span class="text-muted small">Saldo inicial del efectivo del dia</span>
-            </div>
-            <div class="row g-3 align-items-stretch mb-3">
-                <div class="col-lg-7">
-                    <div class="alert alert-info h-100 mb-0">
-                        <div class="fw-semibold mb-1">Saldo inicial sugerido automaticamente</div>
-                        {% if previous_closed_corte %}
-                            <div class="small">
-                                Se propone el saldo final del ultimo corte cerrado de esta sucursal:
-                                <strong>${{ "{:,.2f}".format(auto_saldo_inicial or 0) }}</strong>
-                                correspondiente al
-                                <strong>{{ previous_closed_corte.fecha|date_local if previous_closed_corte.fecha else '-' }}</strong>.
-                            </div>
-                        {% else %}
-                            <div class="small">
-                                Todavia no hay un corte cerrado previo en esta sucursal. El sistema propone
-                                <strong>$0.00</strong> como apertura inicial, pero puedes editarlo antes de abrir caja.
-                            </div>
-                        {% endif %}
-                    </div>
-                </div>
-                <div class="col-lg-5">
-                    <div class="note-meta-item h-100">
-                        <span class="note-meta-label">Regla de apertura</span>
-                        <strong>{{ "{:,.2f}".format(auto_saldo_inicial or 0) }}</strong>
-                        <div class="note-meta-sub">Si no cambias el campo, este sera el saldo inicial usado al abrir la caja.</div>
-                    </div>
-                </div>
-            </div>
-            <form method="post" action="/web/admin/corte-caja/abrir" class="row g-3 align-items-end" data-submit-once="1">
+    <div class="corte-apertura-card mb-3">
+        <div class="corte-apertura-left">
+            <p class="corte-apertura-eyebrow">Saldo inicial sugerido</p>
+            <p class="corte-apertura-amount">${{ "{:,.2f}".format(auto_saldo_inicial or 0) }}</p>
+            <p class="corte-apertura-meta">
+                {% if previous_closed_corte %}
+                    Heredado del corte del <strong>{{ previous_closed_corte.fecha|date_local if previous_closed_corte.fecha else '-' }}</strong>
+                {% else %}
+                    Sin corte previo &mdash; punto de partida en cero
+                {% endif %}
+            </p>
+        </div>
+        <div class="corte-apertura-right">
+            <form method="post" action="/web/admin/corte-caja/abrir" data-submit-once="1">
                 <input type="hidden" name="sucursal_id" value="{{ sucursal_id or '' }}">
                 <input type="hidden" name="fecha" value="{{ fecha }}">
-                <div class="col-lg-4 col-md-6">
-                    <label class="form-label">Saldo inicial</label>
-                    <input class="form-control" name="saldo_inicial" type="number" step="0.01" min="0" value="{{ form_saldo_inicial }}" placeholder="0.00">
-                    <div class="form-text text-muted">Monto disponible en caja al inicio del dia.</div>
+                <label class="corte-apertura-label">Confirma o ajusta el saldo inicial</label>
+                <div class="corte-apertura-form-row">
+                    <input class="corte-apertura-input" name="saldo_inicial" type="number" step="0.01" min="0" value="{{ form_saldo_inicial }}" placeholder="0.00">
+                    <button class="corte-apertura-btn" type="submit">Abrir caja</button>
                 </div>
-                <div class="col-lg-2 col-md-4 d-grid">
-                    <button class="btn btn-primary" type="submit">Abrir caja</button>
-                </div>
+                <p class="corte-apertura-hint">Puedes editar el monto antes de abrir.</p>
             </form>
         </div>
     </div>
@@ -1107,6 +1081,218 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 <style>
+/* ── Page header block ────────────────────────────────────────────── */
+.corte-page-header-block {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1.25rem;
+    padding: 1.5rem 1.75rem 1.35rem;
+    border-radius: 1.35rem;
+    border: 1px solid rgba(191, 219, 254, 0.28);
+    background:
+        linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(29, 78, 216, 0.88));
+    box-shadow: 0 22px 45px rgba(15, 23, 42, 0.18);
+    margin-bottom: 1rem;
+}
+.corte-ph-left { flex: 1 1 200px; }
+.corte-ph-eyebrow {
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: rgba(147, 197, 253, 0.85);
+    margin: 0 0 0.2rem;
+}
+.corte-ph-title {
+    font-size: 1.55rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    color: #f8fafc;
+    margin: 0 0 0.2rem;
+    line-height: 1.15;
+}
+.corte-ph-date {
+    font-size: 0.82rem;
+    color: rgba(226, 232, 240, 0.65);
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+}
+.corte-ph-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.65rem;
+}
+.corte-ph-form {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+.corte-ph-select,
+.corte-ph-input {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: #f8fafc;
+    border-radius: 0.5rem;
+    font-size: 0.8rem;
+    padding: 0.35rem 0.6rem;
+    outline: none;
+    transition: border-color 0.15s, background 0.15s;
+    appearance: auto;
+}
+.corte-ph-select option { background: #1e293b; color: #f8fafc; }
+.corte-ph-select:focus,
+.corte-ph-input:focus { border-color: rgba(147,197,253,0.6); background: rgba(255,255,255,0.15); }
+.corte-ph-input { width: 9rem; color-scheme: dark; }
+.corte-ph-btn {
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.25);
+    color: #f8fafc;
+    border-radius: 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.35rem 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+.corte-ph-btn:hover { background: rgba(255,255,255,0.25); }
+
+/* ── Status pill ──────────────────────────────────────────────────── */
+.corte-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 0.28rem 0.75rem;
+    border-radius: 999px;
+    border: 1px solid transparent;
+}
+.corte-status-dot {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.corte-status-abierto {
+    background: rgba(22, 163, 74, 0.15);
+    border-color: rgba(22, 163, 74, 0.4);
+    color: #bbf7d0;
+}
+.corte-status-abierto .corte-status-dot { background: #4ade80; box-shadow: 0 0 6px rgba(74, 222, 128, 0.7); }
+.corte-status-cerrado {
+    background: rgba(148, 163, 184, 0.15);
+    border-color: rgba(148, 163, 184, 0.3);
+    color: rgba(226, 232, 240, 0.7);
+}
+.corte-status-cerrado .corte-status-dot { background: #94a3b8; }
+.corte-status-none {
+    background: rgba(148, 163, 184, 0.12);
+    border-color: rgba(148, 163, 184, 0.22);
+    color: rgba(226, 232, 240, 0.5);
+    font-size: 0.7rem;
+}
+
+/* ── Apertura card ────────────────────────────────────────────────── */
+.corte-apertura-card {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    border-radius: 1.25rem;
+    border: 1px solid rgba(191, 219, 254, 0.28);
+    overflow: hidden;
+    box-shadow: 0 18px 38px rgba(15, 23, 42, 0.1);
+}
+.corte-apertura-left {
+    flex: 1 1 260px;
+    padding: 1.75rem 2rem;
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+    color: #f8fafc;
+}
+.corte-apertura-eyebrow {
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: rgba(147, 197, 253, 0.8);
+    margin: 0 0 0.5rem;
+}
+.corte-apertura-amount {
+    font-size: 2.6rem;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    color: #f8fafc;
+    margin: 0 0 0.5rem;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+.corte-apertura-meta {
+    font-size: 0.8rem;
+    color: rgba(226, 232, 240, 0.6);
+    margin: 0;
+}
+.corte-apertura-meta strong { color: rgba(226, 232, 240, 0.85); font-weight: 600; }
+.corte-apertura-right {
+    flex: 1 1 280px;
+    padding: 1.75rem 2rem;
+    background: linear-gradient(180deg, #fff 0%, #f8fafc 100%);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.5rem;
+}
+.corte-apertura-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #374151;
+    margin: 0;
+    display: block;
+}
+.corte-apertura-form-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: stretch;
+    margin-top: 0.35rem;
+}
+.corte-apertura-input {
+    flex: 1;
+    border: 1.5px solid #d1d5db;
+    border-radius: 0.6rem;
+    padding: 0.55rem 0.85rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    outline: none;
+    transition: border-color 0.15s;
+    color: #111827;
+}
+.corte-apertura-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.12); }
+.corte-apertura-btn {
+    background: linear-gradient(135deg, #1d4ed8, #2563eb);
+    color: #fff;
+    border: none;
+    border-radius: 0.6rem;
+    padding: 0.55rem 1.25rem;
+    font-size: 0.92rem;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity 0.15s;
+    box-shadow: 0 4px 12px rgba(37,99,235,0.3);
+}
+.corte-apertura-btn:hover { opacity: 0.9; }
+.corte-apertura-hint {
+    font-size: 0.73rem;
+    color: #9ca3af;
+    margin: 0;
+}
+
 /* ── Row color coding ─────────────────────────────────────────────── */
 .corte-row-cash td { background-color: #d4edda !important; }
 .corte-row-account-1 td { background-color: #cce5ff !important; }
