@@ -1143,7 +1143,7 @@
                                 <span class="chip-strong">Referencia de pago</span>
                                 <span class="text-muted small">Metodo y cuenta tentativa</span>
                             </div>
-                            <form method="post" action="/web/admin/notas/{{ nota.id }}/referencia-pago">
+                            <form method="post" action="/web/admin/notas/{{ nota.id }}/referencia-pago" data-submit-once="1">
                                 <div class="mb-2">
                                     <label class="form-label">Metodo de pago</label>
                                     <select class="form-select form-select-sm" name="metodo_pago" id="ref_metodo_pago_select">

@@ -3149,12 +3149,13 @@ body.modal-open {
     gap: 0.25rem;
     font-size: 0.75rem;
     font-weight: 500;
-    padding: 0.2rem 0.55rem;
+    padding: 0.4rem 0.75rem;
     border-radius: 999px;
     white-space: nowrap;
     line-height: 1.4;
     border: 1px solid transparent;
     cursor: default;
+    min-height: 2.25rem;
 }
 button.corte-pago-pill {
     cursor: pointer;

@@ -93,7 +93,7 @@
                     </div>
                 </div>
             </div>
-            <form method="post" action="/web/admin/corte-caja/abrir" class="row g-3 align-items-end">
+            <form method="post" action="/web/admin/corte-caja/abrir" class="row g-3 align-items-end" data-submit-once="1">
                 <input type="hidden" name="sucursal_id" value="{{ sucursal_id or '' }}">
                 <input type="hidden" name="fecha" value="{{ fecha }}">
                 <div class="col-lg-4 col-md-6">
@@ -372,7 +372,7 @@
                             <span class="chip-strong">Dotacion de efectivo</span>
                             <span class="text-muted small">Ingreso manual a caja</span>
                         </div>
-                        <form method="post" action="/web/admin/corte-caja/{{ corte.id }}/movimientos" class="row g-2">
+                        <form method="post" action="/web/admin/corte-caja/{{ corte.id }}/movimientos" class="row g-2" data-submit-once="1">
                             <input type="hidden" name="categoria" value="DOTACION_EFECTIVO">
                             <input type="hidden" name="tipo" value="">
                             <div class="col-12">
@@ -397,7 +397,7 @@
                             <span class="chip-strong">Sobrantes de viaticos</span>
                             <span class="text-muted small">Retorno de efectivo a caja</span>
                         </div>
-                        <form method="post" action="/web/admin/corte-caja/{{ corte.id }}/movimientos" class="row g-2">
+                        <form method="post" action="/web/admin/corte-caja/{{ corte.id }}/movimientos" class="row g-2" data-submit-once="1">
                             <input type="hidden" name="categoria" value="SOBRANTE_VIATICOS">
                             <input type="hidden" name="tipo" value="">
                             <div class="col-12">
@@ -422,7 +422,7 @@
                             <span class="chip-strong">Sobrantes de gastos</span>
                             <span class="text-muted small">Recuperaciones del dia</span>
                         </div>
-                        <form method="post" action="/web/admin/corte-caja/{{ corte.id }}/movimientos" class="row g-2">
+                        <form method="post" action="/web/admin/corte-caja/{{ corte.id }}/movimientos" class="row g-2" data-submit-once="1">
                             <input type="hidden" name="categoria" value="SOBRANTE_GASTOS">
                             <input type="hidden" name="tipo" value="">
                             <div class="col-12">
@@ -450,7 +450,7 @@
                             <span class="chip-strong">Relacion de gastos</span>
                             <span class="text-muted small">Caja chica y egresos del dia</span>
                         </div>
-                        <form method="post" action="/web/admin/corte-caja/{{ corte.id }}/gastos" class="row g-2">
+                        <form method="post" action="/web/admin/corte-caja/{{ corte.id }}/gastos" class="row g-2" data-submit-once="1">
                             <div class="col-md-7">
                                 <label class="form-label">Descripcion</label>
                                 <input class="form-control" name="descripcion" value="{{ form_gasto_desc }}" placeholder="Ej. Pago CFE, propina basura, refaccion">
@@ -482,7 +482,7 @@
                             <span class="chip-strong">Otros ajustes de caja</span>
                             <span class="text-muted small">Movimientos manuales auditables</span>
                         </div>
-                        <form method="post" action="/web/admin/corte-caja/{{ corte.id }}/movimientos" class="row g-2">
+                        <form method="post" action="/web/admin/corte-caja/{{ corte.id }}/movimientos" class="row g-2" data-submit-once="1">
                             <div class="col-md-6">
                                 <label class="form-label">Categoria</label>
                                 <select class="form-select" name="categoria">
@@ -754,7 +754,8 @@
             if (!modal) return;
             modal.addEventListener('show.bs.modal', function (event) {
                 var btn = event.relatedTarget;
-                var notaId = btn.dataset.notaId;
+                var notaId = btn && btn.dataset.notaId;
+                if (!notaId) { event.preventDefault(); return; }
                 var metodo = btn.dataset.metodo || '';
                 var numeroCheque = btn.dataset.numeroCheque || '';
                 var cuentaId = btn.dataset.cuentaScrap360Id || '';
@@ -1141,7 +1142,7 @@
             </div>
 
             {% if corte.estado.value == 'ABIERTO' %}
-                <form method="post" action="/web/admin/corte-caja/{{ corte.id }}/cerrar">
+                <form method="post" action="/web/admin/corte-caja/{{ corte.id }}/cerrar" data-submit-once="1">
                     <div class="cash-count-sheet mb-3">
                         <div class="cash-count-sheet__header">
                             <div>
@@ -1274,9 +1275,12 @@
                             <label class="form-label">Comentarios de cierre</label>
                             <input class="form-control" name="comentarios_cierre" value="{{ form_cierre_comentarios }}" placeholder="Observaciones del corte">
                         </div>
-                        <div class="col-12">
-                            <label class="form-label">Motivo de diferencia</label>
-                            <input class="form-control" name="motivo_diferencia" value="{{ form_motivo_diferencia }}" placeholder="Obligatorio si hay sobrante o faltante">
+                        <div class="col-12" id="motivoDiferenciaGroup">
+                            <div id="motivoDiferenciaAlert" class="alert alert-warning py-2 small mb-2 d-none" role="alert">
+                                <strong id="motivoDiferenciaAlertText"></strong> — Debes explicar el motivo antes de poder cerrar el corte.
+                            </div>
+                            <label class="form-label" id="motivoDiferenciaLabel">Motivo de diferencia</label>
+                            <input class="form-control" name="motivo_diferencia" id="motivoDiferenciaInput" value="{{ form_motivo_diferencia }}" placeholder="Obligatorio si hay sobrante o faltante">
                             <div class="form-text text-muted">Si el contado no coincide con el saldo esperado, explica la diferencia.</div>
                         </div>
                         <div class="col-12 d-grid d-md-flex justify-content-md-end gap-2">
@@ -1496,6 +1500,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (labelNode) {
                     labelNode.textContent = diff >= 0 ? 'Sobrante provisional' : 'Faltante provisional';
                 }
+            }
+        }
+
+        /* motivo_diferencia: required + highlighted when diff != 0 */
+        const hasDiff = Math.abs(diff) >= 0.01;
+        const motivoInput = document.getElementById('motivoDiferenciaInput');
+        const motivoLabel = document.getElementById('motivoDiferenciaLabel');
+        const motivoAlert = document.getElementById('motivoDiferenciaAlert');
+        const motivoAlertText = document.getElementById('motivoDiferenciaAlertText');
+        if (motivoInput) {
+            motivoInput.required = hasDiff;
+            motivoInput.classList.toggle('border-warning', hasDiff);
+            motivoInput.classList.toggle('shadow-none', hasDiff);
+        }
+        if (motivoLabel) {
+            motivoLabel.textContent = hasDiff ? 'Motivo de diferencia *' : 'Motivo de diferencia';
+            motivoLabel.classList.toggle('text-warning-emphasis', hasDiff);
+            motivoLabel.classList.toggle('fw-semibold', hasDiff);
+        }
+        if (motivoAlert && motivoAlertText) {
+            if (hasDiff) {
+                const sign = diff >= 0 ? 'Sobrante' : 'Faltante';
+                const abs = Math.abs(diff).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                motivoAlertText.textContent = `${sign} de $${abs}`;
+                motivoAlert.classList.remove('d-none');
+            } else {
+                motivoAlert.classList.add('d-none');
             }
         }
     };
