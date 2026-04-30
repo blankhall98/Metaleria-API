@@ -711,12 +711,17 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
             page.text(draw_x, y - 5, col_title, size=8, font="F2", fill_rgb=(1, 1, 1))
         y -= 24
 
+    _row_counter = [0]
+
     def draw_row(
         cols: list[tuple[str, float, float, str]],
         values: list[str],
         bg_rgb: tuple[float, float, float] | None = None,
+        bold: bool = False,
     ) -> None:
         nonlocal y
+        _row_counter[0] += 1
+        font_body = "F2" if bold else "F1"
         cell_lines: list[list[str]] = []
         max_lines = 1
         for (_, _, width, align), text in zip(cols, values):
@@ -726,24 +731,25 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
                 lines = _wrap_text(str(text), width - 4, 8)
             max_lines = max(max_lines, len(lines))
             cell_lines.append(lines)
-        row_h = max(12, max_lines * 10 + 2)
-        ensure_space(70 + row_h)
+        row_h = max(13, max_lines * 10 + 4)
+        ensure_space(80 + row_h)
         line_y_start = y
+        row_x = cols[0][1]
+        row_w = right - row_x
         if bg_rgb is not None:
-            row_x = cols[0][1]
-            # Use right-margin width to match the table header rect exactly.
-            row_w = right - row_x
-            # Extend 6 pts above the first text baseline so cap-heights are
-            # covered by the coloured band rather than floating above it.
             page.rect(row_x, line_y_start - row_h, row_w, row_h + 6, fill_rgb=bg_rgb)
+        elif bold:
+            page.rect(row_x, line_y_start - row_h, row_w, row_h + 6, fill_rgb=(0.937, 0.949, 0.969))
+        elif _row_counter[0] % 2 == 0:
+            page.rect(row_x, line_y_start - row_h, row_w, row_h + 6, fill_rgb=(0.973, 0.976, 0.98))
         for (col_title, x, width, align), lines in zip(cols, cell_lines):
             if align == "right":
                 for idx, display in enumerate(lines):
                     draw_x = x + width - _text_width(display, 8) - 2
-                    page.text(draw_x, line_y_start - idx * 10, display, size=8)
+                    page.text(draw_x, line_y_start - idx * 10, display, size=8, font=font_body)
             else:
                 for idx, display in enumerate(lines):
-                    page.text(x + 2, line_y_start - idx * 10, display, size=8)
+                    page.text(x + 2, line_y_start - idx * 10, display, size=8, font=font_body)
         y -= row_h
 
     # ── Payment-method helpers ────────────────────────────────────────────
@@ -798,19 +804,32 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
             lx += 85
         y -= 14
 
+    # Column widths designed so money cols (65+ pts each) never truncate
+    # values up to $9,999,999.99 (13 chars × 8 × 0.6 = 62.4 pts + 4 margins).
+    # Total: 62+100+108+52+64+67+67 = 520 = right - left
     compra_cols = [
-        ("Orden", left, 60, "left"),
-        ("Proveedor", left + 60, 110, "left"),
-        ("Material", left + 170, 120, "left"),
-        ("Kg", left + 290, 55, "right"),
-        ("Precio", left + 345, 70, "right"),
-        ("Linea", left + 415, 55, "right"),
-        ("Orden total", left + 470, 50, "right"),  # 60→50: cols sum = 520 = right-left
+        ("Orden",       left,           62, "left"),
+        ("Proveedor",   left + 62,     100, "left"),
+        ("Material",    left + 162,    108, "left"),
+        ("Kg",          left + 270,     52, "right"),
+        ("Precio",      left + 322,     64, "right"),
+        ("Total linea", left + 386,     67, "right"),
+        ("Total orden", left + 453,     67, "right"),
     ]
+    _row_counter[0] = 0
     draw_table_header("Relacion de compras del dia", compra_cols)
     draw_pago_legend()
     if report["compras_rows"]:
+        seen_nota: set = set()
+        compras_kg_total = Decimal("0")
+        compras_monto_total = Decimal("0")
         for row in report["compras_rows"]:
+            nota_id = row.get("nota_id")
+            is_first = nota_id not in seen_nota
+            if is_first and nota_id:
+                seen_nota.add(nota_id)
+            compras_kg_total += _safe_decimal(row.get("kg_neto"))
+            compras_monto_total += _safe_decimal(row.get("subtotal"))
             draw_row(
                 compra_cols,
                 [
@@ -820,26 +839,41 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
                     f"{_safe_decimal(row.get('kg_neto')):,.3f}",
                     _format_money(_safe_decimal(row.get("precio_unitario"))),
                     _format_money(_safe_decimal(row.get("subtotal"))),
-                    _format_money(_safe_decimal(row.get("total_nota"))),
+                    _format_money(_safe_decimal(row.get("total_nota"))) if is_first else "",
                 ],
                 bg_rgb=_row_pago_color(row),
             )
+        draw_row(
+            compra_cols,
+            ["TOTALES", f"{len(seen_nota)} notas", "", f"{compras_kg_total:,.3f}", "", _format_money(compras_monto_total), ""],
+            bold=True,
+        )
     else:
         draw_row(compra_cols, ["Sin compras registradas", "", "", "", "", "", ""])
 
     venta_cols = [
-        ("Orden", left, 60, "left"),
-        ("Cliente", left + 60, 110, "left"),
-        ("Material", left + 170, 120, "left"),
-        ("Kg", left + 290, 55, "right"),
-        ("Precio", left + 345, 70, "right"),
-        ("Linea", left + 415, 55, "right"),
-        ("Orden total", left + 470, 50, "right"),  # 60→50: cols sum = 520 = right-left
+        ("Orden",       left,           62, "left"),
+        ("Cliente",     left + 62,     100, "left"),
+        ("Material",    left + 162,    108, "left"),
+        ("Kg",          left + 270,     52, "right"),
+        ("Precio",      left + 322,     64, "right"),
+        ("Total linea", left + 386,     67, "right"),
+        ("Total orden", left + 453,     67, "right"),
     ]
+    _row_counter[0] = 0
     draw_table_header("Relacion de ventas del dia", venta_cols)
     draw_pago_legend()
     if report["ventas_rows"]:
+        seen_nota_v: set = set()
+        ventas_kg_total = Decimal("0")
+        ventas_monto_total = Decimal("0")
         for row in report["ventas_rows"]:
+            nota_id = row.get("nota_id")
+            is_first = nota_id not in seen_nota_v
+            if is_first and nota_id:
+                seen_nota_v.add(nota_id)
+            ventas_kg_total += _safe_decimal(row.get("kg_neto"))
+            ventas_monto_total += _safe_decimal(row.get("subtotal"))
             draw_row(
                 venta_cols,
                 [
@@ -849,10 +883,15 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
                     f"{_safe_decimal(row.get('kg_neto')):,.3f}",
                     _format_money(_safe_decimal(row.get("precio_unitario"))),
                     _format_money(_safe_decimal(row.get("subtotal"))),
-                    _format_money(_safe_decimal(row.get("total_nota"))),
+                    _format_money(_safe_decimal(row.get("total_nota"))) if is_first else "",
                 ],
                 bg_rgb=_row_pago_color(row),
             )
+        draw_row(
+            venta_cols,
+            ["TOTALES", f"{len(seen_nota_v)} notas", "", f"{ventas_kg_total:,.3f}", "", _format_money(ventas_monto_total), ""],
+            bold=True,
+        )
     else:
         draw_row(venta_cols, ["Sin ventas registradas", "", "", "", "", "", ""])
 
@@ -861,6 +900,7 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
         ("Concepto", left + 90, 320, "left"),
         ("Monto", left + 410, 80, "right"),
     ]
+    _row_counter[0] = 0
     draw_table_header("Dotacion de efectivo", dot_cols)
     if report["dotaciones"]:
         for row in report["dotaciones"]:
@@ -882,6 +922,7 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
         ("Caja", left + 340, 90, "left"),
         ("Monto", left + 430, 80, "right"),
     ]
+    _row_counter[0] = 0
     draw_table_header("Ventas de material en efectivo", venta_ef_cols)
     if report["ventas_efectivo_rows"]:
         for row in report["ventas_efectivo_rows"]:
@@ -904,6 +945,7 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
         ("Cantidad", left + 160, 80, "right"),
         ("Subtotal", left + 240, 80, "right"),
     ]
+    _row_counter[0] = 0
     draw_table_header("Arqueo por denominaciones - Monedas", denom_cols)
     if report["denominaciones_monedas"]:
         for denom in report["denominaciones_monedas"]:
@@ -919,6 +961,7 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
     else:
         draw_row(denom_cols, ["Sin monedas registradas", "", ""])
 
+    _row_counter[0] = 0
     draw_table_header("Arqueo por denominaciones - Billetes", denom_cols)
     if report["denominaciones_billetes"]:
         for denom in report["denominaciones_billetes"]:
@@ -944,6 +987,7 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
         ("Usuario", left + 380, 80, "left"),
         ("Monto", left + 460, 60, "right"),
     ]
+    _row_counter[0] = 0
     draw_table_header("Movimientos manuales", manual_cols)
     if report["manual_movs"]:
         for mov in report["manual_movs"]:
@@ -966,6 +1010,7 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
         ("Concepto", left + 90, 320, "left"),
         ("Monto", left + 410, 80, "right"),
     ]
+    _row_counter[0] = 0
     draw_table_header("Sobrantes de viaticos", sobrante_cols)
     if report["sobrantes_viaticos"]:
         for row in report["sobrantes_viaticos"]:
@@ -980,6 +1025,7 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
     else:
         draw_row(sobrante_cols, ["Sin sobrantes de viaticos", "", ""])
 
+    _row_counter[0] = 0
     draw_table_header("Sobrantes de gastos", sobrante_cols)
     if report["sobrantes_gastos"]:
         for row in report["sobrantes_gastos"]:
@@ -1003,6 +1049,7 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
         ("Caja", left + 350, 90, "left"),
         ("Monto", left + 440, 70, "right"),
     ]
+    _row_counter[0] = 0
     draw_table_header("Movimientos efectivo (notas)", cash_cols)
     if report["cash_movs"]:
         for mov in report["cash_movs"]:
@@ -1028,6 +1075,7 @@ def build_report_pdf(report: dict) -> tuple[bytes, str]:
         ("Usuario", left + 360, 90, "left"),
         ("Monto", left + 450, 70, "right"),
     ]
+    _row_counter[0] = 0
     draw_table_header("Gastos caja chica", gasto_cols)
     if report["gastos"]:
         for gasto in report["gastos"]:
