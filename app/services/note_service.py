@@ -336,6 +336,27 @@ def _get_note_balance_adjustment_total(
     return Decimal(str(total or 0))
 
 
+def _get_note_balance_adjustment_totals_map(
+    db: Session,
+    note_ids: list[int],
+) -> dict[int, Decimal]:
+    totals: dict[int, Decimal] = {int(note_id): Decimal("0") for note_id in note_ids if note_id}
+    if not totals:
+        return totals
+    rows = (
+        db.query(
+            NotaAjusteSaldo.nota_id,
+            func.coalesce(func.sum(NotaAjusteSaldo.monto_delta), 0),
+        )
+        .filter(NotaAjusteSaldo.nota_id.in_(sorted(totals.keys())))
+        .group_by(NotaAjusteSaldo.nota_id)
+        .all()
+    )
+    for nota_id, total in rows:
+        totals[int(nota_id)] = Decimal(str(total or 0))
+    return totals
+
+
 def _effective_note_balance_snapshot(
     db: Session,
     nota: Nota,
