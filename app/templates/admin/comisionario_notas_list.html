@@ -1,100 +1,94 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
+{% from "_macros.html" import page_header, icon, badge, money, empty_row %}
 
-{% block title %}Notas de comision &middot; Admin{% endblock %}
+{% block title %}Notas de comisión &middot; Admin{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Comisiones</p>
-        <h1 class="h4 text-white mb-0">Notas de comision</h1>
-    </div>
-    <a href="/web/admin/comisionarios/notas/nueva" class="btn btn-primary btn-sm">
-        Nueva nota
+{% call page_header('Notas de comisión', eyebrow='Relaciones',
+                    sub='Notas emitidas a comisionarios con su total, lo pagado y el saldo pendiente.') %}
+    <a href="/web/admin/comisionarios/notas/nueva" class="btn btn-primary">
+        {{ icon('plus', 's-icon--sm') }} Nueva nota
     </a>
-</div>
+{% endcall %}
 
-<form method="get" class="row g-2 mb-3">
-    <div class="col-lg-4 col-md-6">
-        <label class="form-label">Buscar</label>
-        <input
-            type="text"
-            class="form-control"
-            name="q"
-            placeholder="ID de nota"
-            value="{{ q }}"
-        >
-    </div>
-    <div class="col-lg-4 col-md-6">
-        <label class="form-label">Comisionario</label>
-        <select class="form-select" name="comisionario_id">
-            <option value="">Todos</option>
-            {% for c in comisionarios %}
-                <option value="{{ c.id }}" {% if comisionario_id and comisionario_id == c.id %}selected{% endif %}>{{ c.nombre_completo }}</option>
-            {% endfor %}
-        </select>
-    </div>
-    <div class="col-md-2 d-grid align-items-end">
-        <button class="btn btn-outline-primary">Filtrar</button>
-    </div>
-</form>
+<details class="s-filters-collapse" open>
+    <summary>Filtros</summary>
+    <form class="s-filters" method="get">
+        <div class="s-filters__field s-filters__field--wide">
+            <label for="f-q" class="form-label">Búsqueda</label>
+            <input
+                type="text"
+                id="f-q"
+                class="form-control"
+                name="q"
+                placeholder="Número de nota"
+                value="{{ q }}"
+            >
+        </div>
+        <div class="s-filters__field">
+            <label for="f-comisionario" class="form-label">Comisionario</label>
+            <select class="form-select" id="f-comisionario" name="comisionario_id">
+                <option value="">Todos</option>
+                {% for c in comisionarios %}
+                    <option value="{{ c.id }}" {% if comisionario_id and comisionario_id == c.id %}selected{% endif %}>{{ c.nombre_completo }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="s-filters__actions">
+            <button class="btn btn-outline-primary" type="submit">Filtrar</button>
+        </div>
+    </form>
+</details>
 
-<div class="card hover-lift">
+<div class="card">
     <div class="card-body">
         <div class="table-responsive">
-            <table class="table table-hover table-sm align-middle mb-0">
+            <table class="table table-hover align-middle">
                 <thead>
                 <tr>
                     <th>ID</th>
-                    <th>Comisionario</th>
+                    <th data-title-col>Comisionario</th>
                     <th>Estado</th>
                     <th>Fecha</th>
                     <th>Sucursal</th>
-                    <th class="text-end">Total $</th>
-                    <th class="text-end">Pagado $</th>
+                    <th class="text-end">Total</th>
+                    <th class="text-end">Pagado</th>
                     <th class="text-end">Saldo</th>
-                    <th></th>
+                    <th><span class="s-visually-hidden">Acciones</span></th>
                 </tr>
                 </thead>
                 <tbody>
                 {% for nota in notas %}
                     {% set saldo = (nota.total_monto or 0) - (nota.monto_pagado or 0) %}
                     <tr>
-                        <td>#{{ nota.id }}</td>
+                        <td><span class="s-mono">#{{ nota.id }}</span></td>
                         <td>{{ comisionarios_map.get(nota.comisionario_id, '-') }}</td>
                         <td>
                             {% if nota.estado.value == 'BORRADOR' %}
-                                <span class="badge bg-secondary">Borrador</span>
+                                {{ badge('Borrador', 'muted') }}
                             {% elif nota.estado.value == 'APROBADA' %}
-                                <span class="badge bg-success">Aprobada</span>
+                                {{ badge('Aprobada', 'ok') }}
                             {% else %}
-                                <span class="badge bg-danger">Cancelada</span>
+                                {{ badge('Cancelada', 'bad') }}
                             {% endif %}
                         </td>
                         <td>{{ nota.created_at|datetime_local if nota.created_at else '-' }}</td>
                         <td>{{ sucursales_map.get(nota.sucursal_id, '-') }}</td>
-                        <td class="text-end">${{ "{:,.2f}".format(nota.total_monto or 0) }}</td>
-                        <td class="text-end">${{ "{:,.2f}".format(nota.monto_pagado or 0) }}</td>
-                        <td class="text-end">
-                            {% if saldo > 0 %}
-                                <span class="text-danger fw-semibold">${{ "{:,.2f}".format(saldo) }}</span>
-                            {% elif saldo < 0 %}
-                                <span class="text-success fw-semibold">-${{ "{:,.2f}".format(-saldo) }}</span>
-                            {% else %}
-                                <span class="text-muted">$0.00</span>
-                            {% endif %}
-                        </td>
-                        <td class="text-end">
-                            <a href="/web/admin/comisionarios/notas/{{ nota.id }}" class="btn btn-sm btn-outline-primary">Ver nota</a>
+                        <td class="text-end">{{ money(nota.total_monto or 0) }}</td>
+                        <td class="text-end">{{ money(nota.monto_pagado or 0) }}</td>
+                        <td class="text-end">{{ money(saldo) }}</td>
+                        <td>
+                            <span class="s-actions">
+                                <a href="/web/admin/comisionarios/notas/{{ nota.id }}" class="btn btn-sm btn-outline-secondary">Ver</a>
+                            </span>
                         </td>
                     </tr>
+                {% else %}
+                    {{ empty_row(9, 'No hay notas con estos filtros.') }}
                 {% endfor %}
                 </tbody>
             </table>
         </div>
-        {% if notas|length == 0 %}
-            <p class="text-muted small mt-3 mb-0">No hay notas con estos filtros.</p>
-        {% endif %}
     </div>
 </div>
 {% endblock %}
-

@@ -1,106 +1,128 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
+{% from "_macros.html" import page_header, icon, badge, kg, empty_row %}
 
-{% block title %}Conversion de materiales{% endblock %}
+{% block title %}Conversión de materiales{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Super Admin</p>
-        <h1 class="h4 text-white mb-0">Conversion de materiales</h1>
-    </div>
-</div>
+{% call page_header('Conversión de materiales', eyebrow='Inventario',
+                    sub='Convierte kilos de un material en otro dentro de la misma sucursal. El movimiento afecta el inventario de forma permanente.') %}
+    <a href="/web/admin/inventario" class="btn btn-outline-secondary">
+        {{ icon('arrow-left', 's-icon--sm') }} Volver
+    </a>
+{% endcall %}
 
-<div class="card hover-lift mb-3">
+{% if error %}
+    <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
+{% endif %}
+{% if ok %}
+    <div class="alert alert-success py-2 small mb-3">Conversión registrada correctamente.</div>
+{% endif %}
+
+<div class="card mb-3">
     <div class="card-body">
-        {% if error %}
-            <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
-        {% endif %}
-        {% if ok %}
-            <div class="alert alert-success py-2 small mb-3">Conversion registrada correctamente.</div>
-        {% endif %}
-        <form method="post" class="row g-3">
-            <div class="col-lg-4 col-md-6">
-                <label class="form-label">Sucursal</label>
-                {% set suc_val = form_data.sucursal_id if form_data else '' %}
-                <select class="form-select" name="sucursal_id" id="convSucursal" required>
-                    <option value="">Selecciona sucursal</option>
-                    {% for s in sucursales %}
-                        <option value="{{ s.id }}" {% if suc_val|string == s.id|string %}selected{% endif %}>{{ s.nombre }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-lg-4 col-md-6">
-                <label class="form-label">Material origen</label>
-                {% set origen_val = form_data.material_origen_id if form_data else '' %}
-                <select class="form-select" name="material_origen_id" id="convOrigen" required>
-                    <option value="">Selecciona material</option>
-                    {% for m in materiales %}
-                        <option value="{{ m.id }}" {% if origen_val|string == m.id|string %}selected{% endif %}>{{ m.nombre }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-lg-4 col-md-6">
-                <label class="form-label">Stock origen</label>
-                <div class="form-control-plaintext fw-semibold" id="convStockOrigen">--</div>
-            </div>
-            <div class="col-lg-4 col-md-6">
-                <label class="form-label">Cantidad origen (kg)</label>
-                {% set cantidad_origen_val = form_data.cantidad_origen if form_data else '' %}
-                <input class="form-control" type="number" step="0.001" min="0.001" name="cantidad_origen" value="{{ cantidad_origen_val }}" required>
-            </div>
-            <div class="col-lg-4 col-md-6">
-                <label class="form-label">Material destino</label>
-                {% set destino_val = form_data.material_destino_id if form_data else '' %}
-                <select class="form-select" name="material_destino_id" id="convDestino" required>
-                    <option value="">Selecciona material</option>
-                    {% for m in materiales %}
-                        <option value="{{ m.id }}" {% if destino_val|string == m.id|string %}selected{% endif %}>{{ m.nombre }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-lg-4 col-md-6">
-                <label class="form-label">Stock destino</label>
-                <div class="form-control-plaintext fw-semibold" id="convStockDestino">--</div>
-            </div>
-            <div class="col-lg-4 col-md-6">
-                <label class="form-label">Cantidad destino (kg)</label>
-                {% set cantidad_destino_val = form_data.cantidad_destino if form_data else '' %}
-                <input class="form-control" type="number" step="0.001" min="0.001" name="cantidad_destino" value="{{ cantidad_destino_val }}" required>
-            </div>
-            <div class="col-12">
-                <label class="form-label">Comentario</label>
-                {% set comentario_val = form_data.comentario if form_data else '' %}
-                <textarea class="form-control" name="comentario" rows="2" placeholder="Motivo o detalle de la conversion">{{ comentario_val }}</textarea>
-            </div>
-            <div class="col-12 d-grid d-md-flex gap-2">
-                <button class="btn btn-primary">Registrar conversion</button>
-                <a class="btn btn-outline-secondary" href="/web/admin/inventario">Volver</a>
+        <form method="post">
+            <fieldset class="s-fieldset">
+                <legend>Material de origen</legend>
+                <div class="s-form-grid">
+                    <div>
+                        <label for="convSucursal" class="form-label">Sucursal <span class="s-req">*</span></label>
+                        {% set suc_val = form_data.sucursal_id if form_data else '' %}
+                        <select class="form-select" name="sucursal_id" id="convSucursal" required>
+                            <option value="">Selecciona sucursal</option>
+                            {% for s in sucursales %}
+                                <option value="{{ s.id }}" {% if suc_val|string == s.id|string %}selected{% endif %}>{{ s.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                        <p class="form-text">Origen y destino deben pertenecer a la misma sucursal.</p>
+                    </div>
+                    <div>
+                        <label for="convOrigen" class="form-label">Material origen <span class="s-req">*</span></label>
+                        {% set origen_val = form_data.material_origen_id if form_data else '' %}
+                        <select class="form-select" name="material_origen_id" id="convOrigen" required>
+                            <option value="">Selecciona material</option>
+                            {% for m in materiales %}
+                                <option value="{{ m.id }}" {% if origen_val|string == m.id|string %}selected{% endif %}>{{ m.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                        <p class="form-text">Material del que se descontarán los kilos.</p>
+                    </div>
+                    <div>
+                        <span class="s-def__label">Existencias origen</span>
+                        <span class="s-def__value" id="convStockOrigen">—</span>
+                    </div>
+                    <div>
+                        <label for="convCantidadOrigen" class="form-label">Cantidad origen (kg) <span class="s-req">*</span></label>
+                        {% set cantidad_origen_val = form_data.cantidad_origen if form_data else '' %}
+                        <input class="form-control" id="convCantidadOrigen" type="number" step="0.001" min="0.001" name="cantidad_origen" value="{{ cantidad_origen_val }}" required>
+                        <p class="form-text">Se descuenta del inventario en cuanto se registra la conversión.</p>
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset class="s-fieldset">
+                <legend>Material de destino</legend>
+                <div class="s-form-grid">
+                    <div>
+                        <label for="convDestino" class="form-label">Material destino <span class="s-req">*</span></label>
+                        {% set destino_val = form_data.material_destino_id if form_data else '' %}
+                        <select class="form-select" name="material_destino_id" id="convDestino" required>
+                            <option value="">Selecciona material</option>
+                            {% for m in materiales %}
+                                <option value="{{ m.id }}" {% if destino_val|string == m.id|string %}selected{% endif %}>{{ m.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                        <p class="form-text">Material al que se abonarán los kilos resultantes.</p>
+                    </div>
+                    <div>
+                        <span class="s-def__label">Existencias destino</span>
+                        <span class="s-def__value" id="convStockDestino">—</span>
+                    </div>
+                    <div>
+                        <label for="convCantidadDestino" class="form-label">Cantidad destino (kg) <span class="s-req">*</span></label>
+                        {% set cantidad_destino_val = form_data.cantidad_destino if form_data else '' %}
+                        <input class="form-control" id="convCantidadDestino" type="number" step="0.001" min="0.001" name="cantidad_destino" value="{{ cantidad_destino_val }}" required>
+                        <p class="form-text">Puede diferir del origen: la merma del proceso es la diferencia entre ambas cantidades.</p>
+                    </div>
+                    <div class="s-field--full">
+                        <label for="convComentario" class="form-label">Motivo de la conversión</label>
+                        {% set comentario_val = form_data.comentario if form_data else '' %}
+                        <textarea class="form-control" id="convComentario" name="comentario" rows="2" placeholder="Ej. Corte de perfil a chatarra">{{ comentario_val }}</textarea>
+                        <p class="form-text">Queda guardado en el historial de la conversión para dar trazabilidad al movimiento.</p>
+                    </div>
+                </div>
+            </fieldset>
+
+            <div class="s-form-actions">
+                <button class="btn btn-primary" type="submit">Registrar conversión</button>
             </div>
         </form>
     </div>
 </div>
 
-<div class="card hover-lift">
+<div class="card">
     <div class="card-body">
-        <div class="d-flex align-items-center justify-content-between mb-3">
-            <h2 class="h6 text-dark mb-0 note-section-title">Historial reciente</h2>
-            <span class="text-muted small">Ultimas {{ conversions|length }} conversiones</span>
-        </div>
-        <div class="table-scroll-shell">
-            <div class="table-responsive scroll-x note-table-scroll">
-                <table class="table table-hover table-sm align-middle mb-0">
+        <h2 class="s-card-title">Historial reciente</h2>
+        <p class="s-card-sub">
+            {% if conversions|length == 1 %}
+                Última conversión registrada.
+            {% else %}
+                Últimas {{ conversions|length }} conversiones registradas.
+            {% endif %}
+        </p>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
                 <thead>
                 <tr>
                     <th>Fecha</th>
                     <th>Estado</th>
                     <th>Sucursal</th>
-                    <th>Material origen</th>
-                    <th class="text-end">Cantidad</th>
+                    <th data-title-col>Material origen</th>
+                    <th class="text-end">Cantidad origen</th>
                     <th>Material destino</th>
-                    <th class="text-end">Cantidad</th>
+                    <th class="text-end">Cantidad destino</th>
                     <th>Usuario</th>
-                    <th>Comentario</th>
-                    <th class="text-end"></th>
+                    <th>Motivo</th>
+                    <th><span class="s-visually-hidden">Acciones</span></th>
                 </tr>
                 </thead>
                 <tbody>
@@ -108,34 +130,35 @@
                     {% set rev_link = reversion_by_conversion_id.get(conv.id) %}
                     {% set reverse_link = reversion_by_reversal_id.get(conv.id) %}
                     <tr>
-                        <td>{{ conv.created_at|datetime_local if conv.created_at else '-' }}</td>
+                        <td>{{ conv.created_at|datetime_local if conv.created_at else '—' }}</td>
                         <td>
                             {% if reverse_link %}
-                                <span class="badge bg-light text-dark border">Reversion</span>
+                                {{ badge('Reversión', 'muted') }}
                             {% elif rev_link %}
-                                <span class="badge bg-warning text-dark">Revertida</span>
+                                {{ badge('Revertida', 'warn') }}
                             {% else %}
-                                <span class="badge bg-success">Activa</span>
+                                {{ badge('Activa', 'ok') }}
                             {% endif %}
                         </td>
                         <td>{{ conv.sucursal.nombre if conv.sucursal else conv.sucursal_id }}</td>
                         <td>{{ conv.material_origen.nombre if conv.material_origen else conv.material_origen_id }}</td>
-                        <td class="text-end">{{ "{:,.3f}".format(conv.cantidad_origen or 0) }} kg</td>
+                        <td class="text-end">{{ kg(conv.cantidad_origen) }}</td>
                         <td>{{ conv.material_destino.nombre if conv.material_destino else conv.material_destino_id }}</td>
-                        <td class="text-end">{{ "{:,.3f}".format(conv.cantidad_destino or 0) }} kg</td>
-                        <td>{{ conv.usuario.username if conv.usuario else (conv.usuario_id or '-') }}</td>
-                        <td class="small text-muted">{{ conv.comentario or '-' }}</td>
-                        <td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="/web/admin/conversiones-materiales/{{ conv.id }}">Detalle</a></td>
+                        <td class="text-end">{{ kg(conv.cantidad_destino) }}</td>
+                        <td>{{ conv.usuario.username if conv.usuario else (conv.usuario_id or '—') }}</td>
+                        <td class="small text-muted">{{ conv.comentario or '—' }}</td>
+                        <td>
+                            <span class="s-actions">
+                                <a class="btn btn-sm btn-outline-secondary" href="/web/admin/conversiones-materiales/{{ conv.id }}">Detalle</a>
+                            </span>
+                        </td>
                     </tr>
+                {% else %}
+                    {{ empty_row(10, 'Aún no hay conversiones registradas.') }}
                 {% endfor %}
                 </tbody>
-                </table>
-            </div>
-            <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para ver el estado y abrir el detalle de la conversion.</div>
+            </table>
         </div>
-        {% if conversions|length == 0 %}
-            <p class="text-muted small mt-3 mb-0">Aun no hay conversiones registradas.</p>
-        {% endif %}
     </div>
 </div>
 
@@ -169,8 +192,8 @@
         const dId = destinoSelect ? parseInt(destinoSelect.value || '0', 10) : 0;
         const stockO = readStock(sId, oId);
         const stockD = readStock(sId, dId);
-        if (stockOrigen) stockOrigen.textContent = `${formatNumber(parseFloat(stockO), 3)} kg`;
-        if (stockDestino) stockDestino.textContent = `${formatNumber(parseFloat(stockD), 3)} kg`;
+        if (stockOrigen) stockOrigen.textContent = `${formatNumber(parseFloat(stockO), 2)} kg`;
+        if (stockDestino) stockDestino.textContent = `${formatNumber(parseFloat(stockD), 2)} kg`;
     }
 
     if (sucursalSelect) sucursalSelect.addEventListener('change', updateStocks);
@@ -179,4 +202,3 @@
     updateStocks();
 </script>
 {% endblock %}
-

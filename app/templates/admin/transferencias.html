@@ -1,171 +1,192 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, icon %}
 
 {% block title %}Transferencias &middot; Admin{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Inventario</p>
-        <h1 class="h4 text-white mb-0">Transferencias entre sucursales</h1>
-    </div>
-    <a href="/web" class="btn btn-outline-secondary btn-sm">Volver</a>
-</div>
+{% call page_header('Transferencias entre sucursales', eyebrow='Inventario',
+                    sub='Mueve material de una sucursal a otra. Al crearla se generan dos notas aprobadas y el inventario cambia de inmediato.') %}
+    <a href="/web" class="btn btn-outline-secondary">
+        {{ icon('arrow-left', 's-icon--sm') }} Volver
+    </a>
+{% endcall %}
 
 {% if error %}
-    <div class="alert alert-danger py-2 small">
+    <div class="alert alert-danger py-2 small mb-3">
         {{ error }}
     </div>
 {% endif %}
 {% if ok %}
-    <div class="alert alert-success py-2 small">
+    <div class="alert alert-success py-2 small mb-3">
         Transferencia registrada.
         {% if nota_salida_id or nota_entrada_id %}
             <span class="ms-2">
                 {% if nota_salida %}
-                    <a href="/web/admin/notas/{{ nota_salida.id }}">Nota salida #{{ nota_salida.id }}</a>
+                    <a href="/web/admin/notas/{{ nota_salida.id }}">Nota de salida #{{ nota_salida.id }}</a>
                     {% if nota_salida_sucursal %}
                         <span class="text-muted">({{ nota_salida_sucursal.nombre }})</span>
                     {% endif %}
                 {% elif nota_salida_id %}
-                    <span class="text-muted">Nota salida #{{ nota_salida_id }}</span>
+                    <span class="text-muted">Nota de salida #{{ nota_salida_id }}</span>
                 {% endif %}
                 {% if nota_salida_id and nota_entrada_id %}
                     &middot;
                 {% endif %}
                 {% if nota_entrada %}
-                    <a href="/web/admin/notas/{{ nota_entrada.id }}">Nota entrada #{{ nota_entrada.id }}</a>
+                    <a href="/web/admin/notas/{{ nota_entrada.id }}">Nota de entrada #{{ nota_entrada.id }}</a>
                     {% if nota_entrada_sucursal %}
                         <span class="text-muted">({{ nota_entrada_sucursal.nombre }})</span>
                     {% endif %}
                 {% elif nota_entrada_id %}
-                    <span class="text-muted">Nota entrada #{{ nota_entrada_id }}</span>
+                    <span class="text-muted">Nota de entrada #{{ nota_entrada_id }}</span>
                 {% endif %}
             </span>
         {% endif %}
         {% if missing_transfer_note %}
-            <div class="text-danger small mt-1">Falta una de las notas de la transferencia. Revisa la operacion.</div>
+            <div class="text-danger small mt-1">Falta una de las notas de la transferencia. Revisa la operación.</div>
         {% endif %}
     </div>
 {% endif %}
 
-<div class="card hover-lift">
+<div class="card">
     <div class="card-body">
-        <form method="post" class="d-grid gap-3" id="transferForm">
-            <div class="row g-3">
-                <div class="col-md-4">
-                    <label class="form-label">Sucursal origen</label>
-                    {% if origin_locked %}
-                        <div class="form-control-plaintext fw-semibold">{{ origin_sucursal.nombre if origin_sucursal else '-' }}</div>
-                        <input type="hidden" name="origen_sucursal_id" value="{{ form_origen }}">
-                    {% else %}
-                        <select class="form-select" name="origen_sucursal_id" required>
-                            <option value="">Selecciona origen</option>
+        <form method="post" id="transferForm">
+            <fieldset class="s-fieldset">
+                <legend>Sucursales</legend>
+                <div class="s-form-grid">
+                    <div>
+                        {% if origin_locked %}
+                            <span class="s-def__label">Sucursal origen</span>
+                            <span class="s-def__value">{{ origin_sucursal.nombre if origin_sucursal else '—' }}</span>
+                            <input type="hidden" name="origen_sucursal_id" value="{{ form_origen }}">
+                        {% else %}
+                            <label for="tr-origen" class="form-label">Sucursal origen <span class="s-req">*</span></label>
+                            <select class="form-select" id="tr-origen" name="origen_sucursal_id" required>
+                                <option value="">Selecciona origen</option>
+                                {% for s in sucursales %}
+                                    <option value="{{ s.id }}" {% if form_origen and form_origen|int == s.id %}selected{% endif %}>{{ s.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                            <p class="form-text">Sucursal de la que salen los kilos.</p>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <label for="tr-destino" class="form-label">Sucursal destino <span class="s-req">*</span></label>
+                        <select class="form-select" id="tr-destino" name="destino_sucursal_id" required>
+                            <option value="">Selecciona destino</option>
                             {% for s in sucursales %}
-                                <option value="{{ s.id }}" {% if form_origen and form_origen|int == s.id %}selected{% endif %}>{{ s.nombre }}</option>
+                                <option value="{{ s.id }}" {% if form_destino and form_destino|int == s.id %}selected{% endif %}>{{ s.nombre }}</option>
                             {% endfor %}
                         </select>
-                    {% endif %}
+                        <p class="form-text">Sucursal que recibe los kilos. El inventario se actualiza en ambas al guardar.</p>
+                    </div>
+                    <div>
+                        <label for="tr-comentario" class="form-label">Comentario</label>
+                        <input class="form-control" id="tr-comentario" type="text" name="comentario" placeholder="Ej. Traslado de acumulado semanal" value="{{ form_comentario }}">
+                        <p class="form-text">Se copia a las dos notas generadas por la transferencia.</p>
+                    </div>
                 </div>
-                <div class="col-md-4">
-                    <label class="form-label">Sucursal destino</label>
-                    <select class="form-select" name="destino_sucursal_id" required>
-                        <option value="">Selecciona destino</option>
-                        {% for s in sucursales %}
-                            <option value="{{ s.id }}" {% if form_destino and form_destino|int == s.id %}selected{% endif %}>{{ s.nombre }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Comentario</label>
-                    <input class="form-control" type="text" name="comentario" placeholder="Opcional" value="{{ form_comentario }}">
-                </div>
-            </div>
+            </fieldset>
 
-            <div class="table-responsive">
-                <table class="table table-hover table-sm align-middle mb-0">
-                    <thead>
-                    <tr>
-                        <th>Material</th>
-                        <th>Tipo precio</th>
-                        <th class="text-end">Precio unitario</th>
-                        <th class="text-end">Kg neto</th>
-                        <th class="text-end">Subtotal</th>
-                        <th></th>
-                    </tr>
-                    </thead>
-                    <tbody id="transferRows">
-                    {% if form_rows and form_rows|length > 0 %}
-                        {% for row in form_rows %}
+            <fieldset class="s-fieldset">
+                <legend>Materiales a transferir</legend>
+                <p class="form-text mb-3">Cada renglón genera una línea en las dos notas. El precio unitario sólo valúa el traspaso; no genera saldo con proveedores ni clientes.</p>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead>
+                        <tr>
+                            <th data-title-col>Material</th>
+                            <th>Tipo de precio</th>
+                            <th class="text-end">Precio unitario</th>
+                            <th class="text-end">Kg neto</th>
+                            <th class="text-end">Subtotal</th>
+                            <th><span class="s-visually-hidden">Acciones</span></th>
+                        </tr>
+                        </thead>
+                        <tbody id="transferRows">
+                        {% if form_rows and form_rows|length > 0 %}
+                            {% for row in form_rows %}
+                                <tr class="transfer-row">
+                                    <td>
+                                        <select class="form-select form-select-sm" name="material_id" aria-label="Material" required>
+                                            <option value="">Selecciona</option>
+                                            {% for m in materiales %}
+                                                <option value="{{ m.id }}" {% if row.material_id and row.material_id|int == m.id %}selected{% endif %}>{{ m.nombre }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <select class="form-select form-select-sm" name="tipo_cliente" aria-label="Tipo de precio">
+                                            {% for tc in tipos_cliente %}
+                                                <option value="{{ tc.value }}" {% if row.tipo_cliente == tc.value %}selected{% endif %}>{{ tc.value|capitalize }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </td>
+                                    <td class="text-end">
+                                        <input class="form-control form-control-sm text-end" type="number" name="precio_unitario" aria-label="Precio unitario" step="0.00001" min="0" value="{{ row.precio_unitario }}" required>
+                                    </td>
+                                    <td class="text-end">
+                                        <input class="form-control form-control-sm text-end" type="number" name="kg_neto" aria-label="Kg neto" step="0.001" min="0.001" value="{{ row.kg_neto }}" required>
+                                    </td>
+                                    <td class="text-end">
+                                        <span class="transfer-subtotal s-money">&mdash;</span>
+                                    </td>
+                                    <td>
+                                        <span class="s-actions">
+                                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="removeTransferRow(this)">Quitar</button>
+                                        </span>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        {% else %}
                             <tr class="transfer-row">
                                 <td>
-                                    <select class="form-select form-select-sm" name="material_id" required>
+                                    <select class="form-select form-select-sm" name="material_id" aria-label="Material" required>
                                         <option value="">Selecciona</option>
                                         {% for m in materiales %}
-                                            <option value="{{ m.id }}" {% if row.material_id and row.material_id|int == m.id %}selected{% endif %}>{{ m.nombre }}</option>
+                                            <option value="{{ m.id }}">{{ m.nombre }}</option>
                                         {% endfor %}
                                     </select>
                                 </td>
                                 <td>
-                                    <select class="form-select form-select-sm" name="tipo_cliente">
+                                    <select class="form-select form-select-sm" name="tipo_cliente" aria-label="Tipo de precio">
                                         {% for tc in tipos_cliente %}
-                                            <option value="{{ tc.value }}" {% if row.tipo_cliente == tc.value %}selected{% endif %}>{{ tc.value|capitalize }}</option>
+                                            <option value="{{ tc.value }}">{{ tc.value|capitalize }}</option>
                                         {% endfor %}
                                     </select>
                                 </td>
                                 <td class="text-end">
-                                    <input class="form-control form-control-sm text-end" type="number" name="precio_unitario" step="0.00001" min="0" value="{{ row.precio_unitario }}" required>
+                                    <input class="form-control form-control-sm text-end" type="number" name="precio_unitario" aria-label="Precio unitario" step="0.00001" min="0" placeholder="0.00000" required>
                                 </td>
                                 <td class="text-end">
-                                    <input class="form-control form-control-sm text-end" type="number" name="kg_neto" step="0.001" min="0.001" value="{{ row.kg_neto }}" required>
+                                    <input class="form-control form-control-sm text-end" type="number" name="kg_neto" aria-label="Kg neto" step="0.001" min="0.001" placeholder="0.000" required>
                                 </td>
                                 <td class="text-end">
-                                    <span class="transfer-subtotal">-</span>
+                                    <span class="transfer-subtotal s-money">&mdash;</span>
                                 </td>
-                                <td class="text-end">
-                                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="removeTransferRow(this)">Quitar</button>
+                                <td>
+                                    <span class="s-actions">
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="removeTransferRow(this)">Quitar</button>
+                                    </span>
                                 </td>
                             </tr>
-                        {% endfor %}
-                    {% else %}
-                        <tr class="transfer-row">
-                            <td>
-                                <select class="form-select form-select-sm" name="material_id" required>
-                                    <option value="">Selecciona</option>
-                                    {% for m in materiales %}
-                                        <option value="{{ m.id }}">{{ m.nombre }}</option>
-                                    {% endfor %}
-                                </select>
-                            </td>
-                            <td>
-                                <select class="form-select form-select-sm" name="tipo_cliente">
-                                    {% for tc in tipos_cliente %}
-                                        <option value="{{ tc.value }}">{{ tc.value|capitalize }}</option>
-                                    {% endfor %}
-                                </select>
-                            </td>
-                            <td class="text-end">
-                            <input class="form-control form-control-sm text-end" type="number" name="precio_unitario" step="0.00001" min="0" placeholder="0.00000" required>
-                            </td>
-                            <td class="text-end">
-                                <input class="form-control form-control-sm text-end" type="number" name="kg_neto" step="0.001" min="0.001" placeholder="0.000" required>
-                            </td>
-                            <td class="text-end">
-                                <span class="transfer-subtotal">-</span>
-                            </td>
-                            <td class="text-end">
-                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="removeTransferRow(this)">Quitar</button>
-                            </td>
-                        </tr>
-                    {% endif %}
-                    </tbody>
-                </table>
+                        {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="s-actions mt-3">
+                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="addTransferRow()">
+                        {{ icon('plus', 's-icon--sm') }} Agregar material
+                    </button>
+                </div>
+            </fieldset>
+
+            <div class="s-subpanel s-between mb-3">
+                <span class="s-def__label mb-0">Total de la operación</span>
+                <strong class="s-money" id="transferTotal">&mdash;</strong>
             </div>
 
-            <div class="d-flex justify-content-between flex-wrap gap-2 align-items-center">
-                <div class="text-muted small">
-                    Total operacion: <strong id="transferTotal">-</strong>
-                </div>
-                <button type="button" class="btn btn-outline-primary btn-sm" onclick="addTransferRow()">Agregar material</button>
+            <div class="s-form-actions">
                 <button type="submit" class="btn btn-primary">Crear transferencia</button>
             </div>
         </form>
@@ -175,7 +196,7 @@
 <template id="transferRowTemplate">
     <tr class="transfer-row">
         <td>
-            <select class="form-select form-select-sm" name="material_id" required>
+            <select class="form-select form-select-sm" name="material_id" aria-label="Material" required>
                 <option value="">Selecciona</option>
                 {% for m in materiales %}
                     <option value="{{ m.id }}">{{ m.nombre }}</option>
@@ -183,23 +204,25 @@
             </select>
         </td>
         <td>
-            <select class="form-select form-select-sm" name="tipo_cliente">
+            <select class="form-select form-select-sm" name="tipo_cliente" aria-label="Tipo de precio">
                 {% for tc in tipos_cliente %}
                     <option value="{{ tc.value }}">{{ tc.value|capitalize }}</option>
                 {% endfor %}
             </select>
         </td>
         <td class="text-end">
-            <input class="form-control form-control-sm text-end" type="number" name="precio_unitario" step="0.00001" min="0" placeholder="0.00000" required>
+            <input class="form-control form-control-sm text-end" type="number" name="precio_unitario" aria-label="Precio unitario" step="0.00001" min="0" placeholder="0.00000" required>
         </td>
         <td class="text-end">
-            <input class="form-control form-control-sm text-end" type="number" name="kg_neto" step="0.001" min="0.001" placeholder="0.000" required>
+            <input class="form-control form-control-sm text-end" type="number" name="kg_neto" aria-label="Kg neto" step="0.001" min="0.001" placeholder="0.000" required>
         </td>
         <td class="text-end">
-            <span class="transfer-subtotal">-</span>
+            <span class="transfer-subtotal s-money">&mdash;</span>
         </td>
-        <td class="text-end">
-            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="removeTransferRow(this)">Quitar</button>
+        <td>
+            <span class="s-actions">
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="removeTransferRow(this)">Quitar</button>
+            </span>
         </td>
     </tr>
 </template>
@@ -233,7 +256,7 @@
             const hasKg = kg > 0;
             const subtotal = hasKg ? kg * price : 0;
             if (subtotalEl) {
-                subtotalEl.textContent = hasKg ? formatMoney(subtotal) : '-';
+                subtotalEl.textContent = hasKg ? formatMoney(subtotal) : '—';
             }
             if (hasKg) {
                 hasAny = true;
@@ -242,7 +265,7 @@
         });
         const totalEl = document.getElementById('transferTotal');
         if (totalEl) {
-            totalEl.textContent = hasAny ? formatMoney(total) : '-';
+            totalEl.textContent = hasAny ? formatMoney(total) : '—';
         }
     }
 

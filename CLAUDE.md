@@ -10,7 +10,8 @@ Detailed documentation lives in `docs/`:
 - `docs/ARCHITECTURE.md` — stack, layers, deployment, migrations
 - `docs/DATA_MODEL.md` — every table, enum, and constraint
 - `docs/BUSINESS_RULES.md` — the nota lifecycle and all money/inventory invariants (**read before touching `note_service.py`**)
-- `docs/UI_UX.md` — design system, route map, per-role UX
+- `docs/DESIGN_SYSTEM.md` — tokens, components, copy rules (**read before touching any template or CSS**)
+- `docs/UI_UX.md` — route map and per-role UX
 - `docs/KNOWN_ISSUES.md` — confirmed bugs, security flags, tech debt
 
 The original client plan is in `development_context/*.pdf` (roles, flows, MVP scope). Implementation has since diverged: Firebase Storage instead of S3, plus comisionarios, corte de caja, conversions, transfers, and Cuentas Scrap360.
@@ -56,5 +57,8 @@ There are **no tests** (`tests/` is empty, pytest not installed) and no linter c
 - **Prices are append-only versions** (`pricing_service.create_price_version`); notes pin `version_precio_id`. Never update a `TablaPrecio` row in place.
 - **Payments**: undo is soft-delete-by-zeroing (`monto = 0` + comment tag) — aggregations must filter `monto > 0`. The `"Pago inicial"` comment prefix is load-bearing for `adjust_initial_payment`.
 - **String-typed business keys**: `MovimientoContable.tipo` (`compra|venta|pago|reverso|reverso_pago|restauracion|restauracion_pago|ajuste`), `metodo_pago` (`efectivo|transferencia|cheque` — singular) vs `CuentaScrap360.tipo` (`efectivo|transferencia|cheques` — plural). `metodo_pago == "efectivo"` is the trigger that routes money through the corte de caja.
-- **Templates have zero includes/macros** — markup and the `"{:,.2f}".format(...)` money idiom are duplicated across ~45 templates. Match existing page patterns (see `docs/UI_UX.md`) rather than inventing new ones; if you change a shared pattern, grep for its copies.
+- **The UI follows `docs/DESIGN_SYSTEM.md`.** Read it before touching a template or stylesheet. In short: import from `app/templates/_macros.html` (`page_header`, `stat`, `badge`, `money`, `kg`, `icon`, `empty`, `empty_row`); style with the tokens in `app/static/css/scrap360.css` and never a raw hex; one `.btn-primary` per screen; a card never nests in a card; emoji are never icons; a `$0.00` renders muted, never red. `app/static/css/style.css` is the **legacy** sheet being retired — never add rules to it.
+- **Tables need no bespoke work.** Wrap in `.table-responsive`, mark the naming column `data-title-col` and the phone-critical columns `data-mobile-primary`; `app/static/js/app.js` labels the cells and restacks each row into a record card below 768px. Never add "arrastra con el mouse" instructions.
+- **The UI is `es-MX` and accents are mandatory**, including on uppercase labels. `python -m scripts.fix_accents --check app/templates` fails if any template regresses; drop the `--check` to repair. It never rewrites Jinja expressions.
+- Verify UI changes by rendering, not by reading: `bash scripts/check_pages.sh <path>…` logs in and reports any non-200 or template error. Check 390px and 1440px before calling a screen done.
 - Uploads go through `app/services/firebase_storage.py` and are made **public** by URL; folder conventions are in `docs/ARCHITECTURE.md`. Local fallback credentials live in `secrets/` (never commit new secrets).

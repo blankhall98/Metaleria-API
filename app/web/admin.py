@@ -93,14 +93,21 @@ router = APIRouter(prefix="/web/admin", tags=["web-admin"])
 _TRANSFER_RELATED_NOTE_RE = re.compile(r"Nota (?:entrada|salida) #(\d+)")
 _FOLIO_QUERY_RE = re.compile(r"^\s*(\d+)[-_]([CV])[_-](\d+)\s*$", re.IGNORECASE)
 _CUENTA_TIPOS = ("cuenta bancaria", "cuenta cheques")
+# TipoOperacion values are stored unaccented; these are their display labels.
+TIPO_OPERACION_LABELS = {
+    "compra": "Compra",
+    "venta": "Venta",
+    "comision": "Comisión",
+}
+
 _SCRAP360_TIPOS = ("transferencia", "cheques", "efectivo")
 _SCRAP360_AJUSTE_DIRECCIONES = (
     ("entrada", "Entrada / deposito"),
     ("salida", "Salida / cargo"),
 )
 _SCRAP360_AJUSTE_CONCEPTOS = (
-    ("deposito", "Deposito / dinero recibido"),
-    ("comision_bancaria", "Comision bancaria"),
+    ("deposito", "Depósito / dinero recibido"),
+    ("comision_bancaria", "Comisión bancaria"),
     ("ajuste_manual", "Ajuste manual"),
     ("otro", "Otro"),
 )
@@ -970,7 +977,7 @@ def _build_partner_ledger(
                 {
                     "fecha": mov.created_at,
                     "orden": 2,
-                    "tipo": "Devolucion",
+                    "tipo": "Devolución",
                     "nota_id": mov.nota_id,
                     "folio": folio_map.get(mov.nota_id) or f"#{mov.nota_id}",
                     "cargo": cargo,
@@ -1252,7 +1259,7 @@ def _build_unified_partner_ledger(
             delta = monto * (-sign)
             cargo = delta if delta >= 0 else Decimal("0")
             abono = Decimal("0") if delta >= 0 else -delta
-            tipo_label = f"Devolucion {tipo_base}"
+            tipo_label = f"Devolución {tipo_base}"
             events.append(
                 {
                     "fecha": mov.created_at,
@@ -3343,9 +3350,9 @@ def _build_capital_real_context(
             "label": "Valor inventario",
             "amount": valor_inventario,
             "detail": (
-                "Valuacion por material usando configuracion manual por sucursal."
+                "Valuación por material usando configuración manual por sucursal."
                 if valuation_mode == "manual"
-                else "Valuacion por material usando promedio historico de compra por sucursal."
+                else "Valuación por material usando promedio histórico de compra por sucursal."
             ),
         },
     ]
@@ -3383,7 +3390,7 @@ def _build_capital_real_context(
         "inventario_automatic_count": inventario_automatic_count,
         "inventario_sin_precio_count": inventario_sin_precio_count,
         "valuation_mode": valuation_mode,
-        "valuation_mode_label": "Promedio de compra" if valuation_mode == "promedio" else "Configuracion manual",
+        "valuation_mode_label": "Promedio de compra" if valuation_mode == "promedio" else "Configuración manual",
         "valuation_mode_help": (
             "Prioriza el promedio historico de compra por sucursal; si no existe, usa precio manual y luego precio de venta."
             if valuation_mode == "promedio"
@@ -7533,10 +7540,10 @@ async def comisionario_nota_new_post(
     try:
         comisionario_id = int(comisionario_raw)
     except ValueError:
-        return render_error("Comisionario invalido.", [])
+        return render_error("Comisionario inválido.", [])
     comisionario = next((c for c in comisionarios if c.id == comisionario_id), None)
     if not comisionario:
-        return render_error("Comisionario invalido o no autorizado.", [])
+        return render_error("Comisionario inválido o no autorizado.", [])
 
     expected_sucursal_id = comisionario.sucursal_id
     if not expected_sucursal_id:
@@ -8035,7 +8042,7 @@ async def cuenta_new_post(
                 current_user,
                 cuenta=None,
                 owner_key="",
-                error="Comisionario invalido.",
+                error="Comisionario inválido.",
                 form_data={
                     "nombre": nombre,
                     "tipo": tipo,
@@ -8259,7 +8266,7 @@ async def cuenta_edit_post(
                 current_user,
                 cuenta=cuenta,
                 owner_key="",
-                error="Comisionario invalido.",
+                error="Comisionario inválido.",
                 form_data={
                     "nombre": nombre,
                     "tipo": tipo,
@@ -10299,7 +10306,9 @@ def _render_nota_detail(
     elif nota.tipo_operacion == TipoOperacion.venta:
         operation_label = "Venta"
     else:
-        operation_label = nota.tipo_operacion.value.capitalize() if nota.tipo_operacion else "Nota"
+        operation_label = TIPO_OPERACION_LABELS.get(
+            nota.tipo_operacion.value if nota.tipo_operacion else "", "Nota"
+        )
     proveedores = db.query(Proveedor).filter(Proveedor.activo.is_(True)).order_by(Proveedor.nombre_completo).all()
     clientes = db.query(Cliente).filter(Cliente.activo.is_(True)).order_by(Cliente.nombre_completo).all()
     inv_movs = db.query(InventarioMovimiento).filter(InventarioMovimiento.nota_id == nota.id).all()
@@ -10644,7 +10653,9 @@ def _render_nota_edit(
     elif nota.tipo_operacion == TipoOperacion.venta:
         operation_label = "Venta"
     else:
-        operation_label = nota.tipo_operacion.value.capitalize() if nota.tipo_operacion else "Nota"
+        operation_label = TIPO_OPERACION_LABELS.get(
+            nota.tipo_operacion.value if nota.tipo_operacion else "", "Nota"
+        )
     note_balance_adjustment_total = _get_note_balance_adjustment_totals_map(db, [nota.id]).get(nota.id, Decimal("0"))
     balance_view = _raw_note_payment_balance(
         nota,
@@ -13068,7 +13079,7 @@ async def conversion_material_detail(
 ):
     conversion = db.get(ConversionMaterial, conversion_id)
     if not conversion:
-        raise HTTPException(status_code=404, detail="Conversion no encontrada.")
+        raise HTTPException(status_code=404, detail="Conversión no encontrada.")
 
     reversion_link = (
         db.query(ConversionMaterialReversion)
@@ -13136,7 +13147,7 @@ async def conversion_material_reverse(
 ):
     conversion = db.get(ConversionMaterial, conversion_id)
     if not conversion:
-        raise HTTPException(status_code=404, detail="Conversion no encontrada.")
+        raise HTTPException(status_code=404, detail="Conversión no encontrada.")
 
     try:
         reversal = conversion_service.reverse_conversion(

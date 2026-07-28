@@ -1,0 +1,2459 @@
+/* ==========================================================================
+   SCRAP360 DESIGN SYSTEM
+   --------------------------------------------------------------------------
+   Direction: "Instrumento industrial" — the app is a measuring instrument for
+   a metal yard, not a marketing site. Flat surfaces, hairline borders,
+   decisive type, tabular numerals, one accent colour. No gradient washes,
+   no pastel confetti, minimal shadow.
+
+   Load order: bootstrap -> style.css (legacy) -> scrap360.css (this file).
+   This layer owns every visual decision. See docs/DESIGN_SYSTEM.md.
+   ========================================================================== */
+
+/* ==========================================================================
+   1. TOKENS
+   ========================================================================== */
+
+:root {
+    /* --- Neutral ramp (cool graphite / steel) --------------------------- */
+    --s-n0:   #ffffff;
+    --s-n25:  #fafbfc;
+    --s-n50:  #f4f6f8;
+    --s-n100: #eaeef2;
+    --s-n200: #dbe1e8;
+    --s-n300: #c2cad4;
+    --s-n400: #97a1ae;
+    --s-n500: #6b7683;
+    --s-n600: #4d5765;
+    --s-n700: #374150;
+    --s-n800: #232c39;
+    --s-n900: #131a24;
+
+    /* --- Primary (steel blue) — actions, links, selection --------------- */
+    --s-p50:  #edf3fa;
+    --s-p100: #d9e6f4;
+    --s-p200: #adc9e7;
+    --s-p300: #6e9fd6;
+    --s-p400: #3b79bd;
+    --s-p500: #1f5c9e;
+    --s-p600: #174a83;
+    --s-p700: #123a68;
+
+    /* --- Brass — brand mark + "needs attention" only ------------------- */
+    --s-brass50:  #fdf7ea;
+    --s-brass100: #f8ecd2;
+    --s-brass300: #d9a93f;
+    --s-brass500: #a9761b;
+    --s-brass700: #7c560f;
+
+    /* --- Semantic ------------------------------------------------------- */
+    --s-ok:        #11785a;
+    --s-ok-tint:   #e6f4ef;
+    --s-ok-line:   #bde0d3;
+    --s-warn:      #b45309;
+    --s-warn-tint: #fdf1e3;
+    --s-warn-line: #f2d6b3;
+    --s-bad:       #b42318;
+    --s-bad-tint:  #fdeceb;
+    --s-bad-line:  #f4c9c5;
+    --s-info:      var(--s-p500);
+    --s-info-tint: var(--s-p50);
+    --s-info-line: var(--s-p100);
+
+    /* --- Semantic surface roles ---------------------------------------- */
+    --s-canvas:      var(--s-n50);
+    --s-surface:     var(--s-n0);
+    --s-surface-alt: var(--s-n25);
+    --s-sunken:      var(--s-n50);
+    --s-line:        var(--s-n200);
+    --s-line-strong: var(--s-n300);
+    --s-text:        var(--s-n900);
+    --s-text-soft:   var(--s-n600);
+    --s-text-muted:  var(--s-n500);
+    --s-text-invert: var(--s-n0);
+
+    /* --- Type ----------------------------------------------------------- */
+    --s-font-display: "Archivo", "Segoe UI", system-ui, sans-serif;
+    --s-font-body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --s-font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", monospace;
+
+    --s-fs-micro: 0.6875rem; /* 11px — table micro-caps, eyebrow */
+    --s-fs-xs:    0.75rem;   /* 12px — meta, helper */
+    --s-fs-sm:    0.8125rem; /* 13px — dense table body, chips */
+    --s-fs-base:  0.9375rem; /* 15px — UI default */
+    --s-fs-md:    1rem;      /* 16px — inputs (prevents iOS zoom) */
+    --s-fs-lg:    1.125rem;  /* 18px — card titles */
+    --s-fs-xl:    1.375rem;  /* 22px — section titles */
+    --s-fs-2xl:   1.75rem;   /* 28px — page title */
+    --s-fs-3xl:   2.125rem;  /* 34px — hero numbers */
+
+    /* --- Space (4px scale) ---------------------------------------------- */
+    --s-1: 0.25rem;
+    --s-2: 0.5rem;
+    --s-3: 0.75rem;
+    --s-4: 1rem;
+    --s-5: 1.25rem;
+    --s-6: 1.5rem;
+    --s-8: 2rem;
+    --s-10: 2.5rem;
+    --s-12: 3rem;
+
+    /* --- Radius (only four) --------------------------------------------- */
+    --s-r-sm: 6px;    /* controls: inputs, buttons */
+    --s-r-md: 10px;   /* cards, tables */
+    --s-r-lg: 14px;   /* page-level panels */
+    --s-r-pill: 999px;/* status pills only */
+
+    /* --- Elevation (only three, all restrained) ------------------------- */
+    --s-e-1: 0 1px 2px rgba(19, 26, 36, 0.06);
+    --s-e-2: 0 2px 8px rgba(19, 26, 36, 0.07);
+    --s-e-3: 0 12px 28px rgba(19, 26, 36, 0.12);
+
+    /* --- Motion ---------------------------------------------------------- */
+    --s-dur: 160ms;
+    --s-dur-lg: 240ms;
+    --s-ease: cubic-bezier(0.2, 0, 0.2, 1);
+
+    /* --- Layout ---------------------------------------------------------- */
+    --s-shell-max: 1240px;
+    --s-shell-max-wide: 1600px;
+    --s-navbar-h: 60px;
+    --s-dock-h: 64px;
+    --s-focus: 0 0 0 3px rgba(31, 92, 158, 0.32);
+
+    /* --- Legacy variable remap: re-themes ~3.5k lines of old CSS -------- */
+    --ink: var(--s-n900);
+    --ink-2: var(--s-n800);
+    --slate: var(--s-n700);
+    --steel: var(--s-n100);
+    --blue: var(--s-p500);
+    --blue-soft: var(--s-p500);
+    --gold: var(--s-brass500);
+    --cloud: var(--s-n50);
+    --mist: var(--s-n100);
+    --border: var(--s-n200);
+    --text-main: var(--s-n900);
+    --text-muted: var(--s-n500);
+
+    /* --- Bootstrap variable remap --------------------------------------- */
+    --bs-body-font-family: var(--s-font-body);
+    --bs-body-color: var(--s-text);
+    --bs-body-bg: var(--s-canvas);
+    --bs-border-color: var(--s-line);
+    --bs-border-radius: var(--s-r-sm);
+    --bs-border-radius-sm: 4px;
+    --bs-border-radius-lg: var(--s-r-md);
+    --bs-primary: var(--s-p500);
+    --bs-link-color: var(--s-p600);
+    --bs-link-hover-color: var(--s-p700);
+    --bs-secondary-color: var(--s-text-muted);
+    --bs-emphasis-color: var(--s-n900);
+}
+
+/* ==========================================================================
+   2. BASE
+   ========================================================================== */
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+    font-family: var(--s-font-body);
+    font-size: var(--s-fs-base);
+    line-height: 1.55;
+    color: var(--s-text);
+    /* Flat canvas — replaces the legacy triple radial-gradient wash */
+    background: var(--s-canvas);
+    background-image: none;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-variant-numeric: tabular-nums;
+
+    /* Footer sits at the bottom on short pages instead of floating mid-screen
+       above a band of empty canvas. */
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+}
+/* No explicit width: the flex item stretches into the space left by its own
+   margins, so the sidebar offset and the centred max-width both keep working. */
+body > main.page-shell { flex: 1 0 auto; }
+body > footer.footer { flex: 0 0 auto; }
+
+/* The closed drawer is parked off-canvas to the right, which widens the
+   document and lets phones scroll sideways into empty space. Clipping the
+   root keeps the transform animation but removes the scrollable overflow. */
+html { overflow-x: clip; }
+body { overflow-x: clip; }
+
+/* Older engines without overflow: clip still need the hidden fallback. */
+@supports not (overflow: clip) {
+    html, body { overflow-x: hidden; }
+}
+
+h1, h2, h3, h4, h5, h6,
+.h1, .h2, .h3, .h4, .h5, .h6 {
+    font-family: var(--s-font-display);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    color: var(--s-text);
+    line-height: 1.22;
+}
+
+h1, .h1 { font-size: var(--s-fs-2xl); }
+h2, .h2 { font-size: var(--s-fs-xl); }
+h3, .h3 { font-size: var(--s-fs-lg); }
+h4, .h4 { font-size: var(--s-fs-lg); }
+h5, .h5 { font-size: var(--s-fs-md); }
+h6, .h6 {
+    font-size: var(--s-fs-sm);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+a {
+    color: var(--s-p600);
+    text-decoration: none;
+    transition: color var(--s-dur) var(--s-ease);
+}
+a:hover {
+    color: var(--s-p700);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+small, .small { font-size: var(--s-fs-xs); line-height: 1.45; }
+
+.text-muted,
+.muted { color: var(--s-text-muted) !important; }
+
+strong, .fw-semibold, .fw-bold { font-weight: 600; }
+
+hr {
+    border-color: var(--s-line);
+    opacity: 1;
+}
+
+/* Money, weights and every other figure line up in columns. */
+.s-num,
+.s-money,
+td, th,
+input[type="number"] {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+}
+
+.s-mono,
+.s-folio {
+    font-family: var(--s-font-mono);
+    font-size: 0.9em;
+    letter-spacing: -0.01em;
+}
+
+/* Universal focus treatment — never removed, always visible. */
+:focus-visible {
+    outline: 2px solid var(--s-p500);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+::selection {
+    background: var(--s-p100);
+    color: var(--s-p700);
+}
+
+/* ==========================================================================
+   3. APP SHELL
+   ========================================================================== */
+
+.navbar {
+    background: var(--s-surface);
+    border-bottom: 1px solid var(--s-line);
+    box-shadow: none;
+    backdrop-filter: none;
+    min-height: var(--s-navbar-h);
+    padding: var(--s-2) 0;
+    margin-bottom: 0 !important;
+    position: sticky;
+    top: 0;
+    z-index: 1030;
+}
+
+.navbar .container-fluid {
+    max-width: var(--s-shell-max-wide);
+    padding-inline: clamp(0.875rem, 2.5vw, 1.75rem);
+}
+
+.navbar-brand {
+    font-family: var(--s-font-display);
+    font-weight: 700;
+    font-size: 1.0625rem;
+    letter-spacing: -0.02em;
+    color: var(--s-n900);
+    text-transform: none;
+}
+.navbar-brand:hover { color: var(--s-p600); text-decoration: none; }
+
+.brand-mark {
+    width: 10px;
+    height: 18px;
+    border-radius: 2px;
+    background: var(--s-brass300);
+    background-image: none;
+    box-shadow: none;
+    margin-right: var(--s-2);
+    flex: 0 0 auto;
+}
+
+.user-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+    padding: 0.25rem 0.625rem 0.25rem 0.25rem;
+    border-radius: var(--s-r-pill);
+    background: var(--s-n50);
+    border: 1px solid var(--s-line);
+    color: var(--s-text-soft);
+    font-size: var(--s-fs-xs);
+    font-weight: 500;
+}
+
+.user-avatar,
+.user-table-avatar,
+.entity-avatar,
+.entity-avatar-lg {
+    background: var(--s-p600);
+    background-image: none;
+    color: var(--s-n0);
+    font-family: var(--s-font-display);
+    font-weight: 600;
+    border-radius: var(--s-r-pill);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    box-shadow: none;
+}
+.user-avatar { width: 26px; height: 26px; font-size: 0.75rem; }
+
+.menu-trigger {
+    min-height: 40px;
+    padding-inline: 0.75rem;
+}
+
+/* --- Page shell ------------------------------------------------------- */
+
+.page-shell {
+    max-width: var(--s-shell-max);
+    margin: 0 auto;
+    padding: var(--s-6) clamp(0.875rem, 2.5vw, 1.75rem) var(--s-12);
+}
+
+.page-shell-notes {
+    max-width: var(--s-shell-max-wide);
+    padding-inline: clamp(0.875rem, 2.5vw, 1.75rem);
+}
+
+body.app-has-mobile-dock .page-shell {
+    padding-bottom: calc(var(--s-dock-h) + env(safe-area-inset-bottom) + var(--s-8));
+}
+
+@media (min-width: 768px) {
+    body.app-has-mobile-dock .page-shell { padding-bottom: var(--s-12); }
+}
+
+/* --- Drawer ----------------------------------------------------------- */
+
+.nav-drawer {
+    background: var(--s-surface);
+    border-left: 1px solid var(--s-line);
+    box-shadow: var(--s-e-3);
+    width: min(320px, 88vw);
+}
+
+.nav-drawer-header {
+    padding: var(--s-4);
+    border-bottom: 1px solid var(--s-line);
+}
+
+.nav-drawer-body {
+    padding: var(--s-3);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.nav-drawer-link,
+.nav-drawer-body-compact .nav-drawer-link {
+    display: block;
+    padding: 0.625rem 0.75rem;
+    border-radius: var(--s-r-sm);
+    color: var(--s-text-soft);
+    background: transparent;
+    background-image: none;
+    border: 0;
+    font-size: var(--s-fs-base);
+    font-weight: 500;
+    min-height: 44px;
+    line-height: 1.5;
+    transition: background var(--s-dur) var(--s-ease), color var(--s-dur) var(--s-ease);
+}
+.nav-drawer-link:hover {
+    background: var(--s-n50);
+    color: var(--s-text);
+    text-decoration: none;
+}
+.nav-drawer-link.active,
+.nav-drawer-body-compact .nav-drawer-link.active {
+    background: var(--s-p50);
+    background-image: none;
+    color: var(--s-p700);
+    font-weight: 600;
+    box-shadow: inset 2px 0 0 var(--s-p500);
+}
+.nav-drawer-body-compact .nav-drawer-link::before { content: none; }
+
+.nav-drawer-group-label {
+    font-family: var(--s-font-body);
+    font-size: var(--s-fs-micro);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--s-text-muted);
+    padding: var(--s-4) 0.75rem var(--s-1);
+}
+.nav-drawer-group-label:first-child { padding-top: var(--s-1); }
+
+.nav-overlay { background: rgba(19, 26, 36, 0.45); }
+
+/* --- Mobile dock ------------------------------------------------------ */
+
+.mobile-dock {
+    background: var(--s-surface);
+    border-top: 1px solid var(--s-line);
+    box-shadow: 0 -1px 12px rgba(19, 26, 36, 0.07);
+    padding-bottom: env(safe-area-inset-bottom);
+    height: calc(var(--s-dock-h) + env(safe-area-inset-bottom));
+}
+
+.mobile-dock-link {
+    color: var(--s-text-muted);
+    gap: 2px;
+    min-height: 48px;
+    font-weight: 500;
+}
+.mobile-dock-link.active { color: var(--s-p600); }
+.mobile-dock-link .s-icon { width: 21px; height: 21px; }
+.mobile-dock-label { font-size: 0.625rem; letter-spacing: 0.01em; }
+
+/* --- Footer ----------------------------------------------------------- */
+
+.footer {
+    background: var(--s-surface);
+    border-top: 1px solid var(--s-line) !important;
+    color: var(--s-text-muted);
+    font-size: var(--s-fs-xs);
+}
+.footer .fw-semibold { font-family: var(--s-font-display); }
+
+/* --- Persistent sidebar on wide screens --------------------------------
+   Below 1400px the same markup stays an overlay drawer. Above it there is
+   spare width, so navigation is always visible and every screen is one click
+   away instead of two. */
+
+@media (min-width: 1400px) {
+    body.role-super_admin,
+    body.role-admin,
+    body.role-visor {
+        --s-sidebar-w: 244px;
+    }
+
+    body.role-super_admin .nav-drawer,
+    body.role-admin .nav-drawer,
+    body.role-visor .nav-drawer {
+        position: fixed;
+        top: var(--s-navbar-h);
+        bottom: 0;
+        left: 0;
+        right: auto;
+        /* The legacy drawer declares min-width: 320px, which would otherwise
+           win over the sidebar width and push content under the panel. */
+        width: var(--s-sidebar-w);
+        min-width: var(--s-sidebar-w);
+        max-width: var(--s-sidebar-w);
+        transform: none !important;
+        transition: none;
+        border-left: 0;
+        border-right: 1px solid var(--s-line);
+        box-shadow: none;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        z-index: 1020;
+    }
+
+    /* The drawer's own header and the burger become redundant. */
+    body.role-super_admin .nav-drawer-header,
+    body.role-admin .nav-drawer-header,
+    body.role-visor .nav-drawer-header,
+    body.role-super_admin .menu-trigger,
+    body.role-admin .menu-trigger,
+    body.role-visor .menu-trigger,
+    body.role-super_admin .nav-overlay,
+    body.role-admin .nav-overlay,
+    body.role-visor .nav-overlay { display: none !important; }
+
+    body.role-super_admin .page-shell,
+    body.role-admin .page-shell,
+    body.role-visor .page-shell {
+        margin-left: var(--s-sidebar-w);
+        max-width: calc(var(--s-shell-max) + 40px);
+    }
+    body.role-super_admin .page-shell-notes,
+    body.role-admin .page-shell-notes,
+    body.role-visor .page-shell-notes {
+        max-width: none;
+        margin-right: 0;
+    }
+
+    body.role-super_admin .footer > .container,
+    body.role-admin .footer > .container,
+    body.role-visor .footer > .container { padding-left: var(--s-sidebar-w); }
+
+    /* A pinned sidebar must not lock body scroll if the drawer state lingers. */
+    body.drawer-open { overflow: auto; }
+}
+
+/* ==========================================================================
+   4. PAGE HEADER
+   ========================================================================== */
+
+.page-header,
+.s-page-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--s-3) var(--s-4);
+    margin-bottom: var(--s-5);
+    padding-bottom: var(--s-4);
+    border-bottom: 1px solid var(--s-line);
+}
+
+.s-page-head__main { min-width: 0; flex: 1 1 22rem; }
+
+.s-eyebrow,
+.note-page-header .text-uppercase.small,
+.ops-shortcut-panel__eyebrow {
+    display: block;
+    font-family: var(--s-font-body);
+    font-size: var(--s-fs-micro);
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--s-text-muted);
+    margin-bottom: var(--s-1);
+}
+
+.s-page-title {
+    font-family: var(--s-font-display);
+    font-size: var(--s-fs-2xl);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0;
+    color: var(--s-n900);
+}
+
+.s-page-sub {
+    margin: var(--s-1) 0 0;
+    color: var(--s-text-muted);
+    font-size: var(--s-fs-base);
+    max-width: 68ch;
+}
+
+.s-page-head__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2);
+}
+
+@media (max-width: 767.98px) {
+    .s-page-head,
+    .page-header { align-items: stretch; }
+    .s-page-head__actions { width: 100%; }
+    .s-page-head__actions > .btn { flex: 1 1 auto; }
+}
+
+/* ==========================================================================
+   5. BUTTONS
+   --------------------------------------------------------------------------
+   Hierarchy: exactly one .btn-primary per screen. .btn-outline-primary is the
+   secondary action. .btn-outline-secondary is tertiary/neutral. Danger is
+   reserved for destructive operations.
+   ========================================================================== */
+
+.btn {
+    --bs-btn-padding-y: 0.5rem;
+    --bs-btn-padding-x: 0.875rem;
+    font-family: var(--s-font-body);
+    font-size: var(--s-fs-base);
+    font-weight: 600;
+    letter-spacing: 0;
+    border-radius: var(--s-r-sm);
+    border-width: 1px;
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4375rem;
+    box-shadow: none;
+    transition: background-color var(--s-dur) var(--s-ease),
+                border-color var(--s-dur) var(--s-ease),
+                color var(--s-dur) var(--s-ease);
+}
+.btn:focus-visible { box-shadow: var(--s-focus); outline: none; }
+
+.btn-sm {
+    --bs-btn-padding-y: 0.3125rem;
+    --bs-btn-padding-x: 0.625rem;
+    font-size: var(--s-fs-sm);
+    min-height: 34px;
+    border-radius: 5px;
+}
+
+.btn-lg {
+    --bs-btn-padding-y: 0.6875rem;
+    --bs-btn-padding-x: 1.25rem;
+    font-size: var(--s-fs-md);
+    min-height: 48px;
+}
+
+/* The legacy sheet declares `background: linear-gradient(...)` on some button
+   variants, which resets background-color to transparent. Setting the Bootstrap
+   custom properties alone is not enough — background-color must be restated. */
+.btn-primary {
+    --bs-btn-bg: var(--s-p500);
+    --bs-btn-border-color: var(--s-p500);
+    --bs-btn-hover-bg: var(--s-p600);
+    --bs-btn-hover-border-color: var(--s-p600);
+    --bs-btn-active-bg: var(--s-p700);
+    --bs-btn-active-border-color: var(--s-p700);
+    --bs-btn-disabled-bg: var(--s-n300);
+    --bs-btn-disabled-border-color: var(--s-n300);
+    background-image: none;
+    background-color: var(--s-p500);
+    border-color: var(--s-p500);
+    color: var(--s-n0);
+}
+.btn-primary:hover,
+.btn-primary:focus-visible {
+    background-color: var(--s-p600);
+    border-color: var(--s-p600);
+    background-image: none;
+    color: var(--s-n0);
+}
+.btn-primary:active,
+.btn-primary:disabled,
+.btn-primary.disabled { background-image: none; }
+.btn-primary:disabled,
+.btn-primary.disabled { background-color: var(--s-n300); border-color: var(--s-n300); }
+
+/* Outline variants must also restate their transparent fill. */
+.btn-outline-primary,
+.btn-outline-secondary,
+.btn-outline-danger,
+.btn-outline-success,
+.btn-outline-dark {
+    background-color: var(--s-n0);
+    background-image: none;
+}
+.btn-outline-primary:hover  { background-color: var(--s-p50); }
+.btn-outline-secondary:hover { background-color: var(--s-n50); }
+.btn-outline-danger:hover   { background-color: var(--s-bad); }
+.btn-outline-success:hover  { background-color: var(--s-ok); }
+.btn-outline-dark:hover     { background-color: var(--s-n800); }
+
+.btn-outline-primary {
+    --bs-btn-color: var(--s-p600);
+    --bs-btn-border-color: var(--s-p200);
+    --bs-btn-bg: var(--s-n0);
+    --bs-btn-hover-bg: var(--s-p50);
+    --bs-btn-hover-border-color: var(--s-p300);
+    --bs-btn-hover-color: var(--s-p700);
+    --bs-btn-active-bg: var(--s-p100);
+    --bs-btn-active-color: var(--s-p700);
+    --bs-btn-active-border-color: var(--s-p300);
+}
+
+.btn-outline-secondary {
+    --bs-btn-color: var(--s-n700);
+    --bs-btn-border-color: var(--s-n200);
+    --bs-btn-bg: var(--s-n0);
+    --bs-btn-hover-bg: var(--s-n50);
+    --bs-btn-hover-border-color: var(--s-n300);
+    --bs-btn-hover-color: var(--s-n900);
+    --bs-btn-active-bg: var(--s-n100);
+    --bs-btn-active-color: var(--s-n900);
+    --bs-btn-active-border-color: var(--s-n300);
+}
+
+.btn-outline-danger {
+    --bs-btn-color: var(--s-bad);
+    --bs-btn-border-color: var(--s-bad-line);
+    --bs-btn-bg: var(--s-n0);
+    --bs-btn-hover-bg: var(--s-bad);
+    --bs-btn-hover-border-color: var(--s-bad);
+    --bs-btn-hover-color: var(--s-n0);
+    --bs-btn-active-bg: var(--s-bad);
+    --bs-btn-active-border-color: var(--s-bad);
+}
+
+.btn-danger {
+    --bs-btn-bg: var(--s-bad);
+    --bs-btn-border-color: var(--s-bad);
+    --bs-btn-hover-bg: #96190f;
+    --bs-btn-hover-border-color: #96190f;
+}
+
+.btn-outline-success {
+    --bs-btn-color: var(--s-ok);
+    --bs-btn-border-color: var(--s-ok-line);
+    --bs-btn-bg: var(--s-n0);
+    --bs-btn-hover-bg: var(--s-ok);
+    --bs-btn-hover-border-color: var(--s-ok);
+    --bs-btn-hover-color: var(--s-n0);
+}
+
+.btn-success {
+    --bs-btn-bg: var(--s-ok);
+    --bs-btn-border-color: var(--s-ok);
+    --bs-btn-hover-bg: #0d6249;
+    --bs-btn-hover-border-color: #0d6249;
+}
+
+.btn-outline-dark {
+    --bs-btn-color: var(--s-n800);
+    --bs-btn-border-color: var(--s-n300);
+    --bs-btn-hover-bg: var(--s-n800);
+    --bs-btn-hover-border-color: var(--s-n800);
+}
+
+.btn-light,
+.btn-export {
+    background: var(--s-n0);
+    background-image: none;
+    border: 1px solid var(--s-n200);
+    color: var(--s-n700);
+    box-shadow: none;
+}
+.btn-light:hover,
+.btn-export:hover {
+    background: var(--s-n50);
+    background-image: none;
+    border-color: var(--s-n300);
+    color: var(--s-n900);
+}
+
+.btn-link {
+    color: var(--s-p600);
+    font-weight: 600;
+    text-decoration: none;
+    min-height: 0;
+    padding-inline: 0;
+}
+.btn-link:hover { color: var(--s-p700); text-decoration: underline; }
+
+.btn:disabled,
+.btn.disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Icon-only button: keeps a 40px hit area regardless of glyph size. */
+.btn-icon {
+    padding: 0;
+    width: 40px;
+    min-width: 40px;
+}
+.btn-icon.btn-sm { width: 34px; min-width: 34px; }
+
+/* Row of actions inside a table cell */
+.s-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-1);
+    flex-wrap: nowrap;
+    white-space: nowrap;
+}
+
+/* ==========================================================================
+   6. CARDS & PANELS
+   --------------------------------------------------------------------------
+   One surface style. A card is a border + white fill; it never nests inside
+   another card. Use .s-subpanel for a grouped region inside a card.
+   ========================================================================== */
+
+.card,
+.s-card {
+    background: var(--s-surface);
+    background-image: none;
+    border: 1px solid var(--s-line);
+    border-radius: var(--s-r-md);
+    box-shadow: none;
+}
+
+.card-body { padding: var(--s-5); }
+@media (max-width: 575.98px) { .card-body { padding: var(--s-4); } }
+
+.card-header {
+    background: var(--s-surface);
+    background-image: none;
+    border-bottom: 1px solid var(--s-line);
+    padding: var(--s-4) var(--s-5);
+    font-weight: 600;
+}
+
+/* A card directly inside a card loses its chrome — kills the nested-box look
+   that made the old UI read as unfinished. */
+.card .card,
+.s-card .card,
+.card .s-card {
+    border-radius: var(--s-r-sm);
+    box-shadow: none;
+    background: var(--s-surface-alt);
+}
+
+.s-card-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--s-2) var(--s-4);
+    margin-bottom: var(--s-4);
+}
+
+.s-card-title,
+.section-title,
+.note-section-title,
+.note-form-card-title,
+.ops-shortcut-panel__title {
+    font-family: var(--s-font-display);
+    font-size: var(--s-fs-lg);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--s-n900);
+    margin: 0;
+}
+
+.s-card-sub {
+    color: var(--s-text-muted);
+    font-size: var(--s-fs-xs);
+    margin: var(--s-1) 0 0;
+}
+
+/* Grouped region inside a card: sunken fill, no border-on-border. */
+.s-subpanel {
+    background: var(--s-sunken);
+    border: 1px solid var(--s-line);
+    border-radius: var(--s-r-sm);
+    padding: var(--s-4);
+}
+
+.s-section-label {
+    font-size: var(--s-fs-micro);
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--s-text-muted);
+    margin-bottom: var(--s-2);
+}
+
+.s-divider {
+    height: 1px;
+    background: var(--s-line);
+    border: 0;
+    margin: var(--s-5) 0;
+}
+
+/* ==========================================================================
+   7. STAT TILES (one implementation, replacing eight)
+   ========================================================================== */
+
+.s-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: var(--s-3);
+    margin-bottom: var(--s-5);
+}
+.s-stats--4 { grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); }
+
+.s-stat {
+    background: var(--s-surface);
+    border: 1px solid var(--s-line);
+    border-left: 3px solid var(--s-n300);
+    border-radius: var(--s-r-sm);
+    padding: var(--s-3) var(--s-4);
+    min-width: 0;
+}
+
+.s-stat__label {
+    display: block;
+    font-size: var(--s-fs-micro);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--s-text-muted);
+    margin-bottom: var(--s-1);
+}
+
+.s-stat__value {
+    display: block;
+    font-family: var(--s-font-display);
+    font-size: var(--s-fs-xl);
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    color: var(--s-n900);
+    font-variant-numeric: tabular-nums;
+}
+
+.s-stat__sub {
+    display: block;
+    font-size: var(--s-fs-xs);
+    color: var(--s-text-muted);
+    margin-top: 2px;
+}
+
+/* Tone = a 3px spine + a value colour. No gradient fills. */
+.s-stat--ok    { border-left-color: var(--s-ok); }
+.s-stat--ok .s-stat__value { color: var(--s-ok); }
+.s-stat--warn  { border-left-color: var(--s-warn); }
+.s-stat--warn .s-stat__value { color: var(--s-warn); }
+.s-stat--bad   { border-left-color: var(--s-bad); }
+.s-stat--bad .s-stat__value { color: var(--s-bad); }
+.s-stat--info  { border-left-color: var(--s-p500); }
+.s-stat--info .s-stat__value { color: var(--s-p600); }
+.s-stat--brass { border-left-color: var(--s-brass300); }
+
+@media (max-width: 575.98px) {
+    .s-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-2); }
+    .s-stat { padding: var(--s-2) var(--s-3); }
+    .s-stat__value { font-size: var(--s-fs-lg); }
+}
+
+/* ==========================================================================
+   8. TABLES
+   --------------------------------------------------------------------------
+   Data is the product. Micro-caps header, hairline rules, tabular figures,
+   sticky header, sticky first column on wide tables, and a card layout on
+   phones (labels injected by app.js).
+   ========================================================================== */
+
+.table,
+.data-table,
+.entity-table,
+.report-table,
+.note-table,
+.notes-state-table,
+.users-table,
+.corte-caja-table,
+.note-materials-table,
+.note-payments-table,
+.note-aux-table,
+.note-return-table {
+    --bs-table-bg: transparent;
+    --bs-table-color: var(--s-text);
+    width: 100%;
+    margin-bottom: 0;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: var(--s-fs-sm);
+    color: var(--s-text);
+}
+
+.table > thead > tr > th,
+.data-table thead th,
+.entity-table thead th,
+.report-table thead th,
+.note-table thead th,
+.users-table thead th,
+.corte-caja-table thead th {
+    background: var(--s-n50);
+    background-image: none;
+    color: var(--s-text-muted);
+    font-family: var(--s-font-body);
+    font-size: var(--s-fs-micro);
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    padding: 0.5625rem 0.75rem;
+    border-bottom: 1px solid var(--s-line-strong);
+    border-top: 0;
+    vertical-align: middle;
+}
+
+.table > tbody > tr > td,
+.table > tbody > tr > th {
+    padding: 0.625rem 0.75rem;
+    border-bottom: 1px solid var(--s-n100);
+    border-top: 0;
+    vertical-align: middle;
+    background: transparent;
+}
+
+.table > tbody > tr:last-child > td { border-bottom: 0; }
+
+.table-sm > thead > tr > th { padding: 0.5rem 0.625rem; }
+.table-sm > tbody > tr > td { padding: 0.4375rem 0.625rem; }
+
+.table-hover > tbody > tr:hover > * {
+    background-color: var(--s-p50);
+    --bs-table-accent-bg: transparent;
+    color: var(--s-text);
+}
+
+.table > tfoot > tr > td,
+.table > tfoot > tr > th,
+.report-table tfoot td {
+    background: var(--s-n50);
+    background-image: none;
+    font-weight: 600;
+    color: var(--s-n900);
+    border-top: 1px solid var(--s-line-strong);
+    padding: 0.625rem 0.75rem;
+}
+
+/* Numeric columns right-align and never wrap. */
+.table .text-end,
+.table th.text-end,
+.table td.text-end { text-align: right; }
+
+.table td.s-num,
+.table th.s-num,
+.table .s-money { text-align: right; white-space: nowrap; }
+
+/* The primary identifier in a row */
+.s-cell-key {
+    font-weight: 600;
+    color: var(--s-n900);
+}
+.s-cell-sub {
+    display: block;
+    font-size: var(--s-fs-xs);
+    color: var(--s-text-muted);
+    font-weight: 400;
+}
+
+/* --- Scroll shell ------------------------------------------------------ */
+
+.table-responsive,
+.table-scroll-shell .table-responsive {
+    border-radius: var(--s-r-md);
+    border: 1px solid var(--s-line);
+    background-color: var(--s-surface);
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: var(--s-n300) transparent;
+
+    /* Edge shadows that appear only on the side that still has content to
+       reveal — the affordance the old build tried to give with a paragraph of
+       instructions. `local` backgrounds scroll with the content, `scroll`
+       backgrounds stay pinned, so the shadow fades out at each end. */
+    background-image:
+        linear-gradient(to right, var(--s-surface) 40%, rgba(255, 255, 255, 0)),
+        linear-gradient(to left, var(--s-surface) 40%, rgba(255, 255, 255, 0)),
+        linear-gradient(to right, rgba(19, 26, 36, 0.10), rgba(19, 26, 36, 0)),
+        linear-gradient(to left, rgba(19, 26, 36, 0.10), rgba(19, 26, 36, 0));
+    background-position: left center, right center, left center, right center;
+    background-repeat: no-repeat;
+    background-size: 36px 100%, 36px 100%, 12px 100%, 12px 100%;
+    background-attachment: local, local, scroll, scroll;
+}
+
+.table-responsive::-webkit-scrollbar,
+.table-scroll-shell .table-responsive::-webkit-scrollbar { height: 10px; }
+.table-responsive::-webkit-scrollbar-track { background: var(--s-n50); }
+.table-responsive::-webkit-scrollbar-thumb,
+.table-scroll-shell .table-responsive::-webkit-scrollbar-thumb {
+    background: var(--s-n300);
+    background-image: none;
+    border-radius: var(--s-r-pill);
+    border: 2px solid var(--s-n50);
+}
+.table-responsive::-webkit-scrollbar-thumb:hover,
+.table-scroll-shell .table-responsive::-webkit-scrollbar-thumb:hover {
+    background: var(--s-n400);
+    background-image: none;
+}
+
+.table-scroll-shell {
+    position: relative;
+    margin-bottom: var(--s-3);
+}
+/* The old build faded the table edges with pseudo-elements that sat on top of
+   the header row; the scrollbar and sticky column carry that signal now. */
+.table-scroll-shell::before,
+.table-scroll-shell::after { content: none; }
+
+/* Verbose "drag the table sideways" instructions are replaced by affordances. */
+.table-scroll-hint,
+.note-table-assist,
+.note-table-assist--inline { display: none !important; }
+
+.floating-table-scrollbar { z-index: 1020; }
+.floating-table-scrollbar-track::-webkit-scrollbar-thumb {
+    background: var(--s-n400);
+    background-image: none;
+}
+
+/* Sticky header for long tables */
+.s-table-sticky thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+/* Sticky first column for wide tables */
+.s-table-pin tbody td:first-child,
+.s-table-pin thead th:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--s-surface);
+    box-shadow: 1px 0 0 var(--s-n100);
+}
+.s-table-pin thead th:first-child { z-index: 3; background: var(--s-n50); }
+.s-table-pin.table-hover tbody tr:hover td:first-child { background: var(--s-p50); }
+
+/* ==========================================================================
+   9. TABLE → CARD ON PHONES
+   --------------------------------------------------------------------------
+   Below 768px a .s-table-cards table restacks: each row becomes a record card
+   and each cell gets its column name from the data-label attribute that
+   app.js injects. No horizontal scrolling on a phone.
+   ========================================================================== */
+
+@media (max-width: 767.98px) {
+    .s-table-cards > .table-responsive,
+    .table-responsive.s-table-cards {
+        border: 0;
+        background: transparent;
+        background-image: none;
+        overflow: visible;
+    }
+
+    .s-table-cards table,
+    .s-table-cards thead,
+    .s-table-cards tbody,
+    .s-table-cards tr,
+    .s-table-cards td { display: block; width: 100%; }
+
+    .s-table-cards thead { display: none; }
+
+    /* Flex column so the naming cell can be ordered to the top of the card
+       regardless of its position in the source row. */
+    .s-table-cards tbody tr {
+        display: flex;
+        flex-direction: column;
+        background: var(--s-surface);
+        border: 1px solid var(--s-line);
+        border-radius: var(--s-r-md);
+        padding: var(--s-2) var(--s-3);
+        margin-bottom: var(--s-2);
+        box-shadow: var(--s-e-1);
+    }
+    .s-table-cards tbody td.s-cell-actions { order: 99; }
+
+    .s-table-cards tbody td {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--s-3);
+        padding: 0.3125rem 0;
+        border: 0;
+        border-bottom: 1px dashed var(--s-n100);
+        text-align: right;
+        font-size: var(--s-fs-sm);
+        min-height: 0;
+    }
+    .s-table-cards tbody td:last-child { border-bottom: 0; }
+
+    .s-table-cards tbody td::before {
+        content: attr(data-label);
+        flex: 0 0 auto;
+        max-width: 45%;
+        text-align: left;
+        font-size: var(--s-fs-micro);
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--s-text-muted);
+    }
+    .s-table-cards tbody td[data-label=""]::before { content: none; }
+
+    /* Empty cells collapse instead of leaving a labelled blank line. */
+    .s-table-cards tbody td.s-cell-empty { display: none; }
+
+    /* The naming column becomes the card headline: full width, no label. */
+    .s-table-cards tbody td.s-cell-title {
+        display: block;
+        text-align: left;
+        font-size: var(--s-fs-base);
+        font-weight: 600;
+        color: var(--s-n900);
+        padding-bottom: var(--s-2);
+        margin-bottom: var(--s-1);
+        border-bottom: 1px solid var(--s-n100);
+        order: -1;
+    }
+    .s-table-cards tbody td.s-cell-title::before { content: none; }
+
+    /* Ids and counters are noise on a phone card. */
+    .s-table-cards tbody td.s-cell-id { display: none; }
+
+    /* Secondary fields of a wide record stay folded until asked for. */
+    .s-table-cards tbody td.s-cell-secondary { display: none; }
+    .s-table-cards tbody tr.is-expanded td.s-cell-secondary { display: flex; }
+
+    .s-card-more {
+        display: block;
+        margin-top: var(--s-2);
+        padding: 0;
+        background: none;
+        border: 0;
+        color: var(--s-p600);
+        font-family: var(--s-font-body);
+        font-size: var(--s-fs-xs);
+        font-weight: 600;
+        cursor: pointer;
+        min-height: 32px;
+        text-align: left;
+    }
+    .s-card-more:hover { text-decoration: underline; }
+
+    /* Action cells go full width at the bottom of the card. */
+    .s-table-cards tbody td.s-cell-actions {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        gap: var(--s-2);
+        padding-top: var(--s-2);
+        margin-top: var(--s-1);
+        border-top: 1px solid var(--s-n100);
+        border-bottom: 0;
+    }
+    .s-table-cards tbody td.s-cell-actions::before { content: none; }
+    .s-table-cards tbody td.s-cell-actions .btn { flex: 1 1 auto; }
+
+    .s-table-cards tfoot {
+        display: block;
+        background: var(--s-n50);
+        border: 1px solid var(--s-line);
+        border-radius: var(--s-r-sm);
+        padding: var(--s-2) var(--s-3);
+    }
+    .s-table-cards tfoot tr,
+    .s-table-cards tfoot td { display: flex; justify-content: space-between; width: 100%; border: 0; }
+}
+
+/* ==========================================================================
+   10. BADGES & STATUS PILLS
+   --------------------------------------------------------------------------
+   Status is a tinted pill with a readable foreground — never a saturated
+   block of colour. Semantics: ok=green, attention=amber, problem=red,
+   in-flight=blue, inert=grey.
+   ========================================================================== */
+
+.badge,
+.s-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3125rem;
+    padding: 0.1875rem 0.5rem;
+    border-radius: var(--s-r-sm);
+    font-family: var(--s-font-body);
+    font-size: var(--s-fs-micro);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    line-height: 1.4;
+    white-space: nowrap;
+    border: 1px solid transparent;
+    background-image: none;
+}
+
+.badge.bg-success,
+.badge.bg-success-subtle,
+.badge.bg-soft-success,
+.s-badge--ok {
+    background: var(--s-ok-tint) !important;
+    border-color: var(--s-ok-line);
+    color: var(--s-ok) !important;
+    background-image: none !important;
+}
+
+.badge.bg-danger,
+.badge.bg-danger-subtle,
+.s-badge--bad {
+    background: var(--s-bad-tint) !important;
+    border-color: var(--s-bad-line);
+    color: var(--s-bad) !important;
+}
+
+.badge.bg-warning,
+.badge.bg-warning-subtle,
+.s-badge--warn {
+    background: var(--s-warn-tint) !important;
+    border-color: var(--s-warn-line);
+    color: var(--s-warn) !important;
+    background-image: none !important;
+}
+
+.badge.bg-primary,
+.badge.bg-info,
+.badge.bg-info-subtle,
+.badge.bg-primary-subtle,
+.s-badge--info {
+    background: var(--s-p50) !important;
+    border-color: var(--s-p100);
+    color: var(--s-p600) !important;
+}
+
+.badge.bg-secondary,
+.badge.bg-light,
+.s-badge--muted {
+    background: var(--s-n50) !important;
+    border-color: var(--s-n200);
+    color: var(--s-n600) !important;
+}
+
+/* Bootstrap pairs .bg-warning with .text-dark; our tint sets its own colour. */
+.badge.text-dark,
+.badge.text-white,
+.badge.text-success-emphasis,
+.badge.text-primary-emphasis,
+.badge.text-danger-emphasis,
+.badge.text-info-emphasis { color: inherit !important; }
+
+/* Count badge in navigation — a solid dot of attention, stays circular. */
+.nav-drawer-link .badge,
+.s-count-badge {
+    border-radius: var(--s-r-pill);
+    background: var(--s-bad) !important;
+    color: var(--s-n0) !important;
+    border-color: transparent;
+    min-width: 20px;
+    justify-content: center;
+    letter-spacing: 0;
+}
+
+.chip-strong,
+.entity-chip,
+.placa-chip,
+.user-role-chip,
+.user-access-chip,
+.user-status-chip,
+.user-flag-chip,
+.notes-op-chip,
+.partner-role-badge,
+.pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3125rem;
+    padding: 0.1875rem 0.5rem;
+    border-radius: var(--s-r-sm);
+    background: var(--s-n50);
+    background-image: none;
+    border: 1px solid var(--s-n200);
+    color: var(--s-n700);
+    font-size: var(--s-fs-xs);
+    font-weight: 500;
+    white-space: nowrap;
+    box-shadow: none;
+}
+
+.status-active { color: var(--s-ok); font-weight: 600; }
+.status-inactive { color: var(--s-text-muted); font-weight: 600; }
+
+/* Semantic text colours */
+.text-success { color: var(--s-ok) !important; }
+.text-danger  { color: var(--s-bad) !important; }
+.text-warning { color: var(--s-warn) !important; }
+.text-primary { color: var(--s-p600) !important; }
+.text-dark    { color: var(--s-n900) !important; }
+
+/* A settled zero is not an error. */
+.s-zero { color: var(--s-text-muted) !important; font-weight: 500; }
+
+/* ==========================================================================
+   11. FORMS
+   ========================================================================== */
+
+.form-label {
+    font-size: var(--s-fs-xs);
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    color: var(--s-n700);
+    margin-bottom: 0.3125rem;
+}
+
+.form-label .s-req,
+.s-req {
+    color: var(--s-bad);
+    font-weight: 700;
+    margin-left: 2px;
+}
+
+.form-control,
+.form-select {
+    font-family: var(--s-font-body);
+    /* 16px keeps iOS from zooming the viewport on focus */
+    font-size: var(--s-fs-md);
+    color: var(--s-text);
+    background-color: var(--s-surface);
+    border: 1px solid var(--s-n300);
+    border-radius: var(--s-r-sm);
+    padding: 0.5rem 0.6875rem;
+    min-height: 42px;
+    box-shadow: none;
+    transition: border-color var(--s-dur) var(--s-ease), box-shadow var(--s-dur) var(--s-ease);
+}
+
+.form-control:hover:not(:disabled):not([readonly]),
+.form-select:hover:not(:disabled) { border-color: var(--s-n400); }
+
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--s-p500);
+    box-shadow: var(--s-focus);
+    outline: none;
+}
+
+.form-control::placeholder { color: var(--s-n400); opacity: 1; }
+
+.form-control:disabled,
+.form-select:disabled,
+.form-control[readonly] {
+    background-color: var(--s-n50);
+    color: var(--s-text-muted);
+    border-color: var(--s-n200);
+    cursor: not-allowed;
+}
+/* Read-only is not disabled: it still reads as real data. */
+.form-control[readonly]:not(:disabled) {
+    color: var(--s-n700);
+    cursor: default;
+}
+
+.form-control-sm,
+.form-select-sm {
+    font-size: var(--s-fs-base);
+    min-height: 36px;
+    padding: 0.3125rem 0.5625rem;
+    border-radius: 5px;
+}
+
+.form-text {
+    font-size: var(--s-fs-xs);
+    color: var(--s-text-muted);
+    margin-top: 0.3125rem;
+    line-height: 1.45;
+}
+
+textarea.form-control { min-height: 84px; line-height: 1.5; }
+
+.form-check-input {
+    width: 1.125rem;
+    height: 1.125rem;
+    margin-top: 0.1875rem;
+    border-color: var(--s-n400);
+    cursor: pointer;
+}
+.form-check-input:checked {
+    background-color: var(--s-p500);
+    border-color: var(--s-p500);
+}
+.form-check-input:focus { box-shadow: var(--s-focus); border-color: var(--s-p500); }
+.form-check-label { font-size: var(--s-fs-base); cursor: pointer; }
+
+.input-group-text {
+    background: var(--s-n50);
+    border-color: var(--s-n300);
+    color: var(--s-text-muted);
+    font-size: var(--s-fs-sm);
+    font-weight: 500;
+}
+
+.is-invalid,
+.form-control.is-invalid { border-color: var(--s-bad); }
+.invalid-feedback { color: var(--s-bad); font-size: var(--s-fs-xs); }
+
+/* Field grid: the one layout every form uses. */
+.s-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: var(--s-4);
+}
+.s-form-grid--2 { grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); }
+.s-field--full { grid-column: 1 / -1; }
+
+.s-fieldset {
+    border: 0;
+    padding: 0;
+    margin: 0 0 var(--s-6);
+}
+.s-fieldset:last-child { margin-bottom: 0; }
+.s-fieldset > legend {
+    float: none;
+    width: auto;
+    font-size: var(--s-fs-micro);
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--s-text-muted);
+    padding: 0 0 var(--s-1);
+    margin-bottom: var(--s-3);
+    border-bottom: 1px solid var(--s-line);
+    width: 100%;
+}
+
+/* Sticky action bar at the bottom of long forms. */
+.s-form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--s-2);
+    padding-top: var(--s-5);
+    margin-top: var(--s-5);
+    border-top: 1px solid var(--s-line);
+}
+.s-form-actions--split { justify-content: space-between; }
+
+@media (max-width: 575.98px) {
+    .s-form-actions { flex-direction: column-reverse; align-items: stretch; }
+    .s-form-actions .btn { width: 100%; }
+}
+
+/* --- Filter bar -------------------------------------------------------- */
+
+.s-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--s-3);
+    padding: var(--s-4);
+    background: var(--s-surface);
+    border: 1px solid var(--s-line);
+    border-radius: var(--s-r-md);
+    margin-bottom: var(--s-4);
+}
+.s-filters__field { flex: 1 1 12rem; min-width: 0; }
+.s-filters__field--wide { flex: 2 1 20rem; }
+.s-filters__actions { display: flex; gap: var(--s-2); flex: 0 0 auto; }
+
+/* On phones the filter block collapses behind a summary so the data is the
+   first thing on screen, not twelve inputs. */
+.s-filters-collapse > summary {
+    list-style: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-2);
+    padding: 0.625rem var(--s-4);
+    background: var(--s-surface);
+    border: 1px solid var(--s-line);
+    border-radius: var(--s-r-md);
+    font-size: var(--s-fs-base);
+    font-weight: 600;
+    color: var(--s-n700);
+    min-height: 44px;
+    margin-bottom: var(--s-3);
+}
+.s-filters-collapse > summary::-webkit-details-marker { display: none; }
+.s-filters-collapse > summary::after {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid var(--s-n500);
+    border-bottom: 2px solid var(--s-n500);
+    transform: rotate(45deg) translateY(-2px);
+    transition: transform var(--s-dur) var(--s-ease);
+    flex: 0 0 auto;
+}
+.s-filters-collapse[open] > summary::after { transform: rotate(-135deg) translateY(-2px); }
+.s-filters-collapse[open] > summary { margin-bottom: var(--s-2); }
+
+@media (min-width: 768px) {
+    .s-filters-collapse > summary { display: none; }
+    .s-filters-collapse > .s-filters { display: flex; }
+}
+
+/* --- Segmented control (replaces the loose pill rows) ------------------ */
+
+.s-segmented,
+.ops-inline-toolbar,
+.note-state-tabs {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 3px;
+    background: var(--s-n50);
+    background-image: none;
+    background-color: var(--s-n50);
+    border: 1px solid var(--s-line);
+    border-radius: var(--s-r-sm);
+    max-width: 100%;
+}
+
+/* On a phone the strip scrolls instead of hiding half its items. */
+@media (max-width: 767.98px) {
+    .s-segmented,
+    .ops-inline-toolbar,
+    .note-state-tabs {
+        display: flex;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+    .s-segmented::-webkit-scrollbar,
+    .ops-inline-toolbar::-webkit-scrollbar,
+    .note-state-tabs::-webkit-scrollbar { display: none; }
+    .s-segmented > *,
+    .ops-inline-toolbar > *,
+    .note-state-tabs > * { flex: 0 0 auto; }
+}
+
+.s-segmented__item,
+.ops-inline-pill,
+.note-state-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.6875rem;
+    border-radius: 4px;
+    background: transparent;
+    background-image: none;
+    border: 0;
+    color: var(--s-text-soft);
+    font-size: var(--s-fs-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    min-height: 34px;
+    text-decoration: none;
+    transition: background var(--s-dur) var(--s-ease), color var(--s-dur) var(--s-ease);
+}
+.s-segmented__item:hover,
+.ops-inline-pill:hover,
+.note-state-tab:hover {
+    background: var(--s-n100);
+    color: var(--s-n900);
+    text-decoration: none;
+}
+.s-segmented__item.active,
+.ops-inline-pill.active,
+.note-state-tab.active {
+    background: var(--s-surface);
+    background-image: none;
+    color: var(--s-p700);
+    box-shadow: var(--s-e-1);
+    border: 1px solid var(--s-line);
+}
+
+.s-segmented__count {
+    font-size: var(--s-fs-micro);
+    font-weight: 700;
+    padding: 0 0.3125rem;
+    border-radius: var(--s-r-pill);
+    background: var(--s-n200);
+    color: var(--s-n700);
+    min-width: 1.125rem;
+    text-align: center;
+}
+.s-segmented__item.active .s-segmented__count { background: var(--s-p100); color: var(--s-p700); }
+
+/* --- In-page section index ---------------------------------------------
+   Honest anchor links to the sections of a long record page. These are not
+   tabs: everything is on the page, and the index says so. */
+
+.s-anchor-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+    padding: var(--s-3) 0 var(--s-4);
+    margin-bottom: var(--s-4);
+    border-bottom: 1px solid var(--s-line);
+}
+
+@media (max-width: 767.98px) {
+    .s-anchor-nav {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
+        margin-inline: calc(var(--s-4) * -1);
+        padding-inline: var(--s-4);
+    }
+    .s-anchor-nav::-webkit-scrollbar { display: none; }
+    .s-anchor-nav > * { flex: 0 0 auto; }
+}
+
+/* Anchored sections must not land under the sticky navbar. */
+[id] { scroll-margin-top: calc(var(--s-navbar-h) + var(--s-4)); }
+
+/* --- Definition rows: a read-only value is not an input ----------------- */
+
+.s-defs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+    gap: var(--s-3) var(--s-5);
+}
+
+.s-def__label {
+    display: block;
+    font-size: var(--s-fs-micro);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--s-text-muted);
+    margin-bottom: 2px;
+}
+
+.s-def__value {
+    display: block;
+    font-size: var(--s-fs-base);
+    font-weight: 500;
+    color: var(--s-n900);
+    /* Emails and account numbers have no spaces to break on. */
+    overflow-wrap: anywhere;
+}
+.s-def__value:empty::before { content: "—"; color: var(--s-text-muted); }
+
+/* ==========================================================================
+   12. ALERTS & EMPTY STATES
+   ========================================================================== */
+
+.alert {
+    border-radius: var(--s-r-sm);
+    border: 1px solid transparent;
+    border-left-width: 3px;
+    padding: var(--s-3) var(--s-4);
+    font-size: var(--s-fs-base);
+    background-image: none;
+}
+.alert-success { background: var(--s-ok-tint); border-color: var(--s-ok-line); border-left-color: var(--s-ok); color: #0b5c45; }
+.alert-danger  { background: var(--s-bad-tint); border-color: var(--s-bad-line); border-left-color: var(--s-bad); color: #8c1a12; }
+.alert-warning { background: var(--s-warn-tint); border-color: var(--s-warn-line); border-left-color: var(--s-warn); color: #8a4008; }
+.alert-info,
+.alert-primary { background: var(--s-p50); border-color: var(--s-p100); border-left-color: var(--s-p500); color: var(--s-p700); }
+.alert-secondary,
+.alert-light { background: var(--s-n50); border-color: var(--s-n200); border-left-color: var(--s-n400); color: var(--s-n700); }
+
+.s-empty,
+.notes-empty-state,
+.evidence-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: var(--s-2);
+    padding: var(--s-8) var(--s-4);
+    background: var(--s-n25);
+    border: 1px dashed var(--s-n300);
+    border-radius: var(--s-r-md);
+    color: var(--s-text-muted);
+    min-height: 0;
+}
+.s-empty__title {
+    font-family: var(--s-font-display);
+    font-size: var(--s-fs-md);
+    font-weight: 600;
+    color: var(--s-n700);
+}
+.s-empty__text { font-size: var(--s-fs-sm); max-width: 44ch; margin: 0; }
+.s-empty .s-icon { color: var(--s-n400); width: 28px; height: 28px; }
+
+/* The toggle only exists in card mode. */
+@media (min-width: 768px) {
+    .s-card-more { display: none; }
+}
+
+/* ==========================================================================
+   13. ICONS
+   --------------------------------------------------------------------------
+   Currentcolor stroke icons from a single sprite. Emoji are never icons.
+   ========================================================================== */
+
+.s-icon {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    fill: none;
+    vertical-align: -0.18em;
+}
+.s-icon--sm { width: 15px; height: 15px; }
+.s-icon--lg { width: 22px; height: 22px; }
+
+.s-icon-tile {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: var(--s-r-sm);
+    background: var(--s-p50);
+    background-image: none;
+    color: var(--s-p600);
+    border: 1px solid var(--s-p100);
+    flex: 0 0 auto;
+}
+
+/* ==========================================================================
+   14. NAVIGATION TILES (dashboard)
+   ========================================================================== */
+
+.s-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: var(--s-3);
+}
+
+.s-tile,
+.ops-shortcut-card,
+.action-card {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--s-3);
+    min-height: 0;
+    padding: var(--s-4);
+    border-radius: var(--s-r-md);
+    border: 1px solid var(--s-line);
+    background: var(--s-surface);
+    background-image: none;
+    color: var(--s-text);
+    text-decoration: none;
+    box-shadow: none;
+    transition: border-color var(--s-dur) var(--s-ease), background var(--s-dur) var(--s-ease);
+}
+.s-tile:hover,
+.ops-shortcut-card:hover,
+.action-card:hover {
+    border-color: var(--s-p300);
+    background: var(--s-p50);
+    color: var(--s-text);
+    text-decoration: none;
+    transform: none;
+    box-shadow: none;
+}
+.ops-shortcut-card::before,
+.ops-shortcut-card::after,
+.action-card::before,
+.action-card::after { content: none; }
+
+.s-tile__body { min-width: 0; }
+.s-tile__title {
+    display: block;
+    font-family: var(--s-font-display);
+    font-size: var(--s-fs-md);
+    font-weight: 600;
+    color: var(--s-n900);
+    margin-bottom: 2px;
+}
+.s-tile__text {
+    display: block;
+    font-size: var(--s-fs-xs);
+    color: var(--s-text-muted);
+    line-height: 1.45;
+}
+
+/* ==========================================================================
+   15. LEGACY COMPONENT REMAP
+   --------------------------------------------------------------------------
+   The old build grew ~280 bespoke class names — eight separate KPI cards,
+   five panel styles. Rather than leave them inconsistent, each is mapped onto
+   the canonical look above. Templates migrate to .s-* names over time.
+   ========================================================================== */
+
+/* --- Panels that were gradient-filled cards ---------------------------- */
+.ops-shortcut-panel,
+.notes-search-panel,
+.notes-result-card,
+.notes-toolbar-card,
+.notes-admin-cta,
+.note-hero-card,
+.note-side-card,
+.note-editor-card,
+.note-flow-card,
+.note-summary-card,
+.note-report-card,
+.note-payments-card,
+.note-adjustments-card,
+.note-comments-card,
+.note-step-panel,
+.note-submit-panel,
+.entity-form-card,
+.entity-form-shell,
+.entity-list-card,
+.entity-side-card,
+.entity-preview-card,
+.user-form-card,
+.user-form-shell,
+.user-side-card,
+.user-toolbar-card,
+.users-management-card,
+.user-persona-card,
+.user-role-explainer,
+.partner-match-card,
+.partner-unified-banner,
+.worker-note-card,
+.worker-step-card,
+.step-card,
+.material-card,
+.cash-count-sheet,
+.evidence-page > .card,
+.note-inline-info,
+.note-adjust-preview,
+.note-table-assist,
+.notes-deadline-card,
+.corte-caja-page .card {
+    background: var(--s-surface);
+    background-image: none;
+    border: 1px solid var(--s-line);
+    border-radius: var(--s-r-md);
+    box-shadow: none;
+}
+
+/* Sub-regions inside a panel read as sunken, not as another card. */
+.entity-form-section,
+.user-form-section,
+.cash-count-section,
+.subpesaje-panel,
+.note-adjust-preview,
+.note-inline-info,
+.note-payment-summary,
+.note-return-preview {
+    background: var(--s-sunken);
+    background-image: none;
+    border: 1px solid var(--s-line);
+    border-radius: var(--s-r-sm);
+    box-shadow: none;
+}
+
+/* --- Every legacy KPI card becomes the canonical stat tile ------------- */
+.notes-kpi-card,
+.scrap360-kpi-card,
+.ops-kpi-pill,
+.evidence-meta-tile,
+.note-meta-item,
+.user-side-stat,
+.note-return-summary-item,
+.note-adjust-preview-item,
+.cash-count-total-card,
+.notes-deadline-card,
+.partner-balance-hero,
+.evidence-tally-item {
+    background: var(--s-surface);
+    background-image: none;
+    border: 1px solid var(--s-line);
+    border-left: 3px solid var(--s-n300);
+    border-radius: var(--s-r-sm);
+    padding: var(--s-3) var(--s-4);
+    box-shadow: none;
+    color: var(--s-text);
+}
+
+.notes-kpi-label,
+.scrap360-kpi-label,
+.ops-kpi-label,
+.note-meta-label,
+.notes-deadline-label,
+.partner-balance-label,
+.evid-label,
+.cash-count-section__title {
+    display: block;
+    font-family: var(--s-font-body);
+    font-size: var(--s-fs-micro);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--s-text-muted);
+    margin-bottom: var(--s-1);
+}
+
+.notes-kpi-sub,
+.note-meta-sub,
+.notes-deadline-sub,
+.note-step-sub {
+    display: block;
+    font-size: var(--s-fs-xs);
+    color: var(--s-text-muted);
+    margin-top: 2px;
+}
+
+.partner-balance-amount {
+    font-family: var(--s-font-display);
+    font-size: var(--s-fs-2xl);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Tone modifiers become a coloured spine, not a pastel fill. */
+.tone-blue,    .scrap360-kpi-card.tone-blue    { border-left-color: var(--s-p500); background: var(--s-surface); background-image: none; }
+.tone-green,   .scrap360-kpi-card.tone-green   { border-left-color: var(--s-ok); background: var(--s-surface); background-image: none; }
+.tone-red,     .scrap360-kpi-card.tone-rose,
+.scrap360-kpi-card.tone-red                    { border-left-color: var(--s-bad); background: var(--s-surface); background-image: none; }
+.tone-amber,   .scrap360-kpi-card.tone-amber   { border-left-color: var(--s-warn); background: var(--s-surface); background-image: none; }
+.tone-neutral, .scrap360-kpi-card.tone-neutral { border-left-color: var(--s-n300); background: var(--s-surface); background-image: none; }
+
+.tone-green .notes-kpi-value,  .tone-green strong  { color: var(--s-ok); }
+.tone-red .notes-kpi-value,    .tone-red strong    { color: var(--s-bad); }
+.tone-amber .notes-kpi-value,  .tone-amber strong  { color: var(--s-warn); }
+
+/* --- Grids ------------------------------------------------------------- */
+.notes-kpi-grid,
+.scrap360-kpi-grid,
+.note-kpi-grid-detail,
+.evidence-metrics,
+.entity-summary-strip,
+.users-summary-strip,
+.note-meta-grid,
+.ops-kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: var(--s-3);
+}
+
+.ops-shortcut-grid,
+.action-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: var(--s-3);
+}
+
+@media (max-width: 575.98px) {
+    .notes-kpi-grid,
+    .scrap360-kpi-grid,
+    .note-kpi-grid-detail,
+    .evidence-metrics,
+    .entity-summary-strip,
+    .users-summary-strip,
+    .note-meta-grid,
+    .ops-kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-2); }
+
+    .ops-shortcut-grid,
+    .action-grid { grid-template-columns: 1fr; }
+}
+
+/* --- Icons that were emoji -------------------------------------------- */
+.ops-shortcut-icon,
+.action-icon,
+.evidence-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: var(--s-r-sm);
+    background: var(--s-p50);
+    background-image: none;
+    color: var(--s-p600);
+    border: 1px solid var(--s-p100);
+    box-shadow: none;
+    flex: 0 0 auto;
+}
+
+.ops-shortcut-label,
+.note-step-pill,
+.notes-op-chip {
+    font-size: var(--s-fs-micro);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--s-text-muted);
+}
+
+/* --- Hero blocks: demoted to page headers ----------------------------- */
+.hero,
+.login-panel {
+    background: var(--s-surface);
+    background-image: none;
+    border: 1px solid var(--s-line);
+    border-radius: var(--s-r-lg);
+    box-shadow: none;
+}
+.hero::after { content: none; }
+.hero-badge,
+.hero-badges .hero-badge {
+    background: var(--s-n50);
+    border: 1px solid var(--s-n200);
+    color: var(--s-n700);
+    border-radius: var(--s-r-sm);
+    font-size: var(--s-fs-xs);
+    font-weight: 500;
+}
+
+/* --- Misc legacy ------------------------------------------------------- */
+.hover-lift { transition: border-color var(--s-dur) var(--s-ease); }
+.hover-lift:hover { transform: none !important; box-shadow: none !important; border-color: var(--s-line-strong); }
+
+.sticky-tools {
+    background: var(--s-surface);
+    border-bottom: 1px solid var(--s-line);
+    box-shadow: none;
+}
+
+.bg-light { background-color: var(--s-n50) !important; }
+.border { border-color: var(--s-line) !important; }
+
+.corte-pago-pill,
+.corte-pago-pill--ok,
+.corte-pago-pill--pending {
+    border-radius: var(--s-r-sm);
+    font-size: var(--s-fs-micro);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.1875rem 0.5rem;
+    background-image: none;
+}
+.corte-pago-pill--ok { background: var(--s-ok-tint); color: var(--s-ok); border: 1px solid var(--s-ok-line); }
+.corte-pago-pill--pending { background: var(--s-warn-tint); color: var(--s-warn); border: 1px solid var(--s-warn-line); }
+
+.remove-btn,
+.subpesaje-actions .btn { min-height: 36px; }
+
+/* Evidence grid keeps its layout, loses the decoration. */
+.evidence-item,
+.extra-evidence-item,
+.evidence-picker-card {
+    background: var(--s-surface);
+    border: 1px solid var(--s-line);
+    border-radius: var(--s-r-sm);
+    box-shadow: none;
+}
+.evid-thumb,
+.evidence-media,
+.extra-evidence-thumb { border-radius: var(--s-r-sm); background: var(--s-n100); }
+
+.evidence-picker-backdrop { background: rgba(19, 26, 36, 0.5); }
+.evidence-picker-modal { border-radius: var(--s-r-lg); box-shadow: var(--s-e-3); }
+
+/* ==========================================================================
+   16. WORKER NOTE FORM — the one screen used on a phone all day
+   ========================================================================== */
+
+.note-step-header,
+.s-step-head {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    margin-bottom: var(--s-3);
+    padding-bottom: var(--s-3);
+    border-bottom: 1px solid var(--s-line);
+}
+
+.s-step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: var(--s-r-pill);
+    background: var(--s-p500);
+    color: var(--s-n0);
+    font-family: var(--s-font-display);
+    font-size: var(--s-fs-sm);
+    font-weight: 700;
+    flex: 0 0 auto;
+}
+
+.note-step-title,
+.s-step-title {
+    font-family: var(--s-font-display);
+    font-size: var(--s-fs-lg);
+    font-weight: 600;
+    margin: 0;
+    color: var(--s-n900);
+}
+
+/* A weighing row is a horizontal instrument reading, not six stacked cards. */
+.subpesaje-group {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+    align-items: end;
+    gap: var(--s-2);
+    padding: var(--s-3);
+    background: var(--s-surface);
+    border: 1px solid var(--s-line);
+    border-radius: var(--s-r-sm);
+    margin-bottom: var(--s-2);
+}
+.subpesaje-group .form-label { font-size: var(--s-fs-micro); margin-bottom: 2px; }
+/* The legacy sheet gave these a 140px floor for a flex row; in a grid that
+   floor overflows the columns on a phone. */
+.subpesaje-group .form-control { min-width: 0; }
+.subpesaje-neto { background: var(--s-sunken); font-weight: 600; }
+.subpesaje-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-3);
+    flex-wrap: wrap;
+}
+
+/* Photo control + its status read as one unit, kept clear of the destructive
+   button by the space-between above. */
+.subpesaje-actions__photo {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+    flex-wrap: wrap;
+}
+
+/* The legacy sheet stretched every control inside a weighing row to full
+   width, which turned the actions row into a three-deep stack on a phone. */
+.subpesaje-group .subpesaje-actions .btn,
+.subpesaje-group .subpesaje-actions .evid-label {
+    width: auto;
+    min-width: 0;
+}
+.subpesaje-actions .evid-label {
+    display: inline;
+    margin-bottom: 0;
+    border: 0;
+    background: none;
+    letter-spacing: 0;
+    text-transform: none;
+    font-size: var(--s-fs-sm);
+    color: inherit;
+}
+.subpesaje-actions .evid-label.is-ready { color: var(--s-ok); }
+.subpesaje-actions .evid-label.is-error { color: var(--s-bad); }
+.subpesaje-actions .evid-label.is-uploading { color: var(--s-p600); }
+.subpesaje-actions .btn { min-height: 40px; }
+.subpesaje-actions .evid-thumb { width: 34px; height: 34px; }
+
+@media (max-width: 380px) {
+    .subpesaje-group { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ==========================================================================
+   17. LOGIN
+   ========================================================================== */
+
+.s-auth {
+    min-height: calc(100dvh - var(--s-navbar-h));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--s-6) var(--s-4);
+}
+
+.s-auth__card {
+    width: min(420px, 100%);
+    background: var(--s-surface);
+    border: 1px solid var(--s-line);
+    border-radius: var(--s-r-lg);
+    box-shadow: var(--s-e-2);
+    padding: var(--s-8);
+}
+
+.s-auth__brand {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    margin-bottom: var(--s-6);
+}
+.s-auth__wordmark {
+    font-family: var(--s-font-display);
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+/* Password field with a reveal control that keeps a 44px hit area. */
+.s-password { position: relative; }
+.s-password .form-control { padding-right: 2.875rem; }
+.s-password__toggle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    height: 100%;
+    width: 2.75rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: 0;
+    color: var(--s-n500);
+    cursor: pointer;
+    border-radius: 0 var(--s-r-sm) var(--s-r-sm) 0;
+}
+.s-password__toggle:hover { color: var(--s-n800); }
+.s-password__toggle[aria-pressed="true"] { color: var(--s-p600); }
+
+@media (max-width: 575.98px) {
+    .s-auth { align-items: flex-start; padding-top: var(--s-8); }
+    .s-auth__card { padding: var(--s-6) var(--s-5); border-radius: var(--s-r-md); }
+}
+
+/* ==========================================================================
+   18. UTILITIES
+   ========================================================================== */
+
+.s-stack   { display: flex; flex-direction: column; gap: var(--s-4); }
+.s-stack-2 { display: flex; flex-direction: column; gap: var(--s-2); }
+.s-row     { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.s-between { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-3); }
+.s-grow    { flex: 1 1 auto; min-width: 0; }
+.s-truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.s-scroll-x {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+
+/* Horizontal chip rail — used for filter pills on phones. */
+@media (max-width: 767.98px) {
+    .s-rail {
+        display: flex;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        gap: var(--s-2);
+        padding-bottom: var(--s-2);
+        margin-inline: calc(var(--s-4) * -1);
+        padding-inline: var(--s-4);
+        scrollbar-width: none;
+    }
+    .s-rail::-webkit-scrollbar { display: none; }
+    .s-rail > * { flex: 0 0 auto; }
+}
+
+/* ==========================================================================
+   19. RESPONSIVE CORRECTIONS
+   ========================================================================== */
+
+@media (max-width: 991.98px) {
+    :root { --s-fs-2xl: 1.5rem; }
+}
+
+@media (max-width: 767.98px) {
+    .page-shell,
+    .page-shell-notes { padding-top: var(--s-4); }
+
+    /* Nothing may push the viewport sideways on a phone. */
+    body { overflow-x: hidden; }
+
+    .s-page-head { margin-bottom: var(--s-4); }
+
+    .row > [class*="col-"] { min-width: 0; }
+
+    /* Two-column workspaces that were never given phone behaviour. The worst
+       offender declared a 320px minimum sidebar, which left the main column a
+       few pixels wide and rendered its text one character per line. */
+    .note-workspace-grid,
+    .note-payment-panels,
+    .note-comments-grid,
+    .note-adjust-layout,
+    .note-adjust-form-grid,
+    .entity-form-grid,
+    .user-form-grid,
+    .notes-toolbar-grid,
+    .notes-attention-grid,
+    .cash-count-sheet,
+    .s-form-grid,
+    .s-form-grid--2,
+    .s-defs { grid-template-columns: 1fr !important; }
+
+    /* Fixed three-column strips become two so figures stay legible. */
+    .note-adjust-preview-grid,
+    .note-edit-impact-grid,
+    .note-return-summary-grid,
+    .evidence-meta-grid,
+    .notes-deadline-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+
+    /* Any remaining grid must not demand more width than the screen has. */
+    [class*="-grid"] > * { min-width: 0; }
+
+    .s-filters { padding: var(--s-3); gap: var(--s-2); }
+    .s-filters__field,
+    .s-filters__field--wide { flex: 1 1 100%; }
+    .s-filters__actions { width: 100%; }
+    .s-filters__actions .btn { flex: 1 1 auto; }
+}
+
+@media (max-width: 575.98px) {
+    .s-page-title { font-size: 1.375rem; }
+    .card-body { padding: var(--s-4); }
+    .s-auth__card { box-shadow: none; }
+}
+
+/* ==========================================================================
+   20. ACCESSIBILITY & PRINT
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+.s-visually-hidden,
+.visually-hidden-focusable:not(:focus):not(:focus-within) {
+    position: absolute !important;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.s-skip-link {
+    position: absolute;
+    left: var(--s-4);
+    top: -60px;
+    z-index: 2000;
+    background: var(--s-p600);
+    color: var(--s-n0);
+    padding: 0.625rem var(--s-4);
+    border-radius: var(--s-r-sm);
+    font-weight: 600;
+    transition: top var(--s-dur) var(--s-ease);
+}
+.s-skip-link:focus { top: var(--s-2); color: var(--s-n0); text-decoration: none; }
+
+@media print {
+    .navbar,
+    .nav-drawer,
+    .nav-overlay,
+    .mobile-dock,
+    .footer,
+    .floating-table-scrollbar,
+    .s-page-head__actions,
+    .s-filters,
+    .s-filters-collapse,
+    .btn { display: none !important; }
+
+    body { background: #fff; font-size: 11pt; }
+    .page-shell { max-width: none; padding: 0; }
+    .card, .s-card, .table-responsive { border: 1px solid #999; break-inside: avoid; }
+    .table { font-size: 9pt; }
+    .table > thead > tr > th { background: #eee !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    a { color: inherit; text-decoration: none; }
+}

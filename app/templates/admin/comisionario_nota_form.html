@@ -1,113 +1,124 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, icon %}
 
-{% block title %}Nueva nota de comision &middot; Admin{% endblock %}
+{% block title %}Nueva nota de comisión &middot; Admin{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Comisiones</p>
-        <h1 class="h4 text-white mb-0">Nueva nota de comision</h1>
-    </div>
-    <a href="/web/admin/comisionarios/notas" class="btn btn-outline-secondary btn-sm">Volver</a>
-</div>
+{% call page_header('Nueva nota de comisión', eyebrow='Relaciones',
+                    sub='Material, kilos y precio que se le liquidan al comisionario en su sucursal.') %}
+    <a href="/web/admin/comisionarios/notas" class="btn btn-outline-secondary">Volver</a>
+{% endcall %}
 
 {% if error %}
     <div class="alert alert-danger py-2 small">{{ error }}</div>
 {% endif %}
 
-<div class="card hover-lift">
+<div class="card">
     <div class="card-body">
-        <form method="post" action="/web/admin/comisionarios/notas/nueva" class="d-grid gap-3">
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label">Comisionario</label>
-                    <select class="form-select" id="comisionarioSelect" name="comisionario_id" required>
-                        <option value="">Selecciona comisionario</option>
-                        {% for c in comisionarios %}
-                            <option
-                                value="{{ c.id }}"
-                                data-sucursal-id="{{ c.sucursal_id }}"
-                                data-sucursal-label="{{ c.sucursal.nombre if c.sucursal else '' }}"
-                                {% if form_comisionario_id|string == c.id|string %}selected{% endif %}
-                            >
-                                {{ c.nombre_completo }}{% if c.sucursal %} · {{ c.sucursal.nombre }}{% endif %}
-                            </option>
-                        {% endfor %}
-                    </select>
+        <form method="post" action="/web/admin/comisionarios/notas/nueva" data-submit-once="1">
+            <fieldset class="s-fieldset">
+                <legend>Comisionario</legend>
+                <div class="s-form-grid">
+                    <div>
+                        <label class="form-label" for="comisionarioSelect">Comisionario <span class="s-req" aria-hidden="true">*</span></label>
+                        <select class="form-select" id="comisionarioSelect" name="comisionario_id" required>
+                            <option value="">Selecciona comisionario</option>
+                            {% for c in comisionarios %}
+                                <option
+                                    value="{{ c.id }}"
+                                    data-sucursal-id="{{ c.sucursal_id }}"
+                                    data-sucursal-label="{{ c.sucursal.nombre if c.sucursal else '' }}"
+                                    {% if form_comisionario_id|string == c.id|string %}selected{% endif %}
+                                >
+                                    {{ c.nombre_completo }}{% if c.sucursal %} · {{ c.sucursal.nombre }}{% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <span class="s-def__label">Sucursal contable</span>
+                        <span class="s-def__value" id="comisionarioSucursalLabel">{% for s in sucursales %}{% if form_sucursal_id|string == s.id|string %}{{ s.nombre }}{% endif %}{% endfor %}</span>
+                        <input type="hidden" id="comisionarioSucursalId" name="sucursal_id" value="{{ form_sucursal_id }}">
+                        <p class="form-text">Se asigna automáticamente desde el comisionario. La nota impactará el saldo de esa sucursal.</p>
+                    </div>
+                    <div>
+                        <label class="form-label" for="comentario">Comentario</label>
+                        <textarea class="form-control" id="comentario" name="comentario" rows="2" placeholder="Opcional">{{ form_comentario or '' }}</textarea>
+                    </div>
                 </div>
-                <div class="col-md-6">
-                    <label class="form-label">Sucursal contable</label>
-                    <input
-                        class="form-control"
-                        id="comisionarioSucursalLabel"
-                        type="text"
-                        value="{% for s in sucursales %}{% if form_sucursal_id|string == s.id|string %}{{ s.nombre }}{% endif %}{% endfor %}"
-                        placeholder="Se asigna automaticamente desde el comisionario"
-                        readonly
-                    >
-                    <input type="hidden" id="comisionarioSucursalId" name="sucursal_id" value="{{ form_sucursal_id }}">
-                    <div class="form-text">La nota impactara el saldo de la sucursal asignada al comisionario.</div>
-                </div>
-            </div>
+            </fieldset>
 
-            <div class="row g-3">
-                <div class="col-12">
-                    <label class="form-label">Comentario</label>
-                    <input class="form-control" name="comentario" value="{{ form_comentario or '' }}" placeholder="Opcional">
-                </div>
-            </div>
-
-            <div class="table-responsive">
-                <table class="table table-sm align-middle mb-0">
-                    <thead>
-                    <tr>
-                        <th>Material</th>
-                        <th class="text-end">Kg neto</th>
-                        <th class="text-end">Precio/kg</th>
-                        <th class="text-end">Subtotal</th>
-                        <th></th>
-                    </tr>
-                    </thead>
-                    <tbody id="materialRows">
-                    {% for row in form_rows %}
+            <fieldset class="s-fieldset">
+                <legend>Materiales</legend>
+                <div class="table-responsive">
+                    <table class="table align-middle">
+                        <thead>
                         <tr>
-                            <td>
-                                <select class="form-select form-select-sm material-select" name="material_id">
-                                    <option value="">Selecciona material</option>
-                                    {% for m in materiales %}
-                                        <option value="{{ m.id }}" {% if row.material_id|string == m.id|string %}selected{% endif %}>
-                                            {{ m.nombre }}
-                                        </option>
-                                    {% endfor %}
-                                </select>
-                            </td>
-                            <td>
-                                <input class="form-control form-control-sm text-end kg-input" type="number" step="0.001" min="0" name="kg_neto" value="{{ row.kg_neto or '' }}">
-                            </td>
-                            <td>
-                                <input class="form-control form-control-sm text-end precio-input" type="number" step="0.00001" min="0" name="precio_kg" value="{{ row.precio_por_kg or '' }}">
-                            </td>
-                            <td class="text-end subtotal-cell">$0.00</td>
-                            <td class="text-end">
-                                <button type="button" class="btn btn-sm btn-outline-danger remove-row">Quitar</button>
-                            </td>
+                            <th data-title-col>Material <span class="s-req" aria-hidden="true">*</span></th>
+                            <th class="text-end">Kg neto</th>
+                            <th class="text-end">Precio/kg</th>
+                            <th class="text-end">Subtotal</th>
+                            <th><span class="s-visually-hidden">Acciones</span></th>
                         </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-
-            <div class="d-flex flex-wrap gap-3 align-items-center justify-content-between">
-                <button type="button" class="btn btn-outline-primary btn-sm" id="addRowBtn">Agregar material</button>
-                <div class="text-muted small">
-                    Total kg: <strong id="totalKg">0.00</strong> &middot;
-                    Total $: <strong id="totalMonto">0.00</strong>
+                        </thead>
+                        <tbody id="materialRows">
+                        {% for row in form_rows %}
+                            <tr>
+                                <td>
+                                    <select class="form-select form-select-sm material-select" name="material_id" aria-label="Material">
+                                        <option value="">Selecciona material</option>
+                                        {% for m in materiales %}
+                                            <option value="{{ m.id }}" {% if row.material_id|string == m.id|string %}selected{% endif %}>
+                                                {{ m.nombre }}
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                </td>
+                                <td class="text-end">
+                                    <input class="form-control form-control-sm text-end kg-input" type="number" step="0.001" min="0" name="kg_neto" aria-label="Kg neto" value="{{ row.kg_neto or '' }}">
+                                </td>
+                                <td class="text-end">
+                                    <input class="form-control form-control-sm text-end precio-input" type="number" step="0.00001" min="0" name="precio_kg" aria-label="Precio por kg" value="{{ row.precio_por_kg or '' }}">
+                                </td>
+                                <td class="text-end subtotal-cell">$0.00</td>
+                                <td>
+                                    <span class="s-actions">
+                                        <button type="button" class="btn btn-sm btn-outline-danger remove-row"
+                                                data-confirm="¿Eliminar este material de la nota?">
+                                            {{ icon('trash', 's-icon--sm') }} Eliminar
+                                        </button>
+                                    </span>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
-            </div>
 
-            <div class="d-flex gap-2">
-                <button type="submit" class="btn btn-primary">Guardar nota</button>
+                <div class="mt-3">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="addRowBtn">
+                        {{ icon('plus', 's-icon--sm') }} Agregar material
+                    </button>
+                </div>
+
+                <div class="s-subpanel mt-3">
+                    <p class="s-section-label">Total de la nota</p>
+                    <div class="s-stack-2">
+                        <div class="s-between">
+                            <span class="text-muted small">Total kg</span>
+                            <strong id="totalKg" class="s-num">0.00</strong>
+                        </div>
+                        <div class="s-between">
+                            <span class="text-muted small">Total $</span>
+                            <strong id="totalMonto" class="s-money">0.00</strong>
+                        </div>
+                    </div>
+                </div>
+            </fieldset>
+
+            <div class="s-form-actions">
                 <a href="/web/admin/comisionarios/notas" class="btn btn-outline-secondary">Cancelar</a>
+                <button type="submit" class="btn btn-primary" data-loading-text="Guardando…">Crear nota de comisión</button>
             </div>
         </form>
     </div>
@@ -116,22 +127,27 @@
 <template id="materialRowTemplate">
     <tr>
         <td>
-            <select class="form-select form-select-sm material-select" name="material_id">
+            <select class="form-select form-select-sm material-select" name="material_id" aria-label="Material">
                 <option value="">Selecciona material</option>
                 {% for m in materiales %}
                     <option value="{{ m.id }}">{{ m.nombre }}</option>
                 {% endfor %}
             </select>
         </td>
-        <td>
-            <input class="form-control form-control-sm text-end kg-input" type="number" step="0.001" min="0" name="kg_neto">
+        <td class="text-end">
+            <input class="form-control form-control-sm text-end kg-input" type="number" step="0.001" min="0" name="kg_neto" aria-label="Kg neto">
         </td>
-        <td>
-            <input class="form-control form-control-sm text-end precio-input" type="number" step="0.00001" min="0" name="precio_kg">
+        <td class="text-end">
+            <input class="form-control form-control-sm text-end precio-input" type="number" step="0.00001" min="0" name="precio_kg" aria-label="Precio por kg">
         </td>
         <td class="text-end subtotal-cell">$0.00</td>
-        <td class="text-end">
-            <button type="button" class="btn btn-sm btn-outline-danger remove-row">Quitar</button>
+        <td>
+            <span class="s-actions">
+                <button type="button" class="btn btn-sm btn-outline-danger remove-row"
+                        data-confirm="¿Eliminar este material de la nota?">
+                    {{ icon('trash', 's-icon--sm') }} Eliminar
+                </button>
+            </span>
         </td>
     </tr>
 </template>
@@ -145,7 +161,7 @@
         const totalMontoEl = document.getElementById('totalMonto');
         const comisionarioSelect = document.getElementById('comisionarioSelect');
         const sucursalIdInput = document.getElementById('comisionarioSucursalId');
-        const sucursalLabelInput = document.getElementById('comisionarioSucursalLabel');
+        const sucursalLabelEl = document.getElementById('comisionarioSucursalLabel');
 
         function parseNumber(val) {
             const num = parseFloat(val);
@@ -179,7 +195,7 @@
                 totalMonto += subtotal;
             });
             totalKgEl.textContent = formatNumber(totalKg, 2);
-            totalMontoEl.textContent = formatNumber(totalMonto, 2);
+            totalMontoEl.textContent = formatMoney(totalMonto);
         }
 
         function attachRowListeners(row) {
@@ -197,14 +213,14 @@
         }
 
         function updateComisionarioSucursal() {
-            if (!comisionarioSelect || !sucursalIdInput || !sucursalLabelInput) {
+            if (!comisionarioSelect || !sucursalIdInput || !sucursalLabelEl) {
                 return;
             }
             const selected = comisionarioSelect.options[comisionarioSelect.selectedIndex];
             const sucursalId = selected?.dataset?.sucursalId || '';
             const sucursalLabel = selected?.dataset?.sucursalLabel || '';
             sucursalIdInput.value = sucursalId;
-            sucursalLabelInput.value = sucursalLabel;
+            sucursalLabelEl.textContent = sucursalLabel;
         }
 
         if (addBtn && template) {

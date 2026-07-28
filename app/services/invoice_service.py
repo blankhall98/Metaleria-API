@@ -338,7 +338,7 @@ def build_comisionario_nota_pdf(
     generated_at = generated_at or datetime.utcnow()
     issue_date = format_datetime_local(generated_at)
 
-    header_title = "NOTA DE COMISION"
+    header_title = "NOTA DE COMISIÓN"
     sucursal_name = sucursal.nombre if sucursal else "-"
     sucursal_address = sucursal.direccion if sucursal and sucursal.direccion else "-"
     folio_label = f"COM-{nota.id}"
@@ -352,7 +352,7 @@ def build_comisionario_nota_pdf(
     pdf.text(left, top, "SCRAP360", size=18, font="F2")
     pdf.text(left, top - 18, f"Sucursal: {sucursal_name}", size=9)
     pdf.text(left, top - 30, f"Direccion: {sucursal_address}", size=9)
-    pdf.text(left, top - 42, "Operacion: Comision", size=9)
+    pdf.text(left, top - 42, "Operación: Comisión", size=9)
 
     pdf.text(380, top, header_title, size=14, font="F2")
     pdf.text(380, top - 18, f"Folio: {folio_label}", size=9)

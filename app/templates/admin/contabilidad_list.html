@@ -1,117 +1,135 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
+{% from "_macros.html" import page_header, icon, stat, badge, money, empty_row %}
 
-{% block title %}Log contable{% endblock %}
+{% block title %}Contabilidad{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Contabilidad</p>
-        <h1 class="h4 text-white mb-0">Movimientos contables</h1>
-    </div>
+{% set MOV_TIPO = {
+    'COMPRA': ('Compra', 'info'),
+    'VENTA': ('Venta', 'info'),
+    'AJUSTE': ('Ajuste', 'warn'),
+    'PAGO': ('Pago', 'ok'),
+    'PAGO COMPRA': ('Pago de compra', 'ok'),
+    'PAGO VENTA': ('Pago de venta', 'ok'),
+    'PAGO COMISION': ('Pago de comisión', 'ok'),
+    'REVERSO': ('Reverso', 'bad'),
+    'REVERSO COMPRA': ('Reverso de compra', 'bad'),
+    'REVERSO VENTA': ('Reverso de venta', 'bad'),
+    'REVERSO COMISION': ('Reverso de comisión', 'bad'),
+    'REVERSO PAGO': ('Reverso de pago', 'bad'),
+    'REVERSO PAGO COMPRA': ('Reverso de pago de compra', 'bad'),
+    'REVERSO PAGO VENTA': ('Reverso de pago de venta', 'bad'),
+    'REVERSO PAGO COMISION': ('Reverso de pago de comisión', 'bad'),
+    'RESTAURACION': ('Restauración', 'muted'),
+    'RESTAURACION COMPRA': ('Restauración de compra', 'muted'),
+    'RESTAURACION VENTA': ('Restauración de venta', 'muted'),
+    'RESTAURACION COMISION': ('Restauración de comisión', 'muted'),
+    'RESTAURACION PAGO': ('Restauración de pago', 'muted'),
+    'RESTAURACION PAGO COMPRA': ('Restauración de pago de compra', 'muted'),
+    'RESTAURACION PAGO VENTA': ('Restauración de pago de venta', 'muted'),
+    'RESTAURACION PAGO COMISION': ('Restauración de pago de comisión', 'muted'),
+} %}
+{% set MOV_METODO = {
+    'efectivo': 'Efectivo',
+    'transferencia': 'Transferencia',
+    'cheque': 'Cheque',
+    'cheques': 'Cheques',
+} %}
+
+{% call page_header('Movimientos contables', eyebrow='Finanzas',
+                    sub='Saldos netos por cobrar y por pagar, y la bitácora de cada movimiento del período.') %}
+{% endcall %}
+
+<div class="s-stats">
+    {{ stat('Por cobrar neto de clientes', money(neto_por_cobrar, 'plain'),
+            'Por cobrar menos el saldo a favor de clientes') }}
+    {{ stat('Por pagar neto a proveedores', money(neto_por_pagar, 'plain'),
+            'Por pagar menos lo que está a favor de la empresa, más comisiones') }}
+    {{ stat('Saldo neto ajustado', money(saldo_neto, 'plain'),
+            'Por cobrar neto menos por pagar neto', 'info') }}
+    {{ stat('Notas consideradas', notas_consideradas, 'Alcance: ' ~ saldo_scope) }}
 </div>
 
-<div class="card hover-lift mb-3">
+<div class="card mb-3">
     <div class="card-body">
-        <div class="d-flex align-items-center gap-2 mb-2">
-            <span class="chip-strong">Resumen contable</span>
-            <span class="text-muted small">Alcance: {{ saldo_scope }}</span>
-        </div>
-        <div class="note-meta-grid">
-            <div class="note-meta-item">
-                <span class="note-meta-label">Por cobrar neto clientes</span>
-                {% if neto_por_cobrar >= 0 %}
-                    <strong class="text-success">${{ "{:,.2f}".format(neto_por_cobrar) }}</strong>
-                {% else %}
-                    <strong class="text-warning">-${{ "{:,.2f}".format(-neto_por_cobrar) }}</strong>
-                {% endif %}
-                <div class="note-meta-sub">Por cobrar clientes - saldo a favor de clientes</div>
-                <div class="note-meta-sub">Saldo a favor clientes: ${{ "{:,.2f}".format(saldo_favor_clientes) }}</div>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Por pagar neto proveedores</span>
-                {% if neto_por_pagar >= 0 %}
-                    <strong class="text-danger">${{ "{:,.2f}".format(neto_por_pagar) }}</strong>
-                {% else %}
-                    <strong class="text-warning">-${{ "{:,.2f}".format(-neto_por_pagar) }}</strong>
-                {% endif %}
-                <div class="note-meta-sub">Por pagar proveedores - proveedores a favor de la empresa + comisiones</div>
-                <div class="note-meta-sub">A favor de la empresa: ${{ "{:,.2f}".format(saldo_favor_empresa) }}</div>
-                <div class="note-meta-sub">Comisiones pendientes: ${{ "{:,.2f}".format(comisiones_pendientes) }}</div>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Saldo neto ajustado</span>
-                {% if saldo_neto >= 0 %}
-                    <strong class="text-success">+${{ "{:,.2f}".format(saldo_neto) }}</strong>
-                {% else %}
-                    <strong class="text-danger">-${{ "{:,.2f}".format(-saldo_neto) }}</strong>
-                {% endif %}
-                <div class="note-meta-sub">Por cobrar neto - por pagar neto</div>
-                <div class="note-meta-sub">Notas consideradas: {{ notas_consideradas }}</div>
-            </div>
-        </div>
-        <div class="text-muted small mt-2">
+        <h2 class="s-card-title">Cómo se calcula el resumen</h2>
+        <p class="s-card-sub">
             Neto = pendiente menos saldos a favor dentro del mismo tipo de entidad.
-            Los partners compra/venta se reclasifican segun su saldo neto.
-            Por pagar neto incluye comisiones pendientes. No incluye transferencias internas.
-            Los filtros de fecha aplican solo al log de movimientos.
+            Los socios de compra y venta se reclasifican según su saldo neto.
+            El por pagar neto incluye comisiones pendientes y no incluye transferencias internas.
+            Los filtros de fecha aplican sólo a la bitácora de movimientos.
+        </p>
+        <div class="s-subpanel">
+            <div class="s-defs">
+                <div>
+                    <span class="s-def__label">Saldo a favor de clientes</span>
+                    <span class="s-def__value">{{ money(saldo_favor_clientes) }}</span>
+                </div>
+                <div>
+                    <span class="s-def__label">A favor de la empresa</span>
+                    <span class="s-def__value">{{ money(saldo_favor_empresa) }}</span>
+                </div>
+                <div>
+                    <span class="s-def__label">Comisiones pendientes</span>
+                    <span class="s-def__value">{{ money(comisiones_pendientes) }}</span>
+                </div>
+            </div>
         </div>
     </div>
 </div>
 
-<div class="card hover-lift mb-3">
+<div class="card mb-3">
     <div class="card-body">
-        <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2">
-            <div>
-                <h2 class="h6 text-dark mb-1">Saldo por entidad</h2>
-                <div class="text-muted small">Selecciona un cliente o proveedor para ver su saldo e historial.</div>
-            </div>
-        </div>
-        <form class="row g-2 align-items-end mt-3" method="get">
-            <input type="hidden" name="sucursal_id" value="{{ sucursal_id or '' }}">
-            <input type="hidden" name="from" value="{{ date_from }}">
-            <input type="hidden" name="to" value="{{ date_to }}">
-            <input type="hidden" name="cuenta_id" value="{{ cuenta_id or '' }}">
-            <div class="col-lg-6 col-md-8">
-                <label class="form-label">Cliente o proveedor</label>
-                <select class="form-select" name="partner_key">
-                    <option value="">Selecciona una entidad</option>
-                    <optgroup label="Clientes">
-                        {% for c in clientes %}
-                            {% set key = "cliente:" ~ c.id %}
-                            <option value="{{ key }}" {% if partner_key == key %}selected{% endif %}>{{ c.nombre_completo }}</option>
-                        {% endfor %}
-                    </optgroup>
-                    <optgroup label="Proveedores">
-                        {% for p in proveedores %}
-                            {% set key = "proveedor:" ~ p.id %}
-                            <option value="{{ key }}" {% if partner_key == key %}selected{% endif %}>{{ p.nombre_completo }}{% if p.permite_ventas %} Â· compra y venta{% endif %}</option>
-                        {% endfor %}
-                    </optgroup>
-                </select>
-            </div>
-            <div class="col-lg-2 col-md-4 d-grid">
-                <button class="btn btn-outline-primary">Ver saldo</button>
-            </div>
-            <div class="col-lg-2 col-md-4 d-grid">
-                {% if partner_key %}
-                    <a class="btn btn-outline-secondary" href="/web/admin/contabilidad?sucursal_id={{ sucursal_id or '' }}&from={{ date_from }}&to={{ date_to }}">Limpiar</a>
-                {% endif %}
-            </div>
-        </form>
+        <h2 class="s-card-title">Saldo por entidad</h2>
+        <p class="s-card-sub">Selecciona un cliente o proveedor para ver su saldo y su historial.</p>
+
+        <details class="s-filters-collapse" open>
+            <summary>Buscar entidad</summary>
+            <form class="s-filters" method="get">
+                <input type="hidden" name="sucursal_id" value="{{ sucursal_id or '' }}">
+                <input type="hidden" name="from" value="{{ date_from }}">
+                <input type="hidden" name="to" value="{{ date_to }}">
+                <input type="hidden" name="cuenta_id" value="{{ cuenta_id or '' }}">
+                <div class="s-filters__field s-filters__field--wide">
+                    <label for="f-partner" class="form-label">Cliente o proveedor</label>
+                    <select class="form-select" id="f-partner" name="partner_key">
+                        <option value="">Selecciona una entidad</option>
+                        <optgroup label="Clientes">
+                            {% for c in clientes %}
+                                {% set key = "cliente:" ~ c.id %}
+                                <option value="{{ key }}" {% if partner_key == key %}selected{% endif %}>{{ c.nombre_completo }}</option>
+                            {% endfor %}
+                        </optgroup>
+                        <optgroup label="Proveedores">
+                            {% for p in proveedores %}
+                                {% set key = "proveedor:" ~ p.id %}
+                                <option value="{{ key }}" {% if partner_key == key %}selected{% endif %}>{{ p.nombre_completo }}{% if p.permite_ventas %} &middot; compra y venta{% endif %}</option>
+                            {% endfor %}
+                        </optgroup>
+                    </select>
+                </div>
+                <div class="s-filters__actions">
+                    <button class="btn btn-outline-primary" type="submit">Filtrar</button>
+                    {% if partner_key %}
+                        <a class="btn btn-outline-secondary" href="/web/admin/contabilidad?sucursal_id={{ sucursal_id or '' }}&from={{ date_from }}&to={{ date_to }}">Limpiar</a>
+                    {% endif %}
+                </div>
+            </form>
+        </details>
 
         {% if partner_error %}
             <div class="alert alert-danger py-2 small mt-2 mb-0">{{ partner_error }}</div>
         {% endif %}
 
         {% if partner_context %}
-            <div class="border-top pt-3 mt-3">
-                <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2">
+            <div class="s-subpanel mt-3">
+                <div class="s-between">
                     <div>
-                        <div class="text-uppercase text-muted small mb-1">{{ partner_context.partner_label }}</div>
+                        <span class="s-def__label">{{ partner_context.partner_label }}</span>
                         <div class="fw-semibold">
                             {{ partner_context.partner.nombre_completo }}
                             {% if partner_context.partner_label == 'Proveedor' and partner_context.provider_direct_sales_enabled %}
-                                <span class="badge bg-primary ms-2">Compra y venta</span>
+                                {{ badge('Compra y venta', 'info') }}
                             {% endif %}
                         </div>
                         <div class="text-muted small">ID {{ partner_context.partner.id }} &middot; {{ partner_context.tipo_operacion_label }}</div>
@@ -121,334 +139,292 @@
                             </div>
                         {% elif partner_context.partner_label == 'Proveedor' and partner_context.provider_direct_sales_enabled %}
                             <div class="text-muted small">
-                                Este proveedor tambien compra material directamente en el mismo perfil.
+                                Este proveedor también compra material directamente en el mismo perfil.
                                 {% if partner_context.provider_direct_sales_count %}
                                     Ventas directas registradas: {{ partner_context.provider_direct_sales_count }}.
                                 {% endif %}
                             </div>
                         {% endif %}
                     </div>
-                    <div class="d-flex gap-2">
-                        <a href="{{ partner_context.record_link }}" class="btn btn-sm btn-outline-primary">Record completo</a>
-                    </div>
+                    <a href="{{ partner_context.record_link }}" class="btn btn-sm btn-outline-secondary">Historial completo</a>
                 </div>
 
-                <div class="note-meta-grid mt-3">
+                <div class="s-defs mt-3">
                     {% if partner_context.unified_enabled %}
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Total compras aprobadas</span>
-                            <strong>${{ "{:,.2f}".format(partner_context.summary.total_compras or 0) }}</strong>
+                        <div>
+                            <span class="s-def__label">Total compras aprobadas</span>
+                            <span class="s-def__value">{{ money(partner_context.summary.total_compras) }}</span>
                         </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Total pagado compras</span>
-                            <strong>${{ "{:,.2f}".format(partner_context.summary.total_pagado_compras or 0) }}</strong>
+                        <div>
+                            <span class="s-def__label">Total pagado en compras</span>
+                            <span class="s-def__value">{{ money(partner_context.summary.total_pagado_compras) }}</span>
                         </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Saldo por pagar (compras)</span>
-                            <strong class="text-danger">${{ "{:,.2f}".format(partner_context.summary.saldo_pagar or 0) }}</strong>
+                        <div>
+                            <span class="s-def__label">Saldo por pagar (compras)</span>
+                            <span class="s-def__value">{{ money(partner_context.summary.saldo_pagar) }}</span>
                         </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Total ventas aprobadas</span>
-                            <strong>${{ "{:,.2f}".format(partner_context.summary.total_ventas or 0) }}</strong>
+                        <div>
+                            <span class="s-def__label">Total ventas aprobadas</span>
+                            <span class="s-def__value">{{ money(partner_context.summary.total_ventas) }}</span>
                         </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Total cobrado ventas</span>
-                            <strong>${{ "{:,.2f}".format(partner_context.summary.total_cobrado_ventas or 0) }}</strong>
+                        <div>
+                            <span class="s-def__label">Total cobrado en ventas</span>
+                            <span class="s-def__value">{{ money(partner_context.summary.total_cobrado_ventas) }}</span>
                         </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Saldo por cobrar (ventas)</span>
-                            <strong class="text-success">${{ "{:,.2f}".format(partner_context.summary.saldo_cobrar or 0) }}</strong>
+                        <div>
+                            <span class="s-def__label">Saldo por cobrar (ventas)</span>
+                            <span class="s-def__value">{{ money(partner_context.summary.saldo_cobrar) }}</span>
                         </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Ajustes proveedor</span>
-                            {% set ajustes_prov = partner_context.summary.ajustes_proveedor or 0 %}
-                            {% if ajustes_prov > 0 %}
-                                <strong class="text-danger">+${{ "{:,.2f}".format(ajustes_prov) }}</strong>
-                            {% elif ajustes_prov < 0 %}
-                                <strong class="text-success">-${{ "{:,.2f}".format(-ajustes_prov) }}</strong>
-                            {% else %}
-                                <strong>$0.00</strong>
-                            {% endif %}
+                        <div>
+                            <span class="s-def__label">Ajustes de proveedor</span>
+                            <span class="s-def__value">{{ money(partner_context.summary.ajustes_proveedor) }}</span>
                         </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Ajustes cliente</span>
-                            {% set ajustes_cli = partner_context.summary.ajustes_cliente or 0 %}
-                            {% if ajustes_cli > 0 %}
-                                <strong class="text-success">+${{ "{:,.2f}".format(ajustes_cli) }}</strong>
-                            {% elif ajustes_cli < 0 %}
-                                <strong class="text-danger">-${{ "{:,.2f}".format(-ajustes_cli) }}</strong>
-                            {% else %}
-                                <strong>$0.00</strong>
-                            {% endif %}
+                        <div>
+                            <span class="s-def__label">Ajustes de cliente</span>
+                            <span class="s-def__value">{{ money(partner_context.summary.ajustes_cliente) }}</span>
                         </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Saldo neto unificado</span>
-                            {% if partner_context.summary.saldo_neto >= 0 %}
-                                <strong class="text-danger">${{ "{:,.2f}".format(partner_context.summary.saldo_neto) }}</strong>
-                            {% else %}
-                                <strong class="text-success">-${{ "{:,.2f}".format(-partner_context.summary.saldo_neto) }}</strong>
-                            {% endif %}
+                        <div>
+                            <span class="s-def__label">Saldo neto unificado</span>
+                            <span class="s-def__value">{{ money(partner_context.summary.saldo_neto) }}</span>
                         </div>
                     {% else %}
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">{{ partner_context.total_facturado_label }}</span>
-                            <strong>${{ "{:,.2f}".format(partner_context.summary.total_facturado or 0) }}</strong>
+                        <div>
+                            <span class="s-def__label">{{ partner_context.total_facturado_label }}</span>
+                            <span class="s-def__value">{{ money(partner_context.summary.total_facturado) }}</span>
                         </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">{{ partner_context.total_pagado_label }}</span>
-                            <strong>${{ "{:,.2f}".format(partner_context.summary.total_pagado or 0) }}</strong>
+                        <div>
+                            <span class="s-def__label">{{ partner_context.total_pagado_label }}</span>
+                            <span class="s-def__value">{{ money(partner_context.summary.total_pagado) }}</span>
                         </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">{{ partner_context.saldo_pendiente_label }}</span>
-                            <strong class="text-danger">${{ "{:,.2f}".format(partner_context.summary.saldo_pendiente or 0) }}</strong>
+                        <div>
+                            <span class="s-def__label">{{ partner_context.saldo_pendiente_label }}</span>
+                            <span class="s-def__value">{{ money(partner_context.summary.saldo_pendiente) }}</span>
                         </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">{{ partner_context.saldo_favor_label }}</span>
-                            <strong class="text-success">${{ "{:,.2f}".format(partner_context.summary.saldo_favor or 0) }}</strong>
+                        <div>
+                            <span class="s-def__label">{{ partner_context.saldo_favor_label }}</span>
+                            <span class="s-def__value">{{ money(partner_context.summary.saldo_favor) }}</span>
                         </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Ajustes manuales</span>
-                            {% set ajustes_delta = partner_context.summary.ajustes_delta or 0 %}
-                            {% if ajustes_delta > 0 %}
-                                <strong class="text-danger">+${{ "{:,.2f}".format(ajustes_delta) }}</strong>
-                            {% elif ajustes_delta < 0 %}
-                                <strong class="text-success">-${{ "{:,.2f}".format(-ajustes_delta) }}</strong>
-                            {% else %}
-                                <strong>$0.00</strong>
-                            {% endif %}
+                        <div>
+                            <span class="s-def__label">Ajustes manuales</span>
+                            <span class="s-def__value">{{ money(partner_context.summary.ajustes_delta) }}</span>
                         </div>
                     {% endif %}
                 </div>
-                <div class="text-muted small mt-2">
+                <p class="s-card-sub mt-2 mb-0">
                     {% if partner_context.unified_enabled %}
                         Saldos unificados entre compras y ventas.
                     {% else %}
                         Saldos calculados con notas aprobadas y ajustes manuales.
                     {% endif %}
-                </div>
+                </p>
+            </div>
 
-                <div class="d-flex align-items-center justify-content-between mt-3">
-                    <h3 class="h6 text-dark mb-0">Historial de notas</h3>
-                    <div class="text-muted small">Total {{ partner_context.record_total_count }}</div>
-                </div>
-                <div class="table-scroll-shell mt-2">
-                <div class="table-responsive">
-                    <table class="table table-hover table-sm align-middle mb-0 data-table">
-                        <thead>
+            <h3 class="s-card-title mt-4">Historial de notas</h3>
+            <p class="s-card-sub">{{ partner_context.record_total_count }} nota{{ '' if partner_context.record_total_count == 1 else 's' }} en total.</p>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                    <tr>
+                        <th data-title-col>Folio</th>
+                        <th>Operación</th>
+                        <th>Estado</th>
+                        <th>Fecha</th>
+                        <th>Sucursal</th>
+                        <th class="text-end">Total</th>
+                        <th class="text-end">Pagado</th>
+                        <th class="text-end">Saldo pendiente</th>
+                        <th class="text-end">Saldo a favor</th>
+                        <th><span class="s-visually-hidden">Acciones</span></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for row in partner_context.record_rows %}
+                        {% set nota = row.nota %}
+                        {% set suc = sucursales_map.get(nota.sucursal_id) %}
                         <tr>
-                            <th>Folio</th>
-                            <th>Operacion</th>
-                            <th>Estado</th>
-                            <th>Fecha</th>
-                            <th>Sucursal</th>
-                            <th class="text-end">Total $</th>
-                            <th class="text-end">Pagado $</th>
-                            <th class="text-end">Saldo pendiente</th>
-                            <th class="text-end">Saldo a favor</th>
-                            <th></th>
+                            <td>
+                                <div class="fw-semibold">{{ row.folio }}</div>
+                                <div class="text-muted small">#{{ nota.id }}</div>
+                            </td>
+                            <td>
+                                <span class="notes-op-chip {{ 'buy' if nota.tipo_operacion.value == 'compra' else 'sale' }}">
+                                    {{ nota.tipo_operacion.value|capitalize }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if nota.estado.value == 'BORRADOR' %}
+                                    {{ badge('Borrador', 'muted') }}
+                                {% elif nota.estado.value == 'EN_REVISION' %}
+                                    {{ badge('En revisión', 'warn') }}
+                                {% elif nota.estado.value == 'APROBADA' %}
+                                    {{ badge('Aprobada', 'ok') }}
+                                {% else %}
+                                    {{ badge('Cancelada', 'bad') }}
+                                {% endif %}
+                            </td>
+                            <td>{{ nota.created_at|datetime_local if nota.created_at else "—" }}</td>
+                            <td>{{ suc.nombre if suc else "—" }}</td>
+                            <td class="text-end">{{ money(row.total) }}</td>
+                            <td class="text-end">{{ money(row.pagado) }}</td>
+                            <td class="text-end">
+                                {% if row.saldo_aplicable %}{{ money(row.saldo_pendiente) }}{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if row.saldo_aplicable %}{{ money(row.saldo_favor) }}{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td>
+                                <span class="s-actions">
+                                    <a href="/web/admin/notas/{{ nota.id }}" class="btn btn-sm btn-outline-secondary">Ver</a>
+                                </span>
+                            </td>
                         </tr>
-                        </thead>
-                        <tbody>
-                        {% for row in partner_context.record_rows %}
-                            {% set nota = row.nota %}
-                            {% set suc = sucursales_map.get(nota.sucursal_id) %}
-                            <tr>
-                                <td>
-                                    <div class="fw-semibold">{{ row.folio }}</div>
+                    {% else %}
+                        {{ empty_row(10, 'No hay notas para esta entidad.') }}
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <h3 class="s-card-title mt-4">Historial de pagos</h3>
+            <p class="s-card-sub">{{ partner_context.pagos|length }} pago{{ '' if partner_context.pagos|length == 1 else 's' }} registrado{{ '' if partner_context.pagos|length == 1 else 's' }}.</p>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th data-title-col>Nota</th>
+                        <th class="text-end">Monto</th>
+                        <th>Método</th>
+                        <th>Cuenta</th>
+                        <th>Usuario</th>
+                        <th>Comentario</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for pago in partner_context.pagos %}
+                        {% set nota = pago.nota %}
+                        {% set cuenta_txt = (pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or '')) %}
+                        <tr>
+                            <td>{{ pago.created_at|datetime_local if pago.created_at else "—" }}</td>
+                            <td>
+                                {% if nota %}
+                                    <div class="fw-semibold">{{ partner_context.folio_map.get(nota.id, '—') }}</div>
                                     <div class="text-muted small">#{{ nota.id }}</div>
-                                </td>
-                                <td>
-                                    <span class="notes-op-chip {{ 'buy' if nota.tipo_operacion.value == 'compra' else 'sale' }}">
-                                        {{ nota.tipo_operacion.value|capitalize }}
-                                    </span>
-                                </td>
-                                <td>
-                                    {% if nota.estado.value == 'BORRADOR' %}
-                                        <span class="badge bg-secondary">Borrador</span>
-                                    {% elif nota.estado.value == 'EN_REVISION' %}
-                                        <span class="badge bg-warning text-dark">En revision</span>
-                                    {% elif nota.estado.value == 'APROBADA' %}
-                                        <span class="badge bg-success">Aprobada</span>
-                                    {% else %}
-                                        <span class="badge bg-danger">Cancelada</span>
-                                    {% endif %}
-                                </td>
-                                <td>{{ nota.created_at|datetime_local if nota.created_at else "-" }}</td>
-                                <td>{{ suc.nombre if suc else "-" }}</td>
-                                <td class="text-end">${{ "{:,.2f}".format(row.total or 0) }}</td>
-                                <td class="text-end">${{ "{:,.2f}".format(row.pagado or 0) }}</td>
-                                <td class="text-end">
-                                    {% if row.saldo_aplicable %}
-                                        {% if row.saldo_pendiente > 0 %}
-                                            <span class="text-danger fw-semibold">${{ "{:,.2f}".format(row.saldo_pendiente) }}</span>
-                                        {% else %}
-                                            <span class="text-muted">$0.00</span>
-                                        {% endif %}
-                                    {% else %}
-                                        <span class="text-muted">-</span>
-                                    {% endif %}
-                                </td>
-                                <td class="text-end">
-                                    {% if row.saldo_aplicable %}
-                                        {% if row.saldo_favor > 0 %}
-                                            <span class="text-success fw-semibold">${{ "{:,.2f}".format(row.saldo_favor) }}</span>
-                                        {% else %}
-                                            <span class="text-muted">$0.00</span>
-                                        {% endif %}
-                                    {% else %}
-                                        <span class="text-muted">-</span>
-                                    {% endif %}
-                                </td>
-                                <td class="text-end">
-                                    <a href="/web/admin/notas/{{ nota.id }}" class="btn btn-sm btn-outline-primary">Ver nota</a>
-                                </td>
-                            </tr>
-                        {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                </div>
-                {% if partner_context.record_rows|length == 0 %}
-                    <p class="text-muted small mt-3 mb-0">No hay notas para esta entidad.</p>
-                {% endif %}
-
-                <div class="d-flex align-items-center justify-content-between mt-3">
-                    <h3 class="h6 text-dark mb-0">Historial de pagos</h3>
-                    <div class="text-muted small">Total {{ partner_context.pagos|length }}</div>
-                </div>
-                <div class="table-scroll-shell mt-2">
-                <div class="table-responsive">
-                    <table class="table table-hover table-sm align-middle mb-0 data-table">
-                        <thead>
-                        <tr>
-                            <th>Fecha</th>
-                            <th>Nota</th>
-                            <th class="text-end">Monto</th>
-                            <th>Metodo</th>
-                            <th>Cuenta</th>
-                            <th>Usuario</th>
-                            <th>Comentario</th>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">{{ money(pago.monto) }}</td>
+                            <td>
+                                {% if pago.metodo_pago %}
+                                    {{ badge(MOV_METODO.get(pago.metodo_pago|lower, pago.metodo_pago|capitalize), 'muted') }}
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>{% if cuenta_txt %}{{ cuenta_txt[:1]|upper }}{{ cuenta_txt[1:] }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                            <td>
+                                {% if pago.usuario %}
+                                    <div class="fw-semibold">{{ pago.usuario.nombre_completo or pago.usuario.username }}</div>
+                                    <div class="text-muted small">{{ pago.usuario.username }}</div>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-muted">{{ pago.comentario or "—" }}</td>
                         </tr>
-                        </thead>
-                        <tbody>
-                        {% for pago in partner_context.pagos %}
-                            {% set nota = pago.nota %}
-                            <tr>
-                                <td>{{ pago.created_at|datetime_local if pago.created_at else "-" }}</td>
-                                <td>
-                                    {% if nota %}
-                                        <div class="fw-semibold">{{ partner_context.folio_map.get(nota.id, '-') }}</div>
-                                        <div class="text-muted small">#{{ nota.id }}</div>
-                                    {% else %}
-                                        <span class="text-muted">-</span>
-                                    {% endif %}
-                                </td>
-                                <td class="text-end">${{ "{:,.2f}".format(pago.monto or 0) }}</td>
-                                <td>{{ pago.metodo_pago or "-" }}</td>
-                                <td>{{ pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or "-") }}</td>
-                                <td>
-                                    {% if pago.usuario %}
-                                        <div class="fw-semibold">{{ pago.usuario.nombre_completo or pago.usuario.username }}</div>
-                                        <div class="text-muted small">{{ pago.usuario.username }}</div>
-                                    {% else %}
-                                        <span class="text-muted">-</span>
-                                    {% endif %}
-                                </td>
-                                <td class="text-muted">{{ pago.comentario or "-" }}</td>
-                            </tr>
-                        {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                </div>
-                {% if partner_context.pagos|length == 0 %}
-                    <p class="text-muted small mt-3 mb-0">No hay pagos registrados.</p>
-                {% endif %}
+                    {% else %}
+                        {{ empty_row(7, 'No hay pagos registrados.') }}
+                    {% endfor %}
+                    </tbody>
+                </table>
             </div>
         {% endif %}
     </div>
 </div>
 
-<div class="card hover-lift">
-    <div class="card-body">
-        <form class="row g-2 align-items-end mb-3" method="get">
-            {% if partner_key %}
-                <input type="hidden" name="partner_key" value="{{ partner_key }}">
-            {% endif %}
-            {% if user.rol == 'super_admin' or (user.rol == 'admin' and sucursales|length > 1) %}
-                <div class="col-lg-3 col-md-4">
-                    <label class="form-label">Sucursal</label>
-                    <select class="form-select" name="sucursal_id">
-                        <option value="">Todas</option>
-                        {% for s in sucursales %}
-                            <option value="{{ s.id }}" {% if sucursal_id and sucursal_id == s.id %}selected{% endif %}>{{ s.nombre }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-            {% else %}
-                <div class="col-lg-3 col-md-4">
-                    <label class="form-label">Sucursal</label>
-                    {% set suc = sucursales|selectattr('id','equalto',sucursal_id)|list|first %}
-                    <div class="form-control-plaintext fw-semibold">{{ suc.nombre if suc else sucursal_id }}</div>
-                </div>
-            {% endif %}
-            <div class="col-lg-3 col-md-4">
-                <label class="form-label">Cuenta</label>
-                <select class="form-select" name="cuenta_id">
+<details class="s-filters-collapse" open>
+    <summary>Filtros de la bitácora</summary>
+    <form class="s-filters" method="get">
+        {% if partner_key %}
+            <input type="hidden" name="partner_key" value="{{ partner_key }}">
+        {% endif %}
+        {% if user.rol == 'super_admin' or (user.rol == 'admin' and sucursales|length > 1) %}
+            <div class="s-filters__field">
+                <label for="f-sucursal" class="form-label">Sucursal</label>
+                <select class="form-select" id="f-sucursal" name="sucursal_id">
                     <option value="">Todas</option>
-                    {% for c in cuentas %}
-                        <option value="{{ c.id }}" {% if cuenta_id and cuenta_id == c.id %}selected{% endif %}>
-                            {{ c.display_label }}
-                        </option>
+                    {% for s in sucursales %}
+                        <option value="{{ s.id }}" {% if sucursal_id and sucursal_id == s.id %}selected{% endif %}>{{ s.nombre }}</option>
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-lg-3 col-md-4">
-                <label class="form-label">Desde</label>
-                <input type="date" class="form-control" name="from" value="{{ date_from }}">
+        {% else %}
+            <div class="s-filters__field">
+                {% set suc = sucursales|selectattr('id','equalto',sucursal_id)|list|first %}
+                <span class="s-def__label">Sucursal</span>
+                <span class="s-def__value">{{ suc.nombre if suc else sucursal_id }}</span>
             </div>
-            <div class="col-lg-3 col-md-4">
-                <label class="form-label">Hasta</label>
-                <input type="date" class="form-control" name="to" value="{{ date_to }}">
-            </div>
-            <div class="col-md-2 d-grid">
-                <button class="btn btn-outline-primary">Filtrar</button>
-            </div>
-            <div class="col-md-3 d-grid">
-                <div class="d-flex gap-2">
-                    <select class="form-select" id="exportFormat">
-                        <option value="csv">CSV</option>
-                        <option value="xlsx">Excel</option>
-                        <option value="pdf">PDF</option>
-                    </select>
-                    <button type="button" class="btn btn-export w-100" onclick="exportContabilidad()">Exportar</button>
-                </div>
-            </div>
-            <div class="col-md-3 d-grid">
-                <div class="d-flex gap-2">
-                    <select class="form-select" id="reportFormat">
-                        <option value="xlsx">Reporte Excel</option>
-                        <option value="pdf">Reporte PDF</option>
-                    </select>
-                    <button type="button" class="btn btn-primary w-100" onclick="exportContabilidadReport()">Reporte</button>
-                </div>
-            </div>
-        </form>
-        {% if cuenta_error %}
-            <div class="alert alert-danger py-2 small mt-2 mb-0">{{ cuenta_error }}</div>
         {% endif %}
-        <div class="d-flex justify-content-end text-muted small mb-2">
-            Total firmado: <strong class="ms-1">${{ "{:,.2f}".format(total_filtrado or 0) }}</strong>
+        <div class="s-filters__field">
+            <label for="f-cuenta" class="form-label">Cuenta</label>
+            <select class="form-select" id="f-cuenta" name="cuenta_id">
+                <option value="">Todas</option>
+                {% for c in cuentas %}
+                    <option value="{{ c.id }}" {% if cuenta_id and cuenta_id == c.id %}selected{% endif %}>{{ c.display_label }}</option>
+                {% endfor %}
+            </select>
         </div>
-        <div class="table-scroll-shell">
+        <div class="s-filters__field">
+            <label for="f-from" class="form-label">Desde</label>
+            <input type="date" class="form-control" id="f-from" name="from" value="{{ date_from }}">
+        </div>
+        <div class="s-filters__field">
+            <label for="f-to" class="form-label">Hasta</label>
+            <input type="date" class="form-control" id="f-to" name="to" value="{{ date_to }}">
+        </div>
+        <div class="s-filters__actions">
+            <button class="btn btn-outline-primary" type="submit">Filtrar</button>
+        </div>
+    </form>
+</details>
+
+<div class="s-actions mb-3">
+    <label for="exportFormat" class="s-visually-hidden">Formato de exportación</label>
+    <select class="form-select form-select-sm" id="exportFormat">
+        <option value="csv">CSV</option>
+        <option value="xlsx">Excel</option>
+        <option value="pdf">PDF</option>
+    </select>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="exportContabilidad()">
+        {{ icon('download', 's-icon--sm') }} Exportar
+    </button>
+    <label for="reportFormat" class="s-visually-hidden">Formato del reporte</label>
+    <select class="form-select form-select-sm" id="reportFormat">
+        <option value="xlsx">Excel</option>
+        <option value="pdf">PDF</option>
+    </select>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="exportContabilidadReport()">
+        {{ icon('print', 's-icon--sm') }} Generar reporte
+    </button>
+</div>
+
+{% if cuenta_error %}
+    <div class="alert alert-danger py-2 small mb-3">{{ cuenta_error }}</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-body">
+        <h2 class="s-card-title">Bitácora de movimientos</h2>
+        <p class="s-card-sub">Total neto del período filtrado: <strong>{{ money(total_filtrado, 'plain') }}</strong>.</p>
         <div class="table-responsive">
-            <table class="table table-hover table-sm align-middle mb-0 data-table">
+            <table class="table table-hover align-middle">
                 <thead>
                 <tr>
                     <th>ID</th>
-                    <th>Tipo</th>
+                    <th data-title-col>Tipo</th>
                     <th>Naturaleza</th>
-                    <th>Monto</th>
+                    <th class="text-end">Monto</th>
                     <th>Nota</th>
                     <th>Cuenta</th>
                     <th>Sucursal</th>
@@ -458,31 +434,49 @@
                 </thead>
                 <tbody>
                 {% for m in movimientos %}
+                    {% set tipo_meta = MOV_TIPO.get(m.tipo) %}
                     <tr>
                         <td>{{ m.id }}</td>
-                        <td>{{ m.tipo }}</td>
-                        <td>{{ m.naturaleza }}</td>
-                        <td>${{ "{:,.2f}".format(m.monto_firmado or 0) }}</td>
+                        <td>
+                            {% if tipo_meta %}
+                                {{ badge(tipo_meta[0], tipo_meta[1]) }}
+                            {% else %}
+                                {{ badge((m.tipo or '—')|lower|capitalize, 'muted') }}
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if m.naturaleza == 'INGRESO' %}
+                                {{ badge('Ingreso', 'ok') }}
+                            {% elif m.naturaleza == 'EGRESO' %}
+                                {{ badge('Egreso', 'muted') }}
+                            {% elif m.naturaleza %}
+                                {{ badge(m.naturaleza|lower|capitalize, 'muted') }}
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">{{ money(m.monto_firmado) }}</td>
                         <td>
                             {% if m.nota_id %}
                                 <a href="/web/admin/notas/{{ m.nota_id }}">#{{ m.nota_id }}</a>
                             {% else %}
-                                -
+                                —
                             {% endif %}
                         </td>
-                        <td>{{ m.cuenta_financiera or '-' }}</td>
-                        <td>{{ m.sucursal }}</td>
-                        <td>{{ m.usuario_id }}</td>
-                        <td>{{ m.created_at|datetime_local if m.created_at else "-" }}</td>
+                        <td>
+                            {% set cuenta_txt = m.cuenta_financiera or '' %}
+                            {% if cuenta_txt %}{{ cuenta_txt[:1]|upper }}{{ cuenta_txt[1:] }}{% else %}—{% endif %}
+                        </td>
+                        <td>{{ m.sucursal if m.sucursal and m.sucursal != '-' else '—' }}</td>
+                        <td>{{ m.usuario_id if m.usuario_id and m.usuario_id != '-' else '—' }}</td>
+                        <td>{{ m.created_at|datetime_local if m.created_at else "—" }}</td>
                     </tr>
+                {% else %}
+                    {{ empty_row(9, 'Aún no hay movimientos para los filtros aplicados.') }}
                 {% endfor %}
                 </tbody>
             </table>
         </div>
-        </div>
-        {% if movimientos|length == 0 %}
-            <p class="text-muted small mt-3 mb-0">AÃºn no hay movimientos.</p>
-        {% endif %}
     </div>
 </div>
 <script>
@@ -500,4 +494,3 @@
     }
 </script>
 {% endblock %}
-

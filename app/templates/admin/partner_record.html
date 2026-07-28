@@ -1,53 +1,42 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
+{% from "_macros.html" import page_header, icon, stat, badge, money, kg, empty %}
 
-{% block title %}Record {{ partner_label }} {{ partner.nombre_completo }}{% endblock %}
+{% block title %}{{ partner_label }} · {{ partner.nombre_completo }}{% endblock %}
 
 {% block content %}
 {% set owner_key = 'cliente:' ~ partner.id if partner_base == 'clientes' else 'proveedor:' ~ partner.id %}
 <div class="record-page">
-    <div class="page-header">
-        <div>
-            <p class="text-uppercase text-muted small mb-1">Relaciones</p>
-            <h1 class="h4 text-dark mb-0">Record {{ partner_label }}: {{ partner.nombre_completo }}</h1>
-            <div class="d-flex flex-wrap gap-2 mt-2">
-                <span class="partner-role-badge">{{ partner_label }}</span>
-                {% if partner_base == 'proveedores' and provider_direct_sales_enabled %}
-                    <span class="partner-role-badge dual">Compra y venta</span>
-                {% elif unified_enabled and linked_partner %}
-                    <span class="partner-role-badge dual">Tambien {{ linked_partner_label|lower }}</span>
-                {% endif %}
-            </div>
-            <div class="text-muted small">ID {{ partner.id }} &middot; {{ record_scope_label if unified_enabled else tipo_operacion_label }}</div>
-            {% if linked_partner %}
-                <div class="text-muted small">
-                    Unificado con {{ linked_partner_label }}: {{ linked_partner.nombre_completo }} (ID {{ linked_partner.id }})
-                </div>
-            {% elif partner_base == 'proveedores' and provider_direct_sales_enabled %}
-                <div class="text-muted small">
-                    Este proveedor tambien compra material directamente y netea compras y ventas en el mismo record.
-                </div>
-            {% endif %}
-        </div>
-        <div class="d-flex gap-2">
-            <a href="/web/admin/{{ partner_base }}" class="btn btn-outline-secondary btn-sm">Volver</a>
-            <a href="/web/admin/{{ partner_base }}/{{ partner.id }}/estado-cuenta?format=pdf" class="btn btn-outline-dark btn-sm">Estado PDF</a>
-            <a href="/web/admin/{{ partner_base }}/{{ partner.id }}/estado-cuenta?format=excel" class="btn btn-outline-success btn-sm">Estado Excel</a>
-            {% if can_view_partner_accounts %}
-                <a href="/web/admin/cuentas?owner_key={{ owner_key }}" class="btn btn-outline-primary btn-sm">Cuentas</a>
-            {% endif %}
-            {% if can_manage_partner %}
-                <a href="/web/admin/{{ partner_base }}/{{ partner.id }}/editar" class="btn btn-outline-primary btn-sm">Editar</a>
-            {% endif %}
-            {% if can_manage_partner and not partner_is_internal and not linked_partner and partner_base != 'proveedores' %}
-                {% if partner_base == 'clientes' %}
-                    <form method="post" action="/web/admin/clientes/{{ partner.id }}/crear-proveedor" class="d-inline">
-                        <input type="hidden" name="next_url" value="{{ request.url.path }}">
-                        <button class="btn btn-outline-success btn-sm" type="submit">Agregar o vincular como proveedor</button>
-                    </form>
-                {% endif %}
-            {% endif %}
-        </div>
-    </div>
+
+{% call page_header(partner_label ~ ' · ' ~ partner.nombre_completo, eyebrow='Relaciones',
+                    sub='ID ' ~ partner.id ~ ' · ' ~ (record_scope_label if unified_enabled else tipo_operacion_label)) %}
+    <a href="/web/admin/{{ partner_base }}" class="btn btn-outline-secondary btn-sm">
+        {{ icon('arrow-left', 's-icon--sm') }} Volver
+    </a>
+    <a href="/web/admin/{{ partner_base }}/{{ partner.id }}/estado-cuenta?format=pdf" class="btn btn-outline-secondary btn-sm">
+        {{ icon('print', 's-icon--sm') }} Exportar PDF
+    </a>
+    <a href="/web/admin/{{ partner_base }}/{{ partner.id }}/estado-cuenta?format=excel" class="btn btn-outline-secondary btn-sm">
+        {{ icon('download', 's-icon--sm') }} Exportar Excel
+    </a>
+    {% if can_view_partner_accounts %}
+        <a href="/web/admin/cuentas?owner_key={{ owner_key }}" class="btn btn-outline-primary btn-sm">
+            {{ icon('bank', 's-icon--sm') }} Cuentas
+        </a>
+    {% endif %}
+    {% if can_manage_partner and not partner_is_internal and not linked_partner and partner_base != 'proveedores' %}
+        {% if partner_base == 'clientes' %}
+            <form method="post" action="/web/admin/clientes/{{ partner.id }}/crear-proveedor" class="d-inline">
+                <input type="hidden" name="next_url" value="{{ request.url.path }}">
+                <button class="btn btn-outline-primary btn-sm" type="submit">Vincular como proveedor</button>
+            </form>
+        {% endif %}
+    {% endif %}
+    {% if can_manage_partner %}
+        <a href="/web/admin/{{ partner_base }}/{{ partner.id }}/editar" class="btn btn-primary btn-sm">
+            {{ icon('edit', 's-icon--sm') }} Editar
+        </a>
+    {% endif %}
+{% endcall %}
 
     {% if link_ok %}
         <div class="alert alert-success py-2 small mb-3">
@@ -65,720 +54,549 @@
         </div>
     {% endif %}
 
-    <div class="ops-inline-toolbar sticky-tools mb-3">
-        <a href="#partner-summary" class="ops-inline-pill active">Resumen</a>
-        <a href="#partner-ledger" class="ops-inline-pill">Estado de cuenta</a>
+    <nav class="s-anchor-nav" aria-label="Secciones">
+        <a href="#partner-summary" class="btn btn-sm btn-outline-secondary">Resumen</a>
+        <a href="#partner-ledger" class="btn btn-sm btn-outline-secondary">Estado de cuenta</a>
         {% if attendance_enabled %}
-            <a href="#partner-attendance" class="ops-inline-pill">Asistencias</a>
+            <a href="#partner-attendance" class="btn btn-sm btn-outline-secondary">Asistencias</a>
         {% endif %}
-        <a href="#partner-notes" class="ops-inline-pill">Notas</a>
-        <a href="#partner-payments" class="ops-inline-pill">Pagos</a>
-        {% if can_view_partner_accounts %}
-            <a href="/web/admin/cuentas?owner_key={{ owner_key }}" class="ops-inline-pill">Cuentas</a>
+        <a href="#partner-notes" class="btn btn-sm btn-outline-secondary">Notas</a>
+        <a href="#partner-payments" class="btn btn-sm btn-outline-secondary">Pagos</a>
+    </nav>
+
+    <div class="s-stats">
+        {{ stat('Notas totales', summary.total_notas,
+                'Aprobadas ' ~ summary.notas_aprobadas ~ ' · En revisión ' ~ summary.notas_revision ~
+                ' · Borrador ' ~ summary.notas_borrador ~ ' · Canceladas ' ~ summary.notas_canceladas) }}
+        {% if unified_enabled %}
+            {{ stat('Total compras aprobadas', money(summary.total_compras)) }}
+            {{ stat('Total pagado compras', money(summary.total_pagado_compras)) }}
+            {{ stat('Saldo por pagar (compras)', money(summary.saldo_pagar)) }}
+            {{ stat('Total ventas aprobadas', money(summary.total_ventas)) }}
+            {{ stat('Total cobrado ventas', money(summary.total_cobrado_ventas)) }}
+            {{ stat('Saldo por cobrar (ventas)', money(summary.saldo_cobrar)) }}
+            {{ stat('Ajustes proveedor', money(summary.ajustes_proveedor)) }}
+            {{ stat('Ajustes cliente', money(summary.ajustes_cliente)) }}
+            {% if summary.saldo_neto > 0 %}
+                {{ stat('Saldo neto unificado', money(summary.saldo_neto), 'La metalería le debe') }}
+            {% elif summary.saldo_neto < 0 %}
+                {{ stat('Saldo neto unificado', money(summary.saldo_neto), 'Debe a la metalería') }}
+            {% else %}
+                {{ stat('Saldo neto unificado', money(summary.saldo_neto), 'Saldo equilibrado') }}
+            {% endif %}
+        {% else %}
+            {{ stat(total_facturado_label, money(summary.total_facturado)) }}
+            {{ stat(total_pagado_label, money(summary.total_pagado)) }}
+            {{ stat(saldo_pendiente_label, money(summary.saldo_pendiente)) }}
+            {{ stat(saldo_favor_label, money(summary.saldo_favor)) }}
+            {{ stat('Ajustes manuales', money(summary.ajustes_delta)) }}
         {% endif %}
     </div>
 
-    {% if unified_enabled %}
-        <div class="card hover-lift mb-3 partner-unified-banner">
-            <div class="card-body">
-                <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center">
-                    <div>
-                        <div class="d-flex flex-wrap gap-2 mb-2">
-                            <span class="partner-role-badge">{{ partner_label }}</span>
-                            {% if partner_base == 'proveedores' and provider_direct_sales_enabled %}
-                                <span class="partner-role-badge dual">Compra y venta</span>
-                            {% elif linked_partner %}
-                                <span class="partner-role-badge dual">{{ linked_partner_label }}</span>
-                            {% endif %}
-                        </div>
-                        <h2 class="h5 mb-1">Saldo neto unificado</h2>
-                        <div class="text-muted small">
-                            Esta vista integra compras, ventas y ajustes del mismo partner.
-                        </div>
-                        {% if linked_partner %}
-                            <div class="text-muted small mt-1">
-                                Partner vinculado: {{ linked_partner.nombre_completo }} (ID {{ linked_partner.id }})
-                            </div>
-                        {% elif partner_base == 'proveedores' and provider_direct_sales_enabled %}
-                            <div class="text-muted small mt-1">
-                                Las ventas se registran directamente contra este proveedor, sin crear un cliente adicional.
-                            </div>
-                        {% endif %}
-                    </div>
-                    <div class="partner-balance-hero">
-                        {% if summary.saldo_neto > 0 %}
-                            <div class="partner-balance-label">La metaleria le debe</div>
-                            <div class="partner-balance-amount text-danger">${{ "{:,.2f}".format(summary.saldo_neto) }}</div>
-                        {% elif summary.saldo_neto < 0 %}
-                            <div class="partner-balance-label">Debe a la metaleria</div>
-                            <div class="partner-balance-amount text-success">${{ "{:,.2f}".format(-summary.saldo_neto) }}</div>
-                        {% else %}
-                            <div class="partner-balance-label">Saldo equilibrado</div>
-                            <div class="partner-balance-amount">$0.00</div>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-        </div>
-    {% endif %}
+    <p class="s-card-sub mb-4">
+        {% if unified_enabled %}
+            Saldos calculados con compras, ventas y ajustes manuales unificados.
+            {% if linked_partner %}
+                Partner vinculado: {{ linked_partner.nombre_completo }} (ID {{ linked_partner.id }}).
+            {% elif partner_base == 'proveedores' and provider_direct_sales_enabled %}
+                Las ventas se registran directamente contra este proveedor, sin crear un cliente adicional.
+            {% endif %}
+        {% else %}
+            Saldos calculados con notas aprobadas y ajustes manuales.
+        {% endif %}
+    </p>
 
-    <div class="card hover-lift mb-3" id="partner-summary">
+    <div class="card mb-3" id="partner-summary">
         <div class="card-body">
-            <div class="d-flex flex-column flex-xl-row gap-4">
-                <div class="flex-grow-1">
-                    <div class="d-flex align-items-center gap-2 mb-2">
-                        <span class="chip-strong">Perfil</span>
-                        <span class="text-muted small">Datos de contacto</span>
-                    </div>
-                    <div class="note-meta-grid">
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">ID</span>
-                            <strong>{{ partner.id }}</strong>
+            <h2 class="s-card-title">Perfil</h2>
+            <p class="s-card-sub mb-3">Datos de contacto y vínculos de este {{ partner_label|lower }}.</p>
+            <div class="note-meta-grid">
+                <div class="note-meta-item">
+                    <span class="note-meta-label">ID</span>
+                    <strong>{{ partner.id }}</strong>
+                </div>
+                <div class="note-meta-item">
+                    <span class="note-meta-label">Nombre</span>
+                    <strong>{{ partner.nombre_completo }}</strong>
+                </div>
+                <div class="note-meta-item">
+                    <span class="note-meta-label">Teléfono</span>
+                    <strong>{{ partner.telefono or '—' }}</strong>
+                </div>
+                <div class="note-meta-item">
+                    <span class="note-meta-label">Correo</span>
+                    <strong>{{ partner.correo_electronico or '—' }}</strong>
+                </div>
+                <div class="note-meta-item">
+                    <span class="note-meta-label">Placas</span>
+                    {% set lista = partner.placas_rel if partner.placas_rel else [] %}
+                    {% if lista|length == 0 %}
+                        <strong>{{ partner.placas or '—' }}</strong>
+                    {% else %}
+                        <div class="d-flex flex-wrap gap-1">
+                            {% for pl in lista %}
+                                {{ badge(pl.placa, 'muted') }}
+                            {% endfor %}
                         </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Nombre</span>
-                            <strong>{{ partner.nombre_completo }}</strong>
-                        </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Telefono</span>
-                            <strong>{{ partner.telefono or '-' }}</strong>
-                        </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Correo</span>
-                            <strong>{{ partner.correo_electronico or '-' }}</strong>
-                        </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Placas</span>
-                            {% set lista = partner.placas_rel if partner.placas_rel else [] %}
-                            {% if lista|length == 0 %}
-                                <strong>{{ partner.placas or '-' }}</strong>
-                            {% else %}
-                                <div class="d-flex flex-wrap gap-1">
-                                    {% for pl in lista %}
-                                        <span class="badge bg-secondary">{{ pl.placa }}</span>
-                                    {% endfor %}
-                                </div>
-                            {% endif %}
-                        </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Estado</span>
-                            <span class="badge {{ 'bg-success' if partner.activo else 'bg-secondary' }}">
-                                {{ 'Activo' if partner.activo else 'Inactivo' }}
-                            </span>
-                        </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Roles</span>
-                            <div class="d-flex flex-wrap gap-1">
-                                <span class="partner-role-badge">{{ partner_label }}</span>
-                                {% if partner_base == 'proveedores' and provider_direct_sales_enabled %}
-                                    <span class="partner-role-badge dual">Compra y venta</span>
-                                {% elif unified_enabled and linked_partner %}
-                                    <span class="partner-role-badge dual">{{ linked_partner_label }}</span>
-                                {% endif %}
-                            </div>
-                        </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Relacion vinculada</span>
-                            <strong>
-                                {% if linked_partner %}
-                                    {{ linked_partner.nombre_completo }} (ID {{ linked_partner.id }})
-                                {% elif partner_base == 'proveedores' and provider_direct_sales_enabled %}
-                                    Opera compras y ventas en el mismo perfil
-                                {% else %}
-                                    -
-                                {% endif %}
-                            </strong>
-                        </div>
-                        {% if attendance_enabled %}
-                            <div class="note-meta-item">
-                                <span class="note-meta-label">Asistencias historicas</span>
-                                <strong>{{ attendance_total_historico }}</strong>
-                                <div class="note-meta-sub">1 asistencia por dia con nota registrada</div>
-                            </div>
+                    {% endif %}
+                </div>
+                <div class="note-meta-item">
+                    <span class="note-meta-label">Estado</span>
+                    {{ badge('Activo' if partner.activo else 'Inactivo', 'ok' if partner.activo else 'muted') }}
+                </div>
+                <div class="note-meta-item">
+                    <span class="note-meta-label">Roles</span>
+                    <div class="d-flex flex-wrap gap-1">
+                        {{ badge(partner_label, 'info') }}
+                        {% if partner_base == 'proveedores' and provider_direct_sales_enabled %}
+                            {{ badge('Compra y venta', 'muted') }}
+                        {% elif unified_enabled and linked_partner %}
+                            {{ badge(linked_partner_label, 'muted') }}
                         {% endif %}
                     </div>
                 </div>
-                <div class="d-none d-xl-block vr"></div>
-                <div class="flex-grow-1">
-                <div class="d-flex align-items-center gap-2 mb-2">
-                    <span class="chip-strong">{{ 'Resumen unificado' if unified_enabled else 'Resumen' }}</span>
-                    <span class="text-muted small">Totales contables</span>
-                </div>
-                <div class="note-meta-grid">
-                    <div class="note-meta-item">
-                        <span class="note-meta-label">Notas totales</span>
-                        <strong>{{ summary.total_notas }}</strong>
-                        <div class="note-meta-sub">
-                            Aprobadas {{ summary.notas_aprobadas }} &middot; En revision {{ summary.notas_revision }}
-                        </div>
-                        <div class="note-meta-sub">
-                            Borrador {{ summary.notas_borrador }} &middot; Canceladas {{ summary.notas_canceladas }}
-                        </div>
-                    </div>
-                    {% if unified_enabled %}
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Total compras aprobadas</span>
-                            <strong>${{ "{:,.2f}".format(summary.total_compras or 0) }}</strong>
-                        </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Total pagado compras</span>
-                            <strong>${{ "{:,.2f}".format(summary.total_pagado_compras or 0) }}</strong>
-                        </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Saldo por pagar (compras)</span>
-                            <strong class="text-danger">${{ "{:,.2f}".format(summary.saldo_pagar or 0) }}</strong>
-                        </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Total ventas aprobadas</span>
-                            <strong>${{ "{:,.2f}".format(summary.total_ventas or 0) }}</strong>
-                        </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Total cobrado ventas</span>
-                            <strong>${{ "{:,.2f}".format(summary.total_cobrado_ventas or 0) }}</strong>
-                        </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Saldo por cobrar (ventas)</span>
-                            <strong class="text-success">${{ "{:,.2f}".format(summary.saldo_cobrar or 0) }}</strong>
-                        </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Ajustes proveedor</span>
-                            {% set ajustes_prov = summary.ajustes_proveedor or 0 %}
-                            {% if ajustes_prov > 0 %}
-                                <strong class="text-danger">+${{ "{:,.2f}".format(ajustes_prov) }}</strong>
-                            {% elif ajustes_prov < 0 %}
-                                <strong class="text-success">-${{ "{:,.2f}".format(-ajustes_prov) }}</strong>
-                            {% else %}
-                                <strong>$0.00</strong>
-                            {% endif %}
-                        </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Ajustes cliente</span>
-                            {% set ajustes_cli = summary.ajustes_cliente or 0 %}
-                            {% if ajustes_cli > 0 %}
-                                <strong class="text-success">+${{ "{:,.2f}".format(ajustes_cli) }}</strong>
-                            {% elif ajustes_cli < 0 %}
-                                <strong class="text-danger">-${{ "{:,.2f}".format(-ajustes_cli) }}</strong>
-                            {% else %}
-                                <strong>$0.00</strong>
-                            {% endif %}
-                        </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Saldo neto unificado</span>
-                            {% if summary.saldo_neto >= 0 %}
-                                <strong class="text-danger">${{ "{:,.2f}".format(summary.saldo_neto) }}</strong>
-                            {% else %}
-                                <strong class="text-success">-${{ "{:,.2f}".format(-summary.saldo_neto) }}</strong>
-                            {% endif %}
-                        </div>
-                    {% else %}
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">{{ total_facturado_label }}</span>
-                            <strong>${{ "{:,.2f}".format(summary.total_facturado or 0) }}</strong>
-                        </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">{{ total_pagado_label }}</span>
-                            <strong>${{ "{:,.2f}".format(summary.total_pagado or 0) }}</strong>
-                        </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">{{ saldo_pendiente_label }}</span>
-                            <strong class="text-danger">${{ "{:,.2f}".format(summary.saldo_pendiente or 0) }}</strong>
-                        </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">{{ saldo_favor_label }}</span>
-                            <strong class="text-success">${{ "{:,.2f}".format(summary.saldo_favor or 0) }}</strong>
-                        </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Ajustes manuales</span>
-                            {% set ajustes_delta = summary.ajustes_delta or 0 %}
-                            {% if ajustes_delta > 0 %}
-                                <strong class="text-danger">+${{ "{:,.2f}".format(ajustes_delta) }}</strong>
-                            {% elif ajustes_delta < 0 %}
-                                <strong class="text-success">-${{ "{:,.2f}".format(-ajustes_delta) }}</strong>
-                            {% else %}
-                                <strong>$0.00</strong>
-                            {% endif %}
-                        </div>
-                    {% endif %}
-                </div>
-                <div class="text-muted small mt-2">
-                    {% if unified_enabled %}
-                        Saldos calculados con compras, ventas y ajustes manuales unificados.
-                    {% else %}
-                        Saldos calculados con notas aprobadas y ajustes manuales.
-                    {% endif %}
+                <div class="note-meta-item">
+                    <span class="note-meta-label">Relación vinculada</span>
+                    <strong>
+                        {% if linked_partner %}
+                            {{ linked_partner.nombre_completo }} (ID {{ linked_partner.id }})
+                        {% elif partner_base == 'proveedores' and provider_direct_sales_enabled %}
+                            Opera compras y ventas en el mismo perfil
+                        {% else %}
+                            —
+                        {% endif %}
+                    </strong>
                 </div>
             </div>
-        </div>
         </div>
     </div>
 
     {% if attendance_enabled %}
-        <div class="card hover-lift mb-3" id="partner-attendance">
+        <div class="card mb-3" id="partner-attendance">
             <div class="card-body">
-                <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2">
+                <div class="s-card-head">
                     <div>
-                        <h2 class="h6 text-dark mb-1">Asistencias del proveedor</h2>
-                        <div class="text-muted small">
-                            Se calculan automaticamente a partir de las notas del proveedor. Varias notas del mismo dia cuentan como una sola asistencia.
-                        </div>
+                        <h2 class="s-card-title">Asistencias del proveedor</h2>
+                        <p class="s-card-sub">
+                            Se calculan automáticamente a partir de las notas del proveedor.
+                            Varias notas del mismo día cuentan como una sola asistencia.
+                        </p>
                     </div>
-                    <div class="d-flex gap-2">
-                        <a href="/web/admin/proveedores/{{ partner.id }}/asistencias?format=pdf{% if attendance_from %}&attendance_from={{ attendance_from }}{% endif %}{% if attendance_to %}&attendance_to={{ attendance_to }}{% endif %}" class="btn btn-outline-dark btn-sm">Asistencias PDF</a>
-                        <a href="/web/admin/proveedores/{{ partner.id }}/asistencias?format=excel{% if attendance_from %}&attendance_from={{ attendance_from }}{% endif %}{% if attendance_to %}&attendance_to={{ attendance_to }}{% endif %}" class="btn btn-outline-success btn-sm">Asistencias Excel</a>
+                    <div class="s-actions">
+                        <a href="/web/admin/proveedores/{{ partner.id }}/asistencias?format=pdf{% if attendance_from %}&attendance_from={{ attendance_from }}{% endif %}{% if attendance_to %}&attendance_to={{ attendance_to }}{% endif %}" class="btn btn-outline-secondary btn-sm">
+                            {{ icon('print', 's-icon--sm') }} Asistencias PDF
+                        </a>
+                        <a href="/web/admin/proveedores/{{ partner.id }}/asistencias?format=excel{% if attendance_from %}&attendance_from={{ attendance_from }}{% endif %}{% if attendance_to %}&attendance_to={{ attendance_to }}{% endif %}" class="btn btn-outline-secondary btn-sm">
+                            {{ icon('download', 's-icon--sm') }} Asistencias Excel
+                        </a>
                     </div>
                 </div>
-                <form method="get" class="row g-2 align-items-end mt-3">
-                    {% if q %}
-                        <input type="hidden" name="q" value="{{ q }}">
-                    {% endif %}
-                    <div class="col-lg-3 col-md-4">
-                        <label class="form-label">Desde</label>
-                        <input type="date" class="form-control form-control-sm" name="attendance_from" value="{{ attendance_from }}">
-                    </div>
-                    <div class="col-lg-3 col-md-4">
-                        <label class="form-label">Hasta</label>
-                        <input type="date" class="form-control form-control-sm" name="attendance_to" value="{{ attendance_to }}">
-                    </div>
-                    <div class="col-lg-2 col-md-4 d-grid">
-                        <button class="btn btn-outline-primary btn-sm" type="submit">Filtrar</button>
-                    </div>
-                    <div class="col-lg-2 col-md-4 d-grid">
-                        {% if attendance_from or attendance_to %}
-                            <a href="/web/admin/proveedores/{{ partner.id }}/record{% if q %}?q={{ q }}{% endif %}" class="btn btn-outline-secondary btn-sm">Limpiar</a>
+
+                <details class="s-filters-collapse" open>
+                    <summary>Filtros</summary>
+                    <form class="s-filters" method="get">
+                        {% if q %}
+                            <input type="hidden" name="q" value="{{ q }}">
                         {% endif %}
-                    </div>
-                </form>
+                        <div class="s-filters__field">
+                            <label class="form-label" for="attendance_from">Desde</label>
+                            <input type="date" class="form-control" id="attendance_from" name="attendance_from" value="{{ attendance_from }}">
+                        </div>
+                        <div class="s-filters__field">
+                            <label class="form-label" for="attendance_to">Hasta</label>
+                            <input type="date" class="form-control" id="attendance_to" name="attendance_to" value="{{ attendance_to }}">
+                        </div>
+                        <div class="s-filters__actions">
+                            <button class="btn btn-outline-primary" type="submit">Filtrar</button>
+                            {% if attendance_from or attendance_to %}
+                                <a href="/web/admin/proveedores/{{ partner.id }}/record{% if q %}?q={{ q }}{% endif %}" class="btn btn-outline-secondary">Limpiar</a>
+                            {% endif %}
+                        </div>
+                    </form>
+                </details>
+
                 {% if attendance_error %}
-                    <div class="alert alert-danger py-2 small mt-3 mb-0">{{ attendance_error }}</div>
+                    <div class="alert alert-danger py-2 small mb-3">{{ attendance_error }}</div>
                 {% endif %}
-                <div class="note-meta-grid mt-3">
-                    <div class="note-meta-item">
-                        <span class="note-meta-label">Asistencias historicas</span>
-                        <strong>{{ attendance_total_historico }}</strong>
-                    </div>
-                    <div class="note-meta-item">
-                        <span class="note-meta-label">Asistencias en rango</span>
-                        <strong>{{ attendance_total_filtrado }}</strong>
-                    </div>
-                    <div class="note-meta-item">
-                        <span class="note-meta-label">Rango actual</span>
-                        <strong>{{ attendance_range_label }}</strong>
-                    </div>
+
+                <div class="s-stats">
+                    {{ stat('Asistencias históricas', attendance_total_historico, '1 asistencia por día con nota registrada') }}
+                    {{ stat('Asistencias en rango', attendance_total_filtrado) }}
+                    {{ stat('Rango actual', attendance_range_label) }}
                 </div>
-                <div class="table-scroll-shell mt-3">
+
+                {% if attendance_rows|length == 0 %}
+                    {{ empty('Sin asistencias en el rango',
+                             'Amplía el rango de fechas o limpia el filtro para ver el histórico completo.',
+                             'calendar') }}
+                {% else %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead>
+                            <tr>
+                                <th data-title-col>Fecha</th>
+                                <th>Sucursal(es)</th>
+                                <th class="text-end">Notas del día</th>
+                                <th>Folios considerados</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for row in attendance_rows %}
+                                <tr>
+                                    <td><div class="fw-semibold">{{ row.fecha_label }}</div></td>
+                                    <td>{{ row.sucursales_label }}</td>
+                                    <td class="text-end">{{ row.notes_count }}</td>
+                                    <td>
+                                        {% if row.folios %}
+                                            <div class="d-flex flex-wrap gap-1">
+                                                {% for folio in row.folios %}
+                                                    {{ badge(folio, 'muted') }}
+                                                {% endfor %}
+                                            </div>
+                                        {% else %}
+                                            <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
+
+    <div class="card mb-3" id="partner-ledger">
+        <div class="card-body">
+            <div class="s-card-head">
+                <div>
+                    <h2 class="s-card-title">{{ 'Estado de cuenta unificado' if unified_enabled else 'Estado de cuenta' }}</h2>
+                    <p class="s-card-sub">Movimientos cronológicos con saldo acumulado. {{ ledger_saldo_help }}</p>
+                </div>
+                <div class="text-muted small">
+                    {{ ledger_saldo_label }}: {{ money(ledger_final) }}
+                </div>
+            </div>
+
+            {% if ledger_rows|length == 0 %}
+                {{ empty('Sin movimientos',
+                         'Aún no hay notas aprobadas, pagos ni ajustes para generar el estado de cuenta.',
+                         'ledger') }}
+            {% else %}
                 <div class="table-responsive">
-                    <table class="table table-hover table-sm align-middle mb-0 data-table">
+                    <table class="table table-hover align-middle">
                         <thead>
                         <tr>
                             <th>Fecha</th>
-                            <th>Sucursal(es)</th>
-                            <th class="text-end">Notas del dia</th>
-                            <th>Folios considerados</th>
+                            <th data-title-col>Movimiento</th>
+                            <th>Nota</th>
+                            <th>Método</th>
+                            <th>Cuenta</th>
+                            <th class="text-end">Cargo</th>
+                            <th class="text-end">Abono</th>
+                            <th class="text-end">Saldo</th>
+                            <th>Comentario</th>
                         </tr>
                         </thead>
                         <tbody>
-                        {% for row in attendance_rows %}
+                        {% for row in ledger_rows %}
                             <tr>
+                                <td>{{ row.fecha|datetime_local if row.fecha else "—" }}</td>
+                                <td>{{ row.tipo }}</td>
                                 <td>
-                                    <div class="fw-semibold">{{ row.fecha_label }}</div>
-                                </td>
-                                <td>{{ row.sucursales_label }}</td>
-                                <td class="text-end">{{ row.notes_count }}</td>
-                                <td>
-                                    {% if row.folios %}
-                                        <div class="d-flex flex-wrap gap-1">
-                                            {% for folio in row.folios %}
-                                                <span class="badge bg-light text-dark border">{{ folio }}</span>
-                                            {% endfor %}
-                                        </div>
+                                    {% if row.nota_id %}
+                                        <div class="fw-semibold">{{ row.folio }}</div>
+                                        <div class="text-muted small">#{{ row.nota_id }}</div>
                                     {% else %}
-                                        <span class="text-muted">-</span>
+                                        <span class="text-muted">—</span>
                                     {% endif %}
                                 </td>
+                                <td>{{ row.metodo or "—" }}</td>
+                                <td>{{ row.cuenta or "—" }}</td>
+                                <td class="text-end">{{ money(row.cargo) }}</td>
+                                <td class="text-end">{{ money(row.abono) }}</td>
+                                <td class="text-end">{{ money(row.saldo) }}</td>
+                                <td class="text-muted small">{{ row.comentario or "—" }}</td>
                             </tr>
                         {% endfor %}
                         </tbody>
                     </table>
                 </div>
-                </div>
-                {% if attendance_rows|length == 0 %}
-                    <p class="text-muted small mt-3 mb-0">No hay asistencias para el rango seleccionado.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if can_manage_partner %}
+        <div class="card mb-3" id="partner-ajuste">
+            <div class="card-body">
+                <h2 class="s-card-title">Ajuste manual de saldo</h2>
+                <p class="s-card-sub mb-3">Registra un saldo inicial o corrige el balance del partner.</p>
+                {% if ajuste_ok %}
+                    <div class="alert alert-success py-2 small">Ajuste registrado correctamente.</div>
                 {% endif %}
+                {% if ajuste_error %}
+                    <div class="alert alert-danger py-2 small">{{ ajuste_error }}</div>
+                {% endif %}
+                <form method="post" action="/web/admin/{{ partner_base }}/{{ partner.id }}/ajuste-saldo">
+                    <div class="s-form-grid">
+                        <div>
+                            <label class="form-label" for="ajuste_direccion">Tipo de ajuste <span class="s-req">*</span></label>
+                            {% set ajuste_dir = form_ajuste_direccion if form_ajuste_direccion is not none else "" %}
+                            <select class="form-select" id="ajuste_direccion" name="ajuste_direccion" required>
+                                <option value="favor" {% if ajuste_dir == 'favor' %}selected{% endif %}>{{ ajuste_favor_label }}</option>
+                                <option value="contra" {% if ajuste_dir == 'contra' %}selected{% endif %}>{{ ajuste_contra_label }}</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label" for="ajuste_monto">Monto <span class="s-req">*</span></label>
+                            {% set ajuste_monto_val = form_ajuste_monto if form_ajuste_monto is not none else "" %}
+                            <input class="form-control" id="ajuste_monto" type="number" step="0.01" min="0.01" name="ajuste_monto" value="{{ ajuste_monto_val }}" required>
+                        </div>
+                        <div>
+                            <label class="form-label" for="ajuste_comentario">Comentario <span class="s-req">*</span></label>
+                            {% set ajuste_comment_val = form_ajuste_comentario if form_ajuste_comentario is not none else "" %}
+                            <input class="form-control" id="ajuste_comentario" name="ajuste_comentario" placeholder="Motivo del ajuste" value="{{ ajuste_comment_val }}" required>
+                        </div>
+                    </div>
+                    <div class="s-form-actions">
+                        <button class="btn btn-outline-primary">Aplicar ajuste</button>
+                    </div>
+                </form>
             </div>
         </div>
     {% endif %}
 
-    <div class="card hover-lift mb-3" id="partner-ledger">
+    <div class="card mb-3" id="partner-notes">
         <div class="card-body">
-            <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2">
+            <div class="s-card-head">
                 <div>
-                    <h2 class="h6 text-dark mb-1">{% if can_manage_partner %}Ajuste manual de saldo{% else %}Estado de cuenta{% endif %}</h2>
-                    <div class="text-muted small">
-                        {% if can_manage_partner %}
-                            Registra un saldo inicial o corrige el balance del partner.
-                        {% else %}
-                            Vista de solo lectura del balance, notas y pagos de este partner.
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-            {% if can_manage_partner and ajuste_ok %}
-                <div class="text-success small mt-2">Ajuste registrado correctamente.</div>
-            {% endif %}
-            {% if can_manage_partner and ajuste_error %}
-                <div class="text-danger small mt-2">{{ ajuste_error }}</div>
-            {% endif %}
-            {% if can_manage_partner %}
-                <form method="post" action="/web/admin/{{ partner_base }}/{{ partner.id }}/ajuste-saldo" class="row g-2 align-items-end mt-2">
-                    <div class="col-lg-4">
-                        <label class="form-label">Tipo de ajuste</label>
-                        {% set ajuste_dir = form_ajuste_direccion if form_ajuste_direccion is not none else "" %}
-                        <select class="form-select form-select-sm" name="ajuste_direccion" required>
-                            <option value="favor" {% if ajuste_dir == 'favor' %}selected{% endif %}>{{ ajuste_favor_label }}</option>
-                            <option value="contra" {% if ajuste_dir == 'contra' %}selected{% endif %}>{{ ajuste_contra_label }}</option>
-                        </select>
-                    </div>
-                    <div class="col-lg-2">
-                        <label class="form-label">Monto</label>
-                        {% set ajuste_monto_val = form_ajuste_monto if form_ajuste_monto is not none else "" %}
-                        <input class="form-control form-control-sm" type="number" step="0.01" min="0.01" name="ajuste_monto" value="{{ ajuste_monto_val }}" required>
-                    </div>
-                    <div class="col-lg-4">
-                        <label class="form-label">Comentario</label>
-                        {% set ajuste_comment_val = form_ajuste_comentario if form_ajuste_comentario is not none else "" %}
-                        <input class="form-control form-control-sm" name="ajuste_comentario" placeholder="Motivo del ajuste" value="{{ ajuste_comment_val }}" required>
-                    </div>
-                    <div class="col-lg-2 d-grid">
-                        <button class="btn btn-outline-primary btn-sm">Aplicar ajuste</button>
-                    </div>
-                </form>
-            {% endif %}
-        </div>
-    </div>
-
-    <div class="card hover-lift mb-3" id="partner-notes">
-        <div class="card-body">
-            <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2">
-                <div>
-                    <h2 class="h6 text-dark mb-1">{{ 'Estado de cuenta unificado' if unified_enabled else 'Estado de cuenta' }}</h2>
-                    <div class="text-muted small">Movimientos cronologicos con saldo acumulado.</div>
-                </div>
-                <div class="text-muted small">
-                    {{ ledger_saldo_label }}:
-                    {% if ledger_final >= 0 %}
-                        <span class="text-danger fw-semibold">${{ "{:,.2f}".format(ledger_final) }}</span>
-                    {% else %}
-                        <span class="text-success fw-semibold">-${{ "{:,.2f}".format(-ledger_final) }}</span>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="text-muted small mt-1">{{ ledger_saldo_help }}</div>
-            <div class="table-scroll-shell mt-3">
-            <div class="table-responsive">
-                <table class="table table-hover table-sm align-middle mb-0 data-table">
-                    <thead>
-                    <tr>
-                        <th>Fecha</th>
-                        <th>Movimiento</th>
-                        <th>Nota</th>
-                        <th>Metodo</th>
-                        <th>Cuenta</th>
-                        <th class="text-end">Cargo</th>
-                        <th class="text-end">Abono</th>
-                        <th class="text-end">Saldo</th>
-                        <th>Comentario</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {% for row in ledger_rows %}
-                        <tr>
-                            <td>{{ row.fecha|datetime_local if row.fecha else "-" }}</td>
-                            <td>{{ row.tipo }}</td>
-                            <td>
-                                {% if row.nota_id %}
-                                    <div class="fw-semibold">{{ row.folio }}</div>
-                                    <div class="text-muted small">#{{ row.nota_id }}</div>
-                                {% else %}
-                                    <span class="text-muted">-</span>
-                                {% endif %}
-                            </td>
-                            <td>{{ row.metodo or "-" }}</td>
-                            <td>{{ row.cuenta or "-" }}</td>
-                            <td class="text-end">${{ "{:,.2f}".format(row.cargo or 0) }}</td>
-                            <td class="text-end">${{ "{:,.2f}".format(row.abono or 0) }}</td>
-                            <td class="text-end">
-                                {% if row.saldo >= 0 %}
-                                    <span class="text-danger fw-semibold">${{ "{:,.2f}".format(row.saldo) }}</span>
-                                {% else %}
-                                    <span class="text-success fw-semibold">-${{ "{:,.2f}".format(-row.saldo) }}</span>
-                                {% endif %}
-                            </td>
-                            <td class="text-muted small">{{ row.comentario or "-" }}</td>
-                        </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            </div>
-            {% if ledger_rows|length == 0 %}
-                <p class="text-muted small mt-3 mb-0">No hay movimientos para generar el estado de cuenta.</p>
-            {% endif %}
-        </div>
-    </div>
-
-    <div class="card hover-lift mb-3">
-        <div class="card-body">
-            <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
-                <div>
-                    <h2 class="h6 text-dark mb-1">{{ 'Historial unificado de notas' if unified_enabled else 'Historial de notas' }}</h2>
-                    <div class="text-muted small">
+                    <h2 class="s-card-title">{{ 'Historial unificado de notas' if unified_enabled else 'Historial de notas' }}</h2>
+                    <p class="s-card-sub">
                         Mostrando {{ record_filtered_count }} de {{ record_total_count }} notas registradas.
-                        {% if record_scope_label %}
-                            &middot; {{ record_scope_label }}
-                        {% endif %}
-                    </div>
+                        {% if record_scope_label %}&middot; {{ record_scope_label }}{% endif %}
+                    </p>
                 </div>
-                <form method="get" class="d-flex flex-wrap gap-2 align-items-end">
+            </div>
+
+            <details class="s-filters-collapse" open>
+                <summary>Filtros</summary>
+                <form class="s-filters" method="get">
                     {% if attendance_from %}
                         <input type="hidden" name="attendance_from" value="{{ attendance_from }}">
                     {% endif %}
                     {% if attendance_to %}
                         <input type="hidden" name="attendance_to" value="{{ attendance_to }}">
                     {% endif %}
-                    <div>
-                        <label class="form-label">Buscar nota</label>
-                        <input
-                            type="text"
-                            class="form-control form-control-sm"
-                            name="q"
-                            placeholder="ID o folio"
-                            value="{{ q }}"
-                        >
+                    <div class="s-filters__field s-filters__field--wide">
+                        <label class="form-label" for="q">Buscar nota</label>
+                        <input type="text" class="form-control" id="q" name="q" placeholder="ID o folio" value="{{ q }}">
                     </div>
-                    <div class="d-flex gap-2 align-items-end">
-                        <button class="btn btn-outline-primary btn-sm" type="submit">Buscar</button>
+                    <div class="s-filters__actions">
+                        <button class="btn btn-outline-primary" type="submit">Filtrar</button>
                         {% if q %}
-                            <a href="/web/admin/{{ partner_base }}/{{ partner.id }}/record" class="btn btn-outline-secondary btn-sm">Limpiar</a>
+                            <a href="/web/admin/{{ partner_base }}/{{ partner.id }}/record" class="btn btn-outline-secondary">Limpiar</a>
                         {% endif %}
                     </div>
                 </form>
-            </div>
+            </details>
+
             {% if not unified_enabled and record_credito_ajuste_total > 0 %}
-                <div class="alert alert-info py-2 small mt-3 mb-0">
-                    El saldo a favor generado por ajustes manuales se aplica automaticamente a las notas mas antiguas para reflejar el saldo real.
-                    Se aplicaron <strong>${{ "{:,.2f}".format(record_credito_ajuste_aplicado or 0) }}</strong>
+                <div class="alert alert-info py-2 small">
+                    El saldo a favor generado por ajustes manuales se aplica automáticamente a las notas más antiguas para reflejar el saldo real.
+                    Se aplicaron <strong>{{ money(record_credito_ajuste_aplicado, 'plain') }}</strong>
                     {% if record_credito_ajuste_restante > 0 %}
-                        y quedan <strong>${{ "{:,.2f}".format(record_credito_ajuste_restante or 0) }}</strong> disponibles como saldo a favor.
+                        y quedan <strong>{{ money(record_credito_ajuste_restante, 'plain') }}</strong> disponibles como saldo a favor.
                     {% else %}
                         y no queda saldo de ajuste pendiente por aplicar.
                     {% endif %}
                 </div>
             {% endif %}
 
-            <div class="table-scroll-shell mt-3">
-            <div class="table-responsive">
-                <table class="table table-hover table-sm align-middle mb-0 data-table">
-                    <thead>
-                    <tr>
-                        <th>Folio</th>
-                        {% if unified_enabled %}
-                            <th>Operacion</th>
-                        {% endif %}
-                        <th>Estado</th>
-                        <th>Fecha</th>
-                        <th>Sucursal</th>
-                        <th class="text-end">Total $</th>
-                        <th class="text-end">Pagado $</th>
-                        <th class="text-end">Saldo pendiente</th>
-                        <th class="text-end">Saldo a favor</th>
-                        <th></th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {% for row in record_rows %}
-                        {% set nota = row.nota %}
-                        {% set suc = sucursales.get(nota.sucursal_id) %}
+            {% if record_rows|length == 0 %}
+                {{ empty('Sin notas registradas',
+                         'Ajusta la búsqueda o captura una nota para este ' ~ partner_label|lower ~ '.',
+                         'notes') }}
+            {% else %}
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead>
                         <tr>
-                            <td>
-                                <div class="fw-semibold">{{ row.folio }}</div>
-                                <div class="text-muted small">#{{ nota.id }}</div>
-                            </td>
-                            {% if unified_enabled %}
+                            <th data-title-col>Folio</th>
+                            {% if unified_enabled %}<th>Operación</th>{% endif %}
+                            <th>Estado</th>
+                            <th>Fecha</th>
+                            <th>Sucursal</th>
+                            <th class="text-end">Total</th>
+                            <th class="text-end">Pagado</th>
+                            <th class="text-end">Saldo pendiente</th>
+                            <th class="text-end">Saldo a favor</th>
+                            <th><span class="s-visually-hidden">Acciones</span></th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for row in record_rows %}
+                            {% set nota = row.nota %}
+                            {% set suc = sucursales.get(nota.sucursal_id) %}
+                            <tr>
                                 <td>
-                                    {% if nota.tipo_operacion.value == 'compra' %}
-                                        <span class="partner-role-badge">Compra al proveedor</span>
-                                    {% elif nota.proveedor_id %}
-                                        <span class="partner-role-badge dual">Venta al proveedor</span>
+                                    <div class="fw-semibold">{{ row.folio }}</div>
+                                    <div class="text-muted small">#{{ nota.id }}</div>
+                                </td>
+                                {% if unified_enabled %}
+                                    <td>
+                                        {% if nota.tipo_operacion.value == 'compra' %}
+                                            {{ badge('Compra al proveedor', 'info') }}
+                                        {% elif nota.proveedor_id %}
+                                            {{ badge('Venta al proveedor', 'muted') }}
+                                        {% else %}
+                                            {{ badge('Venta anterior', 'muted') }}
+                                        {% endif %}
+                                    </td>
+                                {% endif %}
+                                <td>
+                                    {% if row.is_paid %}
+                                        {{ badge('Pagada', 'ok') }}
+                                    {% elif nota.estado.value == 'BORRADOR' %}
+                                        {{ badge('Borrador', 'muted') }}
+                                    {% elif nota.estado.value == 'EN_REVISION' %}
+                                        {{ badge('En revisión', 'warn') }}
+                                    {% elif nota.estado.value == 'APROBADA' %}
+                                        {{ badge('Aprobada', 'info') }}
                                     {% else %}
-                                        <span class="partner-role-badge unified">Venta legado</span>
+                                        {{ badge('Cancelada', 'bad') }}
+                                    {% endif %}
+                                    {% if row.saldo_cubierto_por_ajuste and row.ajuste_aplicado > 0 %}
+                                        <div class="mt-1">{{ badge('Liquidada por ajuste', 'muted') }}</div>
+                                    {% elif row.saldo_parcialmente_cubierto %}
+                                        <div class="mt-1">{{ badge('Ajuste parcial aplicado', 'muted') }}</div>
+                                    {% elif row.ajuste_saldo_nota %}
+                                        <div class="mt-1">{{ badge('Saldo ajustado en nota', 'muted') }}</div>
                                     {% endif %}
                                 </td>
-                            {% endif %}
-                            <td>
-                                {% if row.is_paid %}
-                                    <span class="badge bg-success">Pagada</span>
-                                {% elif nota.estado.value == 'BORRADOR' %}
-                                    <span class="badge bg-secondary">Borrador</span>
-                                {% elif nota.estado.value == 'EN_REVISION' %}
-                                    <span class="badge bg-warning text-dark">En revision</span>
-                                {% elif nota.estado.value == 'APROBADA' %}
-                                    <span class="badge bg-success">Aprobada</span>
-                                {% else %}
-                                    <span class="badge bg-danger">Cancelada</span>
-                                {% endif %}
-                                {% if row.saldo_cubierto_por_ajuste and row.ajuste_aplicado > 0 %}
-                                    <div class="mt-1">
-                                        <span class="badge bg-info text-dark">Liquidada por ajuste</span>
-                                    </div>
-                                {% elif row.saldo_parcialmente_cubierto %}
-                                    <div class="mt-1">
-                                        <span class="badge bg-info text-dark">Ajuste parcial aplicado</span>
-                                    </div>
-                                {% elif row.ajuste_saldo_nota %}
-                                    <div class="mt-1">
-                                        <span class="badge bg-light text-dark border">Saldo ajustado en nota</span>
-                                    </div>
-                                {% endif %}
-                            </td>
-                            <td>{{ nota.created_at|datetime_local if nota.created_at else '-' }}</td>
-                            <td>{{ suc.nombre if suc else '-' }}</td>
-                            <td class="text-end">${{ "{:,.2f}".format(row.total or 0) }}</td>
-                            <td class="text-end">${{ "{:,.2f}".format(row.pagado or 0) }}</td>
-                            <td class="text-end">
-                                {% if row.saldo_aplicable %}
-                                    {% if row.saldo_pendiente > 0 %}
-                                        <span class="text-danger fw-semibold">${{ "{:,.2f}".format(row.saldo_pendiente) }}</span>
-                                    {% else %}
-                                        <span class="text-success fw-semibold">$0.00</span>
-                                    {% endif %}
-                                    {% if row.ajuste_aplicado > 0 %}
-                                        <div class="text-muted small">Ajuste aplicado: ${{ "{:,.2f}".format(row.ajuste_aplicado or 0) }}</div>
-                                        {% if row.saldo_pendiente_original > row.saldo_pendiente %}
-                                            <div class="text-muted small">Saldo original: ${{ "{:,.2f}".format(row.saldo_pendiente_original or 0) }}</div>
+                                <td>{{ nota.created_at|datetime_local if nota.created_at else '—' }}</td>
+                                <td>{{ suc.nombre if suc else '—' }}</td>
+                                <td class="text-end">{{ money(row.total) }}</td>
+                                <td class="text-end">{{ money(row.pagado) }}</td>
+                                <td class="text-end">
+                                    {% if row.saldo_aplicable %}
+                                        {{ money(row.saldo_pendiente) }}
+                                        {% if row.ajuste_aplicado > 0 %}
+                                            <div class="text-muted small">Ajuste aplicado: {{ money(row.ajuste_aplicado, 'plain') }}</div>
+                                            {% if row.saldo_pendiente_original > row.saldo_pendiente %}
+                                                <div class="text-muted small">Saldo original: {{ money(row.saldo_pendiente_original, 'plain') }}</div>
+                                            {% endif %}
                                         {% endif %}
-                                    {% endif %}
-                                    {% if row.ajuste_saldo_nota > 0 %}
-                                        <div class="text-muted small">Ajuste nota: +${{ "{:,.2f}".format(row.ajuste_saldo_nota or 0) }}</div>
-                                    {% elif row.ajuste_saldo_nota < 0 %}
-                                        <div class="text-muted small">Ajuste nota: -${{ "{:,.2f}".format(-(row.ajuste_saldo_nota or 0)) }}</div>
-                                    {% endif %}
-                                {% else %}
-                                    <span class="text-muted">-</span>
-                                {% endif %}
-                            </td>
-                            <td class="text-end">
-                                {% if row.saldo_aplicable %}
-                                    {% if row.saldo_favor > 0 %}
-                                        <span class="text-success fw-semibold">${{ "{:,.2f}".format(row.saldo_favor) }}</span>
+                                        {% if row.ajuste_saldo_nota %}
+                                            <div class="text-muted small">Ajuste nota: {{ money(row.ajuste_saldo_nota, 'plain') }}</div>
+                                        {% endif %}
                                     {% else %}
-                                        <span class="text-muted">$0.00</span>
+                                        <span class="text-muted">—</span>
                                     {% endif %}
-                                {% else %}
-                                    <span class="text-muted">-</span>
-                                {% endif %}
-                            </td>
-                            <td class="text-end">
-                                <a href="/web/admin/notas/{{ nota.id }}" class="btn btn-sm btn-outline-primary">Ver nota</a>
-                            </td>
-                        </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            </div>
-            {% if record_rows|length == 0 %}
-                <p class="text-muted small mt-3 mb-0">No hay notas para este {{ partner_label|lower }}.</p>
+                                </td>
+                                <td class="text-end">
+                                    {% if row.saldo_aplicable %}
+                                        {{ money(row.saldo_favor) }}
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">
+                                    <span class="s-actions">
+                                        <a href="/web/admin/notas/{{ nota.id }}" class="btn btn-sm btn-outline-primary">Ver</a>
+                                    </span>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             {% endif %}
         </div>
     </div>
 
-    <div class="card hover-lift" id="partner-payments">
+    <div class="card" id="partner-payments">
         <div class="card-body">
-            <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2">
-                <div>
-                    <h2 class="h6 text-dark mb-1">{{ 'Historial unificado de pagos' if unified_enabled else 'Historial de pagos' }}</h2>
-                    <div class="text-muted small">Pagos registrados en notas de {{ payments_scope_label|lower }}.</div>
-                </div>
-            </div>
-            <div class="table-scroll-shell mt-3">
-            <div class="table-responsive">
-                <table class="table table-hover table-sm align-middle mb-0 data-table">
-                    <thead>
-                    <tr>
-                        <th>Fecha</th>
-                        <th>Nota</th>
-                        {% if unified_enabled %}
-                            <th>Operacion</th>
-                        {% endif %}
-                        <th class="text-end">Monto</th>
-                        <th>Metodo</th>
-                        <th>Cuenta</th>
-                        <th>Usuario</th>
-                        <th>Comentario</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {% for pago in pagos %}
-                        {% set nota = pago.nota %}
+            <h2 class="s-card-title">{{ 'Historial unificado de pagos' if unified_enabled else 'Historial de pagos' }}</h2>
+            <p class="s-card-sub mb-3">Pagos registrados en notas de {{ payments_scope_label|lower }}.</p>
+
+            {% if pagos|length == 0 %}
+                {{ empty('Sin pagos registrados',
+                         'Los pagos aparecen aquí en cuanto se registran desde una nota aprobada.',
+                         'cash') }}
+            {% else %}
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead>
                         <tr>
-                            <td>{{ pago.created_at|datetime_local if pago.created_at else '-' }}</td>
-                            <td>
-                                {% if nota %}
-                                    <div class="fw-semibold">{{ folio_map.get(nota.id, '-') }}</div>
-                                    <div class="text-muted small">#{{ nota.id }}</div>
-                                    {% if nota.estado %}
-                                        <div class="small mt-1">
-                                            {% if nota.estado.value == 'BORRADOR' %}
-                                                <span class="badge bg-secondary">Borrador</span>
-                                            {% elif nota.estado.value == 'EN_REVISION' %}
-                                                <span class="badge bg-warning text-dark">En revision</span>
-                                            {% elif nota.estado.value == 'APROBADA' %}
-                                                <span class="badge bg-success">Aprobada</span>
-                                            {% else %}
-                                                <span class="badge bg-danger">Cancelada</span>
-                                            {% endif %}
-                                        </div>
-                                    {% endif %}
-                                {% else %}
-                                    <span class="text-muted">-</span>
-                                {% endif %}
-                            </td>
-                            {% if unified_enabled %}
+                            <th>Fecha</th>
+                            <th data-title-col>Nota</th>
+                            {% if unified_enabled %}<th>Operación</th>{% endif %}
+                            <th class="text-end">Monto</th>
+                            <th>Método</th>
+                            <th>Cuenta</th>
+                            <th>Usuario</th>
+                            <th>Comentario</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for pago in pagos %}
+                            {% set nota = pago.nota %}
+                            <tr>
+                                <td>{{ pago.created_at|datetime_local if pago.created_at else '—' }}</td>
                                 <td>
-                                    {% if nota and nota.tipo_operacion.value == 'compra' %}
-                                        <span class="partner-role-badge">Compra</span>
-                                    {% elif nota and nota.tipo_operacion.value == 'venta' and nota.proveedor_id %}
-                                        <span class="partner-role-badge dual">Venta directa</span>
-                                    {% elif nota and nota.tipo_operacion.value == 'venta' %}
-                                        <span class="partner-role-badge unified">Venta legado</span>
+                                    {% if nota %}
+                                        <div class="fw-semibold">{{ folio_map.get(nota.id, '—') }}</div>
+                                        <div class="text-muted small">#{{ nota.id }}</div>
+                                        {% if nota.estado %}
+                                            <div class="small mt-1">
+                                                {% if nota.estado.value == 'BORRADOR' %}
+                                                    {{ badge('Borrador', 'muted') }}
+                                                {% elif nota.estado.value == 'EN_REVISION' %}
+                                                    {{ badge('En revisión', 'warn') }}
+                                                {% elif nota.estado.value == 'APROBADA' %}
+                                                    {{ badge('Aprobada', 'info') }}
+                                                {% else %}
+                                                    {{ badge('Cancelada', 'bad') }}
+                                                {% endif %}
+                                            </div>
+                                        {% endif %}
                                     {% else %}
-                                        <span class="text-muted">-</span>
+                                        <span class="text-muted">—</span>
                                     {% endif %}
                                 </td>
-                            {% endif %}
-                            <td class="text-end">${{ "{:,.2f}".format(pago.monto or 0) }}</td>
-                            <td>{{ pago.metodo_pago or '-' }}</td>
-                            <td>{{ pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or '-') }}</td>
-                            <td>
-                                {% if pago.usuario %}
-                                    <div class="fw-semibold">{{ pago.usuario.nombre_completo or pago.usuario.username }}</div>
-                                    <div class="text-muted small">{{ pago.usuario.username }}</div>
-                                {% else %}
-                                    <span class="text-muted">-</span>
+                                {% if unified_enabled %}
+                                    <td>
+                                        {% if nota and nota.tipo_operacion.value == 'compra' %}
+                                            {{ badge('Compra', 'info') }}
+                                        {% elif nota and nota.tipo_operacion.value == 'venta' and nota.proveedor_id %}
+                                            {{ badge('Venta directa', 'muted') }}
+                                        {% elif nota and nota.tipo_operacion.value == 'venta' %}
+                                            {{ badge('Venta anterior', 'muted') }}
+                                        {% else %}
+                                            <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
                                 {% endif %}
-                            </td>
-                            <td class="text-muted">{{ pago.comentario or '-' }}</td>
-                        </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            </div>
-            {% if pagos|length == 0 %}
-                <p class="text-muted small mt-3 mb-0">No hay pagos registrados.</p>
+                                <td class="text-end">{{ money(pago.monto) }}</td>
+                                <td>{{ pago.metodo_pago|capitalize if pago.metodo_pago else '—' }}</td>
+                                <td>{{ pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or '—') }}</td>
+                                <td>
+                                    {% if pago.usuario %}
+                                        <div class="fw-semibold">{{ pago.usuario.nombre_completo or pago.usuario.username }}</div>
+                                        <div class="text-muted small">{{ pago.usuario.username }}</div>
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-muted">{{ pago.comentario or '—' }}</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             {% endif %}
         </div>
     </div>
 </div>
 {% endblock %}
-

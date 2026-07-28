@@ -1,270 +1,141 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, icon, stat, money, empty %}
 
-{% block title %}Reporte de Saldos{% endblock %}
+{% block title %}Reporte de saldos{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Reportes</p>
-        <h1 class="h4 text-white mb-0">Reporte de Saldos</h1>
-    </div>
-</div>
 
-{# ── FILTER FORM ── #}
-<div class="card hover-lift mb-4">
-    <div class="card-body">
-        <form method="get" action="/web/admin/reporte-saldos" class="row g-3 align-items-end">
-            {% if sucursales | length > 1 %}
-            <div class="col-12 col-sm-6 col-md-4">
-                <label class="form-label small fw-semibold" for="sucursal_id">Sucursal</label>
-                <select class="form-select form-select-sm" id="sucursal_id" name="sucursal_id">
+{{ page_header('Reporte de saldos', eyebrow='Reportes',
+               sub='Saldos vivos por proveedor y por cliente, con el neto global de la operación.') }}
+
+<details class="s-filters-collapse" open>
+    <summary>Filtros</summary>
+    <form class="s-filters" method="get" action="/web/admin/reporte-saldos">
+        {% if sucursales | length > 1 %}
+            <div class="s-filters__field">
+                <label class="form-label" for="sucursal_id">Sucursal</label>
+                <select class="form-select" id="sucursal_id" name="sucursal_id">
                     <option value="">Todas</option>
                     {% for s in sucursales %}
                         <option value="{{ s.id }}" {% if sucursal_id == s.id %}selected{% endif %}>{{ s.nombre }}</option>
                     {% endfor %}
                 </select>
             </div>
-            {% elif sucursales | length == 1 %}
-                <input type="hidden" name="sucursal_id" value="{{ sucursales[0].id }}">
-            {% endif %}
-            <div class="col-12 col-sm-6 col-md-4">
-                <button type="submit" class="btn btn-primary btn-sm w-100">Actualizar</button>
+        {% elif sucursales | length == 1 %}
+            <input type="hidden" name="sucursal_id" value="{{ sucursales[0].id }}">
+        {% endif %}
+        <div class="s-filters__actions">
+            <button type="submit" class="btn btn-primary">Filtrar</button>
+        </div>
+    </form>
+</details>
+
+<div class="s-stats">
+    {{ stat('Total a pagar', money(global_a_pagar), 'Lo que debes en total') }}
+    {{ stat('Total a cobrar', money(global_a_cobrar), 'Lo que te deben en total') }}
+    {{ stat('Saldo neto global', money(global_neto), 'A tu favor' if global_neto >= 0 else 'En contra') }}
+</div>
+
+<p class="s-card-sub mb-4">
+    Saldo neto = total a cobrar &minus; total a pagar. Un resultado positivo significa que te deben
+    más de lo que debes. Solo incluye partners con saldo activo (&gt; $0.01).
+</p>
+
+{% if proveedores_rows %}
+    <div class="card mb-3">
+        <div class="card-body">
+            <h2 class="s-card-title">Proveedores</h2>
+            <p class="s-card-sub mb-3">{{ proveedores_rows | length }} con saldo pendiente.</p>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th data-title-col>Proveedor</th>
+                            <th class="text-end">A pagar</th>
+                            <th class="text-end">A cobrar de ellos</th>
+                            <th class="text-end">Saldo neto</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in proveedores_rows | sort(attribute='a_pagar', reverse=True) %}
+                        <tr>
+                            <td>
+                                <a href="{{ row.partner_url }}" class="fw-semibold">{{ row.nombre }}</a>
+                            </td>
+                            <td class="text-end">
+                                {% if row.a_pagar > 0 %}{{ money(row.a_pagar) }}{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if row.a_cobrar > 0 %}{{ money(row.a_cobrar) }}{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td class="text-end">{{ money(row.saldo_neto) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot class="table-group-divider">
+                        <tr class="fw-bold">
+                            <td>Total proveedores</td>
+                            <td class="text-end">{{ money(prov_total_a_pagar) }}</td>
+                            <td class="text-end">{{ money(prov_total_a_cobrar) }}</td>
+                            <td class="text-end">{{ money(prov_total_a_cobrar - prov_total_a_pagar) }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
             </div>
-        </form>
+        </div>
     </div>
-</div>
+{% else %}
+    {{ empty('Sin saldos pendientes en proveedores',
+             'Cambia de sucursal o registra notas de compra para ver saldos aquí.',
+             'truck') }}
+{% endif %}
 
-{# ── GLOBAL SUMMARY ── #}
-<div class="note-meta-grid mb-4">
-    <div class="note-meta-item">
-        <span class="note-meta-label">Total a pagar</span>
-        <strong class="fs-5 text-danger">${{ "{:,.2f}".format(global_a_pagar) }}</strong>
-        <div class="note-meta-sub">Lo que debes en total</div>
-    </div>
-    <div class="note-meta-item">
-        <span class="note-meta-label">Total a cobrar</span>
-        <strong class="fs-5 text-success">${{ "{:,.2f}".format(global_a_cobrar) }}</strong>
-        <div class="note-meta-sub">Lo que te deben en total</div>
-    </div>
-    <div class="note-meta-item">
-        <span class="note-meta-label">Saldo neto global</span>
-        {% if global_neto >= 0 %}
-            <strong class="fs-5 text-success">+${{ "{:,.2f}".format(global_neto) }}</strong>
-            <div class="note-meta-sub">A tu favor</div>
-        {% else %}
-            <strong class="fs-5 text-danger">-${{ "{:,.2f}".format(-global_neto) }}</strong>
-            <div class="note-meta-sub">En contra</div>
-        {% endif %}
-    </div>
-</div>
-
-{# ── PROVEEDORES ── #}
-<div class="card hover-lift mb-4">
-    <div class="card-body">
-        <div class="d-flex align-items-center gap-2 mb-3">
-            <span class="chip-strong">Proveedores</span>
-            <span class="text-muted small">{{ proveedores_rows | length }} con saldo pendiente</span>
-        </div>
-
-        {% if proveedores_rows %}
-        <div class="table-scroll-shell">
-        <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0 report-table">
-                <thead>
-                    <tr>
-                        <th>Proveedor</th>
-                        <th class="text-end text-danger">A pagar</th>
-                        <th class="text-end text-success">A cobrar de ellos</th>
-                        <th class="text-end">Saldo neto</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in proveedores_rows | sort(attribute='a_pagar', reverse=True) %}
-                    <tr>
-                        <td>
-                            <a href="{{ row.partner_url }}" class="text-decoration-none fw-semibold">
-                                {{ row.nombre }}
-                            </a>
-                        </td>
-                        <td class="text-end">
-                            {% if row.a_pagar > 0 %}
-                                <span class="text-danger fw-semibold">${{ "{:,.2f}".format(row.a_pagar) }}</span>
-                            {% else %}
-                                <span class="text-muted">—</span>
-                            {% endif %}
-                        </td>
-                        <td class="text-end">
-                            {% if row.a_cobrar > 0 %}
-                                <span class="text-success fw-semibold">${{ "{:,.2f}".format(row.a_cobrar) }}</span>
-                            {% else %}
-                                <span class="text-muted">—</span>
-                            {% endif %}
-                        </td>
-                        <td class="text-end">
-                            {% if row.saldo_neto > 0 %}
-                                <span class="badge bg-danger">${{ "{:,.2f}".format(row.saldo_neto) }}</span>
-                            {% elif row.saldo_neto < 0 %}
-                                <span class="badge bg-success">+${{ "{:,.2f}".format(-row.saldo_neto) }}</span>
-                            {% else %}
-                                <span class="text-muted small">$0.00</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-                <tfoot class="table-group-divider">
-                    <tr class="fw-bold">
-                        <td>Total proveedores</td>
-                        <td class="text-end text-danger">${{ "{:,.2f}".format(prov_total_a_pagar) }}</td>
-                        <td class="text-end text-success">${{ "{:,.2f}".format(prov_total_a_cobrar) }}</td>
-                        <td class="text-end">
-                            {% set prov_neto = prov_total_a_cobrar - prov_total_a_pagar %}
-                            {% if prov_neto >= 0 %}
-                                <span class="text-success">+${{ "{:,.2f}".format(prov_neto) }}</span>
-                            {% else %}
-                                <span class="text-danger">-${{ "{:,.2f}".format(-prov_neto) }}</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
-        </div>
-        {% else %}
-            <div class="text-muted small py-3 text-center">Sin saldos pendientes en proveedores.</div>
-        {% endif %}
-    </div>
-</div>
-
-{# ── CLIENTES ── #}
-<div class="card hover-lift mb-4">
-    <div class="card-body">
-        <div class="d-flex align-items-center gap-2 mb-3">
-            <span class="chip-strong">Clientes</span>
-            <span class="text-muted small">{{ clientes_rows | length }} con saldo pendiente</span>
-        </div>
-
-        {% if clientes_rows %}
-        <div class="table-scroll-shell">
-        <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0 report-table">
-                <thead>
-                    <tr>
-                        <th>Cliente</th>
-                        <th class="text-end text-success">A cobrar</th>
-                        <th class="text-end text-danger">A pagar a ellos</th>
-                        <th class="text-end">Saldo neto</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in clientes_rows | sort(attribute='a_cobrar', reverse=True) %}
-                    <tr>
-                        <td>
-                            <a href="{{ row.partner_url }}" class="text-decoration-none fw-semibold">
-                                {{ row.nombre }}
-                            </a>
-                        </td>
-                        <td class="text-end">
-                            {% if row.a_cobrar > 0 %}
-                                <span class="text-success fw-semibold">${{ "{:,.2f}".format(row.a_cobrar) }}</span>
-                            {% else %}
-                                <span class="text-muted">—</span>
-                            {% endif %}
-                        </td>
-                        <td class="text-end">
-                            {% if row.a_pagar > 0 %}
-                                <span class="text-danger fw-semibold">${{ "{:,.2f}".format(row.a_pagar) }}</span>
-                            {% else %}
-                                <span class="text-muted">—</span>
-                            {% endif %}
-                        </td>
-                        <td class="text-end">
-                            {% if row.saldo_neto < 0 %}
-                                <span class="badge bg-success">+${{ "{:,.2f}".format(-row.saldo_neto) }}</span>
-                            {% elif row.saldo_neto > 0 %}
-                                <span class="badge bg-danger">${{ "{:,.2f}".format(row.saldo_neto) }}</span>
-                            {% else %}
-                                <span class="text-muted small">$0.00</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-                <tfoot class="table-group-divider">
-                    <tr class="fw-bold">
-                        <td>Total clientes</td>
-                        <td class="text-end text-success">${{ "{:,.2f}".format(cli_total_a_cobrar) }}</td>
-                        <td class="text-end text-danger">${{ "{:,.2f}".format(cli_total_a_pagar) }}</td>
-                        <td class="text-end">
-                            {% set cli_neto = cli_total_a_cobrar - cli_total_a_pagar %}
-                            {% if cli_neto >= 0 %}
-                                <span class="text-success">+${{ "{:,.2f}".format(cli_neto) }}</span>
-                            {% else %}
-                                <span class="text-danger">-${{ "{:,.2f}".format(-cli_neto) }}</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
-        </div>
-        {% else %}
-            <div class="text-muted small py-3 text-center">Sin saldos pendientes en clientes.</div>
-        {% endif %}
-    </div>
-</div>
-
-{# ── GLOBAL TOTAL CARD ── #}
-<div class="card hover-lift mb-4">
-    <div class="card-body">
-        <div class="d-flex align-items-center gap-2 mb-3">
-            <span class="chip-strong">Resumen global</span>
-        </div>
-        <div class="table-responsive">
-            <table class="table table-sm mb-0">
-                <tbody>
-                    <tr>
-                        <td class="text-muted">Total a pagar a proveedores</td>
-                        <td class="text-end text-danger fw-semibold">${{ "{:,.2f}".format(prov_total_a_pagar) }}</td>
-                    </tr>
-                    <tr>
-                        <td class="text-muted">Total a pagar a clientes</td>
-                        <td class="text-end text-danger fw-semibold">${{ "{:,.2f}".format(cli_total_a_pagar) }}</td>
-                    </tr>
-                    <tr class="border-top fw-bold">
-                        <td>Total a pagar</td>
-                        <td class="text-end text-danger">${{ "{:,.2f}".format(global_a_pagar) }}</td>
-                    </tr>
-                    <tr class="mt-2">
-                        <td class="text-muted">Total a cobrar de proveedores</td>
-                        <td class="text-end text-success fw-semibold">${{ "{:,.2f}".format(prov_total_a_cobrar) }}</td>
-                    </tr>
-                    <tr>
-                        <td class="text-muted">Total a cobrar de clientes</td>
-                        <td class="text-end text-success fw-semibold">${{ "{:,.2f}".format(cli_total_a_cobrar) }}</td>
-                    </tr>
-                    <tr class="border-top fw-bold">
-                        <td>Total a cobrar</td>
-                        <td class="text-end text-success">${{ "{:,.2f}".format(global_a_cobrar) }}</td>
-                    </tr>
-                    <tr class="border-top">
-                        <td class="fw-bold fs-6">Saldo neto global</td>
-                        <td class="text-end fw-bold fs-6">
-                            {% if global_neto >= 0 %}
-                                <span class="text-success">+${{ "{:,.2f}".format(global_neto) }}</span>
-                            {% else %}
-                                <span class="text-danger">-${{ "{:,.2f}".format(-global_neto) }}</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-        <div class="text-muted small mt-2">
-            Saldo neto = Total a cobrar &minus; Total a pagar.
-            Positivo significa que te deben más de lo que debes.
-            Solo incluye partners con saldo activo (&gt; $0.01).
+{% if clientes_rows %}
+    <div class="card mb-3">
+        <div class="card-body">
+            <h2 class="s-card-title">Clientes</h2>
+            <p class="s-card-sub mb-3">{{ clientes_rows | length }} con saldo pendiente.</p>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th data-title-col>Cliente</th>
+                            <th class="text-end">A cobrar</th>
+                            <th class="text-end">A pagar a ellos</th>
+                            <th class="text-end">Saldo neto</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in clientes_rows | sort(attribute='a_cobrar', reverse=True) %}
+                        <tr>
+                            <td>
+                                <a href="{{ row.partner_url }}" class="fw-semibold">{{ row.nombre }}</a>
+                            </td>
+                            <td class="text-end">
+                                {% if row.a_cobrar > 0 %}{{ money(row.a_cobrar) }}{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if row.a_pagar > 0 %}{{ money(row.a_pagar) }}{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td class="text-end">{{ money(row.saldo_neto) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot class="table-group-divider">
+                        <tr class="fw-bold">
+                            <td>Total clientes</td>
+                            <td class="text-end">{{ money(cli_total_a_cobrar) }}</td>
+                            <td class="text-end">{{ money(cli_total_a_pagar) }}</td>
+                            <td class="text-end">{{ money(cli_total_a_cobrar - cli_total_a_pagar) }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
         </div>
     </div>
-</div>
+{% else %}
+    {{ empty('Sin saldos pendientes en clientes',
+             'Cambia de sucursal o registra notas de venta para ver saldos aquí.',
+             'users') }}
+{% endif %}
 {% endblock %}

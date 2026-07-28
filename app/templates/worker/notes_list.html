@@ -1,47 +1,56 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
+{% from "_macros.html" import page_header, icon, badge, money, kg, empty %}
 
 {% block title %}Mis notas{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Operacion</p>
-        <h1 class="h4 text-white mb-0">Mis notas</h1>
-    </div>
-    <a href="/web/worker/notes/nueva" class="btn btn-primary btn-sm">Nueva nota</a>
-</div>
+{% call page_header('Mis notas', eyebrow='Operación',
+                    sub='Notas de pesaje que capturaste: su estado, su total y la evidencia adjunta.') %}
+    <a href="/web/worker/notes/nueva" class="btn btn-primary">
+        {{ icon('plus', 's-icon--sm') }} Nueva nota
+    </a>
+{% endcall %}
 
-<div class="card hover-lift">
+{% if success == '1' %}
+    <div class="alert alert-success py-2 small">Nota enviada a revisión.</div>
+{% elif success == '0' %}
+    <div class="alert alert-danger py-2 small">No se pudo enviar la nota. Verifica que sea un borrador.</div>
+{% elif success == '2' %}
+    <div class="alert alert-danger py-2 small">Solo puedes editar notas en borrador.</div>
+{% elif success == '3' %}
+    <div class="alert alert-success py-2 small">Nota actualizada correctamente.</div>
+{% endif %}
+
+<div class="card">
     <div class="card-body">
-        {% if success == '1' %}
-            <div class="alert alert-success py-2 small">Nota enviada a revision.</div>
-        {% elif success == '0' %}
-            <div class="alert alert-danger py-2 small">No se pudo enviar la nota. Verifica que sea un borrador.</div>
-        {% elif success == '2' %}
-            <div class="alert alert-danger py-2 small">Solo puedes editar notas en borrador.</div>
-        {% elif success == '3' %}
-            <div class="alert alert-success py-2 small">Nota actualizada correctamente.</div>
-        {% endif %}
-        <div class="d-none d-md-block table-responsive">
-            <table class="table table-hover table-sm align-middle mb-0">
+        {% if notas|length == 0 %}
+            {{ empty('Aún no tienes notas',
+                     'Captura una nota de pesaje con el material, los pesajes y la evidencia; después envíala a revisión.',
+                     'note') }}
+            <div class="s-form-actions">
+                <a href="/web/worker/notes/nueva" class="btn btn-outline-primary">
+                    {{ icon('plus', 's-icon--sm') }} Nueva nota
+                </a>
+            </div>
+        {% else %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
                 <thead>
                 <tr>
-                    <th>Folio</th>
-                    <th>Operacion</th>
+                    <th data-title-col>Folio</th>
+                    <th>Operación</th>
                     <th>Proveedor / cliente</th>
                     <th>Estado</th>
-                    <th>Total kg</th>
-                    <th>Total $</th>
+                    <th class="text-end">Total kg</th>
+                    <th class="text-end">Total $</th>
                     <th>Fecha</th>
-                    <th></th>
+                    <th><span class="s-visually-hidden">Acciones</span></th>
                 </tr>
                 </thead>
                 <tbody>
                 {% for n in notas %}
                     <tr>
-                        <td>
-                            <div class="fw-semibold">{{ folio_map.get(n.id, '-') }}</div>
-                        </td>
+                        <td><span class="s-folio">{{ folio_map.get(n.id, '-') }}</span></td>
                         <td>{{ n.tipo_operacion.value|capitalize }}</td>
                         <td>
                             {% set partner = partner_map.get(n.id, {}) %}
@@ -52,95 +61,37 @@
                         </td>
                         <td>
                             {% if n.estado.value == 'BORRADOR' %}
-                                <span class="badge bg-secondary">Borrador</span>
+                                {{ badge('Borrador', 'muted') }}
                             {% elif n.estado.value == 'EN_REVISION' %}
-                                <span class="badge bg-warning text-dark">En revision</span>
+                                {{ badge('En revisión', 'warn') }}
                             {% elif n.estado.value == 'APROBADA' %}
-                                <span class="badge bg-success">Aprobada</span>
+                                {{ badge('Aprobada', 'ok') }}
                             {% else %}
-                                <span class="badge bg-danger">Cancelada</span>
+                                {{ badge('Cancelada', 'bad') }}
                             {% endif %}
                         </td>
-                        <td>{{ "{:,.2f}".format(n.total_kg_neto or 0) }} kg</td>
-                        <td>${{ "{:,.2f}".format(n.total_monto or 0) }}</td>
+                        <td class="text-end">{{ kg(n.total_kg_neto or 0) }}</td>
+                        <td class="text-end">{{ money(n.total_monto or 0) }}</td>
                         <td>{{ n.created_at|datetime_local if n.created_at else '-' }}</td>
-                        <td class="text-end">
-                            <div class="d-flex gap-2 justify-content-end flex-wrap">
-                                <a href="/web/worker/notes/{{ n.id }}/evidencias" class="btn btn-sm btn-outline-primary">Evidencias</a>
+                        <td>
+                            <span class="s-actions">
+                                <a href="/web/worker/notes/{{ n.id }}/evidencias" class="btn btn-sm btn-outline-secondary">Evidencias</a>
                                 {% if n.estado.value == 'BORRADOR' %}
                                     <a href="/web/worker/notes/{{ n.id }}/editar" class="btn btn-sm btn-outline-secondary">Editar</a>
-                                {% endif %}
-                                {% if n.estado.value == 'BORRADOR' %}
-                                    <form method="post" action="/web/worker/notes/{{ n.id }}/enviar" class="m-0">
-                                        <button class="btn btn-sm btn-primary">Enviar a revision</button>
+                                    <form method="post" action="/web/worker/notes/{{ n.id }}/enviar" class="m-0 d-inline"
+                                          data-submit-once="1">
+                                        <button class="btn btn-sm btn-outline-primary"
+                                                data-loading-text="Enviando…">Enviar a revisión</button>
                                     </form>
-                                {% else %}
-                                    <span class="text-muted small">-</span>
                                 {% endif %}
-                            </div>
+                            </span>
                         </td>
                     </tr>
                 {% endfor %}
                 </tbody>
             </table>
         </div>
-        <div class="d-md-none d-grid gap-2">
-            {% for n in notas %}
-                <div class="card soft p-3">
-                    {% set partner = partner_map.get(n.id, {}) %}
-                    <div class="d-flex justify-content-between align-items-start mb-2">
-                        <div>
-                            <div class="text-muted small">Folio {{ folio_map.get(n.id, '-') }}</div>
-                            <div class="fw-bold">{{ n.tipo_operacion.value|capitalize }}</div>
-                            <div class="mt-2">
-                                <div class="text-muted small">{{ partner.get('kind', 'Proveedor / cliente') }}</div>
-                                <div class="fw-semibold">{{ partner.get('name', '-') }}</div>
-                            </div>
-                        </div>
-                        <div>
-                            {% if n.estado.value == 'BORRADOR' %}
-                                <span class="badge bg-secondary">Borrador</span>
-                            {% elif n.estado.value == 'EN_REVISION' %}
-                                <span class="badge bg-warning text-dark">En revision</span>
-                            {% elif n.estado.value == 'APROBADA' %}
-                                <span class="badge bg-success">Aprobada</span>
-                            {% else %}
-                                <span class="badge bg-danger">Cancelada</span>
-                            {% endif %}
-                        </div>
-                    </div>
-                    <div class="d-flex justify-content-between small">
-                        <span class="text-muted">Kg</span>
-                        <strong>{{ "{:,.2f}".format(n.total_kg_neto or 0) }} kg</strong>
-                    </div>
-                    <div class="d-flex justify-content-between small">
-                        <span class="text-muted">Total</span>
-                        <strong>${{ "{:,.2f}".format(n.total_monto or 0) }}</strong>
-                    </div>
-                    <div class="d-flex justify-content-between small">
-                        <span class="text-muted">Fecha</span>
-                        <strong>{{ n.created_at|datetime_local if n.created_at else '-' }}</strong>
-                    </div>
-                    <div class="d-grid gap-2 mt-2">
-                        <a href="/web/worker/notes/{{ n.id }}/evidencias" class="btn btn-outline-primary btn-sm w-100">Evidencias</a>
-                        {% if n.estado.value == 'BORRADOR' %}
-                            <a href="/web/worker/notes/{{ n.id }}/editar" class="btn btn-outline-secondary btn-sm w-100">Editar</a>
-                        {% endif %}
-                        {% if n.estado.value == 'BORRADOR' %}
-                            <form method="post" action="/web/worker/notes/{{ n.id }}/enviar">
-                                <button class="btn btn-primary btn-sm w-100">Enviar a revision</button>
-                            </form>
-                        {% else %}
-                            <span class="text-muted small text-center">-</span>
-                        {% endif %}
-                    </div>
-                </div>
-            {% endfor %}
-        </div>
-        {% if notas|length == 0 %}
-            <p class="text-muted small mb-0 mt-3">Aun no tienes notas.</p>
         {% endif %}
     </div>
 </div>
 {% endblock %}
-

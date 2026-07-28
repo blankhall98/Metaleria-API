@@ -24,6 +24,74 @@ def _get_session_user(request: Request) -> dict | None:
     return request.session.get("user")
 
 
+def _home_resumen(db: Session, notas_revision_count: int) -> dict:
+    """Operating figures for the dashboard.
+
+    Read-only aggregates over approved notes; a failure here must never take
+    the home page down, so the caller gets an empty dict instead.
+    """
+    from datetime import date, datetime, timedelta
+    from decimal import Decimal
+    from sqlalchemy import func
+
+    from app.models import Inventario
+    from app.models.pricing import TipoOperacion
+
+    try:
+        saldo = Nota.total_monto - Nota.monto_pagado
+        aprobadas = Nota.estado == NotaEstado.aprobada
+
+        def _sum_saldo(tipo: TipoOperacion) -> Decimal:
+            value = (
+                db.query(func.coalesce(func.sum(saldo), 0))
+                .filter(aprobadas, Nota.tipo_operacion == tipo, saldo > 0)
+                .scalar()
+            )
+            return Decimal(str(value or 0))
+
+        hoy = date.today()
+        inicio_dia = datetime(hoy.year, hoy.month, hoy.day)
+
+        vencidas = (
+            db.query(Nota)
+            .filter(
+                aprobadas,
+                saldo > 0,
+                Nota.fecha_caducidad_pago.isnot(None),
+                Nota.fecha_caducidad_pago < hoy,
+            )
+            .count()
+        )
+
+        por_vencer = (
+            db.query(Nota)
+            .filter(
+                aprobadas,
+                saldo > 0,
+                Nota.fecha_caducidad_pago.isnot(None),
+                Nota.fecha_caducidad_pago >= hoy,
+                Nota.fecha_caducidad_pago <= hoy + timedelta(days=5),
+            )
+            .count()
+        )
+
+        notas_hoy = db.query(Nota).filter(Nota.created_at >= inicio_dia).count()
+
+        inventario_kg = db.query(func.coalesce(func.sum(Inventario.stock_actual), 0)).scalar()
+
+        return {
+            "en_revision": notas_revision_count,
+            "notas_hoy": notas_hoy,
+            "por_pagar": _sum_saldo(TipoOperacion.compra),
+            "por_cobrar": _sum_saldo(TipoOperacion.venta),
+            "vencidas": vencidas,
+            "por_vencer": por_vencer,
+            "inventario_kg": Decimal(str(inventario_kg or 0)),
+        }
+    except Exception:  # noqa: BLE001 - the dashboard degrades, it does not fail
+        return {}
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
 
@@ -68,12 +136,18 @@ def create_app() -> FastAPI:
     async def web_home(request: Request):
         user = _get_session_user(request)
         notas_revision_count = 0
-        if user and user.get("rol") in ("admin", "super_admin"):
+        resumen: dict = {}
+
+        if user and user.get("rol") in ("admin", "super_admin", "visor"):
             db = SessionLocal()
             try:
-                notas_revision_count = db.query(Nota).filter(Nota.estado == NotaEstado.en_revision).count()
+                notas_revision_count = (
+                    db.query(Nota).filter(Nota.estado == NotaEstado.en_revision).count()
+                )
+                resumen = _home_resumen(db, notas_revision_count)
             finally:
                 db.close()
+
         return templates.TemplateResponse(
             "home.html",
             {
@@ -81,6 +155,7 @@ def create_app() -> FastAPI:
                 "env": settings.ENV,
                 "user": user,
                 "notas_revision_count": notas_revision_count,
+                "resumen": resumen,
             },
         )
 

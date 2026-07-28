@@ -1,65 +1,70 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, icon, badge, empty_row %}
 
 {% block title %}Comisionarios &middot; Admin{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Comisiones</p>
-        <h1 class="h4 text-white mb-0">Comisionarios</h1>
-    </div>
-    <a href="/web/admin/comisionarios/nuevo" class="btn btn-primary btn-sm">
-        Nuevo comisionario
+{% call page_header('Comisionarios', eyebrow='Relaciones',
+                    sub='Directorio de comisionarios y acceso a sus notas, cuentas e historial.') %}
+    <a href="/web/admin/comisionarios/nuevo" class="btn btn-primary">
+        {{ icon('plus', 's-icon--sm') }} Nuevo comisionario
     </a>
-</div>
+{% endcall %}
 
-<form method="get" class="row g-2 mb-3">
-    <div class="col-lg-5 col-md-6">
-        <input
-            type="text"
-            class="form-control"
-            name="q"
-            placeholder="Buscar por nombre, telefono o correo..."
-            value="{{ q }}"
-        >
-    </div>
-    <div class="col-lg-4 col-md-6">
-        <select class="form-select" name="sucursal_id">
-            <option value="">Todas las sucursales</option>
-            {% for sucursal in sucursales %}
-                <option value="{{ sucursal.id }}" {% if sucursal_id and sucursal_id == sucursal.id %}selected{% endif %}>
-                    {{ sucursal.nombre }}
-                </option>
-            {% endfor %}
-        </select>
-    </div>
-    <div class="col-auto d-flex gap-2">
-        <button class="btn btn-outline-secondary btn-sm" type="submit">Buscar</button>
-        {% if q or sucursal_id %}
-            <a href="/web/admin/comisionarios" class="btn btn-outline-secondary btn-sm">Limpiar</a>
-        {% endif %}
-    </div>
-</form>
+<details class="s-filters-collapse" open>
+    <summary>Filtros</summary>
+    <form class="s-filters" method="get">
+        <div class="s-filters__field s-filters__field--wide">
+            <label for="f-q" class="form-label">Búsqueda</label>
+            <input
+                type="text"
+                id="f-q"
+                class="form-control"
+                name="q"
+                placeholder="Nombre, teléfono o correo"
+                value="{{ q }}"
+            >
+        </div>
+        <div class="s-filters__field">
+            <label for="f-sucursal" class="form-label">Sucursal</label>
+            <select class="form-select" id="f-sucursal" name="sucursal_id">
+                <option value="">Todas las sucursales</option>
+                {% for sucursal in sucursales %}
+                    <option value="{{ sucursal.id }}" {% if sucursal_id and sucursal_id == sucursal.id %}selected{% endif %}>
+                        {{ sucursal.nombre }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="s-filters__actions">
+            <button class="btn btn-outline-primary" type="submit">Filtrar</button>
+            {% if q or sucursal_id %}
+                <a href="/web/admin/comisionarios" class="btn btn-outline-secondary">Limpiar</a>
+            {% endif %}
+        </div>
+    </form>
+</details>
 
-<div class="card hover-lift">
+{% if delete_ok %}
+    <div class="alert alert-success py-2 small mb-3">Comisionario eliminado correctamente.</div>
+{% endif %}
+{% if delete_error %}
+    <div class="alert alert-danger py-2 small mb-3">{{ delete_error }}</div>
+{% endif %}
+
+<div class="card">
     <div class="card-body">
-        {% if delete_ok %}
-            <div class="alert alert-success py-2 small mb-3">Comisionario eliminado correctamente.</div>
-        {% endif %}
-        {% if delete_error %}
-            <div class="alert alert-danger py-2 small mb-3">{{ delete_error }}</div>
-        {% endif %}
         <div class="table-responsive">
-            <table class="table table-hover table-sm align-middle mb-0">
+            <table class="table table-hover align-middle">
                 <thead>
                 <tr>
                     <th>ID</th>
-                    <th>Nombre</th>
+                    <th data-title-col>Nombre</th>
                     <th>Sucursal</th>
-                    <th>Telefono</th>
+                    <th>Teléfono</th>
                     <th>Correo</th>
-                    <th>Activo</th>
-                    <th></th>
+                    <th>Estado</th>
+                    <th><span class="s-visually-hidden">Acciones</span></th>
                 </tr>
                 </thead>
                 <tbody>
@@ -70,45 +75,41 @@
                             <div class="fw-semibold">{{ c.nombre_completo }}</div>
                             <div class="text-muted small">Impacta saldos de {{ c.sucursal.nombre if c.sucursal else '-' }}</div>
                         </td>
-                        <td>
-                            <span class="badge bg-light text-dark border">{{ c.sucursal.nombre if c.sucursal else '-' }}</span>
-                        </td>
+                        <td>{{ c.sucursal.nombre if c.sucursal else '-' }}</td>
                         <td>{{ c.telefono or "-" }}</td>
                         <td>{{ c.correo_electronico or "-" }}</td>
                         <td>
-                            <span class="badge {{ 'bg-success' if c.activo else 'bg-secondary' }}">
-                                {{ 'Si' if c.activo else 'No' }}
-                            </span>
+                            {{ badge('Activo', 'ok') if c.activo else badge('Inactivo', 'muted') }}
                         </td>
-                        <td class="text-end">
-                            <div class="d-flex gap-2 justify-content-end flex-wrap">
-                                <a href="/web/admin/comisionarios/{{ c.id }}/record" class="btn btn-sm btn-outline-primary">
+                        <td>
+                            <span class="s-actions">
+                                <a href="/web/admin/comisionarios/{{ c.id }}/record" class="btn btn-sm btn-outline-secondary">
                                     Historial
                                 </a>
-                                <a href="/web/admin/comisionarios/notas?comisionario_id={{ c.id }}" class="btn btn-sm btn-outline-primary">
+                                <a href="/web/admin/comisionarios/notas?comisionario_id={{ c.id }}" class="btn btn-sm btn-outline-secondary">
                                     Notas
                                 </a>
-                                <a href="/web/admin/cuentas?owner_key=comisionario:{{ c.id }}" class="btn btn-sm btn-outline-primary">
+                                <a href="/web/admin/cuentas?owner_key=comisionario:{{ c.id }}" class="btn btn-sm btn-outline-secondary">
                                     Cuentas
                                 </a>
                                 <a href="/web/admin/comisionarios/{{ c.id }}/editar" class="btn btn-sm btn-outline-secondary">
                                     Editar
                                 </a>
                                 {% if user.rol == 'super_admin' %}
-                                    <form method="post" action="/web/admin/comisionarios/{{ c.id }}/eliminar" onsubmit="return confirm('¿Eliminar este comisionario? Esta acción no se puede deshacer.');">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+                                    <form method="post" action="/web/admin/comisionarios/{{ c.id }}/eliminar">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                data-confirm="¿Eliminar este comisionario? Esta acción no se puede deshacer.">Eliminar</button>
                                     </form>
                                 {% endif %}
-                            </div>
+                            </span>
                         </td>
                     </tr>
+                {% else %}
+                    {{ empty_row(7, 'No hay comisionarios registrados.') }}
                 {% endfor %}
                 </tbody>
             </table>
         </div>
-        {% if comisionarios|length == 0 %}
-            <p class="text-muted small mt-3 mb-0">No hay comisionarios registrados.</p>
-        {% endif %}
     </div>
 </div>
 {% endblock %}

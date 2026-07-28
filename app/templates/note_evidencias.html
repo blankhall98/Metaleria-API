@@ -1,29 +1,27 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
+{% from "_macros.html" import page_header, icon, badge, empty %}
 
-{% block title %}Evidencias - Nota {{ nota.id }}{% endblock %}
+{% block title %}Evidencias &middot; Nota {{ nota.id }}{% endblock %}
 
 {% block content %}
 <div class="evidence-page">
-    <div class="page-header">
-        <div>
-            <p class="text-uppercase text-muted small mb-1">Evidencias</p>
-            <h1 class="h4 text-dark mb-0">Nota #{{ nota.id }}</h1>
-        </div>
-        {% if back_url %}
-            <a href="{{ back_url }}" class="btn btn-outline-secondary btn-sm">Volver</a>
-        {% endif %}
-    </div>
+{% call page_header('Nota #' ~ nota.id, eyebrow='Evidencias',
+                    sub='Foto de respaldo de cada pesaje de la nota y la galería adicional.') %}
+    {% if back_url %}
+        <a href="{{ back_url }}" class="btn btn-outline-secondary">Volver</a>
+    {% endif %}
+{% endcall %}
 
     {% if updated %}
         <div class="alert alert-success py-2 small">Evidencia actualizada.</div>
     {% endif %}
     {% if error %}
         {% if error == 'tipo' %}
-            <div class="alert alert-danger py-2 small">El archivo no parece ser una imagen valida.</div>
+            <div class="alert alert-danger py-2 small">El archivo no parece ser una imagen válida.</div>
         {% elif error == 'peso' %}
-            <div class="alert alert-danger py-2 small">La imagen supera el limite de {{ max_mb }}MB.</div>
+            <div class="alert alert-danger py-2 small">La imagen supera el límite de {{ max_mb }} MB.</div>
         {% elif error == 'vacio' %}
-            <div class="alert alert-danger py-2 small">La imagen llego vacia. Intenta elegirla de nuevo.</div>
+            <div class="alert alert-danger py-2 small">La imagen llegó vacía. Intenta elegirla de nuevo.</div>
         {% elif error == 'estado' %}
             <div class="alert alert-danger py-2 small">No puedes subir evidencia en este estado.</div>
         {% else %}
@@ -40,86 +38,90 @@
         </div>
     {% endif %}
 
-    <div class="card hover-lift mb-3 note-summary-card">
+    <div class="card mb-3">
         <div class="card-body">
-            <div class="note-meta-grid">
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Estado</span>
-                    {% if nota.estado.value == 'BORRADOR' %}
-                        <span class="badge bg-secondary">Borrador</span>
-                    {% elif nota.estado.value == 'EN_REVISION' %}
-                        <span class="badge bg-warning text-dark">En revisi&oacute;n</span>
-                    {% elif nota.estado.value == 'APROBADA' %}
-                        <span class="badge bg-success">Aprobada</span>
-                    {% else %}
-                        <span class="badge bg-danger">Cancelada</span>
-                    {% endif %}
+            <div class="s-defs">
+                <div>
+                    <span class="s-def__label">Estado</span>
+                    <span class="s-def__value">
+                        {% if nota.estado.value == 'BORRADOR' %}
+                            {{ badge('Borrador', 'muted') }}
+                        {% elif nota.estado.value == 'EN_REVISION' %}
+                            {{ badge('En revisión', 'warn') }}
+                        {% elif nota.estado.value == 'APROBADA' %}
+                            {{ badge('Aprobada', 'ok') }}
+                        {% else %}
+                            {{ badge('Cancelada', 'bad') }}
+                        {% endif %}
+                    </span>
                 </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Operaci&oacute;n</span>
-                    <strong>{{ nota.tipo_operacion.value|capitalize }}</strong>
+                <div>
+                    <span class="s-def__label">Operación</span>
+                    <span class="s-def__value">{{ nota.tipo_operacion.value|capitalize }}</span>
                 </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">{{ partner_label }}</span>
-                    <strong>{{ partner_name }}</strong>
+                <div>
+                    <span class="s-def__label">{{ partner_label }}</span>
+                    <span class="s-def__value">{{ partner_name }}</span>
                 </div>
                 {% if sucursal %}
-                    <div class="note-meta-item">
-                        <span class="note-meta-label">Sucursal</span>
-                        <strong>{{ sucursal.nombre }}</strong>
+                    <div>
+                        <span class="s-def__label">Sucursal</span>
+                        <span class="s-def__value">{{ sucursal.nombre }}</span>
                     </div>
                 {% endif %}
                 {% if trabajador_name %}
-                    <div class="note-meta-item">
-                        <span class="note-meta-label">Trabajador</span>
-                        <strong>{{ trabajador_name }}</strong>
+                    <div>
+                        <span class="s-def__label">Trabajador</span>
+                        <span class="s-def__value">{{ trabajador_name }}</span>
                     </div>
                 {% endif %}
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Fecha</span>
-                    <strong>{{ nota.created_at|datetime_local if nota.created_at else '-' }}</strong>
+                <div>
+                    <span class="s-def__label">Fecha</span>
+                    <span class="s-def__value">{{ nota.created_at|datetime_local if nota.created_at else '-' }}</span>
                 </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Evidencias</span>
-                    <strong>{{ total_subpesajes - missing_subpesajes }} / {{ total_subpesajes }}</strong>
+                <div>
+                    <span class="s-def__label">Evidencias</span>
+                    <span class="s-def__value">{{ total_subpesajes - missing_subpesajes }} / {{ total_subpesajes }}</span>
                 </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Pendientes</span>
-                    <strong>{{ missing_subpesajes }}</strong>
+                <div>
+                    <span class="s-def__label">Pendientes</span>
+                    <span class="s-def__value">{{ missing_subpesajes }}</span>
                 </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Extra fotos</span>
-                    <strong>{{ extra_evidencias_total | default(0) }}</strong>
+                <div>
+                    <span class="s-def__label">Fotos extra</span>
+                    <span class="s-def__value">{{ extra_evidencias_total | default(0) }}</span>
                 </div>
             </div>
         </div>
     </div>
 
     {% if total_subpesajes == 0 %}
-        <div class="card hover-lift">
+        <div class="card mb-3">
             <div class="card-body">
-                <p class="text-muted mb-0">Aun no hay subpesajes registrados para esta nota.</p>
+                {{ empty('Sin pesajes registrados',
+                         'Esta nota todavía no tiene pesajes, así que no hay evidencia que adjuntar.',
+                         'scale') }}
             </div>
         </div>
     {% endif %}
 
     {% for group in evidence_groups %}
-        <div class="card hover-lift mb-3">
+        <div class="card mb-3">
             <div class="card-body">
-                <div class="d-flex flex-column flex-md-row gap-2 justify-content-between align-items-start">
+                <div class="s-between">
                     <div>
-                        <div class="text-muted small mb-1">Tipo de material</div>
-                        <h2 class="h6 mb-1">{{ group.material_name }}</h2>
-                        <div class="text-muted small">Subpesajes: {{ group.subpesajes|length }}</div>
+                        <p class="s-section-label mb-1">Tipo de material</p>
+                        <h2 class="s-card-title">{{ group.material_name }}</h2>
+                        <p class="s-card-sub">Pesajes: {{ group.subpesajes|length }}</p>
                     </div>
                     {% set group_missing = group.subpesajes | selectattr('foto_url', 'equalto', none) | list | length %}
                     {% if group.subpesajes|length > 0 %}
                         {% if group_missing == 0 %}
-                            <span class="badge bg-success">Completo</span>
+                            {{ badge('Completo', 'ok') }}
                         {% elif group_missing == group.subpesajes|length %}
-                            <span class="badge bg-danger">Sin evidencia</span>
+                            {{ badge('Sin evidencia', 'bad') }}
                         {% else %}
-                            <span class="badge bg-warning text-dark">Parcial</span>
+                            {{ badge('Parcial', 'warn') }}
                         {% endif %}
                     {% endif %}
                 </div>
@@ -134,9 +136,9 @@
                                         <div class="small text-muted">Neto {{ "{:,.2f}".format(sp.neto_kg or 0) }} {{ group.unit }}</div>
                                     </div>
                                     {% if sp.foto_url %}
-                                        <span class="badge bg-success">Con evidencia</span>
+                                        {{ badge('Con evidencia', 'info') }}
                                     {% else %}
-                                        <span class="badge bg-danger">Pendiente</span>
+                                        {{ badge('Pendiente', 'bad') }}
                                     {% endif %}
                                 </div>
                                 <div class="evidence-media">
@@ -169,8 +171,10 @@
                                 </div>
                                 {% if can_upload %}
                                     <form method="post" enctype="multipart/form-data" action="{{ upload_action_base }}/{{ sp.id }}/evidencia" class="evidence-upload evidence-upload--picker" data-evidence-form>
-                                        <button class="btn btn-sm btn-primary evidence-picker-btn" type="button" data-evidence-trigger>Agregar evidencia</button>
-                                        <small class="text-muted">Max {{ max_mb }}MB</small>
+                                        <button class="btn btn-sm btn-outline-primary evidence-picker-btn" type="button" data-evidence-trigger>
+                                            {{ icon('camera', 's-icon--sm') }} Agregar evidencia
+                                        </button>
+                                        <p class="form-text mb-0">Máx. {{ max_mb }} MB por imagen.</p>
                                         <input class="evidence-file-input" type="file" name="file" accept="image/*" data-evidence-input="gallery">
                                         <input class="evidence-file-input" type="file" name="file" accept="image/*" {% if capture_mode %}capture="{{ capture_mode }}"{% endif %} data-evidence-input="camera">
                                     </form>
@@ -179,20 +183,20 @@
                         {% endfor %}
                     </div>
                 {% else %}
-                    <p class="text-muted small mb-0 mt-3">No hay subpesajes registrados en este material.</p>
+                    <p class="text-muted small mb-0 mt-3">No hay pesajes registrados en este material.</p>
                 {% endif %}
             </div>
         </div>
     {% endfor %}
 
-    <div class="card hover-lift mb-3">
+    <div class="card mb-3">
         <div class="card-body">
-            <div class="d-flex flex-column flex-sm-row gap-2 justify-content-between align-items-sm-center">
+            <div class="s-between">
                 <div>
-                    <div class="text-muted small mb-1">Evidencia extra</div>
-                    <h2 class="h6 mb-0">Galer&iacute;a adicional</h2>
+                    <p class="s-section-label mb-1">Evidencia extra</p>
+                    <h2 class="s-card-title">Galería adicional</h2>
                 </div>
-                <span class="badge bg-light text-dark">Total: {{ extra_evidencias_total | default(0) }}</span>
+                {{ badge('Total: ' ~ (extra_evidencias_total | default(0)), 'muted') }}
             </div>
             {% if extra_evidencias and extra_evidencias|length > 0 %}
                 <div class="extra-evidence-grid mt-3">
@@ -201,9 +205,9 @@
                             <a href="{{ ev.url }}" target="_blank" rel="noopener">
                                 <img src="{{ ev.url }}" alt="Evidencia extra" loading="lazy" class="extra-evidence-thumb">
                             </a>
-                            <div class="extra-evidence-actions">
+                            <div class="extra-evidence-actions s-between">
                                 <span class="text-muted small">{{ ev.created_at|datetime_local if ev.created_at else "-" }}</span>
-                                <a href="{{ ev.url }}" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm">Ver</a>
+                                <a href="{{ ev.url }}" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm">Ver</a>
                             </div>
                         </div>
                     {% endfor %}
@@ -222,12 +226,12 @@
             <h3 id="evidencePickerTitle">Agregar evidencia</h3>
             <button type="button" class="evidence-picker-close" data-evidence-close aria-label="Cerrar">&times;</button>
         </div>
-        <p class="text-muted small mb-0">Elige c&oacute;mo quieres subir la foto.</p>
+        <p class="text-muted small mb-0">Elige cómo quieres subir la foto.</p>
         <div class="evidence-picker-actions">
             <button type="button" class="btn btn-primary w-100" data-evidence-option="camera">Tomar foto</button>
-            <button type="button" class="btn btn-outline-primary w-100" data-evidence-option="gallery">Elegir de la galer&iacute;a</button>
+            <button type="button" class="btn btn-outline-primary w-100" data-evidence-option="gallery">Elegir de la galería</button>
         </div>
-        <div class="evidence-picker-hint text-muted small">Formatos JPG/PNG. Max {{ max_mb }}MB.</div>
+        <div class="evidence-picker-hint text-muted small">Formatos JPG/PNG. Máx. {{ max_mb }} MB.</div>
     </div>
 </div>
 <script>
@@ -280,7 +284,7 @@
                 const trigger = formEl.querySelector('[data-evidence-trigger]');
                 if (trigger) {
                     trigger.disabled = true;
-                    trigger.textContent = 'Subiendo...';
+                    trigger.textContent = 'Subiendo…';
                 }
                 formEl.submit();
             });
@@ -288,4 +292,3 @@
     })();
 </script>
 {% endblock %}
-

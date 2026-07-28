@@ -1,19 +1,16 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header %}
 
 {% block title %}
     {% if proveedor %}Editar proveedor{% else %}Nuevo proveedor{% endif %} &middot; Admin
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Relaciones</p>
-        <h1 class="h4 text-white mb-0">
-            {% if proveedor %}Editar proveedor{% else %}Nuevo proveedor{% endif %}
-        </h1>
-    </div>
-    <a href="/web/admin/proveedores" class="btn btn-outline-secondary btn-sm">Volver</a>
-</div>
+{% call page_header('Editar proveedor' if proveedor else 'Nuevo proveedor',
+                    eyebrow='Relaciones',
+                    sub='Datos de contacto, sucursal de origen y placas registradas del proveedor.') %}
+    <a href="/web/admin/proveedores" class="btn btn-outline-secondary">Volver</a>
+{% endcall %}
 
 {% if error %}
     <div class="alert alert-danger py-2 small">
@@ -22,7 +19,7 @@
 {% endif %}
 {% if link_ok %}
     <div class="alert alert-success py-2 small">
-        {{ link_msg or "Relacion actualizada correctamente." }}
+        {{ link_msg or "Relación actualizada correctamente." }}
     </div>
 {% endif %}
 {% if link_warn %}
@@ -36,149 +33,155 @@
     </div>
 {% endif %}
 
-<div class="card hover-lift">
+<div class="card">
     <div class="card-body">
         <form
             method="post"
             action="{% if proveedor %}/web/admin/proveedores/{{ proveedor.id }}/editar{% else %}/web/admin/proveedores/nuevo{% endif %}"
-            class="d-grid gap-3"
         >
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label" for="nombre_completo">Nombre completo</label>
-                    <input
-                        class="form-control"
-                        type="text"
-                        id="nombre_completo"
-                        name="nombre_completo"
-                        required
-                        value="{{ proveedor.nombre_completo if proveedor else '' }}"
-                    >
-                </div>
-
-                <div class="col-md-6">
-                    <label class="form-label" for="telefono">Telefono</label>
-                    <input
-                        class="form-control"
-                        type="text"
-                        id="telefono"
-                        name="telefono"
-                        value="{{ proveedor.telefono if proveedor and proveedor.telefono else '' }}"
-                    >
-                </div>
-            </div>
-
-            <div class="row g-3">
-                <div class="col-md-6">
-                    {% set selected_sucursal = sucursal_id_selected if sucursal_id_selected is not none else (proveedor.sucursal_id if proveedor and proveedor.sucursal_id else '') %}
-                    <label class="form-label" for="sucursal_id">Sucursal</label>
-                    <select class="form-select" id="sucursal_id" name="sucursal_id" required>
-                        <option value="">Selecciona una sucursal</option>
-                        {% for s in sucursales %}
-                            <option value="{{ s.id }}" {% if selected_sucursal and selected_sucursal == s.id %}selected{% endif %}>{{ s.nombre }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-md-6">
-                    {% set ventas_directas_checked = permite_ventas_selected or (proveedor and proveedor.permite_ventas) %}
-                    <div class="card border-0 bg-light h-100">
-                        <div class="card-body py-3">
-                            <div class="form-check form-switch mb-2">
-                                <input
-                                    class="form-check-input"
-                                    type="checkbox"
-                                    id="permite_ventas"
-                                    name="permite_ventas"
-                                    {% if ventas_directas_checked %}checked{% endif %}
-                                >
-                                <label class="form-check-label fw-semibold" for="permite_ventas">
-                                    Permitir ventas directas a este proveedor
-                                </label>
-                            </div>
-                            <div class="text-muted small">
-                                Usa este flujo cuando el mismo proveedor tambien compra material. Las ventas se netean en este mismo record y no requieren crear un cliente espejo.
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label" for="correo_electronico">Correo electronico</label>
-                    <input
-                        class="form-control"
-                        type="email"
-                        id="correo_electronico"
-                        name="correo_electronico"
-                        value="{{ proveedor.correo_electronico if proveedor and proveedor.correo_electronico else '' }}"
-                    >
-                </div>
-
-                <div class="col-md-6">
-                    <label class="form-label">Placas</label>
-                    <div class="input-group">
-                        <input class="form-control" type="text" id="placa_input" placeholder="ABC123" aria-label="Placa">
-                        <button class="btn btn-outline-primary" type="button" id="add_placa_btn">Agregar nueva placa</button>
-                    </div>
-                    <input type="hidden" name="placas" id="placas_field" value="{{ placas_text if placas_text is defined else (proveedor.placas if proveedor and proveedor.placas else '') }}">
-                    <div id="placas_tags" class="d-flex flex-wrap gap-2 mt-2"></div>
-                    <div class="form-text">Puedes agregar varias placas. Haz clic en la "x" para eliminar.</div>
-                </div>
-            </div>
-
-            {% if proveedor %}
-                <div class="partner-match-card {% if proveedor.permite_ventas %}is-linked{% endif %}">
+            <fieldset class="s-fieldset">
+                <legend>Identidad</legend>
+                <div class="s-form-grid">
                     <div>
-                        <div class="partner-match-title">Un solo proveedor con compra y venta</div>
-                        <div class="text-muted small">
-                            El flujo recomendado es operar compras y ventas directas sobre este mismo proveedor para que el saldo se netee automaticamente.
-                        </div>
-                        {% if proveedor.permite_ventas %}
-                            <div class="text-muted small mt-1">
-                                Ventas directas activas. Las notas de venta nuevas podran apuntar a este proveedor.
-                            </div>
-                        {% endif %}
-                        {% if counterpart_suggestion and counterpart_suggestion.is_linked %}
-                            <div class="text-muted small mt-2">
-                                Existe un cliente legado vinculado: ID {{ counterpart_suggestion.candidate.id }} · {{ counterpart_suggestion.candidate.nombre_completo }}.
-                            </div>
-                        {% elif counterpart_suggestion %}
-                            <div class="text-muted small mt-2">
-                                Se detecto una contraparte historica posible: ID {{ counterpart_suggestion.candidate.id }} · {{ counterpart_suggestion.candidate.nombre_completo }}.
-                                Ese vinculo puede conservarse por historial, pero ya no es necesario para ventas nuevas.
-                            </div>
-                        {% endif %}
+                        <label class="form-label" for="nombre_completo">Nombre completo <span class="s-req" aria-hidden="true">*</span></label>
+                        <input
+                            class="form-control"
+                            type="text"
+                            id="nombre_completo"
+                            name="nombre_completo"
+                            required
+                            value="{{ (proveedor.nombre_completo if proveedor else '') or '' }}"
+                        >
+                        <p class="form-text">Aparece en las notas y en el estado de cuenta.</p>
                     </div>
-                    <div class="d-flex gap-2 flex-wrap">
-                        <a href="/web/admin/proveedores/{{ proveedor.id }}/record" class="btn btn-outline-primary btn-sm">Ver saldo neto</a>
-                        {% if counterpart_suggestion and counterpart_suggestion.is_linked %}
-                            <a href="/web/admin/clientes/{{ counterpart_suggestion.candidate.id }}/record" class="btn btn-outline-secondary btn-sm">Ver cliente legado</a>
-                        {% endif %}
+
+                    <div>
+                        <label class="form-label" for="telefono">Teléfono</label>
+                        <input
+                            class="form-control"
+                            type="text"
+                            id="telefono"
+                            name="telefono"
+                            value="{{ (proveedor.telefono if proveedor else '') or '' }}"
+                        >
+                        <p class="form-text">Opcional. Se usa para contactar al proveedor.</p>
+                    </div>
+
+                    <div>
+                        <label class="form-label" for="correo_electronico">Correo electrónico</label>
+                        <input
+                            class="form-control"
+                            type="email"
+                            id="correo_electronico"
+                            name="correo_electronico"
+                            value="{{ (proveedor.correo_electronico if proveedor else '') or '' }}"
+                        >
+                        <p class="form-text">Opcional. Se usa para enviar comprobantes.</p>
                     </div>
                 </div>
-            {% endif %}
+            </fieldset>
+
+            <fieldset class="s-fieldset">
+                <legend>Operación</legend>
+                <div class="s-form-grid">
+                    <div>
+                        {% set selected_sucursal = sucursal_id_selected if sucursal_id_selected is not none else (proveedor.sucursal_id if proveedor and proveedor.sucursal_id else '') %}
+                        <label class="form-label" for="sucursal_id">Sucursal <span class="s-req" aria-hidden="true">*</span></label>
+                        <select class="form-select" id="sucursal_id" name="sucursal_id" required>
+                            <option value="">Selecciona una sucursal</option>
+                            {% for s in sucursales %}
+                                <option value="{{ s.id }}" {% if selected_sucursal and selected_sucursal == s.id %}selected{% endif %}>{{ s.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                        <p class="form-text">Las compras a este proveedor se registran en esta sede.</p>
+                    </div>
+
+                    <div>
+                        <label class="form-label" for="placa_input">Placas</label>
+                        <div class="input-group">
+                            <input class="form-control" type="text" id="placa_input" placeholder="ABC123">
+                            <button class="btn btn-outline-primary" type="button" id="add_placa_btn">Agregar</button>
+                        </div>
+                        <input type="hidden" name="placas" id="placas_field" value="{{ placas_text if placas_text is defined else ((proveedor.placas if proveedor else '') or '') }}">
+                        <div id="placas_tags" class="d-flex flex-wrap gap-2 mt-2"></div>
+                        <p class="form-text">Opcional. Puedes agregar varias placas; usa la &laquo;x&raquo; para quitarlas.</p>
+                    </div>
+                </div>
+
+                {% set ventas_directas_checked = permite_ventas_selected or (proveedor and proveedor.permite_ventas) %}
+                <div class="s-subpanel mt-3">
+                    <div class="form-check form-switch mb-2">
+                        <input
+                            class="form-check-input"
+                            type="checkbox"
+                            id="permite_ventas"
+                            name="permite_ventas"
+                            {% if ventas_directas_checked %}checked{% endif %}
+                        >
+                        <label class="form-check-label fw-semibold" for="permite_ventas">
+                            Permitir ventas directas a este proveedor
+                        </label>
+                    </div>
+                    <p class="form-text mt-0 mb-0">
+                        Usa este flujo cuando el mismo proveedor también compra material. Las ventas se netean
+                        en este mismo registro y no requieren crear un cliente espejo.
+                    </p>
+                </div>
+
+                {% if proveedor %}
+                    <div class="form-check mt-3">
+                        <input
+                            class="form-check-input"
+                            type="checkbox"
+                            id="activo"
+                            name="activo"
+                            {% if proveedor.activo %}checked{% endif %}
+                        >
+                        <label class="form-check-label" for="activo">
+                            Proveedor activo
+                        </label>
+                    </div>
+                {% endif %}
+            </fieldset>
 
             {% if proveedor %}
-                <div class="form-check mb-2">
-                    <input
-                        class="form-check-input"
-                        type="checkbox"
-                        id="activo"
-                        name="activo"
-                        {% if proveedor.activo %}checked{% endif %}
-                    >
-                    <label class="form-check-label" for="activo">
-                        Proveedor activo
-                    </label>
-                </div>
+                <fieldset class="s-fieldset">
+                    <legend>Compra y venta en un solo registro</legend>
+                    <div class="s-subpanel">
+                        <p class="form-text mt-0">
+                            El flujo recomendado es operar compras y ventas directas sobre este mismo proveedor
+                            para que el saldo se netee automáticamente.
+                        </p>
+                        {% if proveedor.permite_ventas %}
+                            <p class="form-text">
+                                Ventas directas activas. Las notas de venta nuevas podrán apuntar a este proveedor.
+                            </p>
+                        {% endif %}
+                        {% if counterpart_suggestion and counterpart_suggestion.is_linked %}
+                            <p class="form-text">
+                                Existe un cliente heredado vinculado: ID {{ counterpart_suggestion.candidate.id }} · {{ counterpart_suggestion.candidate.nombre_completo }}.
+                            </p>
+                        {% elif counterpart_suggestion %}
+                            <p class="form-text">
+                                Se detectó una contraparte histórica posible: ID {{ counterpart_suggestion.candidate.id }} · {{ counterpart_suggestion.candidate.nombre_completo }}.
+                                Ese vínculo puede conservarse por historial, pero ya no es necesario para ventas nuevas.
+                            </p>
+                        {% endif %}
+                        <div class="s-row mt-3">
+                            <a href="/web/admin/proveedores/{{ proveedor.id }}/record" class="btn btn-outline-primary btn-sm">Ver saldo neto</a>
+                            {% if counterpart_suggestion and counterpart_suggestion.is_linked %}
+                                <a href="/web/admin/clientes/{{ counterpart_suggestion.candidate.id }}/record" class="btn btn-outline-secondary btn-sm">Ver cliente heredado</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </fieldset>
             {% endif %}
 
-            <div class="d-flex gap-2">
-                <button type="submit" class="btn btn-primary">
-                    Guardar
-                </button>
+            <div class="s-form-actions">
                 <a href="/web/admin/proveedores" class="btn btn-outline-secondary">Cancelar</a>
+                <button type="submit" class="btn btn-primary">
+                    {% if proveedor %}Guardar cambios{% else %}Crear proveedor{% endif %}
+                </button>
             </div>
         </form>
     </div>
@@ -201,7 +204,8 @@
                 const close = document.createElement('button');
                 close.type = 'button';
                 close.className = 'chip-remove';
-                close.textContent = '\u00d7';
+                close.textContent = '×';
+                close.setAttribute('aria-label', 'Quitar placa ' + pl);
                 close.onclick = () => {
                     placas.splice(idx, 1);
                     syncHidden();

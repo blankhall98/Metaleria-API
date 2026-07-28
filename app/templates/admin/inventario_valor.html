@@ -1,163 +1,96 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, icon, stat, badge, money, kg, empty %}
 
-{% block title %}Valor inventario{% endblock %}
+{% block title %}Valor del inventario{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Inventario</p>
-        <h1 class="h4 text-white mb-0">Valor inventario</h1>
-    </div>
-    <a href="/web/admin/inventario{% if sucursal_id %}?sucursal_id={{ sucursal_id }}{% endif %}" class="btn btn-outline-secondary btn-sm">Volver a stock</a>
-</div>
 
-<div class="card hover-lift mb-3">
-    <div class="card-body">
-        <form class="row g-2 align-items-end" method="get">
-            {% if user.rol in ['super_admin', 'visor'] or (user.rol == 'admin' and sucursales|length > 1) %}
-                <div class="col-lg-4 col-md-6">
-                    <label class="form-label">Sucursal</label>
-                    <select class="form-select" name="sucursal_id" onchange="this.form.submit()">
-                        <option value="">Selecciona una sucursal</option>
-                        {% for s in sucursales %}
-                            <option value="{{ s.id }}" {% if sucursal_id and sucursal_id == s.id %}selected{% endif %}>{{ s.nombre }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-            {% else %}
-                <div class="col-lg-4 col-md-6">
-                    <label class="form-label">Sucursal</label>
-                    <div class="form-control-plaintext fw-semibold">{{ selected_sucursal.nombre if selected_sucursal else '-' }}</div>
-                </div>
-            {% endif %}
-            <div class="col-lg-8 col-md-6">
-                <div class="text-muted small">Usa un precio de valuacion por material para estimar el valor actual del inventario sin alterar precios operativos. Prioridad automatica: manual &rarr; precio de venta activo &rarr; promedio historico de compra en esa sucursal.</div>
+{% call page_header('Valor del inventario', eyebrow='Inventario',
+                    sub=('Sucursal ' ~ selected_sucursal.nombre if selected_sucursal else 'Elige una sucursal para estimar el valor de sus existencias.')) %}
+    <a href="/web/admin/inventario{% if sucursal_id %}?sucursal_id={{ sucursal_id }}{% endif %}" class="btn btn-outline-secondary btn-sm">
+        {{ icon('arrow-left', 's-icon--sm') }} Volver a existencias
+    </a>
+{% endcall %}
+
+<details class="s-filters-collapse" open>
+    <summary>Filtros</summary>
+    <form class="s-filters" method="get">
+        {% if user.rol in ['super_admin', 'visor'] or (user.rol == 'admin' and sucursales|length > 1) %}
+            <div class="s-filters__field">
+                <label class="form-label" for="sucursal_id">Sucursal</label>
+                <select class="form-select" id="sucursal_id" name="sucursal_id" onchange="this.form.submit()">
+                    <option value="">Selecciona una sucursal</option>
+                    {% for s in sucursales %}
+                        <option value="{{ s.id }}" {% if sucursal_id and sucursal_id == s.id %}selected{% endif %}>{{ s.nombre }}</option>
+                    {% endfor %}
+                </select>
             </div>
-        </form>
-    </div>
-</div>
+            <div class="s-filters__actions">
+                <button type="submit" class="btn btn-outline-primary">Filtrar</button>
+            </div>
+        {% else %}
+            <div class="s-filters__field">
+                <label class="form-label">Sucursal</label>
+                <div class="form-control-plaintext fw-semibold">{{ selected_sucursal.nombre if selected_sucursal else '—' }}</div>
+            </div>
+        {% endif %}
+    </form>
+</details>
 
 {% if error %}
     <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
 {% endif %}
 {% if saved %}
-    <div class="alert alert-success py-2 small mb-3">Precios de valuacion guardados correctamente.</div>
+    <div class="alert alert-success py-2 small mb-3">Precios de valuación guardados correctamente.</div>
 {% endif %}
 
 {% if selected_sucursal %}
-    <div class="row g-3 mb-3">
-        <div class="col-xl-3 col-md-6">
-            <div class="card hover-lift h-100">
-                <div class="card-body">
-                    <p class="text-uppercase text-muted small mb-2">Sucursal</p>
-                    <div class="h4 text-white mb-1">{{ selected_sucursal.nombre }}</div>
-                    <div class="text-muted small">Valor estimado con precios de referencia editables.</div>
-                </div>
-            </div>
-        </div>
-        <div class="col-xl-3 col-md-6">
-            <div class="card hover-lift h-100">
-                <div class="card-body">
-                    <p class="text-uppercase text-muted small mb-2">Kg totales</p>
-                    <div class="h4 text-white mb-1">{{ "{:,.2f}".format(total_kg or 0) }} kg</div>
-                    <div class="text-muted small">Stock actual acumulado.</div>
-                </div>
-            </div>
-        </div>
-        <div class="col-xl-3 col-md-6">
-            <div class="card hover-lift h-100">
-                <div class="card-body">
-                    <p class="text-uppercase text-muted small mb-2">Valor inventario</p>
-                    <div class="h4 text-white mb-1">${{ "{:,.2f}".format(total_valor or 0) }}</div>
-                    <div class="text-muted small">Suma de todos los materiales valorizados.</div>
-                </div>
-            </div>
-        </div>
-        <div class="col-xl-3 col-md-6">
-            <div class="card hover-lift h-100">
-                <div class="card-body">
-                    <p class="text-uppercase text-muted small mb-2">Materiales con stock</p>
-                    <div class="h4 text-white mb-1">{{ materiales_con_stock }}</div>
-                    <div class="text-muted small">Filas con existencia mayor a cero.</div>
-                </div>
-            </div>
-        </div>
+    <div class="s-stats">
+        {{ stat('Kg totales', kg(total_kg), 'Existencias actuales acumuladas') }}
+        {{ stat('Valor del inventario', money(total_valor), 'Suma de los materiales valorizados') }}
+        {{ stat('Materiales con existencias', materiales_con_stock, 'Filas con existencia mayor a cero') }}
+        {{ stat('Precio manual', manual_count, 'Capturado a mano para esta sucursal') }}
+        {{ stat('Precio automático', automatic_count, 'Precio de venta activo o promedio de compra') }}
+        {{ stat('Sin referencia', sin_precio_count, 'Siguen en cero por falta de precio fuente',
+                'warn' if sin_precio_count else '') }}
     </div>
 
-    <div class="row g-3 mb-3">
-        <div class="col-xl-4 col-md-6">
-            <div class="card hover-lift h-100">
-                <div class="card-body">
-                    <p class="text-uppercase text-muted small mb-2">Precio manual</p>
-                    <div class="h4 text-white mb-1">{{ manual_count }}</div>
-                    <div class="text-muted small">Materiales con precio capturado manualmente por la clienta.</div>
-                </div>
-            </div>
-        </div>
-        <div class="col-xl-4 col-md-6">
-            <div class="card hover-lift h-100">
-                <div class="card-body">
-                    <p class="text-uppercase text-muted small mb-2">Precio automatico</p>
-                    <div class="h4 text-white mb-1">{{ automatic_count }}</div>
-                    <div class="text-muted small">Materiales valorizados automaticamente con venta activa o promedio de compra.</div>
-                </div>
-            </div>
-        </div>
-        <div class="col-xl-4 col-md-6">
-            <div class="card hover-lift h-100">
-                <div class="card-body">
-                    <p class="text-uppercase text-muted small mb-2">Sin referencia</p>
-                    <div class="h4 text-white mb-1">{{ sin_precio_count }}</div>
-                    <div class="text-muted small">Materiales con stock que siguen en cero porque aun no tienen precio fuente.</div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="card hover-lift mb-3">
+    <div class="card">
         <div class="card-body">
-            <div class="row g-3">
-                <div class="col-lg-4">
-                    <div class="text-uppercase text-muted small mb-1">Que muestra esta pantalla</div>
-                    <div class="text-white fw-semibold mb-1">Valor estimado del inventario</div>
-                    <div class="text-muted small">Cada fila calcula: stock actual de la sucursal x precio de valuacion del material.</div>
-                </div>
-                <div class="col-lg-4">
-                    <div class="text-uppercase text-muted small mb-1">Como se obtiene el precio</div>
-                    <div class="text-muted small">1. Manual de esta sucursal. 2. Precio de venta regular activo. 3. Promedio historico de compra del material en esta sucursal.</div>
-                </div>
-                <div class="col-lg-4">
-                    <div class="text-uppercase text-muted small mb-1">Cuando editarlo</div>
-                    <div class="text-muted small">Si quieres usar un precio aproximado de venta o una valuacion especial, escribe el precio manual y guarda. Eso solo cambia esta valuacion, no compra ni venta.</div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="card hover-lift">
-        <div class="card-body">
-            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <div class="s-card-head">
                 <div>
-                    <h2 class="h5 text-white mb-1">Valuacion por material</h2>
-                    <p class="text-muted small mb-0">Si dejas un precio vacio, el sistema vuelve a usar la mejor referencia automatica disponible.</p>
+                    <h2 class="s-card-title">Valuación por material</h2>
+                    <p class="s-card-sub">
+                        Cada fila calcula: existencias actuales de la sucursal &times; precio de valuación del material.
+                        La prioridad automática es precio manual de esta sucursal &rarr; precio de venta regular activo &rarr;
+                        promedio histórico de compra en esta sucursal. Si dejas un precio vacío, el sistema vuelve a usar
+                        la mejor referencia automática disponible. Esto solo cambia la valuación: no toca compras ni ventas.
+                    </p>
                 </div>
-                {% if can_manage_inventory_value %}
-                    <div class="text-muted small">Edita la columna de precio de valuacion y guarda para recalcular el total.</div>
-                {% else %}
-                    <div class="text-muted small">Vista de solo lectura.</div>
-                {% endif %}
+                <p class="s-card-sub mb-0">
+                    {% if can_manage_inventory_value %}
+                        Edita la columna de precio de valuación y guarda para recalcular el total.
+                    {% else %}
+                        Vista de solo lectura.
+                    {% endif %}
+                </p>
             </div>
+
             <form method="post" action="/web/admin/inventario/valor">
                 <input type="hidden" name="sucursal_id" value="{{ selected_sucursal.id }}">
-                <div class="table-scroll-shell">
-                    <div class="table-responsive scroll-x note-table-scroll">
-                        <table class="table table-hover table-sm align-middle mb-0">
+                {% if rows|length == 0 %}
+                    {{ empty('Sin materiales para valuar',
+                             'Esta sucursal no tiene materiales con existencias registradas.',
+                             'box') }}
+                {% else %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
                             <thead>
                             <tr>
-                                <th>Material</th>
-                                <th class="text-end">Stock actual</th>
-                                <th class="text-end">Precio valuacion</th>
-                                <th class="text-end">Valor material</th>
+                                <th data-title-col>Material</th>
+                                <th class="text-end">Existencias</th>
+                                <th class="text-end">Precio de valuación</th>
+                                <th class="text-end">Valor del material</th>
                                 <th>Fuente</th>
                                 <th>Detalle</th>
                                 <th>Actualizado</th>
@@ -167,86 +100,96 @@
                             {% for row in rows %}
                                 <tr>
                                     <td class="fw-semibold">{{ row.material.nombre }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(row.stock_actual or 0) }} kg</td>
-                                    <td class="text-end" style="min-width: 180px;">
+                                    <td class="text-end">{{ kg(row.stock_actual) }}</td>
+                                    <td class="text-end">
                                         {% if can_manage_inventory_value %}
-                                            <input class="form-control form-control-sm text-end" type="number" step="0.00001" min="0" name="precio_{{ row.material_id }}" value="{{ "{:.5f}".format(row.precio_referencia or 0) if row.precio_referencia is not none else '' }}">
+                                            <label class="s-visually-hidden" for="precio_{{ row.material_id }}">
+                                                Precio de valuación de {{ row.material.nombre }}
+                                            </label>
+                                            <input class="form-control text-end" id="precio_{{ row.material_id }}" type="number" step="0.00001" min="0" name="precio_{{ row.material_id }}" value="{{ "{:.5f}".format(row.precio_referencia or 0) if row.precio_referencia is not none else '' }}">
                                         {% else %}
-                                            ${{ "{:,.5f}".format(row.precio_referencia or 0) }}
+                                            <span class="s-money">${{ "{:,.5f}".format(row.precio_referencia or 0) }}</span>
                                         {% endif %}
                                     </td>
-                                    <td class="text-end fw-semibold">${{ "{:,.2f}".format(row.valor_total or 0) }}</td>
+                                    <td class="text-end">{{ money(row.valor_total) }}</td>
                                     <td>
                                         {% if row.precio_guardado %}
-                                            <span class="badge bg-primary-subtle text-primary-emphasis border">Manual</span>
+                                            {{ badge('Manual', 'info') }}
                                         {% elif row.usa_default %}
-                                            <span class="badge bg-light text-dark border">Precio venta</span>
+                                            {{ badge('Precio de venta', 'muted') }}
                                         {% elif row.usa_promedio_compra %}
-                                            <span class="badge bg-light text-dark border">Promedio compra</span>
+                                            {{ badge('Promedio de compra', 'muted') }}
                                         {% else %}
-                                            <span class="badge bg-light text-dark border">Sin referencia</span>
+                                            {{ badge('Sin referencia', 'warn') }}
                                         {% endif %}
                                     </td>
-                                    <td class="text-muted small" style="min-width: 260px;">{{ row.source_help }}</td>
-                                    <td>{{ row.updated_at|datetime_local if row.updated_at else '-' }}</td>
+                                    <td class="text-muted small">{{ row.source_help }}</td>
+                                    <td>{{ row.updated_at|datetime_local if row.updated_at else '—' }}</td>
                                 </tr>
                             {% endfor %}
                             </tbody>
                             <tfoot>
                             <tr>
                                 <th>Total</th>
-                                <th class="text-end">{{ "{:,.2f}".format(total_kg or 0) }} kg</th>
+                                <th class="text-end">{{ kg(total_kg) }}</th>
                                 <th></th>
-                                <th class="text-end">${{ "{:,.2f}".format(total_valor or 0) }}</th>
+                                <th class="text-end">{{ money(total_valor) }}</th>
                                 <th colspan="3"></th>
                             </tr>
                             </tfoot>
                         </table>
                     </div>
-                    <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para revisar stock, precio de valuacion, fuente y valor por material.</div>
-                </div>
+                {% endif %}
                 {% if can_manage_inventory_value %}
-                    <div class="d-flex justify-content-end mt-3">
-                        <button class="btn btn-primary">Guardar precios de valuacion</button>
+                    <div class="s-form-actions">
+                        <button class="btn btn-primary">Guardar cambios</button>
                     </div>
                 {% endif %}
             </form>
         </div>
     </div>
 {% else %}
-    <div class="row g-3">
-        {% for row in sucursal_summary %}
-            <div class="col-xl-4 col-md-6">
-                <div class="card hover-lift h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
-                            <div>
-                                <p class="text-uppercase text-muted small mb-1">Sucursal</p>
-                                <h2 class="h5 text-white mb-1">{{ row.sucursal.nombre }}</h2>
-                            </div>
-                            <a class="btn btn-outline-primary btn-sm" href="/web/admin/inventario/valor?sucursal_id={{ row.sucursal.id }}">Abrir</a>
-                        </div>
-                        <div class="text-muted small mb-3">Consulta y ajusta el precio de valuacion para estimar el valor del inventario actual.</div>
-                        <div class="d-flex justify-content-between small mb-2">
-                            <span class="text-muted">Kg totales</span>
-                            <strong class="text-white">{{ "{:,.2f}".format(row.total_kg or 0) }} kg</strong>
-                        </div>
-                        <div class="d-flex justify-content-between small mb-2">
-                            <span class="text-muted">Valor inventario</span>
-                            <strong class="text-white">${{ "{:,.2f}".format(row.total_valor or 0) }}</strong>
-                        </div>
-                        <div class="d-flex justify-content-between small mb-2">
-                            <span class="text-muted">Materiales con stock</span>
-                            <strong class="text-white">{{ row.materiales_con_stock }} / {{ row.materiales_total }}</strong>
-                        </div>
-                        <div class="d-flex justify-content-between small">
-                            <span class="text-muted">Sin referencia</span>
-                            <strong class="text-white">{{ row.sin_precio_count }}</strong>
-                        </div>
-                    </div>
+    {% if sucursal_summary|length == 0 %}
+        {{ empty('Sin sucursales accesibles',
+                 'No hay sucursales dentro de tu alcance para calcular el valor del inventario.',
+                 'branch') }}
+    {% else %}
+        <div class="card">
+            <div class="card-body">
+                <h2 class="s-card-title">Valor por sucursal</h2>
+                <p class="s-card-sub mb-3">Abre una sucursal para consultar y ajustar sus precios de valuación.</p>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead>
+                        <tr>
+                            <th data-title-col>Sucursal</th>
+                            <th class="text-end">Kg totales</th>
+                            <th class="text-end">Valor del inventario</th>
+                            <th class="text-end">Materiales con existencias</th>
+                            <th class="text-end">Sin referencia</th>
+                            <th><span class="s-visually-hidden">Acciones</span></th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for row in sucursal_summary %}
+                            <tr>
+                                <td class="fw-semibold">{{ row.sucursal.nombre }}</td>
+                                <td class="text-end">{{ kg(row.total_kg) }}</td>
+                                <td class="text-end">{{ money(row.total_valor) }}</td>
+                                <td class="text-end">{{ row.materiales_con_stock }} / {{ row.materiales_total }}</td>
+                                <td class="text-end">{{ row.sin_precio_count }}</td>
+                                <td class="text-end">
+                                    <span class="s-actions">
+                                        <a class="btn btn-sm btn-outline-primary" href="/web/admin/inventario/valor?sucursal_id={{ row.sucursal.id }}">Ver</a>
+                                    </span>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
-        {% endfor %}
-    </div>
+        </div>
+    {% endif %}
 {% endif %}
 {% endblock %}

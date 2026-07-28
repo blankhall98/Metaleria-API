@@ -1,19 +1,16 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header %}
 
 {% block title %}
     {% if comisionario %}Editar comisionario{% else %}Nuevo comisionario{% endif %} &middot; Admin
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Comisiones</p>
-        <h1 class="h4 text-white mb-0">
-            {% if comisionario %}Editar comisionario{% else %}Nuevo comisionario{% endif %}
-        </h1>
-    </div>
-    <a href="/web/admin/comisionarios" class="btn btn-outline-secondary btn-sm">Volver</a>
-</div>
+{% call page_header('Editar comisionario' if comisionario else 'Nuevo comisionario',
+                    eyebrow='Relaciones',
+                    sub='Datos de contacto y sucursal donde se registran las notas y el saldo del comisionario.') %}
+    <a href="/web/admin/comisionarios" class="btn btn-outline-secondary">Volver</a>
+{% endcall %}
 
 {% if error %}
     <div class="alert alert-danger py-2 small">
@@ -21,97 +18,101 @@
     </div>
 {% endif %}
 
-{% set nombre_val = form_data.get('nombre_completo') if form_data else (comisionario.nombre_completo if comisionario else '') %}
-{% set telefono_val = form_data.get('telefono') if form_data else (comisionario.telefono if comisionario and comisionario.telefono else '') %}
-{% set correo_val = form_data.get('correo_electronico') if form_data else (comisionario.correo_electronico if comisionario and comisionario.correo_electronico else '') %}
+{% set nombre_val = (form_data.get('nombre_completo') if form_data else None) or (comisionario.nombre_completo if comisionario else '') or '' %}
+{% set telefono_val = (form_data.get('telefono') if form_data else None) or (comisionario.telefono if comisionario else '') or '' %}
+{% set correo_val = (form_data.get('correo_electronico') if form_data else None) or (comisionario.correo_electronico if comisionario else '') or '' %}
 {% set sucursal_val = form_data.get('sucursal_id') if form_data else (comisionario.sucursal_id if comisionario else '') %}
 {% set activo_val = form_data.get('activo') if form_data else (comisionario.activo if comisionario else True) %}
 
-<div class="card hover-lift">
+<div class="card">
     <div class="card-body">
         <form
             method="post"
             action="{% if comisionario %}/web/admin/comisionarios/{{ comisionario.id }}/editar{% else %}/web/admin/comisionarios/nuevo{% endif %}"
-            class="d-grid gap-3"
         >
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label" for="nombre_completo">Nombre completo</label>
-                    <input
-                        class="form-control"
-                        type="text"
-                        id="nombre_completo"
-                        name="nombre_completo"
-                        required
-                        value="{{ nombre_val }}"
-                    >
-                </div>
+            <fieldset class="s-fieldset">
+                <legend>Identidad</legend>
+                <div class="s-form-grid">
+                    <div>
+                        <label class="form-label" for="nombre_completo">Nombre completo <span class="s-req" aria-hidden="true">*</span></label>
+                        <input
+                            class="form-control"
+                            type="text"
+                            id="nombre_completo"
+                            name="nombre_completo"
+                            required
+                            value="{{ nombre_val }}"
+                        >
+                        <p class="form-text">Aparece en las notas de comisión y en su estado de cuenta.</p>
+                    </div>
 
-                <div class="col-md-6">
-                    <label class="form-label" for="telefono">Telefono</label>
-                    <input
-                        class="form-control"
-                        type="text"
-                        id="telefono"
-                        name="telefono"
-                        value="{{ telefono_val }}"
-                    >
-                </div>
-            </div>
+                    <div>
+                        <label class="form-label" for="telefono">Teléfono</label>
+                        <input
+                            class="form-control"
+                            type="text"
+                            id="telefono"
+                            name="telefono"
+                            value="{{ telefono_val }}"
+                        >
+                        <p class="form-text">Opcional. Se usa para contactar al comisionario.</p>
+                    </div>
 
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label" for="correo_electronico">Correo electronico</label>
-                    <input
-                        class="form-control"
-                        type="email"
-                        id="correo_electronico"
-                        name="correo_electronico"
-                        value="{{ correo_val }}"
-                    >
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label" for="sucursal_id">Sucursal</label>
-                    <select class="form-select" id="sucursal_id" name="sucursal_id" required>
-                        <option value="">Selecciona sucursal</option>
-                        {% for sucursal in sucursales %}
-                            <option value="{{ sucursal.id }}" {% if sucursal_val|string == sucursal.id|string %}selected{% endif %}>
-                                {{ sucursal.nombre }}
-                            </option>
-                        {% endfor %}
-                    </select>
-                    <div class="form-text">Las notas y saldos de este comisionario se registraran en esta sucursal.</div>
-                </div>
-            </div>
-
-            <div class="row g-3">
-                <div class="col-12">
-                    <div class="surface-muted rounded-4 p-3 small text-muted">
-                        Usa una sucursal fija por comisionario para que el saldo pendiente impacte correctamente la contabilidad de esa sede.
+                    <div>
+                        <label class="form-label" for="correo_electronico">Correo electrónico</label>
+                        <input
+                            class="form-control"
+                            type="email"
+                            id="correo_electronico"
+                            name="correo_electronico"
+                            value="{{ correo_val }}"
+                        >
+                        <p class="form-text">Opcional. Se usa para enviar comprobantes.</p>
                     </div>
                 </div>
-            </div>
+            </fieldset>
 
-            {% if comisionario %}
-                <div class="form-check mb-2">
-                    <input
-                        class="form-check-input"
-                        type="checkbox"
-                        id="activo"
-                        name="activo"
-                        {% if activo_val %}checked{% endif %}
-                    >
-                    <label class="form-check-label" for="activo">
-                        Comisionario activo
-                    </label>
+            <fieldset class="s-fieldset">
+                <legend>Operación</legend>
+                <div class="s-form-grid">
+                    <div>
+                        <label class="form-label" for="sucursal_id">Sucursal <span class="s-req" aria-hidden="true">*</span></label>
+                        <select class="form-select" id="sucursal_id" name="sucursal_id" required>
+                            <option value="">Selecciona una sucursal</option>
+                            {% for sucursal in sucursales %}
+                                <option value="{{ sucursal.id }}" {% if sucursal_val|string == sucursal.id|string %}selected{% endif %}>
+                                    {{ sucursal.nombre }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <p class="form-text">
+                            Las notas y saldos de este comisionario se registrarán en esta sucursal. Mantén una
+                            sucursal fija para que el saldo pendiente impacte la contabilidad de esa sede.
+                        </p>
+                    </div>
                 </div>
-            {% endif %}
 
-            <div class="d-flex gap-2">
-                <button type="submit" class="btn btn-primary">
-                    Guardar
-                </button>
+                {% if comisionario %}
+                    <div class="form-check mt-3">
+                        <input
+                            class="form-check-input"
+                            type="checkbox"
+                            id="activo"
+                            name="activo"
+                            {% if activo_val %}checked{% endif %}
+                        >
+                        <label class="form-check-label" for="activo">
+                            Comisionario activo
+                        </label>
+                    </div>
+                {% endif %}
+            </fieldset>
+
+            <div class="s-form-actions">
                 <a href="/web/admin/comisionarios" class="btn btn-outline-secondary">Cancelar</a>
+                <button type="submit" class="btn btn-primary">
+                    {% if comisionario %}Guardar cambios{% else %}Crear comisionario{% endif %}
+                </button>
             </div>
         </form>
     </div>

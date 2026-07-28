@@ -8,7 +8,7 @@
 <div class="note-detail-page note-detail-page--edit">
     <div class="page-header note-page-header">
         <div>
-            <p class="text-uppercase text-muted small mb-1">Edicion administrativa</p>
+            <p class="text-uppercase text-muted small mb-1">Edición administrativa</p>
             <h1 class="h4 text-dark mb-1">Editar nota {{ folio or ('#' ~ nota.id) }}</h1>
             <p class="text-muted mb-0">{{ operation_label }} vinculada a {{ partner_label|lower }}: {{ partner_name }}</p>
         </div>
@@ -24,14 +24,14 @@
         <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
     {% endif %}
     {% if saved %}
-        <div class="alert alert-success py-2 small mb-3">Edicion guardada correctamente.</div>
+        <div class="alert alert-success py-2 small mb-3">Edición guardada correctamente.</div>
     {% endif %}
 
     <div class="card hover-lift mb-3">
         <div class="card-body">
             <div class="note-flow-card">
                 <div>
-                    <div class="note-flow-title">Flujo de edicion sugerido</div>
+                    <div class="note-flow-title">Flujo de edición sugerido</div>
                     <div class="text-muted small">{{ edit_step_copy }}</div>
                 </div>
                 <a href="#note-edit-materials" class="btn btn-outline-primary btn-sm">Ir a materiales</a>
@@ -55,7 +55,7 @@
                         {% if note_state == 'BORRADOR' %}
                             <span class="badge bg-secondary">Borrador</span>
                         {% elif note_state == 'EN_REVISION' %}
-                            <span class="badge bg-warning text-dark">En revision</span>
+                            <span class="badge bg-warning text-dark">En revisión</span>
                         {% elif note_state == 'APROBADA' %}
                             <span class="badge bg-success">Aprobada</span>
                         {% else %}
@@ -123,7 +123,7 @@
                         <div class="note-table-assist mb-3">
                             <div>
                                 <div class="note-table-assist-title">Editor horizontal de materiales</div>
-                                <div class="note-table-assist-copy">Este bloque ahora prioriza ancho util en escritorio. Puedes recorrerlo arrastrando en cualquier espacio vacio, usando `Shift + rueda`, o con la barra flotante inferior.</div>
+                                <div class="note-table-assist-copy">Este bloque ahora prioriza ancho útil en escritorio. Puedes recorrerlo arrastrando en cualquier espacio vacío, usando `Shift + rueda`, o con la barra flotante inferior.</div>
                             </div>
                             <div class="note-table-assist-pills">
                                 <span class="pill">↔ Arrastrar</span>
@@ -153,7 +153,7 @@
                                         <td>
                                             <div class="fw-semibold">{{ m.material.nombre if m.material else m.material_id }}</div>
                                             <div class="text-muted small">
-                                                {% if m.subpesajes %}Edita subpesajes para recalcular kg.{% else %}Sin subpesajes; edicion directa de kg.{% endif %}
+                                                {% if m.subpesajes %}Edita subpesajes para recalcular kg.{% else %}Sin subpesajes; edición directa de kg.{% endif %}
                                             </div>
                                         </td>
                                         <td>
@@ -178,7 +178,7 @@
                                             {% endif %}
                                         </td>
                                         <td>
-                                            <select class="form-select form-select-sm" name="tipo_cliente_{{ m.id }}">
+                                            <select class="form-select form-select-sm" name="tipo_cliente_{{ m.id }}" aria-label="Tipo de precio de {{ m.material.nombre if m.material else ('material #' ~ m.material_id) }}">
                                                 {% for tc in tipos_cliente %}
                                                     {% set is_selected = (m.tipo_cliente and m.tipo_cliente.value == tc.value) or (not m.tipo_cliente and tc.value == 'regular') %}
                                                     <option value="{{ tc.value }}" {% if is_selected %}selected{% endif %}>{{ tc.value|capitalize }}</option>
@@ -186,36 +186,36 @@
                                             </select>
                                         </td>
                                         <td class="text-end">
-                                            <input class="form-control form-control-sm text-end kg-bruto-input" type="number" step="0.001" min="0" name="kg_bruto_{{ m.id }}" value="{{ '%.3f'|format(m.kg_bruto or 0) }}" {% if m.subpesajes %}disabled{% endif %}>
+                                            <input class="form-control form-control-sm text-end kg-bruto-input" type="number" step="0.001" min="0" name="kg_bruto_{{ m.id }}" aria-label="Kg bruto de {{ m.material.nombre if m.material else ('material #' ~ m.material_id) }}" value="{{ '%.3f'|format(m.kg_bruto or 0) }}" {% if m.subpesajes %}disabled{% endif %}>
                                         </td>
                                         <td class="text-end">
                                             {% set kg_desc_override = form_kg_desc_map.get(m.id) if form_kg_desc_map is defined else None %}
-                                            <input class="form-control form-control-sm text-end kg-desc-input" type="number" step="0.001" min="0" name="kg_desc_{{ m.id }}" value="{{ kg_desc_override if kg_desc_override is not none else ('%.3f'|format(m.kg_descuento or 0)) }}" {% if m.subpesajes %}disabled{% endif %}>
+                                            <input class="form-control form-control-sm text-end kg-desc-input" type="number" step="0.001" min="0" name="kg_desc_{{ m.id }}" aria-label="Kg de descuento de {{ m.material.nombre if m.material else ('material #' ~ m.material_id) }}" value="{{ kg_desc_override if kg_desc_override is not none else ('%.3f'|format(m.kg_descuento or 0)) }}" {% if m.subpesajes %}disabled{% endif %}>
                                         </td>
                                         <td class="text-end">
                                             {% if not m.subpesajes %}
                                                 {% set kg_neto_override = form_kg_neto_map.get(m.id) if form_kg_neto_map is defined else None %}
-                                                <input class="form-control form-control-sm text-end note-kg-neto-input" type="number" step="0.001" min="0" name="kg_neto_{{ m.id }}" value="{{ kg_neto_override if kg_neto_override is not none else ('%.3f'|format(m.kg_neto or 0)) }}">
+                                                <input class="form-control form-control-sm text-end note-kg-neto-input" type="number" step="0.001" min="0" name="kg_neto_{{ m.id }}" aria-label="Kg neto de {{ m.material.nombre if m.material else ('material #' ~ m.material_id) }}" value="{{ kg_neto_override if kg_neto_override is not none else ('%.3f'|format(m.kg_neto or 0)) }}">
                                                 <input type="hidden" name="kg_mode_{{ m.id }}" class="note-kg-mode" value="{% if form_kg_neto_map and form_kg_neto_map.get(m.id) is not none %}net{% else %}desc{% endif %}">
-                                                <div class="form-text text-muted">Si cambias neto, el descuento se balancea automaticamente.</div>
+                                                <div class="form-text text-muted">Si cambias neto, el descuento se balancea automáticamente.</div>
                                             {% else %}
                                                 <span class="note-row-kg-neto-display">{{ "{:,.3f}".format(m.kg_neto or 0) }}</span>
                                             {% endif %}
                                         </td>
                                         <td class="text-end">
                                             {% set kg_real_override = form_kg_real_map.get(m.id) if form_kg_real_map is defined else None %}
-                                            <input class="form-control form-control-sm text-end" type="number" step="0.001" min="0" name="kg_real_{{ m.id }}" value="{{ kg_real_override if kg_real_override is not none else ('%.3f'|format(m.kg_real if m.kg_real is not none else m.kg_neto or 0)) }}">
+                                            <input class="form-control form-control-sm text-end" type="number" step="0.001" min="0" name="kg_real_{{ m.id }}" aria-label="Kg reales a inventario de {{ m.material.nombre if m.material else ('material #' ~ m.material_id) }}" value="{{ kg_real_override if kg_real_override is not none else ('%.3f'|format(m.kg_real if m.kg_real is not none else m.kg_neto or 0)) }}">
                                             <div class="form-text text-muted">Interno. Afecta inventario, no la orden PDF.</div>
                                         </td>
                                         {% set unit_override = form_precio_unit_map.get(m.id) if form_precio_unit_map is defined else None %}
                                         {% set subtotal_override = form_subtotal_map.get(m.id) if form_subtotal_map is defined else None %}
                                         {% set mode_override = form_precio_mode_map.get(m.id) if form_precio_mode_map is defined else None %}
                                         <td class="text-end">
-                                            <input class="form-control form-control-sm text-end note-unit-input" type="number" step="0.00001" min="0" name="precio_unitario_{{ m.id }}" value="{{ unit_override if unit_override is not none else ('%.5f'|format(m.precio_unitario) if m.precio_unitario is not none else '') }}" placeholder="0.00000">
+                                            <input class="form-control form-control-sm text-end note-unit-input" type="number" step="0.00001" min="0" name="precio_unitario_{{ m.id }}" aria-label="Precio unitario de {{ m.material.nombre if m.material else ('material #' ~ m.material_id) }}" value="{{ unit_override if unit_override is not none else ('%.5f'|format(m.precio_unitario) if m.precio_unitario is not none else '') }}" placeholder="0.00000">
                                             <input type="hidden" name="precio_mode_{{ m.id }}" class="note-precio-mode" value="{{ mode_override if mode_override else 'unit' }}">
                                         </td>
                                         <td class="text-end">
-                                            <input class="form-control form-control-sm text-end note-subtotal-input" type="number" step="0.01" min="0" name="subtotal_{{ m.id }}" value="{{ subtotal_override if subtotal_override is not none else ('%.2f'|format(m.subtotal) if m.subtotal is not none else '') }}" placeholder="0.00">
+                                            <input class="form-control form-control-sm text-end note-subtotal-input" type="number" step="0.01" min="0" name="subtotal_{{ m.id }}" aria-label="Subtotal de {{ m.material.nombre if m.material else ('material #' ~ m.material_id) }}" value="{{ subtotal_override if subtotal_override is not none else ('%.2f'|format(m.subtotal) if m.subtotal is not none else '') }}" placeholder="0.00">
                                         </td>
                                     </tr>
                                 {% endfor %}
@@ -249,8 +249,8 @@
                                 <strong id="note-edit-favor-value">${{ "{:,.2f}".format(saldo_a_favor or 0) }}</strong>
                             </div>
                         </div>
-                        <label class="form-label">Comentario de edicion</label>
-                        <textarea class="form-control" name="comentario_edicion" rows="5" placeholder="Explica por que se modifica la nota.">{{ comentario_edicion }}</textarea>
+                        <label class="form-label" for="comentario_edicion">Comentario de edición</label>
+                        <textarea class="form-control" id="comentario_edicion" name="comentario_edicion" rows="5" placeholder="Explica por qué se modifica la nota.">{{ comentario_edicion }}</textarea>
                         <div class="form-text text-muted">Si la nota ya estaba aprobada, los cambios ajustan inventario y log contable. Si el nuevo total queda por debajo de lo ya pagado, el excedente se conserva como saldo a favor.</div>
 
                         <div class="note-actions mt-3">
@@ -269,7 +269,7 @@
                             <span class="text-muted small">Ajuste manual por nota</span>
                         </div>
                         {% if note_state == 'APROBADA' %}
-                            <p class="text-muted small mb-2">Si necesitas corregir inventario operativo sin tocar montos, pagos o valuacion, usa el ajuste manual ligado a esta nota desde el detalle.</p>
+                            <p class="text-muted small mb-2">Si necesitas corregir inventario operativo sin tocar montos, pagos o valuación, usa el ajuste manual ligado a esta nota desde el detalle.</p>
                             <div class="d-grid gap-2">
                                 <a href="/web/admin/notas/{{ nota.id }}#note-manual-adjustments" class="btn btn-outline-primary w-100">Abrir ajuste manual de inventario</a>
                                 <a href="/web/admin/notas/{{ nota.id }}#note-balance-adjustments" class="btn btn-outline-secondary w-100">Abrir ajuste de saldo</a>

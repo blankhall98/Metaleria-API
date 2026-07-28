@@ -1,149 +1,134 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
+{% from "_macros.html" import page_header, icon, stat, badge, money, kg, empty %}
 
-{% block title %}Nota comision #{{ nota.id }} &middot; Admin{% endblock %}
+{% block title %}Nota de comisión #{{ nota.id }}{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Comisiones</p>
-        <h1 class="h4 text-white mb-0">Nota comision #{{ nota.id }}</h1>
-    </div>
-    <div class="d-flex gap-2">
-        <a href="/web/admin/comisionarios/notas" class="btn btn-outline-secondary btn-sm">Volver</a>
-        {% if comisionario %}
-            <a href="/web/admin/comisionarios/{{ comisionario.id }}/record" class="btn btn-outline-primary btn-sm">Record</a>
-        {% endif %}
-        {% if nota.estado.value == 'APROBADA' %}
-            <a href="/web/admin/comisionarios/notas/{{ nota.id }}/pdf" class="btn btn-outline-primary btn-sm">Nota PDF</a>
-        {% endif %}
-    </div>
-</div>
+
+{% call page_header('Nota de comisión #' ~ nota.id, eyebrow='Comisiones',
+                    sub='Materiales, comisión calculada y pagos de esta nota.') %}
+    <a href="/web/admin/comisionarios/notas" class="btn btn-outline-secondary btn-sm">
+        {{ icon('arrow-left', 's-icon--sm') }} Volver
+    </a>
+    {% if comisionario %}
+        <a href="/web/admin/comisionarios/{{ comisionario.id }}/record" class="btn btn-outline-secondary btn-sm">
+            {{ icon('user', 's-icon--sm') }} Ver comisionario
+        </a>
+    {% endif %}
+    {% if nota.estado.value == 'APROBADA' %}
+        <a href="/web/admin/comisionarios/notas/{{ nota.id }}/pdf" class="btn btn-outline-secondary btn-sm">
+            {{ icon('print', 's-icon--sm') }} Exportar PDF
+        </a>
+    {% endif %}
+{% endcall %}
 
 {% if error %}
     <div class="alert alert-danger py-2 small">{{ error }}</div>
 {% endif %}
 
-<div class="card hover-lift mb-3">
+<div class="s-stats">
+    {{ stat('Total kg', kg(nota.total_kg)) }}
+    {{ stat('Total', money(total)) }}
+    {{ stat('Pagado', money(pagado)) }}
+    {{ stat('Saldo', money(saldo)) }}
+</div>
+
+<div class="card mb-3">
     <div class="card-body">
-        <div class="d-flex flex-column flex-lg-row gap-4">
-            <div class="flex-grow-1">
-                <div class="note-meta-grid">
-                    <div class="note-meta-item">
-                        <span class="note-meta-label">Comisionario</span>
-                        <strong>{{ comisionario.nombre_completo if comisionario else '-' }}</strong>
-                    </div>
-                    <div class="note-meta-item">
-                        <span class="note-meta-label">Sucursal</span>
-                        <strong>{{ nota.sucursal.nombre if nota.sucursal else '-' }}</strong>
-                    </div>
-                    <div class="note-meta-item">
-                        <span class="note-meta-label">Estado</span>
-                        <span class="badge {{ 'bg-success' if nota.estado.value == 'APROBADA' else 'bg-secondary' }}">
-                            {{ nota.estado.value|title }}
-                        </span>
-                    </div>
-                    <div class="note-meta-item">
-                        <span class="note-meta-label">Fecha</span>
-                        <strong>{{ nota.created_at|datetime_local if nota.created_at else '-' }}</strong>
-                    </div>
-                </div>
+        <h2 class="s-card-title">Datos de la nota</h2>
+        <p class="s-card-sub mb-3">Comisionario, sucursal y estado del documento.</p>
+        <div class="note-meta-grid">
+            <div class="note-meta-item">
+                <span class="note-meta-label">Comisionario</span>
+                <strong>{{ comisionario.nombre_completo if comisionario else '—' }}</strong>
             </div>
-            <div class="note-meta-grid">
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Total kg</span>
-                    <strong>{{ "{:,.2f}".format(nota.total_kg or 0) }} kg</strong>
-                </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Total</span>
-                    <strong>${{ "{:,.2f}".format(total or 0) }}</strong>
-                </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Pagado</span>
-                    <strong>${{ "{:,.2f}".format(pagado or 0) }}</strong>
-                </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Saldo</span>
-                    <strong class="{{ 'text-danger' if saldo > 0 else 'text-success' }}">
-                        {% if saldo >= 0 %}
-                            ${{ "{:,.2f}".format(saldo or 0) }}
-                        {% else %}
-                            -${{ "{:,.2f}".format(-saldo) }}
-                        {% endif %}
-                    </strong>
-                </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Sucursal</span>
+                <strong>{{ nota.sucursal.nombre if nota.sucursal else '—' }}</strong>
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Estado</span>
+                {% if nota.estado.value == 'BORRADOR' %}
+                    {{ badge('Borrador', 'muted') }}
+                {% elif nota.estado.value == 'APROBADA' %}
+                    {{ badge('Aprobada', 'info') }}
+                {% else %}
+                    {{ badge('Cancelada', 'bad') }}
+                {% endif %}
+            </div>
+            <div class="note-meta-item">
+                <span class="note-meta-label">Fecha</span>
+                <strong>{{ nota.created_at|datetime_local if nota.created_at else '—' }}</strong>
             </div>
         </div>
         {% if nota.comentarios_admin %}
-            <div class="mt-3 text-muted small">{{ nota.comentarios_admin }}</div>
+            <p class="s-card-sub mt-3 mb-0">{{ nota.comentarios_admin }}</p>
         {% endif %}
     </div>
 </div>
 
-<div class="card hover-lift mb-3">
+<div class="card mb-3">
     <div class="card-body">
-        <h2 class="h6 text-dark mb-3">Materiales</h2>
-        <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0">
-                <thead>
-                <tr>
-                    <th>Material</th>
-                    <th class="text-end">Kg neto</th>
-                    <th class="text-end">Precio/kg</th>
-                    <th class="text-end">Subtotal</th>
-                </tr>
-                </thead>
-                <tbody>
-                {% for nm in materiales %}
-                    <tr>
-                        <td>{{ nm.material.nombre if nm.material else nm.material_id }}</td>
-                        <td class="text-end">{{ "{:,.2f}".format(nm.kg_neto or 0) }}</td>
-                        <td class="text-end">{{ "{:,.5f}".format(nm.precio_por_kg or 0) }}</td>
-                        <td class="text-end">${{ "{:,.2f}".format(nm.subtotal or 0) }}</td>
-                    </tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        </div>
+        <h2 class="s-card-title">Materiales</h2>
+        <p class="s-card-sub mb-3">Kilos, precio por kilo y subtotal de comisión.</p>
         {% if materiales|length == 0 %}
-            <p class="text-muted small mt-3 mb-0">No hay materiales registrados.</p>
+            {{ empty('Sin materiales registrados',
+                     'Edita la nota para agregar los materiales que generan la comisión.',
+                     'box') }}
+        {% else %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                    <tr>
+                        <th data-title-col>Material</th>
+                        <th class="text-end">Kg neto</th>
+                        <th class="text-end">Precio/kg</th>
+                        <th class="text-end">Subtotal</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for nm in materiales %}
+                        <tr>
+                            <td>{{ nm.material.nombre if nm.material else nm.material_id }}</td>
+                            <td class="text-end">{{ kg(nm.kg_neto) }}</td>
+                            <td class="text-end"><span class="s-num">{{ "{:,.5f}".format(nm.precio_por_kg or 0) }}</span></td>
+                            <td class="text-end">{{ money(nm.subtotal) }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         {% endif %}
     </div>
 </div>
 
-<div class="card hover-lift mb-3">
+<div class="card mb-3">
     <div class="card-body">
-        <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
-            <h2 class="h6 text-dark mb-0">Pagos registrados</h2>
-            <div class="text-muted small">
-                Total: <strong>${{ "{:,.2f}".format(total or 0) }}</strong> &middot;
-                Pagado: <strong>${{ "{:,.2f}".format(pagado or 0) }}</strong> &middot;
-                Saldo: <strong class="{{ 'text-danger' if saldo > 0 else 'text-success' }}">
-                    {% if saldo >= 0 %}
-                        ${{ "{:,.2f}".format(saldo or 0) }}
-                    {% else %}
-                        -${{ "{:,.2f}".format(-saldo) }}
-                    {% endif %}
-                </strong>
-            </div>
-        </div>
+        <h2 class="s-card-title">Pagos registrados</h2>
+        <p class="s-card-sub mb-3">Registra un abono contra esta nota y consulta el histórico.</p>
 
-        <form method="post" action="/web/admin/comisionarios/notas/{{ nota.id }}/pago" class="row g-2 align-items-end">
-            <div class="col-lg-3 col-md-4">
-                <label class="form-label">Monto</label>
-                <input class="form-control form-control-sm" type="number" step="0.01" min="0" name="monto" value="{{ form_monto }}">
+        {% if pago_ok %}
+            <div class="alert alert-success py-2 small">Pago registrado correctamente.</div>
+        {% endif %}
+
+        <form method="post" action="/web/admin/comisionarios/notas/{{ nota.id }}/pago">
+            <div class="s-form-grid">
+            <div>
+                <label class="form-label" for="pago_monto">Monto</label>
+                <input class="form-control" id="pago_monto" type="number" step="0.01" min="0" name="monto" value="{{ form_monto }}">
             </div>
-            <div class="col-lg-3 col-md-4">
-                <label class="form-label">Metodo</label>
-                <select class="form-select form-select-sm" name="metodo_pago" id="pago_metodo_select" required>
-                    <option value="" {% if not form_metodo %}selected{% endif %}>Selecciona metodo</option>
+            <div>
+                <label class="form-label" for="pago_metodo_select">Método <span class="s-req">*</span></label>
+                <select class="form-select" name="metodo_pago" id="pago_metodo_select" required>
+                    <option value="" {% if not form_metodo %}selected{% endif %}>Selecciona método</option>
                     <option value="efectivo" {% if form_metodo == 'efectivo' %}selected{% endif %}>Efectivo</option>
                     <option value="transferencia" {% if form_metodo == 'transferencia' %}selected{% endif %}>Transferencia</option>
                     <option value="cheque" {% if form_metodo == 'cheque' %}selected{% endif %}>Cheque</option>
                 </select>
             </div>
-            <div class="col-lg-3 col-md-4">
-                <label class="form-label">Cuenta comisionario</label>
-                <select class="form-select form-select-sm" name="cuenta_financiera" id="pago_cuenta_select">
+            <div>
+                <label class="form-label" for="pago_cuenta_select">Cuenta del comisionario</label>
+                <select class="form-select" name="cuenta_financiera" id="pago_cuenta_select">
                     <option value="" {% if not form_cuenta %}selected{% endif %}>Selecciona cuenta</option>
                     {% for cuenta in cuentas %}
                         <option value="{{ cuenta.id }}" {% if form_cuenta|string == cuenta.id|string %}selected{% endif %}>
@@ -152,9 +137,9 @@
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-lg-3 col-md-4">
-                <label class="form-label">Cuenta Scrap360</label>
-                <select class="form-select form-select-sm" name="cuenta_scrap360_id">
+            <div>
+                <label class="form-label" for="pago_cuenta_scrap360">Cuenta Scrap360</label>
+                <select class="form-select" id="pago_cuenta_scrap360" name="cuenta_scrap360_id">
                     <option value="" {% if not form_cuenta_scrap360 %}selected{% endif %}>Selecciona cuenta</option>
                     {% for c in cuentas_scrap360 %}
                         <option value="{{ c.id }}" {% if form_cuenta_scrap360|string == c.id|string %}selected{% endif %}>
@@ -163,55 +148,54 @@
                     {% endfor %}
                 </select>
                 {% if cuentas_scrap360|length == 0 %}
-                    <div class="form-text text-muted">No hay cuentas Scrap360 para esta sucursal.</div>
+                    <p class="form-text">No hay cuentas Scrap360 para esta sucursal.</p>
                 {% else %}
-                    <div class="form-text text-muted">Opcional. Dejalo en blanco si no aplica.</div>
+                    <p class="form-text">Opcional. Déjalo en blanco si no aplica.</p>
                 {% endif %}
             </div>
-            <div class="col-lg-4 col-md-6">
-                <label class="form-label">Comentario</label>
-                <input class="form-control form-control-sm" name="comentario" placeholder="Opcional" value="{{ form_comentario }}">
+            <div class="s-field--full">
+                <label class="form-label" for="pago_comentario">Comentario</label>
+                <input class="form-control" id="pago_comentario" name="comentario" placeholder="Referencia o detalle" value="{{ form_comentario }}">
             </div>
-            <div class="col-lg-2 col-md-3 d-grid">
-                <button type="submit" class="btn btn-outline-primary btn-sm">Agregar pago</button>
             </div>
-            {% if pago_ok %}
-                <div class="col-12">
-                    <span class="text-success small">Pago registrado correctamente.</span>
-                </div>
-            {% endif %}
+            <div class="s-form-actions">
+                <button type="submit" class="btn btn-primary">Agregar pago</button>
+            </div>
         </form>
 
-        <div class="table-responsive mt-3">
-            <table class="table table-sm align-middle mb-0">
-                <thead>
-                <tr>
-                    <th>Fecha</th>
-                    <th>Monto</th>
-                    <th>Metodo</th>
-                    <th>Cuenta</th>
-                    <th>Cuenta Scrap360</th>
-                    <th>Usuario</th>
-                    <th>Comentario</th>
-                </tr>
-                </thead>
-                <tbody>
-                {% for pago in pagos %}
-                    <tr>
-                        <td>{{ pago.created_at|datetime_local if pago.created_at else '-' }}</td>
-                        <td class="fw-semibold">${{ "{:,.2f}".format(pago.monto or 0) }}</td>
-                        <td>{{ pago.metodo_pago|capitalize if pago.metodo_pago else '-' }}</td>
-                        <td>{{ pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or '-') }}</td>
-                        <td>{{ pago.cuenta_scrap360.nombre if pago.cuenta_scrap360 else '-' }}</td>
-                        <td>{{ pago.usuario.username if pago.usuario else (pago.usuario_id or '-') }}</td>
-                        <td>{{ pago.comentario or '-' }}</td>
-                    </tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        </div>
         {% if pagos|length == 0 %}
-            <p class="text-muted small mt-3 mb-0">Aun no hay pagos registrados.</p>
+            {{ empty('Sin pagos registrados',
+                     'Usa el formulario de arriba para registrar el primer abono de esta nota.',
+                     'cash') }}
+        {% else %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                    <tr>
+                        <th data-title-col>Fecha</th>
+                        <th class="text-end">Monto</th>
+                        <th>Método</th>
+                        <th>Cuenta</th>
+                        <th>Cuenta Scrap360</th>
+                        <th>Usuario</th>
+                        <th>Comentario</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for pago in pagos %}
+                        <tr>
+                            <td>{{ pago.created_at|datetime_local if pago.created_at else '—' }}</td>
+                            <td class="text-end">{{ money(pago.monto) }}</td>
+                            <td>{{ pago.metodo_pago|capitalize if pago.metodo_pago else '—' }}</td>
+                            <td>{{ pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or '—') }}</td>
+                            <td>{{ pago.cuenta_scrap360.nombre if pago.cuenta_scrap360 else '—' }}</td>
+                            <td>{{ pago.usuario.username if pago.usuario else (pago.usuario_id or '—') }}</td>
+                            <td class="text-muted">{{ pago.comentario or '—' }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         {% endif %}
     </div>
 </div>
@@ -237,4 +221,3 @@
     })();
 </script>
 {% endblock %}
-

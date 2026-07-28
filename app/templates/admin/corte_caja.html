@@ -1,37 +1,88 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, icon, stat, badge, money, kg, empty_row %}
 
-{% block title %}Corte de Caja{% endblock %}
+{% block title %}Corte de caja{% endblock %}
 
 {% block content %}
+{% set MOV_TIPO = {
+    'COMPRA': ('Compra', 'info'),
+    'VENTA': ('Venta', 'info'),
+    'AJUSTE': ('Ajuste', 'warn'),
+    'PAGO': ('Pago', 'ok'),
+    'PAGO COMPRA': ('Pago de compra', 'ok'),
+    'PAGO VENTA': ('Pago de venta', 'ok'),
+    'PAGO COMISION': ('Pago de comisión', 'ok'),
+    'REVERSO': ('Reverso', 'bad'),
+    'REVERSO COMPRA': ('Reverso de compra', 'bad'),
+    'REVERSO VENTA': ('Reverso de venta', 'bad'),
+    'REVERSO COMISION': ('Reverso de comisión', 'bad'),
+    'REVERSO PAGO': ('Reverso de pago', 'bad'),
+    'REVERSO PAGO COMPRA': ('Reverso de pago de compra', 'bad'),
+    'REVERSO PAGO VENTA': ('Reverso de pago de venta', 'bad'),
+    'REVERSO PAGO COMISION': ('Reverso de pago de comisión', 'bad'),
+    'RESTAURACION': ('Restauración', 'muted'),
+    'RESTAURACION COMPRA': ('Restauración de compra', 'muted'),
+    'RESTAURACION VENTA': ('Restauración de venta', 'muted'),
+    'RESTAURACION PAGO': ('Restauración de pago', 'muted'),
+    'RESTAURACION PAGO COMPRA': ('Restauración de pago de compra', 'muted'),
+    'RESTAURACION PAGO VENTA': ('Restauración de pago de venta', 'muted'),
+} %}
+{% set METODO_PAGO = {
+    'efectivo': 'Efectivo',
+    'transferencia': 'Transferencia',
+    'cheque': 'Cheque',
+    'cheques': 'Cheques',
+} %}
+{% set GASTO_CAT = {
+    'CAJA_CHICA': 'Caja chica / operativo',
+    'SERVICIOS': 'Servicios',
+    'VIATICOS': 'Viáticos',
+    'MANTENIMIENTO': 'Mantenimiento',
+    'ADMINISTRATIVO': 'Administrativo',
+    'OTRO': 'Otro',
+} %}
+
 <div class="corte-caja-page">
 
-{# ── Page header with integrated controls ─────────────────────────── #}
-<div class="page-header corte-page-header-block mb-3">
-    <div class="corte-ph-left">
-        <p class="corte-ph-eyebrow">Corte de Caja</p>
-        <h1 class="corte-ph-title">{% if sucursal_actual %}{{ sucursal_actual.nombre }}{% else %}Selecciona una sucursal{% endif %}</h1>
-        <p class="corte-ph-date">{{ fecha }}</p>
-    </div>
-    <div class="corte-ph-right">
-        {% if corte %}
-            <span class="corte-status-pill {% if corte.estado.value == 'ABIERTO' %}corte-status-abierto{% else %}corte-status-cerrado{% endif %}">
-                <span class="corte-status-dot"></span>
-                {{ corte.estado.value }}
-            </span>
+{% call page_header('Corte de caja', eyebrow='Finanzas',
+                    sub=(sucursal_actual.nombre ~ ' · ' ~ fecha) if sucursal_actual else 'Selecciona una sucursal para ver el corte del día.') %}
+    {% if corte %}
+        {% if corte.estado.value == 'ABIERTO' %}
+            {{ badge('Abierto', 'ok') }}
         {% else %}
-            <span class="corte-status-pill corte-status-none">&#9679; Sin abrir</span>
+            {{ badge('Cerrado', 'muted') }}
         {% endif %}
-        <form method="get" class="corte-ph-form">
-            <select class="corte-ph-select" name="sucursal_id">
+        <a class="btn btn-outline-secondary" href="/web/admin/corte-caja/{{ corte.id }}/reporte?format=pdf">
+            {{ icon('download', 's-icon--sm') }} Exportar PDF
+        </a>
+        <a class="btn btn-outline-secondary" href="/web/admin/corte-caja/{{ corte.id }}/reporte?format=xlsx">
+            {{ icon('download', 's-icon--sm') }} Exportar Excel
+        </a>
+    {% else %}
+        {{ badge('Sin abrir', 'muted') }}
+    {% endif %}
+{% endcall %}
+
+<details class="s-filters-collapse" open>
+    <summary>Sucursal y fecha</summary>
+    <form class="s-filters" method="get">
+        <div class="s-filters__field">
+            <label for="cc-sucursal" class="form-label">Sucursal</label>
+            <select class="form-select" id="cc-sucursal" name="sucursal_id">
                 {% for s in sucursales %}
                     <option value="{{ s.id }}" {% if sucursal_id and s.id == sucursal_id %}selected{% endif %}>{{ s.nombre }}</option>
                 {% endfor %}
             </select>
-            <input class="corte-ph-input" type="date" name="fecha" value="{{ fecha }}">
-            <button class="corte-ph-btn" type="submit">Ir</button>
-        </form>
-    </div>
-</div>
+        </div>
+        <div class="s-filters__field">
+            <label for="cc-fecha" class="form-label">Fecha</label>
+            <input class="form-control" id="cc-fecha" type="date" name="fecha" value="{{ fecha }}">
+        </div>
+        <div class="s-filters__actions">
+            <button class="btn btn-outline-primary" type="submit">Ir</button>
+        </div>
+    </form>
+</details>
 
 {# ── Alerts (success / error / next corte) ────────────────────────── #}
 {% if error %}
@@ -56,135 +107,113 @@
 {% endif %}
 
 {% if not corte %}
-    <div class="corte-apertura-card mb-3">
-        <div class="corte-apertura-left">
-            <p class="corte-apertura-eyebrow">Saldo inicial sugerido</p>
-            <p class="corte-apertura-amount">${{ "{:,.2f}".format(auto_saldo_inicial or 0) }}</p>
-            <p class="corte-apertura-meta">
-                {% if previous_closed_corte %}
-                    Heredado del corte del <strong>{{ previous_closed_corte.fecha|date_local if previous_closed_corte.fecha else '-' }}</strong>
-                {% else %}
-                    Sin corte previo &mdash; punto de partida en cero
-                {% endif %}
-            </p>
-        </div>
-        <div class="corte-apertura-right">
-            <form method="post" action="/web/admin/corte-caja/abrir" data-submit-once="1">
-                <input type="hidden" name="sucursal_id" value="{{ sucursal_id or '' }}">
-                <input type="hidden" name="fecha" value="{{ fecha }}">
-                <label class="corte-apertura-label">Confirma o ajusta el saldo inicial</label>
-                <div class="corte-apertura-form-row">
-                    <input class="corte-apertura-input" name="saldo_inicial" type="number" step="0.01" min="0" value="{{ form_saldo_inicial }}" placeholder="0.00">
-                    <button class="corte-apertura-btn" type="submit">Abrir caja</button>
-                </div>
-                <p class="corte-apertura-hint">Puedes editar el monto antes de abrir.</p>
-            </form>
-        </div>
-    </div>
 
-    <div class="card hover-lift mb-3">
-        <div class="card-body">
-            <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3 mb-3">
+<div class="card mb-3">
+    <div class="card-body">
+        <h2 class="s-card-title">Apertura de caja</h2>
+        <p class="s-card-sub">
+            {% if previous_closed_corte %}
+                Saldo inicial heredado del corte del <strong>{{ previous_closed_corte.fecha|date_local if previous_closed_corte.fecha else '—' }}</strong>.
+            {% else %}
+                Sin corte previo: el punto de partida es cero.
+            {% endif %}
+        </p>
+        <form method="post" action="/web/admin/corte-caja/abrir" data-submit-once="1">
+            <input type="hidden" name="sucursal_id" value="{{ sucursal_id or '' }}">
+            <input type="hidden" name="fecha" value="{{ fecha }}">
+            <div class="s-form-grid">
                 <div>
-                    <div class="d-flex align-items-center gap-2 mb-2">
-                        <span class="chip-strong">Vista previa</span>
-                        <span class="text-muted small">Antes de abrir caja</span>
-                    </div>
-                    <h2 class="h5 text-dark mb-1">Resumen operativo y conteo preliminar</h2>
-                    <p class="text-muted small mb-0">Puedes revisar la operacion del dia y contar efectivo antes de abrir caja.</p>
+                    <span class="s-def__label">Saldo inicial sugerido</span>
+                    <span class="s-def__value">{{ money(auto_saldo_inicial) }}</span>
                 </div>
-                <div class="alert alert-info py-2 px-3 mb-0 small">
-                    Primero revisa y cuenta. Cuando estes lista, abre caja para registrar el saldo inicial.
-                </div>
-            </div>
-            <div class="note-kpi-grid mb-3">
-                <div class="notes-kpi-card tone-blue">
-                    <span class="notes-kpi-label">Compras del dia</span>
-                    <strong>${{ "{:,.2f}".format(compras_total or 0) }}</strong>
-                    <div class="notes-kpi-sub">{{ compras_notas }} notas &middot; {{ "{:,.3f}".format(compras_kg or 0) }} kg</div>
-                </div>
-                <div class="notes-kpi-card tone-green">
-                    <span class="notes-kpi-label">Ventas del dia</span>
-                    <strong>${{ "{:,.2f}".format(ventas_total or 0) }}</strong>
-                    <div class="notes-kpi-sub">{{ ventas_notas }} notas &middot; {{ "{:,.3f}".format(ventas_kg or 0) }} kg</div>
-                </div>
-                <div class="notes-kpi-card tone-green">
-                    <span class="notes-kpi-label">Cobros en efectivo</span>
-                    <strong>${{ "{:,.2f}".format(ventas_efectivo_total or 0) }}</strong>
-                </div>
-                <div class="notes-kpi-card tone-red">
-                    <span class="notes-kpi-label">Pagos en efectivo</span>
-                    <strong>${{ "{:,.2f}".format(compras_efectivo_total or 0) }}</strong>
-                </div>
-                <div class="notes-kpi-card {{ 'tone-green' if (cash_ingresos - cash_egresos) >= 0 else 'tone-red' }}">
-                    <span class="notes-kpi-label">Neto efectivo del dia</span>
-                    <strong>{% if (cash_ingresos - cash_egresos) >= 0 %}+{% else %}-{% endif %}${{ "{:,.2f}".format((cash_ingresos - cash_egresos)|abs) }}</strong>
+                <div>
+                    <label for="cc-saldo-inicial" class="form-label">Saldo inicial confirmado</label>
+                    <input class="form-control" id="cc-saldo-inicial" name="saldo_inicial" type="number" step="0.01" min="0"
+                           value="{% if form_saldo_inicial %}{{ "%.2f"|format(form_saldo_inicial|float) }}{% endif %}" placeholder="0.00">
+                    <p class="form-text">Puedes editar el monto antes de abrir la caja.</p>
                 </div>
             </div>
-            <div class="cash-count-sheet">
-                <div class="cash-count-sheet__header">
-                    <div>
-                        <span class="chip-strong">Conteo preliminar</span>
-                        <h3 class="h6 text-dark mb-1 mt-2">Arqueo de monedas y billetes</h3>
-                        <p class="text-muted small mb-0">Cuenta el efectivo fisico antes de abrir caja.</p>
-                    </div>
-                    <div class="cash-count-sheet__totals">
-                        <div class="cash-count-total-card"><span>Monedas</span><strong id="cashCountCoins">${{ "{:,.2f}".format(denom_total_monedas or 0) }}</strong></div>
-                        <div class="cash-count-total-card"><span>Billetes</span><strong id="cashCountBills">${{ "{:,.2f}".format(denom_total_billetes or 0) }}</strong></div>
-                        <div class="cash-count-total-card cash-count-total-card--primary"><span>Total general</span><strong id="cashCountTotal">${{ "{:,.2f}".format(denom_total or 0) }}</strong></div>
-                    </div>
+            <div class="s-form-actions">
+                <button class="btn btn-primary" type="submit">Abrir caja</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="alert alert-info py-2 small mb-3">Primero revisa y cuenta. Cuando termines, abre la caja.</div>
+
+<h2 class="s-card-title">Vista previa del día</h2>
+<p class="s-card-sub">Cifras de la jornada antes de abrir la caja.</p>
+<div class="s-stats mb-4">
+    {{ stat('Compras del día', money(compras_total, 'plain'), compras_notas ~ ' notas · ' ~ "{:,.2f}".format(compras_kg or 0) ~ ' kg') }}
+    {{ stat('Ventas del día', money(ventas_total, 'plain'), ventas_notas ~ ' notas · ' ~ "{:,.2f}".format(ventas_kg or 0) ~ ' kg') }}
+    {{ stat('Cobros en efectivo', money(ventas_efectivo_total, 'plain'), 'Entradas de efectivo del día') }}
+    {{ stat('Pagos en efectivo', money(compras_efectivo_total, 'plain'), 'Salidas de efectivo del día') }}
+    {{ stat('Neto de efectivo', money(cash_ingresos - cash_egresos), 'Cobros menos pagos en efectivo', 'info') }}
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="s-card-title">Arqueo de monedas y billetes</h2>
+        <p class="s-card-sub">Conteo preliminar. Cuenta el efectivo físico antes de abrir la caja.</p>
+
+        <div class="s-subpanel mb-3">
+            <div class="s-between"><span>Monedas</span><strong class="s-money" id="cashCountCoins">${{ "{:,.2f}".format(denom_total_monedas or 0) }}</strong></div>
+            <div class="s-between"><span>Billetes</span><strong class="s-money" id="cashCountBills">${{ "{:,.2f}".format(denom_total_billetes or 0) }}</strong></div>
+            <div class="s-between"><span>Total general</span><strong class="s-money" id="cashCountTotal">${{ "{:,.2f}".format(denom_total or 0) }}</strong></div>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-xl-5">
+                <p class="s-section-label">Monedas</p>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle corte-caja-table">
+                        <thead><tr><th data-title-col>Denominación</th><th class="text-end">Cantidad</th><th class="text-end">Total</th></tr></thead>
+                        <tbody>
+                            {% for denom in denom_monedas %}
+                                <tr>
+                                    <td>{{ denom.label }}</td>
+                                    <td class="text-end"><input class="form-control form-control-sm text-end denom-count-input" style="max-width: 7rem" type="number" min="0" step="1" inputmode="numeric" aria-label="Cantidad de {{ denom.label }}" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="coins"></td>
+                                    <td class="text-end s-money" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td>
+                                </tr>
+                            {% else %}
+                                {{ empty_row(3, 'Sin denominaciones configuradas.') }}
+                            {% endfor %}
+                        </tbody>
+                        <tfoot><tr><td colspan="2">Total monedas</td><td class="text-end s-money" id="cashCountCoinsTable">${{ "{:,.2f}".format(denom_total_monedas or 0) }}</td></tr></tfoot>
+                    </table>
                 </div>
-                <div class="row g-3">
-                    <div class="col-xl-5">
-                        <div class="cash-count-section">
-                            <div class="cash-count-section__title">Monedas</div>
-                            <div class="table-responsive">
-                                <table class="table table-sm align-middle mb-0">
-                                    <thead><tr><th>Denominacion</th><th class="text-end">Cantidad</th><th class="text-end">Total</th></tr></thead>
-                                    <tbody>
-                                        {% for denom in denom_monedas %}
-                                            <tr>
-                                                <td>{{ denom.label }}</td>
-                                                <td class="text-end"><input class="form-control form-control-sm text-end denom-count-input" type="number" min="0" step="1" inputmode="numeric" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="coins"></td>
-                                                <td class="text-end" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td>
-                                            </tr>
-                                        {% endfor %}
-                                        <tr class="table-light fw-semibold"><td colspan="2">Total monedas</td><td class="text-end" id="cashCountCoinsTable">${{ "{:,.2f}".format(denom_total_monedas or 0) }}</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-xl-7">
-                        <div class="cash-count-section">
-                            <div class="cash-count-section__title">Billetes</div>
-                            <div class="table-responsive">
-                                <table class="table table-sm align-middle mb-0">
-                                    <thead><tr><th>Denominacion</th><th class="text-end">Cantidad</th><th class="text-end">Total</th></tr></thead>
-                                    <tbody>
-                                        {% for denom in denom_billetes %}
-                                            <tr>
-                                                <td>{{ denom.label }}</td>
-                                                <td class="text-end"><input class="form-control form-control-sm text-end denom-count-input" type="number" min="0" step="1" inputmode="numeric" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="bills"></td>
-                                                <td class="text-end" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td>
-                                            </tr>
-                                        {% endfor %}
-                                        <tr class="table-light fw-semibold"><td colspan="2">Total billetes</td><td class="text-end" id="cashCountBillsTable">${{ "{:,.2f}".format(denom_total_billetes or 0) }}</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="cash-count-footer">
-                    <div class="cash-count-footer__line"><span>Cobros en efectivo</span><strong class="text-success">+${{ "{:,.2f}".format(ventas_efectivo_total or 0) }}</strong></div>
-                    <div class="cash-count-footer__line"><span>Pagos en efectivo</span><strong class="text-danger">-${{ "{:,.2f}".format(compras_efectivo_total or 0) }}</strong></div>
-                    <div class="cash-count-footer__line"><span>Neto efectivo del dia</span><strong class="{% if (cash_ingresos - cash_egresos) >= 0 %}text-success{% else %}text-danger{% endif %}">{% if (cash_ingresos - cash_egresos) >= 0 %}+{% else %}-{% endif %}${{ "{:,.2f}".format((cash_ingresos - cash_egresos)|abs) }}</strong></div>
-                    <div class="cash-count-footer__line"><span>Conteo preliminar</span><strong id="cashCountTotalInline">${{ "{:,.2f}".format(denom_total or 0) }}</strong></div>
+            </div>
+            <div class="col-xl-7">
+                <p class="s-section-label">Billetes</p>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle corte-caja-table">
+                        <thead><tr><th data-title-col>Denominación</th><th class="text-end">Cantidad</th><th class="text-end">Total</th></tr></thead>
+                        <tbody>
+                            {% for denom in denom_billetes %}
+                                <tr>
+                                    <td>{{ denom.label }}</td>
+                                    <td class="text-end"><input class="form-control form-control-sm text-end denom-count-input" style="max-width: 7rem" type="number" min="0" step="1" inputmode="numeric" aria-label="Cantidad de {{ denom.label }}" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="bills"></td>
+                                    <td class="text-end s-money" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td>
+                                </tr>
+                            {% else %}
+                                {{ empty_row(3, 'Sin denominaciones configuradas.') }}
+                            {% endfor %}
+                        </tbody>
+                        <tfoot><tr><td colspan="2">Total billetes</td><td class="text-end s-money" id="cashCountBillsTable">${{ "{:,.2f}".format(denom_total_billetes or 0) }}</td></tr></tfoot>
+                    </table>
                 </div>
             </div>
         </div>
+
+        <div class="s-subpanel mt-3">
+            <div class="s-between"><span>Cobros en efectivo</span><strong>{{ money(ventas_efectivo_total) }}</strong></div>
+            <div class="s-between"><span>Pagos en efectivo</span><strong>{{ money(0 - (compras_efectivo_total or 0)) }}</strong></div>
+            <div class="s-between"><span>Neto de efectivo del día</span><strong>{{ money(cash_ingresos - cash_egresos) }}</strong></div>
+            <div class="s-between"><span>Conteo preliminar</span><strong class="s-money" id="cashCountTotalInline">${{ "{:,.2f}".format(denom_total or 0) }}</strong></div>
+        </div>
     </div>
+</div>
 
 {% else %}
 
@@ -199,111 +228,89 @@
         Operaciones
     </a>
     <a href="#section-cierre" class="corte-snav-link">
-        {% if corte.estado.value == 'CERRADO' %}<span style="color:#16a34a;margin-right:0.25rem;">&#10003;</span>{% endif %}Cierre
+        Cierre
     </a>
-    <div class="ms-auto d-flex align-items-center gap-2">
-        <span class="badge {% if corte.estado.value == 'ABIERTO' %}bg-success{% else %}bg-secondary{% endif %} d-none d-md-inline">{{ corte.estado.value }}</span>
-        <a class="btn btn-outline-secondary btn-sm" href="/web/admin/corte-caja/{{ corte.id }}/reporte?format=pdf">PDF</a>
-        <a class="btn btn-outline-secondary btn-sm" href="/web/admin/corte-caja/{{ corte.id }}/reporte?format=xlsx">Excel</a>
-    </div>
 </div>
 
 {# ══════════════════════════════════════════════════════════════════════
-   COMPACT KPI CARD
+   INDICADORES
 ══════════════════════════════════════════════════════════════════════ #}
-<div class="card mb-3">
-    <div class="card-body">
-        <div class="text-muted small mb-3">
-            Jornada: <strong>{{ corte_window_start|datetime_local if corte_window_start else '-' }}</strong>
-            &rarr;
-            <strong>{% if corte.estado.value == 'CERRADO' %}{{ corte_window_end|datetime_local if corte_window_end else '-' }}{% else %}ahora{% endif %}</strong>
-        </div>
-        <div class="corte-kpi-trio">
-            <div class="corte-kpi-main-item">
-                <span>Saldo esperado</span>
-                <strong>${{ "{:,.2f}".format(saldo_calculado or 0) }}</strong>
-            </div>
-            <div class="corte-kpi-main-item">
-                <span>Contado</span>
-                <strong>${{ "{:,.2f}".format(denom_total or 0) }}</strong>
-            </div>
-            {% if corte.estado.value == 'ABIERTO' %}
-            <div class="corte-kpi-main-item {{ 'kpi-positive' if (diferencia_provisional or 0) >= 0 else 'kpi-negative' }}">
-                <span>{{ 'Sobrante provisional' if (diferencia_provisional or 0) >= 0 else 'Faltante provisional' }}</span>
-                <strong>{{ '+' if (diferencia_provisional or 0) >= 0 else '-' }}${{ "{:,.2f}".format((diferencia_provisional or 0)|abs) }}</strong>
-            </div>
-            {% else %}
-            <div class="corte-kpi-main-item {{ 'kpi-positive' if (corte.diferencia or 0) >= 0 else 'kpi-negative' }}">
-                <span>{{ 'Sobrante final' if (corte.diferencia or 0) >= 0 else 'Faltante final' }}</span>
-                <strong>{{ '+' if (corte.diferencia or 0) >= 0 else '-' }}${{ "{:,.2f}".format((corte.diferencia or 0)|abs) }}</strong>
-            </div>
+<p class="s-card-sub">
+    Jornada: {{ corte_window_start|datetime_local if corte_window_start else '—' }} &rarr;
+    {% if corte.estado.value == 'CERRADO' %}{{ corte_window_end|datetime_local if corte_window_end else '—' }}{% else %}ahora{% endif %}
+</p>
+<div class="s-stats mb-3">
+    {{ stat('Saldo esperado', money(saldo_calculado, 'plain'), 'Saldo inicial más movimientos de efectivo') }}
+    {{ stat('Efectivo contado', money(denom_total, 'plain'), 'Suma del arqueo por denominaciones') }}
+    {% if corte.estado.value == 'ABIERTO' %}
+        {{ stat('Sobrante o faltante provisional', money(diferencia_provisional), 'Contado menos esperado', 'info') }}
+    {% else %}
+        {{ stat('Sobrante o faltante final', money(corte.diferencia), 'Contado menos esperado al cierre', 'info') }}
+    {% endif %}
+</div>
+<div class="mb-3">
+    <button type="button" class="btn btn-link btn-sm px-0" data-bs-toggle="collapse" data-bs-target="#kpiDesglose" aria-expanded="false">
+        Ver desglose
+    </button>
+    <div id="kpiDesglose" class="collapse mt-2">
+        <div class="s-stats">
+            {{ stat('Saldo inicial', money(saldo_inicial, 'plain'), 'Con el que se abrió la caja') }}
+            {{ stat('Dotación', money(dotaciones_total, 'plain'), dotaciones_rows|length ~ ' movimientos') }}
+            {{ stat('Ventas en efectivo', money(ventas_efectivo_total, 'plain'), ventas_efectivo_rows|length ~ ' cobros') }}
+            {{ stat('Compras en efectivo', money(compras_efectivo_total, 'plain'), compras_efectivo_rows|length ~ ' pagos') }}
+            {{ stat('Gastos', money(gastos_total, 'plain'), gastos|length ~ ' registros') }}
+            {% if corte.estado.value == 'CERRADO' %}
+                {{ stat('Saldo final', money(corte.saldo_cierre, 'plain'), 'Efectivo contado al cierre') }}
             {% endif %}
         </div>
-        <button type="button" class="btn btn-link btn-sm px-0 mt-2 text-muted" data-bs-toggle="collapse" data-bs-target="#kpiDesglose" aria-expanded="false">
-            Ver desglose completo &#8595;
-        </button>
-        <div id="kpiDesglose" class="collapse mt-3">
-            <div class="note-kpi-grid">
-                <div class="notes-kpi-card tone-blue"><span class="notes-kpi-label">Saldo inicial</span><strong>${{ "{:,.2f}".format(saldo_inicial or 0) }}</strong></div>
-                <div class="notes-kpi-card tone-green"><span class="notes-kpi-label">Dotacion efectivo</span><strong>${{ "{:,.2f}".format(dotaciones_total or 0) }}</strong><div class="notes-kpi-sub">{{ dotaciones_rows|length }} movimientos</div></div>
-                <div class="notes-kpi-card tone-green"><span class="notes-kpi-label">Ventas efectivo</span><strong>${{ "{:,.2f}".format(ventas_efectivo_total or 0) }}</strong><div class="notes-kpi-sub">{{ ventas_efectivo_rows|length }} cobros</div></div>
-                <div class="notes-kpi-card tone-red"><span class="notes-kpi-label">Compras efectivo</span><strong>${{ "{:,.2f}".format(compras_efectivo_total or 0) }}</strong><div class="notes-kpi-sub">{{ compras_efectivo_rows|length }} pagos</div></div>
-                <div class="notes-kpi-card tone-amber"><span class="notes-kpi-label">Gastos del dia</span><strong>${{ "{:,.2f}".format(gastos_total or 0) }}</strong><div class="notes-kpi-sub">{{ gastos|length }} registros</div></div>
-                {% if corte.estado.value == 'CERRADO' %}
-                <div class="notes-kpi-card tone-neutral"><span class="notes-kpi-label">Saldo final</span><strong>${{ "{:,.2f}".format(corte.saldo_cierre or 0) }}</strong></div>
-                {% endif %}
-            </div>
-            {% if corte.estado.value == 'CERRADO' and corte.motivo_diferencia %}
-            <div class="alert alert-light border mt-3 py-2 small mb-0">
-                <strong>Motivo de diferencia:</strong> {{ corte.motivo_diferencia }}
-            </div>
-            {% endif %}
-        </div>
+        {% if corte.estado.value == 'CERRADO' and corte.motivo_diferencia %}
+            <p class="s-card-sub mt-2"><strong>Motivo de la diferencia:</strong> {{ corte.motivo_diferencia }}</p>
+        {% endif %}
     </div>
 </div>
 
 {# ══════════════════════════════════════════════════════════════════════
-   SECTION 1 — REGISTROS
+   SECCIÓN 1 — REGISTROS
 ══════════════════════════════════════════════════════════════════════ #}
 {% if corte.estado.value == 'ABIERTO' %}
 <div id="section-registros" class="corte-section-anchor">
     <div class="corte-section-header">
         <div>
-            <div class="corte-section-title">Registros del dia</div>
+            <div class="corte-section-title">Registros del día</div>
             <div class="corte-section-sub">Gastos de caja chica, dotaciones y sobrantes</div>
         </div>
     </div>
 
     <div class="row g-3 mb-4">
         <div class="col-xl-6">
-            <div class="card hover-lift h-100">
+            <div class="card h-100">
                 <div class="card-body">
-                    <div class="d-flex align-items-center gap-2 mb-3">
-                        <span class="chip-strong">Movimiento de caja</span>
-                        <span class="text-muted small">Dotaciones, sobrantes y ajustes</span>
-                    </div>
-                    <form method="post" action="/web/admin/corte-caja/{{ corte.id }}/movimientos" class="row g-2" data-submit-once="1">
+                    <h3 class="s-card-title">Movimiento de caja</h3>
+                    <p class="s-card-sub">Dotaciones, sobrantes y ajustes que entran o salen de la caja.</p>
+                    <form method="post" action="/web/admin/corte-caja/{{ corte.id }}/movimientos" data-submit-once="1">
                         <input type="hidden" name="tipo" value="">
-                        <div class="col-12">
-                            <label class="form-label">Tipo</label>
-                            <select class="form-select" name="categoria">
-                                <option value="DOTACION_EFECTIVO">Dotaci&oacute;n de efectivo</option>
-                                <option value="SOBRANTE_VIATICOS">Sobrante de vi&aacute;ticos</option>
-                                <option value="SOBRANTE_GASTOS">Sobrante de gastos</option>
-                                <option value="DEPOSITO_BANCO">Dep&oacute;sito a banco</option>
-                                <option value="RETIRO_CAJA">Retiro de caja</option>
-                                <option value="OTRO">Otro ajuste</option>
-                            </select>
+                        <div class="s-form-grid">
+                            <div class="s-field--full">
+                                <label for="mov-categoria" class="form-label">Tipo de movimiento</label>
+                                <select class="form-select" id="mov-categoria" name="categoria">
+                                    <option value="DOTACION_EFECTIVO">Dotación de efectivo</option>
+                                    <option value="SOBRANTE_VIATICOS">Sobrante de viáticos</option>
+                                    <option value="SOBRANTE_GASTOS">Sobrante de gastos</option>
+                                    <option value="DEPOSITO_BANCO">Depósito a banco</option>
+                                    <option value="RETIRO_CAJA">Retiro de caja</option>
+                                    <option value="OTRO">Otro ajuste</option>
+                                </select>
+                            </div>
+                            <div class="s-field--full">
+                                <label for="mov-descripcion" class="form-label">Concepto</label>
+                                <input class="form-control" id="mov-descripcion" name="descripcion" placeholder="Ej. Dotación inicial adicional">
+                            </div>
+                            <div class="s-field--full">
+                                <label for="mov-monto" class="form-label">Monto</label>
+                                <input class="form-control" id="mov-monto" name="monto" type="number" step="0.01" min="0" placeholder="0.00">
+                            </div>
                         </div>
-                        <div class="col-12">
-                            <label class="form-label">Concepto</label>
-                            <input class="form-control" name="descripcion" placeholder="Ej. Dotaci&oacute;n inicial adicional">
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label">Monto</label>
-                            <input class="form-control" name="monto" type="number" step="0.01" min="0" placeholder="0.00">
-                        </div>
-                        <div class="col-12 d-grid">
+                        <div class="s-form-actions">
                             <button class="btn btn-outline-primary" type="submit">Registrar movimiento</button>
                         </div>
                     </form>
@@ -311,31 +318,31 @@
             </div>
         </div>
         <div class="col-xl-6">
-            <div class="card hover-lift h-100">
+            <div class="card h-100">
                 <div class="card-body">
-                    <div class="d-flex align-items-center gap-2 mb-3">
-                        <span class="chip-strong">Gasto de caja</span>
-                        <span class="text-muted small">Caja chica y egresos del dia</span>
-                    </div>
-                    <form method="post" action="/web/admin/corte-caja/{{ corte.id }}/gastos" class="row g-2" data-submit-once="1">
-                        <div class="col-12">
-                            <label class="form-label">Descripci&oacute;n</label>
-                            <input class="form-control" name="descripcion" value="{{ form_gasto_desc }}" placeholder="Ej. Pago CFE, propina basura, refacci&oacute;n">
+                    <h3 class="s-card-title">Gasto de caja</h3>
+                    <p class="s-card-sub">Caja chica y egresos del día.</p>
+                    <form method="post" action="/web/admin/corte-caja/{{ corte.id }}/gastos" data-submit-once="1">
+                        <div class="s-form-grid">
+                            <div class="s-field--full">
+                                <label for="gasto-descripcion" class="form-label">Descripción</label>
+                                <input class="form-control" id="gasto-descripcion" name="descripcion" value="{{ form_gasto_desc }}" placeholder="Ej. Pago CFE, propina basura, refacción">
+                            </div>
+                            <div class="s-field--full">
+                                <label for="gasto-categoria" class="form-label">Categoría</label>
+                                <select class="form-select" id="gasto-categoria" name="categoria">
+                                    <option value="">Selecciona</option>
+                                    {% for categoria in corte_gasto_categorias %}
+                                        <option value="{{ categoria[0] }}" {% if form_gasto_categoria == categoria[0] %}selected{% endif %}>{{ GASTO_CAT.get(categoria[0], categoria[1]) }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="s-field--full">
+                                <label for="gasto-monto" class="form-label">Monto</label>
+                                <input class="form-control" id="gasto-monto" name="monto" type="number" step="0.01" min="0" value="{{ form_gasto_monto }}" placeholder="0.00">
+                            </div>
                         </div>
-                        <div class="col-12">
-                            <label class="form-label">Categor&iacute;a</label>
-                            <select class="form-select" name="categoria">
-                                <option value="">Selecciona</option>
-                                {% for categoria in corte_gasto_categorias %}
-                                    <option value="{{ categoria[0] }}" {% if form_gasto_categoria == categoria[0] %}selected{% endif %}>{{ categoria[1] }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label">Monto</label>
-                            <input class="form-control" name="monto" type="number" step="0.01" min="0" value="{{ form_gasto_monto }}" placeholder="0.00">
-                        </div>
-                        <div class="col-12 d-grid">
+                        <div class="s-form-actions">
                             <button class="btn btn-outline-primary" type="submit">Registrar gasto</button>
                         </div>
                     </form>
@@ -347,72 +354,62 @@
 {% endif %}
 
 {# ══════════════════════════════════════════════════════════════════════
-   SECTION 2 — OPERACIONES DEL DIA
+   SECCIÓN 2 — OPERACIONES DEL DÍA
 ══════════════════════════════════════════════════════════════════════ #}
 <div id="section-operaciones" class="corte-section-anchor">
     <div class="corte-section-header">
         <div>
-            <div class="corte-section-title">Operaciones del dia</div>
+            <div class="corte-section-title">Operaciones del día</div>
             <div class="corte-section-sub">Compras, ventas y movimientos registrados</div>
         </div>
     </div>
 
-    {# Resumen Scrap360 — siempre visible pero colapsable #}
     {% if scrap360_summary %}
-    <div class="card hover-lift mb-3">
-        <div class="card-body">
-            <button type="button" class="corte-collapse-trigger w-100 text-start" data-bs-toggle="collapse" data-bs-target="#scrap360SummaryBody" aria-expanded="true">
-                <div class="d-flex align-items-center justify-content-between">
-                    <div>
-                        <span class="fw-semibold">Resumen por cuenta Scrap360</span>
-                        <span class="text-muted small ms-2">Transferencias y cheques &mdash; referencia tentativa</span>
-                    </div>
-                    <span class="corte-collapse-chevron">&#8964;</span>
-                </div>
-            </button>
-            <div id="scrap360SummaryBody" class="collapse show mt-3">
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0 corte-caja-table">
-                        <thead>
-                            <tr>
-                                <th>Cuenta Scrap360</th>
-                                <th class="text-end">Compras (egreso)</th>
-                                <th class="text-center text-muted small">Notas</th>
-                                <th class="text-end">Ventas (ingreso)</th>
-                                <th class="text-center text-muted small">Notas</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for item in scrap360_summary %}
-                            <tr {% if not item.cuenta_scrap360_id %}class="text-muted"{% endif %}>
-                                <td>{% if item.cuenta_scrap360_id %}<strong>{{ item.nombre }}</strong>{% else %}<span class="text-muted">{{ item.nombre }}</span>{% endif %}</td>
-                                <td class="text-end {% if item.compras_notas %}text-danger fw-semibold{% else %}text-muted{% endif %}">{% if item.compras_notas %}&minus;${{ "{:,.2f}".format(item.compras_total) }}{% else %}&mdash;{% endif %}</td>
-                                <td class="text-center text-muted small">{% if item.compras_notas %}{{ item.compras_notas }}{% else %}&mdash;{% endif %}</td>
-                                <td class="text-end {% if item.ventas_notas %}text-success fw-semibold{% else %}text-muted{% endif %}">{% if item.ventas_notas %}+${{ "{:,.2f}".format(item.ventas_total) }}{% else %}&mdash;{% endif %}</td>
-                                <td class="text-center text-muted small">{% if item.ventas_notas %}{{ item.ventas_notas }}{% else %}&mdash;{% endif %}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
+    <div class="corte-sdiv mb-2">
+        <button type="button" class="corte-sdiv-trigger" data-bs-toggle="collapse" data-bs-target="#scrap360SummaryBody" aria-expanded="true">
+            <span class="fw-semibold small">Resumen por cuenta Scrap360</span>
+            <span class="text-muted small ms-1">&mdash; Transferencias y cheques</span>
+            <span class="corte-collapse-chevron ms-auto">&#8964;</span>
+        </button>
+        <div id="scrap360SummaryBody" class="collapse show corte-sdiv-body">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle corte-caja-table">
+                    <thead>
+                        <tr>
+                            <th data-title-col>Cuenta Scrap360</th>
+                            <th class="text-end">Compras (egreso)</th>
+                            <th class="text-end">Notas de compra</th>
+                            <th class="text-end">Ventas (ingreso)</th>
+                            <th class="text-end">Notas de venta</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in scrap360_summary %}
+                        <tr>
+                            <td>{% if item.cuenta_scrap360_id %}<strong>{{ item.nombre }}</strong>{% else %}<span class="text-muted">{{ item.nombre }}</span>{% endif %}</td>
+                            <td class="text-end">{% if item.compras_notas %}{{ money(0 - (item.compras_total or 0)) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                            <td class="text-end">{% if item.compras_notas %}{{ item.compras_notas }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                            <td class="text-end">{% if item.ventas_notas %}{{ money(item.ventas_total) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                            <td class="text-end">{% if item.ventas_notas %}{{ item.ventas_notas }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                        </tr>
+                        {% else %}
+                            {{ empty_row(5, 'Sin movimientos por cuenta Scrap360.') }}
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
     {% endif %}
 
-    {# Compras del dia — colapsable #}
-    <div class="card hover-lift mb-3">
-        <div class="card-body">
-            <button type="button" class="corte-collapse-trigger w-100 text-start" data-bs-toggle="collapse" data-bs-target="#comprasTableBody" aria-expanded="false">
-                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
-                    <div>
-                        <span class="fw-semibold">Relaci&oacute;n de compras del dia</span>
-                        <span class="text-muted small ms-2">{{ compras_notas }} notas &middot; {{ "{:,.3f}".format(compras_kg or 0) }} kg &middot; ${{ "{:,.2f}".format(compras_total or 0) }}</span>
-                    </div>
-                    <span class="corte-collapse-chevron">&#8964;</span>
-                </div>
-            </button>
-            <div id="comprasTableBody" class="collapse mt-3">
+    {# Compras del día — colapsable #}
+    <div class="corte-sdiv mb-2">
+        <button type="button" class="corte-sdiv-trigger" data-bs-toggle="collapse" data-bs-target="#comprasTableBody" aria-expanded="false">
+            <span class="fw-semibold small">Relación de compras</span>
+            <span class="text-muted small ms-1">&mdash; {{ compras_notas }} notas &middot; {{ "{:,.2f}".format(compras_kg or 0) }} kg &middot; ${{ "{:,.2f}".format(compras_total or 0) }}</span>
+            <span class="corte-collapse-chevron ms-auto">&#8964;</span>
+        </button>
+        <div id="comprasTableBody" class="collapse corte-sdiv-body">
                 {% if corte_color_legend %}
                 <div class="d-flex flex-wrap gap-2 mb-3 corte-color-legend">
                     {% for item in corte_color_legend %}
@@ -420,136 +417,125 @@
                     {% endfor %}
                 </div>
                 {% endif %}
-                <div class="table-scroll-shell">
-                    <div class="table-responsive scroll-x note-table-scroll">
-                        <table class="table table-sm align-middle mb-0 corte-caja-table corte-caja-table--ops">
-                            <thead>
-                                <tr>
-                                    <th>Orden</th>
-                                    <th class="corte-caja-col-partner">Proveedor</th>
-                                    <th class="corte-caja-col-material">Material</th>
-                                    <th class="text-end">Kg</th>
-                                    <th class="text-end">Precio</th>
-                                    <th class="text-end">Total linea</th>
-                                    <th class="text-end">Total orden</th>
-                                    <th>Metodo</th>
-                                    <th>Cuenta Scrap360</th>
-                                    <th>No. Cheque</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% set ns = namespace(seen_compra_ids=[]) %}
-                                {% for row in compras_rows %}
-                                    {% set is_first = row.nota_id not in ns.seen_compra_ids %}
-                                    {% if is_first %}{% set ns.seen_compra_ids = ns.seen_compra_ids + [row.nota_id] %}{% endif %}
-                                    <tr class="corte-row-{{ row.color_key }}">
-                                        <td>{{ row.folio }}</td>
-                                        <td class="corte-caja-text-cell corte-caja-col-partner-cell">{{ row.partner }}</td>
-                                        <td class="corte-caja-text-cell corte-caja-col-material-cell">{{ row.material }}</td>
-                                        <td class="text-end">{{ "{:,.3f}".format(row.kg_neto or 0) }}</td>
-                                        <td class="text-end">${{ "{:,.5f}".format(row.precio_unitario or 0) }}</td>
-                                        <td class="text-end">${{ "{:,.2f}".format(row.subtotal or 0) }}</td>
-                                        <td class="text-end">${{ "{:,.2f}".format(row.total_nota or 0) }}</td>
-                                        <td>
-                                            {% if is_first and row.metodo_pago in ('cheque', 'transferencia') %}
-                                                {% set pill_complete = (row.metodo_pago == 'cheque' and row.numero_cheque) or (row.metodo_pago == 'transferencia' and row.cuenta_scrap360_nombre) %}
-                                                {% if corte.estado.value == 'ABIERTO' %}
-                                                    <button type="button" class="btn btn-sm corte-pago-pill {% if pill_complete %}corte-pago-pill--ok{% else %}corte-pago-pill--pending{% endif %}" data-bs-toggle="modal" data-bs-target="#pagoDetalleModal" data-nota-id="{{ row.nota_id }}" data-metodo="{{ row.metodo_pago }}" data-numero-cheque="{{ row.numero_cheque or '' }}" data-cuenta-scrap360-id="{{ row.cuenta_scrap360_id or '' }}" data-folio="{{ row.folio }}" data-partner="{{ row.partner }}" data-total="{{ row.total_nota or 0 }}">
-                                                        {% if row.metodo_pago == 'cheque' %}{% if row.numero_cheque %}Cheque #{{ row.numero_cheque }}{% else %}Cheque &#9998;{% endif %}{% else %}{% if row.cuenta_scrap360_nombre %}Transf &middot; {{ row.cuenta_scrap360_nombre[:14] }}{% else %}Transferencia &#9998;{% endif %}{% endif %}
-                                                    </button>
-                                                {% else %}
-                                                    <span class="corte-pago-pill {% if pill_complete %}corte-pago-pill--ok{% else %}corte-pago-pill--pending{% endif %}">{% if row.metodo_pago == 'cheque' %}{% if row.numero_cheque %}Cheque #{{ row.numero_cheque }}{% else %}Cheque{% endif %}{% else %}{% if row.cuenta_scrap360_nombre %}Transf &middot; {{ row.cuenta_scrap360_nombre[:14] }}{% else %}Transferencia{% endif %}{% endif %}</span>
-                                                {% endif %}
-                                            {% elif is_first %}
-                                                {{ row.metodo_pago|capitalize if row.metodo_pago and row.metodo_pago != '-' else '-' }}
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle corte-caja-table corte-caja-table--ops">
+                        <thead>
+                            <tr>
+                                <th>Orden</th>
+                                <th class="corte-caja-col-partner" data-title-col>Proveedor</th>
+                                <th class="corte-caja-col-material">Material</th>
+                                <th class="text-end">Kg</th>
+                                <th class="text-end">Precio</th>
+                                <th class="text-end">Total de la línea</th>
+                                <th class="text-end">Total de la orden</th>
+                                <th>Método</th>
+                                <th>Cuenta Scrap360</th>
+                                <th>Número de cheque</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% set ns = namespace(seen_compra_ids=[]) %}
+                            {% for row in compras_rows %}
+                                {% set is_first = row.nota_id not in ns.seen_compra_ids %}
+                                {% if is_first %}{% set ns.seen_compra_ids = ns.seen_compra_ids + [row.nota_id] %}{% endif %}
+                                <tr class="corte-row-{{ row.color_key }}">
+                                    <td>{{ row.folio }}</td>
+                                    <td class="corte-caja-text-cell corte-caja-col-partner-cell">{{ row.partner }}</td>
+                                    <td class="corte-caja-text-cell corte-caja-col-material-cell">{{ row.material }}</td>
+                                    <td class="text-end">{{ kg(row.kg_neto) }}</td>
+                                    <td class="text-end">{{ money(row.precio_unitario) }}</td>
+                                    <td class="text-end">{{ money(row.subtotal) }}</td>
+                                    <td class="text-end">{{ money(row.total_nota) }}</td>
+                                    <td>
+                                        {% if is_first and row.metodo_pago in ('cheque', 'transferencia') %}
+                                            {% set pill_complete = (row.metodo_pago == 'cheque' and row.numero_cheque) or (row.metodo_pago == 'transferencia' and row.cuenta_scrap360_nombre) %}
+                                            {% if corte.estado.value == 'ABIERTO' %}
+                                                <button type="button" class="btn btn-sm corte-pago-pill {% if pill_complete %}corte-pago-pill--ok{% else %}corte-pago-pill--pending{% endif %}" data-bs-toggle="modal" data-bs-target="#pagoDetalleModal" data-nota-id="{{ row.nota_id }}" data-metodo="{{ row.metodo_pago }}" data-numero-cheque="{{ row.numero_cheque or '' }}" data-cuenta-scrap360-id="{{ row.cuenta_scrap360_id or '' }}" data-folio="{{ row.folio }}" data-partner="{{ row.partner }}" data-total="{{ row.total_nota or 0 }}">
+                                                    {% if row.metodo_pago == 'cheque' %}{% if row.numero_cheque %}Cheque #{{ row.numero_cheque }}{% else %}Cheque &#9998;{% endif %}{% else %}{% if row.cuenta_scrap360_nombre %}Transferencia &middot; {{ row.cuenta_scrap360_nombre[:14] }}{% else %}Transferencia &#9998;{% endif %}{% endif %}
+                                                </button>
                                             {% else %}
-                                                <span class="text-muted">&mdash;</span>
+                                                <span class="corte-pago-pill {% if pill_complete %}corte-pago-pill--ok{% else %}corte-pago-pill--pending{% endif %}">{% if row.metodo_pago == 'cheque' %}{% if row.numero_cheque %}Cheque #{{ row.numero_cheque }}{% else %}Cheque{% endif %}{% else %}{% if row.cuenta_scrap360_nombre %}Transferencia &middot; {{ row.cuenta_scrap360_nombre[:14] }}{% else %}Transferencia{% endif %}{% endif %}</span>
                                             {% endif %}
-                                        </td>
-                                        <td class="corte-caja-text-cell">{% if is_first %}{{ row.cuenta_scrap360_nombre if row.cuenta_scrap360_nombre else '-' }}{% else %}<span class="text-muted">&mdash;</span>{% endif %}</td>
-                                        <td>{% if is_first %}{{ row.numero_cheque if row.numero_cheque else '-' }}{% else %}<span class="text-muted">&mdash;</span>{% endif %}</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="table-scroll-hint">Arrastra para ver materiales, kilos, precios y totales.</div>
+                                        {% elif is_first and row.metodo_pago and row.metodo_pago != '-' %}
+                                            {{ badge(METODO_PAGO.get(row.metodo_pago|lower, row.metodo_pago|capitalize), 'muted') }}
+                                        {% else %}
+                                            <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="corte-caja-text-cell">{% if is_first and row.cuenta_scrap360_nombre %}{{ row.cuenta_scrap360_nombre }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                                    <td>{% if is_first and row.numero_cheque %}<span class="s-mono">{{ row.numero_cheque }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                                </tr>
+                            {% else %}
+                                {{ empty_row(10, 'No hay compras aprobadas para esta fecha.') }}
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
-                {% if compras_rows|length == 0 %}<p class="text-muted small mt-3 mb-0">No hay compras aprobadas para esta fecha.</p>{% endif %}
-            </div>
         </div>
     </div>
 
-    {# Ventas del dia — colapsable #}
-    <div class="card hover-lift mb-3">
-        <div class="card-body">
-            <button type="button" class="corte-collapse-trigger w-100 text-start" data-bs-toggle="collapse" data-bs-target="#ventasTableBody" aria-expanded="false">
-                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
-                    <div>
-                        <span class="fw-semibold">Relaci&oacute;n de ventas del dia</span>
-                        <span class="text-muted small ms-2">{{ ventas_notas }} notas &middot; {{ "{:,.3f}".format(ventas_kg or 0) }} kg &middot; ${{ "{:,.2f}".format(ventas_total or 0) }}</span>
-                    </div>
-                    <span class="corte-collapse-chevron">&#8964;</span>
-                </div>
-            </button>
-            <div id="ventasTableBody" class="collapse mt-3">
-                <div class="table-scroll-shell">
-                    <div class="table-responsive scroll-x note-table-scroll">
-                        <table class="table table-sm align-middle mb-0 corte-caja-table corte-caja-table--ops">
-                            <thead>
-                                <tr>
-                                    <th>Orden</th>
-                                    <th class="corte-caja-col-partner">Cliente</th>
-                                    <th class="corte-caja-col-material">Material</th>
-                                    <th class="text-end">Kg</th>
-                                    <th class="text-end">Precio</th>
-                                    <th class="text-end">Total linea</th>
-                                    <th class="text-end">Total orden</th>
-                                    <th>Metodo</th>
-                                    <th>Cuenta Scrap360</th>
-                                    <th>No. Cheque</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% set ns2 = namespace(seen_venta_ids=[]) %}
-                                {% for row in ventas_rows %}
-                                    {% set is_first = row.nota_id not in ns2.seen_venta_ids %}
-                                    {% if is_first %}{% set ns2.seen_venta_ids = ns2.seen_venta_ids + [row.nota_id] %}{% endif %}
-                                    <tr class="corte-row-{{ row.color_key }}">
-                                        <td>{{ row.folio }}</td>
-                                        <td class="corte-caja-text-cell corte-caja-col-partner-cell">{{ row.partner }}</td>
-                                        <td class="corte-caja-text-cell corte-caja-col-material-cell">{{ row.material }}</td>
-                                        <td class="text-end">{{ "{:,.3f}".format(row.kg_neto or 0) }}</td>
-                                        <td class="text-end">${{ "{:,.5f}".format(row.precio_unitario or 0) }}</td>
-                                        <td class="text-end">${{ "{:,.2f}".format(row.subtotal or 0) }}</td>
-                                        <td class="text-end">${{ "{:,.2f}".format(row.total_nota or 0) }}</td>
-                                        <td>
-                                            {% if is_first and row.metodo_pago in ('cheque', 'transferencia') %}
-                                                {% set pill_complete = (row.metodo_pago == 'cheque' and row.numero_cheque) or (row.metodo_pago == 'transferencia' and row.cuenta_scrap360_nombre) %}
-                                                {% if corte.estado.value == 'ABIERTO' %}
-                                                    <button type="button" class="btn btn-sm corte-pago-pill {% if pill_complete %}corte-pago-pill--ok{% else %}corte-pago-pill--pending{% endif %}" data-bs-toggle="modal" data-bs-target="#pagoDetalleModal" data-nota-id="{{ row.nota_id }}" data-metodo="{{ row.metodo_pago }}" data-numero-cheque="{{ row.numero_cheque or '' }}" data-cuenta-scrap360-id="{{ row.cuenta_scrap360_id or '' }}" data-folio="{{ row.folio }}" data-partner="{{ row.partner }}" data-total="{{ row.total_nota or 0 }}">
-                                                        {% if row.metodo_pago == 'cheque' %}{% if row.numero_cheque %}Cheque #{{ row.numero_cheque }}{% else %}Cheque &#9998;{% endif %}{% else %}{% if row.cuenta_scrap360_nombre %}Transf &middot; {{ row.cuenta_scrap360_nombre[:14] }}{% else %}Transferencia &#9998;{% endif %}{% endif %}
-                                                    </button>
-                                                {% else %}
-                                                    <span class="corte-pago-pill {% if pill_complete %}corte-pago-pill--ok{% else %}corte-pago-pill--pending{% endif %}">{% if row.metodo_pago == 'cheque' %}{% if row.numero_cheque %}Cheque #{{ row.numero_cheque }}{% else %}Cheque{% endif %}{% else %}{% if row.cuenta_scrap360_nombre %}Transf &middot; {{ row.cuenta_scrap360_nombre[:14] }}{% else %}Transferencia{% endif %}{% endif %}</span>
-                                                {% endif %}
-                                            {% elif is_first %}
-                                                {{ row.metodo_pago|capitalize if row.metodo_pago and row.metodo_pago != '-' else '-' }}
+    {# Ventas del día — colapsable #}
+    <div class="corte-sdiv mb-2">
+        <button type="button" class="corte-sdiv-trigger" data-bs-toggle="collapse" data-bs-target="#ventasTableBody" aria-expanded="false">
+            <span class="fw-semibold small">Relación de ventas</span>
+            <span class="text-muted small ms-1">&mdash; {{ ventas_notas }} notas &middot; {{ "{:,.2f}".format(ventas_kg or 0) }} kg &middot; ${{ "{:,.2f}".format(ventas_total or 0) }}</span>
+            <span class="corte-collapse-chevron ms-auto">&#8964;</span>
+        </button>
+        <div id="ventasTableBody" class="collapse corte-sdiv-body">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle corte-caja-table corte-caja-table--ops">
+                        <thead>
+                            <tr>
+                                <th>Orden</th>
+                                <th class="corte-caja-col-partner" data-title-col>Cliente</th>
+                                <th class="corte-caja-col-material">Material</th>
+                                <th class="text-end">Kg</th>
+                                <th class="text-end">Precio</th>
+                                <th class="text-end">Total de la línea</th>
+                                <th class="text-end">Total de la orden</th>
+                                <th>Método</th>
+                                <th>Cuenta Scrap360</th>
+                                <th>Número de cheque</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% set ns2 = namespace(seen_venta_ids=[]) %}
+                            {% for row in ventas_rows %}
+                                {% set is_first = row.nota_id not in ns2.seen_venta_ids %}
+                                {% if is_first %}{% set ns2.seen_venta_ids = ns2.seen_venta_ids + [row.nota_id] %}{% endif %}
+                                <tr class="corte-row-{{ row.color_key }}">
+                                    <td>{{ row.folio }}</td>
+                                    <td class="corte-caja-text-cell corte-caja-col-partner-cell">{{ row.partner }}</td>
+                                    <td class="corte-caja-text-cell corte-caja-col-material-cell">{{ row.material }}</td>
+                                    <td class="text-end">{{ kg(row.kg_neto) }}</td>
+                                    <td class="text-end">{{ money(row.precio_unitario) }}</td>
+                                    <td class="text-end">{{ money(row.subtotal) }}</td>
+                                    <td class="text-end">{{ money(row.total_nota) }}</td>
+                                    <td>
+                                        {% if is_first and row.metodo_pago in ('cheque', 'transferencia') %}
+                                            {% set pill_complete = (row.metodo_pago == 'cheque' and row.numero_cheque) or (row.metodo_pago == 'transferencia' and row.cuenta_scrap360_nombre) %}
+                                            {% if corte.estado.value == 'ABIERTO' %}
+                                                <button type="button" class="btn btn-sm corte-pago-pill {% if pill_complete %}corte-pago-pill--ok{% else %}corte-pago-pill--pending{% endif %}" data-bs-toggle="modal" data-bs-target="#pagoDetalleModal" data-nota-id="{{ row.nota_id }}" data-metodo="{{ row.metodo_pago }}" data-numero-cheque="{{ row.numero_cheque or '' }}" data-cuenta-scrap360-id="{{ row.cuenta_scrap360_id or '' }}" data-folio="{{ row.folio }}" data-partner="{{ row.partner }}" data-total="{{ row.total_nota or 0 }}">
+                                                    {% if row.metodo_pago == 'cheque' %}{% if row.numero_cheque %}Cheque #{{ row.numero_cheque }}{% else %}Cheque &#9998;{% endif %}{% else %}{% if row.cuenta_scrap360_nombre %}Transferencia &middot; {{ row.cuenta_scrap360_nombre[:14] }}{% else %}Transferencia &#9998;{% endif %}{% endif %}
+                                                </button>
                                             {% else %}
-                                                <span class="text-muted">&mdash;</span>
+                                                <span class="corte-pago-pill {% if pill_complete %}corte-pago-pill--ok{% else %}corte-pago-pill--pending{% endif %}">{% if row.metodo_pago == 'cheque' %}{% if row.numero_cheque %}Cheque #{{ row.numero_cheque }}{% else %}Cheque{% endif %}{% else %}{% if row.cuenta_scrap360_nombre %}Transferencia &middot; {{ row.cuenta_scrap360_nombre[:14] }}{% else %}Transferencia{% endif %}{% endif %}</span>
                                             {% endif %}
-                                        </td>
-                                        <td class="corte-caja-text-cell">{% if is_first %}{{ row.cuenta_scrap360_nombre if row.cuenta_scrap360_nombre else '-' }}{% else %}<span class="text-muted">&mdash;</span>{% endif %}</td>
-                                        <td>{% if is_first %}{{ row.numero_cheque if row.numero_cheque else '-' }}{% else %}<span class="text-muted">&mdash;</span>{% endif %}</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="table-scroll-hint">Arrastra para ver materiales, kilos, precios y totales.</div>
+                                        {% elif is_first and row.metodo_pago and row.metodo_pago != '-' %}
+                                            {{ badge(METODO_PAGO.get(row.metodo_pago|lower, row.metodo_pago|capitalize), 'muted') }}
+                                        {% else %}
+                                            <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="corte-caja-text-cell">{% if is_first and row.cuenta_scrap360_nombre %}{{ row.cuenta_scrap360_nombre }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                                    <td>{% if is_first and row.numero_cheque %}<span class="s-mono">{{ row.numero_cheque }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                                </tr>
+                            {% else %}
+                                {{ empty_row(10, 'No hay ventas aprobadas para esta fecha.') }}
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
-                {% if ventas_rows|length == 0 %}<p class="text-muted small mt-3 mb-0">No hay ventas aprobadas para esta fecha.</p>{% endif %}
-            </div>
         </div>
     </div>
 
@@ -565,25 +551,25 @@
                 <form method="POST" id="pagoDetalleForm" action="#">
                     <input type="hidden" name="redirect_to" id="pagoDetalleRedirectTo">
                     <div class="modal-body">
-                        <div class="p-2 bg-light rounded small mb-3">
+                        <div class="s-subpanel small mb-3">
                             <div id="pagoDetalleNotaInfo" class="text-muted mb-1"></div>
                             <div id="pagoDetalleMetodoLabel" class="fw-semibold"></div>
                         </div>
                         <div id="pagoDetalleChequePart" class="mb-3">
-                            <label for="pagoDetalleNumeroCheque" class="form-label small mb-1">N&uacute;mero de cheque</label>
+                            <label for="pagoDetalleNumeroCheque" class="form-label">Número de cheque</label>
                             <input type="text" class="form-control form-control-sm" id="pagoDetalleNumeroCheque" name="numero_cheque" placeholder="Ej. 001234">
                         </div>
                         <div id="pagoDetalleCuentaPart">
-                            <label for="pagoDetalleCuentaSelect" class="form-label small mb-1">Cuenta Scrap360 <span class="text-muted">(emisora)</span></label>
+                            <label for="pagoDetalleCuentaSelect" class="form-label">Cuenta Scrap360 emisora</label>
                             <select class="form-select form-select-sm" id="pagoDetalleCuentaSelect" name="cuenta_scrap360_id">
                                 <option value="">&mdash; Sin especificar &mdash;</option>
-                                {% for c in cuentas_scrap360 %}<option value="{{ c.id }}">{{ c.nombre }} ({{ c.tipo }})</option>{% endfor %}
+                                {% for c in cuentas_scrap360 %}<option value="{{ c.id }}">{{ c.nombre }} ({{ METODO_PAGO.get(c.tipo|lower, c.tipo|capitalize) }})</option>{% endfor %}
                             </select>
                         </div>
                     </div>
                     <div class="modal-footer py-2">
                         <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
-                        <button type="submit" class="btn btn-primary btn-sm">Guardar detalle</button>
+                        <button type="submit" class="btn btn-outline-primary btn-sm">Guardar detalle</button>
                     </div>
                 </form>
             </div>
@@ -615,320 +601,418 @@
     </script>
     {% endif %}
 
-    {# Movimientos y tablas de detalle — todo colapsado bajo un unico acordeon #}
-    <div class="card hover-lift mb-3">
-        <div class="card-body">
-            <button type="button" class="corte-collapse-trigger w-100 text-start" data-bs-toggle="collapse" data-bs-target="#detalleMovimientosBody" aria-expanded="false">
-                <div class="d-flex align-items-center justify-content-between">
-                    <span class="fw-semibold">Detalle de movimientos del dia</span>
-                    <span class="corte-collapse-chevron">&#8964;</span>
-                </div>
-            </button>
-            <div id="detalleMovimientosBody" class="collapse mt-3">
+    {# Movimientos y tablas de detalle — todo colapsado bajo un único acordeón #}
+    <div class="corte-sdiv mb-2">
+        <button type="button" class="corte-sdiv-trigger" data-bs-toggle="collapse" data-bs-target="#detalleMovimientosBody" aria-expanded="false">
+            <span class="fw-semibold small">Detalle de movimientos del día</span>
+            <span class="corte-collapse-chevron ms-auto">&#8964;</span>
+        </button>
+        <div id="detalleMovimientosBody" class="collapse corte-sdiv-body">
 
                 {# Efectivo #}
                 <div class="row g-3 mb-4">
                     <div class="col-xl-6">
-                        <h3 class="h6 text-dark mb-1">Ventas en efectivo <span class="badge bg-success ms-1">${{ "{:,.2f}".format(ventas_efectivo_total or 0) }}</span></h3>
-                        <div class="table-scroll-shell">
-                            <div class="table-responsive scroll-x note-table-scroll">
-                                <table class="table table-sm align-middle mb-0 corte-caja-table">
-                                    <thead><tr><th>Fecha</th><th>Orden</th><th class="corte-caja-col-partner">Cliente</th><th class="text-end">Cobro</th><th>Caja</th></tr></thead>
-                                    <tbody>{% for row in ventas_efectivo_rows %}<tr><td>{{ row.fecha|datetime_local if row.fecha else '-' }}</td><td>{{ row.folio }}</td><td class="corte-caja-text-cell corte-caja-col-partner-cell">{{ row.partner }}</td><td class="text-end text-success">${{ "{:,.2f}".format(row.monto_abs or 0) }}</td><td>{{ row.caja_sucursal }}</td></tr>{% endfor %}</tbody>
-                                </table>
-                            </div>
+                        <h3 class="s-card-title">Ventas en efectivo</h3>
+                        <p class="s-card-sub">Cobros recibidos en efectivo por {{ "${:,.2f}".format(ventas_efectivo_total or 0) }}.</p>
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle corte-caja-table">
+                                <thead><tr><th>Fecha</th><th>Orden</th><th class="corte-caja-col-partner" data-title-col>Cliente</th><th class="text-end">Cobro</th><th>Caja</th></tr></thead>
+                                <tbody>
+                                    {% for row in ventas_efectivo_rows %}
+                                        <tr><td>{{ row.fecha|datetime_local if row.fecha else '—' }}</td><td>{{ row.folio }}</td><td class="corte-caja-text-cell corte-caja-col-partner-cell">{{ row.partner }}</td><td class="text-end">{{ money(row.monto_abs) }}</td><td>{{ row.caja_sucursal }}</td></tr>
+                                    {% else %}
+                                        {{ empty_row(5, 'No hubo cobros en efectivo.') }}
+                                    {% endfor %}
+                                </tbody>
+                            </table>
                         </div>
-                        {% if ventas_efectivo_rows|length == 0 %}<p class="text-muted small mt-2 mb-0">No hubo cobros en efectivo.</p>{% endif %}
                     </div>
                     <div class="col-xl-6">
-                        <h3 class="h6 text-dark mb-1">Pagos de compra en efectivo <span class="badge bg-danger ms-1">${{ "{:,.2f}".format(compras_efectivo_total or 0) }}</span></h3>
-                        <div class="table-scroll-shell">
-                            <div class="table-responsive scroll-x note-table-scroll">
-                                <table class="table table-sm align-middle mb-0 corte-caja-table">
-                                    <thead><tr><th>Fecha</th><th>Orden</th><th class="corte-caja-col-partner">Proveedor</th><th class="text-end">Pago</th><th>Caja</th></tr></thead>
-                                    <tbody>{% for row in compras_efectivo_rows %}<tr><td>{{ row.fecha|datetime_local if row.fecha else '-' }}</td><td>{{ row.folio }}</td><td class="corte-caja-text-cell corte-caja-col-partner-cell">{{ row.partner }}</td><td class="text-end text-danger">${{ "{:,.2f}".format(row.monto_abs or 0) }}</td><td>{{ row.caja_sucursal }}</td></tr>{% endfor %}</tbody>
-                                </table>
-                            </div>
+                        <h3 class="s-card-title">Pagos de compra en efectivo</h3>
+                        <p class="s-card-sub">Pagos entregados en efectivo por {{ "${:,.2f}".format(compras_efectivo_total or 0) }}.</p>
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle corte-caja-table">
+                                <thead><tr><th>Fecha</th><th>Orden</th><th class="corte-caja-col-partner" data-title-col>Proveedor</th><th class="text-end">Pago</th><th>Caja</th></tr></thead>
+                                <tbody>
+                                    {% for row in compras_efectivo_rows %}
+                                        <tr><td>{{ row.fecha|datetime_local if row.fecha else '—' }}</td><td>{{ row.folio }}</td><td class="corte-caja-text-cell corte-caja-col-partner-cell">{{ row.partner }}</td><td class="text-end">{{ money(row.monto_abs) }}</td><td>{{ row.caja_sucursal }}</td></tr>
+                                    {% else %}
+                                        {{ empty_row(5, 'No hubo pagos en efectivo.') }}
+                                    {% endfor %}
+                                </tbody>
+                            </table>
                         </div>
-                        {% if compras_efectivo_rows|length == 0 %}<p class="text-muted small mt-2 mb-0">No hubo pagos en efectivo.</p>{% endif %}
                     </div>
                 </div>
 
                 {# Dotaciones / sobrantes #}
                 <div class="row g-3 mb-4">
                     <div class="col-xl-4">
-                        <h3 class="h6 text-dark mb-1">Dotaci&oacute;n de efectivo <span class="badge bg-light text-dark border ms-1">${{ "{:,.2f}".format(dotaciones_total or 0) }}</span></h3>
-                        <table class="table table-sm align-middle mb-0 corte-caja-table"><thead><tr><th>Fecha</th><th class="corte-caja-col-description">Concepto</th><th class="text-end">Monto</th></tr></thead><tbody>{% for row in dotaciones_rows %}<tr><td>{{ row.fecha|datetime_local if row.fecha else '-' }}</td><td class="corte-caja-text-cell corte-caja-col-description-cell">{{ row.descripcion }}</td><td class="text-end">${{ "{:,.2f}".format(row.monto_abs or 0) }}</td></tr>{% endfor %}</tbody></table>
-                        {% if dotaciones_rows|length == 0 %}<p class="text-muted small mt-2 mb-0">Sin dotaciones.</p>{% endif %}
+                        <h3 class="s-card-title">Dotación de efectivo</h3>
+                        <p class="s-card-sub">Entradas de efectivo por {{ "${:,.2f}".format(dotaciones_total or 0) }}.</p>
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle corte-caja-table">
+                                <thead><tr><th>Fecha</th><th class="corte-caja-col-description" data-title-col>Concepto</th><th class="text-end">Monto</th></tr></thead>
+                                <tbody>
+                                    {% for row in dotaciones_rows %}
+                                        <tr><td>{{ row.fecha|datetime_local if row.fecha else '—' }}</td><td class="corte-caja-text-cell corte-caja-col-description-cell">{{ row.descripcion }}</td><td class="text-end">{{ money(row.monto_abs) }}</td></tr>
+                                    {% else %}
+                                        {{ empty_row(3, 'Sin dotaciones.') }}
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                     <div class="col-xl-4">
-                        <h3 class="h6 text-dark mb-1">Sobrantes de vi&aacute;ticos <span class="badge bg-light text-dark border ms-1">${{ "{:,.2f}".format(sobrantes_viaticos_total or 0) }}</span></h3>
-                        <table class="table table-sm align-middle mb-0 corte-caja-table"><thead><tr><th>Fecha</th><th class="corte-caja-col-description">Concepto</th><th class="text-end">Monto</th></tr></thead><tbody>{% for row in sobrantes_viaticos_rows %}<tr><td>{{ row.fecha|datetime_local if row.fecha else '-' }}</td><td class="corte-caja-text-cell corte-caja-col-description-cell">{{ row.descripcion }}</td><td class="text-end">${{ "{:,.2f}".format(row.monto_abs or 0) }}</td></tr>{% endfor %}</tbody></table>
-                        {% if sobrantes_viaticos_rows|length == 0 %}<p class="text-muted small mt-2 mb-0">Sin sobrantes.</p>{% endif %}
+                        <h3 class="s-card-title">Sobrantes de viáticos</h3>
+                        <p class="s-card-sub">Reintegros por {{ "${:,.2f}".format(sobrantes_viaticos_total or 0) }}.</p>
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle corte-caja-table">
+                                <thead><tr><th>Fecha</th><th class="corte-caja-col-description" data-title-col>Concepto</th><th class="text-end">Monto</th></tr></thead>
+                                <tbody>
+                                    {% for row in sobrantes_viaticos_rows %}
+                                        <tr><td>{{ row.fecha|datetime_local if row.fecha else '—' }}</td><td class="corte-caja-text-cell corte-caja-col-description-cell">{{ row.descripcion }}</td><td class="text-end">{{ money(row.monto_abs) }}</td></tr>
+                                    {% else %}
+                                        {{ empty_row(3, 'Sin sobrantes.') }}
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                     <div class="col-xl-4">
-                        <h3 class="h6 text-dark mb-1">Sobrantes de gastos <span class="badge bg-light text-dark border ms-1">${{ "{:,.2f}".format(sobrantes_gastos_total or 0) }}</span></h3>
-                        <table class="table table-sm align-middle mb-0 corte-caja-table"><thead><tr><th>Fecha</th><th class="corte-caja-col-description">Concepto</th><th class="text-end">Monto</th></tr></thead><tbody>{% for row in sobrantes_gastos_rows %}<tr><td>{{ row.fecha|datetime_local if row.fecha else '-' }}</td><td class="corte-caja-text-cell corte-caja-col-description-cell">{{ row.descripcion }}</td><td class="text-end">${{ "{:,.2f}".format(row.monto_abs or 0) }}</td></tr>{% endfor %}</tbody></table>
-                        {% if sobrantes_gastos_rows|length == 0 %}<p class="text-muted small mt-2 mb-0">Sin sobrantes.</p>{% endif %}
+                        <h3 class="s-card-title">Sobrantes de gastos</h3>
+                        <p class="s-card-sub">Reintegros por {{ "${:,.2f}".format(sobrantes_gastos_total or 0) }}.</p>
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle corte-caja-table">
+                                <thead><tr><th>Fecha</th><th class="corte-caja-col-description" data-title-col>Concepto</th><th class="text-end">Monto</th></tr></thead>
+                                <tbody>
+                                    {% for row in sobrantes_gastos_rows %}
+                                        <tr><td>{{ row.fecha|datetime_local if row.fecha else '—' }}</td><td class="corte-caja-text-cell corte-caja-col-description-cell">{{ row.descripcion }}</td><td class="text-end">{{ money(row.monto_abs) }}</td></tr>
+                                    {% else %}
+                                        {{ empty_row(3, 'Sin sobrantes.') }}
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
 
                 {# Gastos y ajustes #}
                 <div class="row g-3 mb-4">
                     <div class="col-xl-7">
-                        <h3 class="h6 text-dark mb-1">Relaci&oacute;n de gastos</h3>
-                        <table class="table table-sm align-middle mb-0 corte-caja-table corte-caja-table--gastos"><thead><tr><th>Fecha</th><th class="corte-caja-col-description">Descripci&oacute;n</th><th>Categor&iacute;a</th><th>Usuario</th><th class="text-end">Monto</th></tr></thead><tbody>{% for gasto in gastos %}<tr><td>{{ gasto.created_at|datetime_local if gasto.created_at else '-' }}</td><td class="corte-caja-text-cell corte-caja-col-description-cell">{{ gasto.descripcion }}</td><td>{{ gasto.categoria|replace('_', ' ')|title if gasto.categoria else '-' }}</td><td>{{ gasto.usuario.nombre_completo if gasto.usuario else '-' }}</td><td class="text-end">${{ "{:,.2f}".format(gasto.monto or 0) }}</td></tr>{% endfor %}</tbody></table>
-                        {% if gastos|length == 0 %}<p class="text-muted small mt-2 mb-0">No hay gastos registrados.</p>{% endif %}
+                        <h3 class="s-card-title">Relación de gastos</h3>
+                        <p class="s-card-sub">Gastos de caja chica capturados durante la jornada.</p>
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle corte-caja-table corte-caja-table--gastos">
+                                <thead><tr><th>Fecha</th><th class="corte-caja-col-description" data-title-col>Descripción</th><th>Categoría</th><th>Usuario</th><th class="text-end">Monto</th></tr></thead>
+                                <tbody>
+                                    {% for gasto in gastos %}
+                                        <tr>
+                                            <td>{{ gasto.created_at|datetime_local if gasto.created_at else '—' }}</td>
+                                            <td class="corte-caja-text-cell corte-caja-col-description-cell">{{ gasto.descripcion }}</td>
+                                            <td>{% if gasto.categoria %}{{ badge(GASTO_CAT.get(gasto.categoria|upper, gasto.categoria|replace('_', ' ')|capitalize), 'muted') }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                                            <td>{{ gasto.usuario.nombre_completo if gasto.usuario else '—' }}</td>
+                                            <td class="text-end">{{ money(gasto.monto) }}</td>
+                                        </tr>
+                                    {% else %}
+                                        {{ empty_row(5, 'No hay gastos registrados.') }}
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                     <div class="col-xl-5">
-                        <h3 class="h6 text-dark mb-1">Otros ajustes de caja</h3>
-                        <table class="table table-sm align-middle mb-0 corte-caja-table"><thead><tr><th>Fecha</th><th>Categoria</th><th class="corte-caja-col-description">Descripci&oacute;n</th><th class="text-end">Monto</th></tr></thead><tbody>{% for row in otros_ajustes_rows %}<tr><td>{{ row.fecha|datetime_local if row.fecha else '-' }}</td><td>{{ row.categoria_label }}</td><td class="corte-caja-text-cell corte-caja-col-description-cell">{{ row.descripcion }}</td><td class="text-end {% if row.monto < 0 %}text-danger{% else %}text-success{% endif %}">{% if row.monto >= 0 %}+{% endif %}${{ "{:,.2f}".format((row.monto or 0)|abs) }}</td></tr>{% endfor %}</tbody></table>
-                        {% if otros_ajustes_rows|length == 0 %}<p class="text-muted small mt-2 mb-0">No hay ajustes.</p>{% endif %}
+                        <h3 class="s-card-title">Otros ajustes de caja</h3>
+                        <p class="s-card-sub">Depósitos, retiros y ajustes manuales.</p>
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle corte-caja-table">
+                                <thead><tr><th>Fecha</th><th>Categoría</th><th class="corte-caja-col-description" data-title-col>Descripción</th><th class="text-end">Monto</th></tr></thead>
+                                <tbody>
+                                    {% for row in otros_ajustes_rows %}
+                                        <tr>
+                                            <td>{{ row.fecha|datetime_local if row.fecha else '—' }}</td>
+                                            <td>{{ badge(row.categoria_label, 'muted') }}</td>
+                                            <td class="corte-caja-text-cell corte-caja-col-description-cell">{{ row.descripcion }}</td>
+                                            <td class="text-end">{{ money(row.monto) }}</td>
+                                        </tr>
+                                    {% else %}
+                                        {{ empty_row(4, 'No hay ajustes.') }}
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
 
                 {# Movimientos reales de efectivo #}
-                <h3 class="h6 text-dark mb-1">Movimientos reales de efectivo</h3>
-                <p class="text-muted small mb-2">Solo entradas y salidas reales de efectivo. Transferencias y cheques no afectan el corte.</p>
-                <div class="d-flex flex-wrap gap-3 mb-2 small text-muted">
-                    <span>Ingresos: <strong class="text-success">${{ "{:,.2f}".format(cash_ingresos or 0) }}</strong></span>
-                    <span>Egresos: <strong class="text-danger">${{ "{:,.2f}".format(cash_egresos or 0) }}</strong></span>
-                    <span>Neto: <strong>${{ "{:,.2f}".format(cash_ingresos - cash_egresos) }}</strong></span>
+                <h3 class="s-card-title">Movimientos reales de efectivo</h3>
+                <p class="s-card-sub">Sólo entradas y salidas reales de efectivo. Las transferencias y los cheques no afectan el corte.</p>
+                <div class="s-subpanel mb-3">
+                    <div class="s-between"><span>Ingresos</span><strong>{{ money(cash_ingresos) }}</strong></div>
+                    <div class="s-between"><span>Egresos</span><strong>{{ money(0 - (cash_egresos or 0)) }}</strong></div>
+                    <div class="s-between"><span>Neto</span><strong>{{ money(cash_ingresos - cash_egresos) }}</strong></div>
                 </div>
-                <div class="table-scroll-shell">
-                    <div class="table-responsive scroll-x note-table-scroll">
-                        <table class="table table-sm align-middle mb-0 corte-caja-table">
-                            <thead><tr><th>Fecha</th><th>Tipo</th><th>Orden</th><th class="corte-caja-col-partner">Partner</th><th>Caja</th><th class="text-end">Monto</th><th class="corte-caja-col-description">Comentario</th></tr></thead>
-                            <tbody>
-                                {% for row in cash_movs %}
-                                <tr>
-                                    <td>{{ row.fecha|datetime_local if row.fecha else '-' }}</td>
-                                    <td>{{ row.tipo }}</td>
-                                    <td>{{ row.folio }}</td>
-                                    <td class="corte-caja-text-cell corte-caja-col-partner-cell">{{ row.partner }}</td>
-                                    <td>{{ row.caja_sucursal }}</td>
-                                    <td class="text-end {% if row.monto < 0 %}text-danger{% else %}text-success{% endif %}">{% if row.monto >= 0 %}+{% endif %}${{ "{:,.2f}".format((row.monto or 0)|abs) }}</td>
-                                    <td class="corte-caja-text-cell corte-caja-col-description-cell">{{ row.comentario or '-' }}</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle corte-caja-table">
+                        <thead><tr><th>Fecha</th><th>Tipo</th><th>Orden</th><th class="corte-caja-col-partner" data-title-col>Proveedor o cliente</th><th>Caja</th><th class="text-end">Monto</th><th class="corte-caja-col-description">Comentario</th></tr></thead>
+                        <tbody>
+                            {% for row in cash_movs %}
+                            {% set tipo_meta = MOV_TIPO.get(row.tipo) %}
+                            <tr>
+                                <td>{{ row.fecha|datetime_local if row.fecha else '—' }}</td>
+                                <td>
+                                    {% if tipo_meta %}
+                                        {{ badge(tipo_meta[0], tipo_meta[1]) }}
+                                    {% else %}
+                                        {{ badge((row.tipo or '—')|lower|capitalize, 'muted') }}
+                                    {% endif %}
+                                </td>
+                                <td>{{ row.folio if row.folio and row.folio != '-' else '—' }}</td>
+                                <td class="corte-caja-text-cell corte-caja-col-partner-cell">{{ row.partner }}</td>
+                                <td>{{ row.caja_sucursal if row.caja_sucursal and row.caja_sucursal != '-' else '—' }}</td>
+                                <td class="text-end">{{ money(row.monto) }}</td>
+                                <td class="corte-caja-text-cell corte-caja-col-description-cell">{{ row.comentario or '—' }}</td>
+                            </tr>
+                            {% else %}
+                                {{ empty_row(7, 'No hay movimientos de efectivo registrados.') }}
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
-                {% if cash_movs|length == 0 %}<p class="text-muted small mt-2 mb-0">No hay movimientos de efectivo registrados.</p>{% endif %}
-            </div>
         </div>
     </div>
 </div>
 
 {# ══════════════════════════════════════════════════════════════════════
-   SECTION 3 — CIERRE Y ARQUEO
+   SECCIÓN 3 — CIERRE Y ARQUEO
 ══════════════════════════════════════════════════════════════════════ #}
 <div id="section-cierre" class="corte-section-anchor">
     <div class="corte-section-header corte-section-header--final">
         <div>
             <div class="corte-section-title">Cierre y arqueo</div>
             <div class="corte-section-sub">
-                {% if corte.estado.value == 'ABIERTO' %}Paso final: cuenta el efectivo y cierra el corte{% else %}Corte cerrado el {{ corte.closed_at|datetime_local if corte.closed_at else '-' }}{% endif %}
+                {% if corte.estado.value == 'ABIERTO' %}Paso final: cuenta el efectivo y cierra el corte{% else %}Corte cerrado el {{ corte.closed_at|datetime_local if corte.closed_at else '—' }}{% endif %}
             </div>
         </div>
     </div>
 
-    <div class="card hover-lift mb-3">
-        <div class="card-body">
-            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-                <p class="text-muted small mb-0">El saldo final compara el efectivo contado contra el saldo esperado calculado con movimientos y gastos del dia.</p>
-                <div class="note-payment-summary">
-                    <span>Saldo esperado: <strong>${{ "{:,.2f}".format(saldo_calculado or 0) }}</strong></span>
-                    <span>Kg comprados: <strong>{{ "{:,.3f}".format(compras_kg or 0) }} kg</strong></span>
-                    <span>Kg vendidos: <strong>{{ "{:,.3f}".format(ventas_kg or 0) }} kg</strong></span>
-                    {% if corte.estado.value == 'CERRADO' %}<span>Saldo final: <strong>${{ "{:,.2f}".format(corte.saldo_cierre or 0) }}</strong></span>{% endif %}
-                </div>
-            </div>
+    <div class="mb-3">
+        <p class="s-card-sub">El saldo final compara el efectivo contado contra el saldo esperado.</p>
+        <div class="s-subpanel mb-3">
+            <div class="s-between"><span>Saldo esperado</span><strong>{{ money(saldo_calculado) }}</strong></div>
+            <div class="s-between"><span>Kg comprados</span><strong>{{ kg(compras_kg) }}</strong></div>
+            <div class="s-between"><span>Kg vendidos</span><strong>{{ kg(ventas_kg) }}</strong></div>
+            {% if corte.estado.value == 'CERRADO' %}
+                <div class="s-between"><span>Saldo final</span><strong>{{ money(corte.saldo_cierre) }}</strong></div>
+            {% endif %}
+        </div>
 
-            {% if corte.estado.value == 'ABIERTO' %}
-                <form method="post" action="/web/admin/corte-caja/{{ corte.id }}/cerrar" data-submit-once="1">
-                    <div class="cash-count-sheet mb-3">
-                        <div class="cash-count-sheet__header">
-                            <div>
-                                <span class="chip-strong">Arqueo diario</span>
-                                <h3 class="h6 text-dark mb-1 mt-2">Registro de efectivo contado</h3>
-                                <p class="text-muted small mb-0">Cuenta monedas y billetes durante el dia.</p>
-                            </div>
-                            <div class="cash-count-sheet__totals">
-                                <div class="cash-count-total-card"><span>Monedas</span><strong id="cashCountCoins">${{ "{:,.2f}".format(denom_total_monedas or 0) }}</strong></div>
-                                <div class="cash-count-total-card"><span>Billetes</span><strong id="cashCountBills">${{ "{:,.2f}".format(denom_total_billetes or 0) }}</strong></div>
-                                <div class="cash-count-total-card cash-count-total-card--primary"><span>Total general</span><strong id="cashCountTotal">${{ "{:,.2f}".format(denom_total or 0) }}</strong></div>
-                            </div>
+        {% if corte.estado.value == 'ABIERTO' %}
+            <form method="post" action="/web/admin/corte-caja/{{ corte.id }}/cerrar" data-submit-once="1">
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <h3 class="s-card-title">Arqueo diario</h3>
+                        <p class="s-card-sub">Registro del efectivo contado. Cuenta monedas y billetes durante el día.</p>
+
+                        <div class="s-subpanel mb-3">
+                            <div class="s-between"><span>Monedas</span><strong class="s-money" id="cashCountCoins">${{ "{:,.2f}".format(denom_total_monedas or 0) }}</strong></div>
+                            <div class="s-between"><span>Billetes</span><strong class="s-money" id="cashCountBills">${{ "{:,.2f}".format(denom_total_billetes or 0) }}</strong></div>
+                            <div class="s-between"><span>Total general</span><strong class="s-money" id="cashCountTotal">${{ "{:,.2f}".format(denom_total or 0) }}</strong></div>
                         </div>
+
                         <div class="row g-3">
                             <div class="col-xl-5">
-                                <div class="cash-count-section">
-                                    <div class="cash-count-section__title">Monedas</div>
-                                    <div class="table-responsive">
-                                        <table class="table table-sm align-middle mb-0">
-                                            <thead><tr><th>Denominaci&oacute;n</th><th class="text-end">Cantidad</th><th class="text-end">Total</th></tr></thead>
-                                            <tbody>
-                                                {% for denom in denom_monedas %}
-                                                <tr>
-                                                    <td>{{ denom.label }}</td>
-                                                    <td class="text-end"><input class="form-control form-control-sm text-end denom-count-input" type="number" min="0" step="1" inputmode="numeric" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="coins"></td>
-                                                    <td class="text-end" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td>
-                                                </tr>
-                                                {% endfor %}
-                                                <tr class="table-light fw-semibold"><td colspan="2">Total monedas</td><td class="text-end" id="cashCountCoinsTable">${{ "{:,.2f}".format(denom_total_monedas or 0) }}</td></tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                <p class="s-section-label">Monedas</p>
+                                <div class="table-responsive">
+                                    <table class="table table-hover align-middle corte-caja-table">
+                                        <thead><tr><th data-title-col>Denominación</th><th class="text-end">Cantidad</th><th class="text-end">Total</th></tr></thead>
+                                        <tbody>
+                                            {% for denom in denom_monedas %}
+                                            <tr>
+                                                <td>{{ denom.label }}</td>
+                                                <td class="text-end"><input class="form-control form-control-sm text-end denom-count-input" style="max-width: 7rem" type="number" min="0" step="1" inputmode="numeric" aria-label="Cantidad de {{ denom.label }}" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="coins"></td>
+                                                <td class="text-end s-money" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td>
+                                            </tr>
+                                            {% else %}
+                                                {{ empty_row(3, 'Sin denominaciones configuradas.') }}
+                                            {% endfor %}
+                                        </tbody>
+                                        <tfoot><tr><td colspan="2">Total monedas</td><td class="text-end s-money" id="cashCountCoinsTable">${{ "{:,.2f}".format(denom_total_monedas or 0) }}</td></tr></tfoot>
+                                    </table>
                                 </div>
                             </div>
                             <div class="col-xl-7">
-                                <div class="cash-count-section">
-                                    <div class="cash-count-section__title">Billetes</div>
-                                    <div class="table-responsive">
-                                        <table class="table table-sm align-middle mb-0">
-                                            <thead><tr><th>Denominaci&oacute;n</th><th class="text-end">Cantidad</th><th class="text-end">Total</th></tr></thead>
-                                            <tbody>
-                                                {% for denom in denom_billetes %}
-                                                <tr>
-                                                    <td>{{ denom.label }}</td>
-                                                    <td class="text-end"><input class="form-control form-control-sm text-end denom-count-input" type="number" min="0" step="1" inputmode="numeric" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="bills"></td>
-                                                    <td class="text-end" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td>
-                                                </tr>
-                                                {% endfor %}
-                                                <tr class="table-light fw-semibold"><td colspan="2">Total billetes</td><td class="text-end" id="cashCountBillsTable">${{ "{:,.2f}".format(denom_total_billetes or 0) }}</td></tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                <p class="s-section-label">Billetes</p>
+                                <div class="table-responsive">
+                                    <table class="table table-hover align-middle corte-caja-table">
+                                        <thead><tr><th data-title-col>Denominación</th><th class="text-end">Cantidad</th><th class="text-end">Total</th></tr></thead>
+                                        <tbody>
+                                            {% for denom in denom_billetes %}
+                                            <tr>
+                                                <td>{{ denom.label }}</td>
+                                                <td class="text-end"><input class="form-control form-control-sm text-end denom-count-input" style="max-width: 7rem" type="number" min="0" step="1" inputmode="numeric" aria-label="Cantidad de {{ denom.label }}" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="bills"></td>
+                                                <td class="text-end s-money" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td>
+                                            </tr>
+                                            {% else %}
+                                                {{ empty_row(3, 'Sin denominaciones configuradas.') }}
+                                            {% endfor %}
+                                        </tbody>
+                                        <tfoot><tr><td colspan="2">Total billetes</td><td class="text-end s-money" id="cashCountBillsTable">${{ "{:,.2f}".format(denom_total_billetes or 0) }}</td></tr></tfoot>
+                                    </table>
                                 </div>
                             </div>
                         </div>
-                        <div class="cash-count-footer">
-                            <div class="cash-count-footer__line"><span>Saldo esperado</span><strong id="cashExpectedTotal">${{ "{:,.2f}".format(saldo_calculado or 0) }}</strong></div>
-                            <div class="cash-count-footer__line"><span>Saldo contado</span><strong id="cashCountTotalInline">${{ "{:,.2f}".format(denom_total or 0) }}</strong></div>
-                            <div class="cash-count-footer__line {{ 'text-success' if (diferencia_provisional or 0) >= 0 else 'text-danger' }}">
-                                <span>{% if (diferencia_provisional or 0) >= 0 %}Sobrante provisional{% else %}Faltante provisional{% endif %}</span>
-                                <strong id="cashDifferencePreview">{% if (diferencia_provisional or 0) >= 0 %}+{% else %}-{% endif %}${{ "{:,.2f}".format((diferencia_provisional or 0)|abs) }}</strong>
+
+                        <div class="s-subpanel mt-3">
+                            <div class="s-between"><span>Saldo esperado</span><strong class="s-money" id="cashExpectedTotal">${{ "{:,.2f}".format(saldo_calculado or 0) }}</strong></div>
+                            <div class="s-between"><span>Saldo contado</span><strong class="s-money" id="cashCountTotalInline">${{ "{:,.2f}".format(denom_total or 0) }}</strong></div>
+                            <div class="s-between" id="cashDifferenceRow">
+                                <span id="cashDifferenceLabel">{% if (diferencia_provisional or 0) > 0 %}Sobrante provisional{% elif (diferencia_provisional or 0) < 0 %}Faltante provisional{% else %}Diferencia{% endif %}</span>
+                                <strong id="cashDifferencePreview">{{ money(diferencia_provisional) }}</strong>
                             </div>
                         </div>
                     </div>
-                    <div class="row g-3">
-                        <div class="col-lg-4">
-                            <label class="form-label">Saldo contado</label>
-                            <input class="form-control" type="number" step="0.01" min="0" value="{{ form_saldo_cierre }}" id="cashCountTotalInput" readonly>
+                </div>
+
+                <fieldset class="s-fieldset">
+                    <legend>Cierre del corte</legend>
+                    <div class="s-form-grid">
+                        <div>
+                            <span class="s-def__label">Saldo contado</span>
+                            <span class="s-def__value">
+                                <input class="form-control" type="number" step="0.01" min="0" value="{{ form_saldo_cierre }}" id="cashCountTotalInput" aria-label="Saldo contado" readonly>
+                            </span>
+                            <p class="form-text">Se calcula solo a partir del arqueo por denominaciones.</p>
                         </div>
-                        <div class="col-lg-8">
-                            <label class="form-label">Comentarios de cierre</label>
-                            <input class="form-control" name="comentarios_cierre" value="{{ form_cierre_comentarios }}" placeholder="Observaciones del corte">
+                        <div>
+                            <label for="comentariosCierre" class="form-label">Comentarios de cierre</label>
+                            <input class="form-control" id="comentariosCierre" name="comentarios_cierre" value="{{ form_cierre_comentarios }}" placeholder="Observaciones del corte">
+                            <p class="form-text">Quedan guardados en el reporte del corte.</p>
                         </div>
-                        <div class="col-12" id="motivoDiferenciaGroup">
+                        <div class="s-field--full" id="motivoDiferenciaGroup">
                             <div id="motivoDiferenciaAlert" class="alert alert-warning py-2 small mb-2 d-none" role="alert">
                                 <strong id="motivoDiferenciaAlertText"></strong> &mdash; Debes explicar el motivo antes de poder cerrar el corte.
                             </div>
-                            <label class="form-label" id="motivoDiferenciaLabel">Motivo de diferencia</label>
-                            <input class="form-control" name="motivo_diferencia" id="motivoDiferenciaInput" value="{{ form_motivo_diferencia }}" placeholder="Obligatorio si hay sobrante o faltante">
-                            <div class="form-text text-muted">Si el contado no coincide con el saldo esperado, explica la diferencia.</div>
-                        </div>
-                        <div class="col-12 d-grid d-md-flex justify-content-md-end gap-2">
-                            <button class="btn btn-outline-primary" type="submit" formaction="/web/admin/corte-caja/{{ corte.id }}/arqueo">Guardar conteo</button>
-                            <button class="btn btn-primary" type="submit">Cerrar corte de caja</button>
+                            <label class="form-label" for="motivoDiferenciaInput" id="motivoDiferenciaLabel">Motivo de la diferencia</label>
+                            <input class="form-control" name="motivo_diferencia" id="motivoDiferenciaInput" value="{{ form_motivo_diferencia }}" placeholder="Ej. Faltante por vuelto entregado de más">
+                            <p class="form-text">Obligatorio si el contado no coincide con el saldo esperado.</p>
                         </div>
                     </div>
-                </form>
-            {% else %}
-                <div class="cash-count-sheet mb-3">
-                    <div class="cash-count-sheet__header">
-                        <div>
-                            <span class="chip-strong">Arqueo final</span>
-                            <h3 class="h6 text-dark mb-1 mt-2">Conteo registrado por denominaciones</h3>
-                        </div>
-                        <div class="cash-count-sheet__totals">
-                            <div class="cash-count-total-card"><span>Monedas</span><strong>${{ "{:,.2f}".format(denom_total_monedas or 0) }}</strong></div>
-                            <div class="cash-count-total-card"><span>Billetes</span><strong>${{ "{:,.2f}".format(denom_total_billetes or 0) }}</strong></div>
-                            <div class="cash-count-total-card cash-count-total-card--primary"><span>Total general</span><strong>${{ "{:,.2f}".format(denom_total or 0) }}</strong></div>
-                        </div>
+                </fieldset>
+
+                <div class="s-form-actions">
+                    <button class="btn btn-outline-primary" type="submit" formaction="/web/admin/corte-caja/{{ corte.id }}/arqueo">Guardar conteo</button>
+                    <button class="btn btn-primary" type="submit">Cerrar corte de caja</button>
+                </div>
+            </form>
+        {% else %}
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h3 class="s-card-title">Arqueo final</h3>
+                    <p class="s-card-sub">Conteo registrado por denominaciones.</p>
+
+                    <div class="s-subpanel mb-3">
+                        <div class="s-between"><span>Monedas</span><strong>{{ money(denom_total_monedas) }}</strong></div>
+                        <div class="s-between"><span>Billetes</span><strong>{{ money(denom_total_billetes) }}</strong></div>
+                        <div class="s-between"><span>Total general</span><strong>{{ money(denom_total) }}</strong></div>
                     </div>
+
                     <div class="row g-3">
                         <div class="col-xl-5">
-                            <div class="cash-count-section">
-                                <div class="cash-count-section__title">Monedas</div>
-                                <div class="table-responsive">
-                                    <table class="table table-sm align-middle mb-0">
-                                        <thead><tr><th>Denominaci&oacute;n</th><th class="text-end">Cantidad</th><th class="text-end">Total</th></tr></thead>
-                                        <tbody>
-                                            {% for denom in denom_monedas %}<tr><td>{{ denom.label }}</td><td class="text-end"><input class="form-control form-control-sm text-end denom-count-input" type="number" min="0" step="1" inputmode="numeric" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="coins" disabled></td><td class="text-end" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td></tr>{% endfor %}
-                                            <tr class="table-light fw-semibold"><td colspan="2">Total monedas</td><td class="text-end" id="cashCountCoinsTable">${{ "{:,.2f}".format(denom_total_monedas or 0) }}</td></tr>
-                                        </tbody>
-                                    </table>
-                                </div>
+                            <p class="s-section-label">Monedas</p>
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle corte-caja-table">
+                                    <thead><tr><th data-title-col>Denominación</th><th class="text-end">Cantidad</th><th class="text-end">Total</th></tr></thead>
+                                    <tbody>
+                                        {% for denom in denom_monedas %}
+                                            <tr><td>{{ denom.label }}</td><td class="text-end"><input class="form-control form-control-sm text-end denom-count-input" style="max-width: 7rem" type="number" min="0" step="1" inputmode="numeric" aria-label="Cantidad de {{ denom.label }}" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="coins" disabled></td><td class="text-end s-money" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td></tr>
+                                        {% else %}
+                                            {{ empty_row(3, 'Sin denominaciones registradas.') }}
+                                        {% endfor %}
+                                    </tbody>
+                                    <tfoot><tr><td colspan="2">Total monedas</td><td class="text-end s-money" id="cashCountCoinsTable">${{ "{:,.2f}".format(denom_total_monedas or 0) }}</td></tr></tfoot>
+                                </table>
                             </div>
                         </div>
                         <div class="col-xl-7">
-                            <div class="cash-count-section">
-                                <div class="cash-count-section__title">Billetes</div>
-                                <div class="table-responsive">
-                                    <table class="table table-sm align-middle mb-0">
-                                        <thead><tr><th>Denominaci&oacute;n</th><th class="text-end">Cantidad</th><th class="text-end">Total</th></tr></thead>
-                                        <tbody>
-                                            {% for denom in denom_billetes %}<tr><td>{{ denom.label }}</td><td class="text-end"><input class="form-control form-control-sm text-end denom-count-input" type="number" min="0" step="1" inputmode="numeric" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="bills" disabled></td><td class="text-end" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td></tr>{% endfor %}
-                                            <tr class="table-light fw-semibold"><td colspan="2">Total billetes</td><td class="text-end" id="cashCountBillsTable">${{ "{:,.2f}".format(denom_total_billetes or 0) }}</td></tr>
-                                        </tbody>
-                                    </table>
-                                </div>
+                            <p class="s-section-label">Billetes</p>
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle corte-caja-table">
+                                    <thead><tr><th data-title-col>Denominación</th><th class="text-end">Cantidad</th><th class="text-end">Total</th></tr></thead>
+                                    <tbody>
+                                        {% for denom in denom_billetes %}
+                                            <tr><td>{{ denom.label }}</td><td class="text-end"><input class="form-control form-control-sm text-end denom-count-input" style="max-width: 7rem" type="number" min="0" step="1" inputmode="numeric" aria-label="Cantidad de {{ denom.label }}" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="bills" disabled></td><td class="text-end s-money" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td></tr>
+                                        {% else %}
+                                            {{ empty_row(3, 'Sin denominaciones registradas.') }}
+                                        {% endfor %}
+                                    </tbody>
+                                    <tfoot><tr><td colspan="2">Total billetes</td><td class="text-end s-money" id="cashCountBillsTable">${{ "{:,.2f}".format(denom_total_billetes or 0) }}</td></tr></tfoot>
+                                </table>
                             </div>
                         </div>
                     </div>
-                    <div class="row g-3 mt-2">
-                        <div class="col-md-3"><div class="note-meta-item"><span class="note-meta-label">Saldo esperado</span><strong>${{ "{:,.2f}".format(corte.saldo_calculado or 0) }}</strong></div></div>
-                        <div class="col-md-3"><div class="note-meta-item"><span class="note-meta-label">Saldo final</span><strong>${{ "{:,.2f}".format(corte.saldo_cierre or 0) }}</strong></div></div>
-                        <div class="col-md-3"><div class="note-meta-item"><span class="note-meta-label">{{ 'Sobrante' if (corte.diferencia or 0) >= 0 else 'Faltante' }}</span><strong class="{{ 'text-success' if (corte.diferencia or 0) >= 0 else 'text-danger' }}">{{ '+' if (corte.diferencia or 0) >= 0 else '-' }}${{ "{:,.2f}".format((corte.diferencia or 0)|abs) }}</strong><div class="note-meta-sub">{{ corte.motivo_diferencia or '-' }}</div></div></div>
-                        <div class="col-md-3"><div class="note-meta-item"><span class="note-meta-label">Cerrado por</span><strong>{{ corte.cerrado_por.nombre_completo if corte.cerrado_por else '-' }}</strong><div class="note-meta-sub">{{ corte.closed_at|datetime_local if corte.closed_at else '-' }}</div></div></div>
+
+                    <div class="s-defs mt-3">
+                        <div>
+                            <span class="s-def__label">Saldo esperado</span>
+                            <span class="s-def__value">{{ money(corte.saldo_calculado) }}</span>
+                        </div>
+                        <div>
+                            <span class="s-def__label">Saldo final</span>
+                            <span class="s-def__value">{{ money(corte.saldo_cierre) }}</span>
+                        </div>
+                        <div>
+                            <span class="s-def__label">{% if (corte.diferencia or 0) > 0 %}Sobrante{% elif (corte.diferencia or 0) < 0 %}Faltante{% else %}Diferencia{% endif %}</span>
+                            <span class="s-def__value">{{ money(corte.diferencia) }}</span>
+                            <span class="s-card-sub">{{ corte.motivo_diferencia or '—' }}</span>
+                        </div>
+                        <div>
+                            <span class="s-def__label">Cerrado por</span>
+                            <span class="s-def__value">{{ corte.cerrado_por.nombre_completo if corte.cerrado_por else '—' }}</span>
+                            <span class="s-card-sub">{{ corte.closed_at|datetime_local if corte.closed_at else '—' }}</span>
+                        </div>
                     </div>
                 </div>
-            {% endif %}
-        </div>
+            </div>
+        {% endif %}
     </div>
 </div>
 
 {# Historial — colapsable #}
-<div class="card hover-lift mb-3">
-    <div class="card-body">
-        <button type="button" class="corte-collapse-trigger w-100 text-start" data-bs-toggle="collapse" data-bs-target="#cortesHistorial" aria-expanded="false">
-            <div class="d-flex align-items-center justify-content-between">
-                <span class="fw-semibold">Historial de cortes <span class="text-muted fw-normal small ms-1">Ultimos {{ historial|length }}</span></span>
-                <span class="corte-collapse-chevron">&#8964;</span>
-            </div>
-        </button>
-        <div id="cortesHistorial" class="collapse mt-3">
-            <div class="table-responsive">
-                <table class="table table-sm align-middle mb-0">
-                    <thead>
-                        <tr>
-                            <th>Fecha</th>
-                            <th>Estado</th>
-                            <th class="text-end">Saldo inicial</th>
-                            <th class="text-end">Saldo esperado</th>
-                            <th class="text-end">Saldo cierre</th>
-                            <th class="text-end">Diferencia</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for item in historial %}
-                        <tr>
-                            <td><a href="/web/admin/corte-caja?sucursal_id={{ sucursal_id }}&fecha={{ item.fecha }}">{{ item.fecha|date_local if item.fecha else '-' }}</a></td>
-                            <td><span class="badge {% if item.estado.value == 'ABIERTO' %}bg-success{% else %}bg-secondary{% endif %}">{{ item.estado.value }}</span></td>
-                            <td class="text-end">${{ "{:,.2f}".format(item.saldo_inicial or 0) }}</td>
-                            <td class="text-end">${{ "{:,.2f}".format(item.saldo_calculado or 0) }}</td>
-                            <td class="text-end">${{ "{:,.2f}".format(item.saldo_cierre or 0) }}</td>
-                            <td class="text-end {% if (item.diferencia or 0) >= 0 %}text-success{% else %}text-danger{% endif %}">
-                                {% if (item.diferencia or 0) >= 0 %}+{% else %}-{% endif %}${{ "{:,.2f}".format((item.diferencia or 0)|abs) }}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% if historial|length == 0 %}<p class="text-muted small mt-3 mb-0">No hay cortes registrados.</p>{% endif %}
+<div class="corte-sdiv mb-4">
+    <button type="button" class="corte-sdiv-trigger" data-bs-toggle="collapse" data-bs-target="#cortesHistorial" aria-expanded="false">
+        <span class="fw-semibold small">Historial de cortes</span>
+        <span class="text-muted small ms-1">&mdash; últimos {{ historial|length }}</span>
+        <span class="corte-collapse-chevron ms-auto">&#8964;</span>
+    </button>
+    <div id="cortesHistorial" class="collapse corte-sdiv-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th data-title-col>Fecha</th>
+                        <th>Estado</th>
+                        <th class="text-end">Saldo inicial</th>
+                        <th class="text-end">Saldo esperado</th>
+                        <th class="text-end">Saldo de cierre</th>
+                        <th class="text-end">Diferencia</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in historial %}
+                    <tr>
+                        <td><a href="/web/admin/corte-caja?sucursal_id={{ sucursal_id }}&fecha={{ item.fecha }}">{{ item.fecha|date_local if item.fecha else '—' }}</a></td>
+                        <td>{% if item.estado.value == 'ABIERTO' %}{{ badge('Abierto', 'ok') }}{% else %}{{ badge('Cerrado', 'muted') }}{% endif %}</td>
+                        <td class="text-end">{{ money(item.saldo_inicial) }}</td>
+                        <td class="text-end">{{ money(item.saldo_calculado) }}</td>
+                        <td class="text-end">{{ money(item.saldo_cierre) }}</td>
+                        <td class="text-end">{{ money(item.diferencia) }}</td>
+                    </tr>
+                    {% else %}
+                        {{ empty_row(6, 'No hay cortes registrados.') }}
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
@@ -947,10 +1031,10 @@
     </div>
     <div class="corte-float-divider"></div>
     <div class="corte-float-item" id="floatDifItem">
-        <span id="floatDifLabel">{{ 'Sobrante' if (diferencia_provisional or 0) >= 0 else 'Faltante' }}</span>
-        <strong id="floatDif" class="{{ 'float-positive' if (diferencia_provisional or 0) >= 0 else 'float-negative' }}">{{ '+' if (diferencia_provisional or 0) >= 0 else '-' }}${{ "{:,.2f}".format((diferencia_provisional or 0)|abs) }}</strong>
+        <span id="floatDifLabel">{% if (diferencia_provisional or 0) > 0 %}Sobrante{% elif (diferencia_provisional or 0) < 0 %}Faltante{% else %}Diferencia{% endif %}</span>
+        <strong id="floatDif" class="{% if (diferencia_provisional or 0) > 0 %}float-positive{% elif (diferencia_provisional or 0) < 0 %}float-negative{% endif %}">{% if (diferencia_provisional or 0) > 0 %}+{% elif (diferencia_provisional or 0) < 0 %}-{% endif %}${{ "{:,.2f}".format((diferencia_provisional or 0)|abs) }}</strong>
     </div>
-    <a href="#section-cierre" class="corte-float-action ms-auto">Ir al cierre &#8595;</a>
+    <a href="#section-cierre" class="corte-float-action ms-auto">Ir al cierre</a>
 </div>
 {% endif %}
 
@@ -970,6 +1054,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const grandInline = document.getElementById('cashCountTotalInline');
     const grandInput = document.getElementById('cashCountTotalInput');
     const diffPreview = document.getElementById('cashDifferencePreview');
+    const diffLabel = document.getElementById('cashDifferenceLabel');
     const expectedEl = document.getElementById('cashExpectedTotal');
     const expected = expectedEl ? Number((expectedEl.textContent || '').replace(/[^0-9.-]/g, '')) || 0 : 0;
 
@@ -989,6 +1074,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         const total = coins + bills;
         const diff = total - expected;
+        const isZero = Math.abs(diff) < 0.005;
 
         if (coinsTotal) coinsTotal.textContent = formatMoney(coins);
         if (billsTotal) billsTotal.textContent = formatMoney(bills);
@@ -999,17 +1085,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (grandInput) grandInput.value = total.toFixed(2);
 
         if (diffPreview) {
-            const label = diff >= 0 ? '+$' : '-$';
-            diffPreview.textContent = `${label}${Math.abs(diff).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-            diffPreview.classList.toggle('text-success', diff >= 0);
-            diffPreview.classList.toggle('text-danger', diff < 0);
-            const parent = diffPreview.closest('.cash-count-footer__line');
-            if (parent) {
-                parent.classList.toggle('text-success', diff >= 0);
-                parent.classList.toggle('text-danger', diff < 0);
-                const labelNode = parent.querySelector('span');
-                if (labelNode) labelNode.textContent = diff >= 0 ? 'Sobrante provisional' : 'Faltante provisional';
-            }
+            const sign = isZero ? '' : (diff > 0 ? '+' : '-');
+            diffPreview.textContent = `${sign}$${Math.abs(diff).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            diffPreview.classList.toggle('text-success', !isZero && diff > 0);
+            diffPreview.classList.toggle('text-danger', !isZero && diff < 0);
+            diffPreview.classList.toggle('s-zero', isZero);
+        }
+        if (diffLabel) {
+            diffLabel.textContent = isZero ? 'Diferencia' : (diff > 0 ? 'Sobrante provisional' : 'Faltante provisional');
         }
 
         /* motivo_diferencia: required + highlighted when diff != 0 */
@@ -1020,12 +1103,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const motivoAlertText = document.getElementById('motivoDiferenciaAlertText');
         if (motivoInput) {
             motivoInput.required = hasDiff;
-            motivoInput.classList.toggle('border-warning', hasDiff);
         }
         if (motivoLabel) {
-            motivoLabel.textContent = hasDiff ? 'Motivo de diferencia *' : 'Motivo de diferencia';
-            motivoLabel.classList.toggle('text-warning-emphasis', hasDiff);
-            motivoLabel.classList.toggle('fw-semibold', hasDiff);
+            motivoLabel.innerHTML = hasDiff
+                ? 'Motivo de la diferencia <span class="s-req">*</span>'
+                : 'Motivo de la diferencia';
         }
         if (motivoAlert && motivoAlertText) {
             if (hasDiff) {
@@ -1044,11 +1126,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const floatDifLabel = document.getElementById('floatDifLabel');
         if (floatContado) floatContado.textContent = formatMoney(total);
         if (floatDif) {
-            floatDif.textContent = `${diff >= 0 ? '+$' : '-$'}${Math.abs(diff).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-            floatDif.classList.toggle('float-positive', diff >= 0);
-            floatDif.classList.toggle('float-negative', diff < 0);
+            const sign = isZero ? '' : (diff > 0 ? '+' : '-');
+            floatDif.textContent = `${sign}$${Math.abs(diff).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            floatDif.classList.toggle('float-positive', !isZero && diff > 0);
+            floatDif.classList.toggle('float-negative', !isZero && diff < 0);
         }
-        if (floatDifLabel) floatDifLabel.textContent = diff >= 0 ? 'Sobrante' : 'Faltante';
+        if (floatDifLabel) floatDifLabel.textContent = isZero ? 'Diferencia' : (diff > 0 ? 'Sobrante' : 'Faltante');
     };
 
     countInputs.forEach((input) => {
@@ -1071,214 +1154,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 <style>
-/* ── Page header block ────────────────────────────────────────────── */
-.corte-page-header-block {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 1.25rem;
-    padding: 1.25rem 1.5rem 1.1rem;
-    border-radius: 6px;
-    border: 1px solid rgba(255,255,255,0.06);
-    background: #0f172a;
-    margin-bottom: 1rem;
-}
-.corte-ph-left { flex: 1 1 200px; }
-.corte-ph-eyebrow {
-    font-size: 0.68rem;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.18em;
-    color: rgba(147, 197, 253, 0.85);
-    margin: 0 0 0.2rem;
-}
-.corte-ph-title {
-    font-size: 1.55rem;
-    font-weight: 700;
-    letter-spacing: -0.025em;
-    color: #f8fafc;
-    margin: 0 0 0.2rem;
-    line-height: 1.15;
-}
-.corte-ph-date {
-    font-size: 0.82rem;
-    color: rgba(226, 232, 240, 0.65);
-    margin: 0;
-    font-variant-numeric: tabular-nums;
-}
-.corte-ph-right {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 0.65rem;
-}
-.corte-ph-form {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    flex-wrap: wrap;
-}
-.corte-ph-select,
-.corte-ph-input {
-    background: rgba(255,255,255,0.08);
-    border: 1px solid rgba(255,255,255,0.16);
-    color: #f8fafc;
-    border-radius: 4px;
-    font-size: 0.8rem;
-    padding: 0.35rem 0.6rem;
-    outline: none;
-    transition: border-color 0.15s, background 0.15s;
-    appearance: auto;
-}
-.corte-ph-select option { background: #1e293b; color: #f8fafc; }
-.corte-ph-select:focus,
-.corte-ph-input:focus { border-color: rgba(147,197,253,0.5); background: rgba(255,255,255,0.12); }
-.corte-ph-input { width: 9rem; color-scheme: dark; }
-.corte-ph-btn {
-    background: rgba(255,255,255,0.1);
-    border: 1px solid rgba(255,255,255,0.2);
-    color: #f8fafc;
-    border-radius: 4px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    padding: 0.35rem 0.85rem;
-    cursor: pointer;
-    transition: background 0.15s;
-    white-space: nowrap;
-}
-.corte-ph-btn:hover { background: rgba(255,255,255,0.18); }
-
-/* ── Status pill ──────────────────────────────────────────────────── */
-.corte-status-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    padding: 0.28rem 0.75rem;
-    border-radius: 999px;
-    border: 1px solid transparent;
-}
-.corte-status-dot {
-    width: 0.45rem;
-    height: 0.45rem;
-    border-radius: 50%;
-    flex-shrink: 0;
-}
-.corte-status-abierto {
-    background: rgba(22, 163, 74, 0.15);
-    border-color: rgba(22, 163, 74, 0.4);
-    color: #bbf7d0;
-}
-.corte-status-abierto .corte-status-dot { background: #4ade80; box-shadow: 0 0 6px rgba(74, 222, 128, 0.7); }
-.corte-status-cerrado {
-    background: rgba(148, 163, 184, 0.15);
-    border-color: rgba(148, 163, 184, 0.3);
-    color: rgba(226, 232, 240, 0.7);
-}
-.corte-status-cerrado .corte-status-dot { background: #94a3b8; }
-.corte-status-none {
-    background: rgba(148, 163, 184, 0.12);
-    border-color: rgba(148, 163, 184, 0.22);
-    color: rgba(226, 232, 240, 0.5);
-    font-size: 0.7rem;
-}
-
-/* ── Apertura card ────────────────────────────────────────────────── */
-.corte-apertura-card {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0;
-    border-radius: 6px;
-    border: 1px solid #d1d5db;
-    overflow: hidden;
-}
-.corte-apertura-left {
-    flex: 1 1 260px;
-    padding: 1.5rem 1.75rem;
-    background: #1e293b;
-    color: #f8fafc;
-}
-.corte-apertura-eyebrow {
-    font-size: 0.68rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
-    color: rgba(147, 197, 253, 0.75);
-    margin: 0 0 0.5rem;
-}
-.corte-apertura-amount {
-    font-size: 2rem;
-    font-weight: 700;
-    letter-spacing: -0.03em;
-    color: #f8fafc;
-    margin: 0 0 0.5rem;
-    line-height: 1;
-    font-variant-numeric: tabular-nums;
-}
-.corte-apertura-meta {
-    font-size: 0.78rem;
-    color: rgba(226, 232, 240, 0.55);
-    margin: 0;
-}
-.corte-apertura-meta strong { color: rgba(226, 232, 240, 0.8); font-weight: 600; }
-.corte-apertura-right {
-    flex: 1 1 280px;
-    padding: 1.5rem 1.75rem;
-    background: #fff;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 0.5rem;
-}
-.corte-apertura-label {
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: #374151;
-    margin: 0;
-    display: block;
-}
-.corte-apertura-form-row {
-    display: flex;
-    gap: 0.5rem;
-    align-items: stretch;
-    margin-top: 0.35rem;
-}
-.corte-apertura-input {
-    flex: 1;
-    border: 1px solid #d1d5db;
-    border-radius: 4px;
-    padding: 0.5rem 0.75rem;
-    font-size: 1rem;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    outline: none;
-    transition: border-color 0.15s;
-    color: #111827;
-}
-.corte-apertura-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.1); }
-.corte-apertura-btn {
-    background: #1d4ed8;
-    color: #fff;
-    border: none;
-    border-radius: 4px;
-    padding: 0.5rem 1.25rem;
-    font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: background 0.15s;
-}
-.corte-apertura-btn:hover { background: #1e40af; }
-.corte-apertura-hint {
-    font-size: 0.73rem;
-    color: #9ca3af;
-    margin: 0;
-}
-
 /* ── Row color coding ─────────────────────────────────────────────── */
 .corte-row-cash td { background-color: #d4edda !important; }
 .corte-row-account-1 td { background-color: #cce5ff !important; }
@@ -1339,19 +1214,6 @@ button.corte-pago-pill:hover { opacity: 0.85; }
 .corte-snav-link:hover { color: #111827; border-bottom-color: #d1d5db; background: none; }
 .corte-snav-link--muted { opacity: 0.4; pointer-events: none; }
 
-/* ── Compact KPI trio ─────────────────────────────────────────────── */
-.corte-kpi-trio {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 1rem;
-}
-@media (max-width: 576px) { .corte-kpi-trio { grid-template-columns: 1fr 1fr; } }
-.corte-kpi-main-item { display: flex; flex-direction: column; gap: 0.15rem; }
-.corte-kpi-main-item span { font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
-.corte-kpi-main-item strong { font-size: 1.15rem; font-weight: 700; color: #111827; font-variant-numeric: tabular-nums; }
-.corte-kpi-main-item.kpi-positive strong { color: #16a34a; }
-.corte-kpi-main-item.kpi-negative strong { color: #dc2626; }
-
 /* ── Section headers ──────────────────────────────────────────────── */
 .corte-section-anchor { scroll-margin-top: 110px; }
 .corte-section-header {
@@ -1366,9 +1228,28 @@ button.corte-pago-pill:hover { opacity: 0.85; }
 .corte-section-title { font-weight: 600; font-size: 0.92rem; color: #111827; text-transform: uppercase; letter-spacing: 0.04em; }
 .corte-section-sub { font-size: 0.78rem; color: #9ca3af; margin-top: 0.1rem; }
 
+/* ── Section-divider collapse (replaces card wrappers for tables) ─── */
+.corte-sdiv {
+    margin-bottom: 0.25rem;
+}
+.corte-sdiv-trigger {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.55rem 0;
+    background: none;
+    border: none;
+    border-bottom: 1px solid #e5e7eb;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 0.15s;
+}
+.corte-sdiv-trigger:hover { border-bottom-color: #9ca3af; }
+.corte-sdiv-trigger[aria-expanded="true"] { border-bottom-color: #6b7280; }
+.corte-sdiv-body { padding: 1rem 0 0.5rem; }
+
 /* ── Collapse triggers ────────────────────────────────────────────── */
-.corte-collapse-trigger { background: none; border: none; padding: 0; cursor: pointer; }
-.corte-collapse-trigger:hover { opacity: 0.8; }
 .corte-collapse-chevron { font-size: 1.1rem; color: #9ca3af; display: inline-block; transition: transform 0.2s; }
 
 /* ── Floating bar ─────────────────────────────────────────────────── */

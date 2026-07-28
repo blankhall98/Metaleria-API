@@ -1,15 +1,13 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, icon %}
 
 {% block title %}{{ form_title or "Nueva nota" }}{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Operación</p>
-        <h1 class="h4 text-white mb-0">{{ form_title or "Nueva nota" }}</h1>
-    </div>
-    <a href="{{ back_url or '/web/worker/notes' }}" class="btn btn-outline-secondary btn-sm">Volver</a>
-</div>
+{% call page_header(form_title or 'Nueva nota', eyebrow='Operación',
+                    sub='Captura la operación, los materiales y el peso de cada pesaje con su evidencia.') %}
+    <a href="{{ back_url or '/web/worker/notes' }}" class="btn btn-outline-secondary">Volver</a>
+{% endcall %}
 
 {% if error %}
     <div class="alert alert-danger py-2 small">
@@ -23,253 +21,229 @@
 {% endif %}
 <div id="evidence-alert" class="alert alert-warning py-2 small d-none"></div>
 
-<div class="card hover-lift worker-note-card">
-    <div class="card-body">
-        <form method="post" action="{{ action_url or '/web/worker/notes/nueva' }}" class="worker-note-form d-grid gap-4" oninput="updateSteps()">
-            <section class="step-card worker-step-card" id="step1">
-                <div class="note-step-header">
-                    <span class="chip-strong note-step-pill">Paso 1</span>
-                    <div>
-                        <div class="note-step-title">Define operaci&oacute;n y partner</div>
-                        <div class="note-step-sub">Selecciona la operaci&oacute;n y el contacto correcto.</div>
-                    </div>
+<form method="post" action="{{ action_url or '/web/worker/notes/nueva' }}"
+      class="worker-note-form s-stack" data-submit-once="1" oninput="updateSteps()">
+
+    <section class="card" id="step1">
+        <div class="card-body">
+            <h2 class="s-card-title">Operación y contraparte</h2>
+            <p class="s-card-sub">Selecciona la operación y el contacto correcto.</p>
+
+            <div class="s-form-grid mt-3">
+                {% if show_sucursal_picker %}
+                <div>
+                    <label class="form-label" for="sucursal_contable_id">Sucursal contable <span class="s-req" aria-hidden="true">*</span></label>
+                    <select class="form-select" id="sucursal_contable_id" name="sucursal_contable_id" required onchange="filterPartnersBySucursal(); updateSteps();">
+                        <option value="">Selecciona sucursal</option>
+                        {% for s in sucursales %}
+                            <option value="{{ s.id }}" {% if form_sucursal_id|string == s.id|string %}selected{% endif %}>{{ s.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                    <p class="form-text">Será la sucursal donde se llevará el saldo de la nota.</p>
                 </div>
-                <div class="row g-3">
-                    {% if show_sucursal_picker %}
-                    <div class="col-lg-4">
-                        <div class="note-step-panel">
-                            <label class="form-label" for="sucursal_contable_id">Sucursal contable</label>
-                            <select class="form-select" id="sucursal_contable_id" name="sucursal_contable_id" required onchange="filterPartnersBySucursal(); updateSteps();">
-                                <option value="">Selecciona sucursal</option>
-                                {% for s in sucursales %}
-                                    <option value="{{ s.id }}" {% if form_sucursal_id|string == s.id|string %}selected{% endif %}>{{ s.nombre }}</option>
+                {% endif %}
+
+                <div>
+                    {% if force_tipo_operacion %}
+                        <input type="hidden" id="tipo_operacion" name="tipo_operacion" value="{{ force_tipo_operacion }}">
+                        <span class="s-def__label">Tipo de operación</span>
+                        <span class="s-def__value">{{ 'Compra' if force_tipo_operacion == 'compra' else 'Venta' }}</span>
+                    {% else %}
+                        <label class="form-label" for="tipo_operacion">Tipo de operación <span class="s-req" aria-hidden="true">*</span></label>
+                        <select class="form-select" id="tipo_operacion" name="tipo_operacion" required onchange="togglePartner(); updateSteps();">
+                            <option value="compra">Compra</option>
+                            <option value="venta">Venta</option>
+                        </select>
+                    {% endif %}
+                </div>
+
+                <div id="venta-partner-kind-wrap" {% if force_tipo_operacion == 'compra' %}style="display:none"{% endif %}>
+                    <label class="form-label" for="venta_partner_kind">En venta, registrar como</label>
+                    <select class="form-select" id="venta_partner_kind" name="venta_partner_kind" onchange="togglePartner(); updateSteps();">
+                        <option value="cliente">Cliente</option>
+                        <option value="proveedor">Proveedor</option>
+                    </select>
+                    <p class="form-text">Usa proveedor solo si ese proveedor también compra material y su saldo debe netearse en su mismo registro.</p>
+                </div>
+
+                <div>
+                    <label class="form-label"><span id="partner_select_label">Contraparte</span> <span class="s-req" aria-hidden="true">*</span></label>
+                    <select class="form-select" id="proveedor_compra_id" name="proveedor_compra_id" aria-label="Proveedor para la compra">
+                        <option value="">Proveedor para compra</option>
+                        {% for p in proveedores %}
+                            <option value="{{ p.id }}" data-sucursal-id="{{ p.sucursal_id or '' }}">{{ p.nombre_completo }}</option>
+                        {% endfor %}
+                    </select>
+                    <select class="form-select" id="proveedor_venta_id" name="proveedor_venta_id" aria-label="Proveedor comprador">
+                        <option value="">Proveedor comprador</option>
+                        {% for p in proveedores_venta | default(proveedores) %}
+                            <option value="{{ p.id }}" data-sucursal-id="{{ p.sucursal_id or '' }}">{{ p.nombre_completo }}{% if p.permite_ventas %} · compra y venta{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                    <select class="form-select" id="cliente_id" name="cliente_id" aria-label="Cliente comprador">
+                        <option value="">Cliente comprador</option>
+                        {% for c in clientes %}
+                            <option value="{{ c.id }}" data-sucursal-id="{{ c.sucursal_id or '' }}">{{ c.nombre_completo }}</option>
+                        {% endfor %}
+                    </select>
+                    <p class="form-text" id="partner_help_text">Selecciona la contraparte correcta según la operación.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="card" id="step2">
+        <div class="card-body">
+            <h2 class="s-card-title">Materiales y pesajes</h2>
+            <p class="s-card-sub">Agrega los pesos y la evidencia de cada material.</p>
+
+            <div id="materiales-wrapper" class="s-stack mt-3">
+                <div class="material-row s-subpanel">
+                    <div class="s-between mb-3">
+                        <h3 class="s-card-title">Material</h3>
+                        <button type="button" class="btn btn-outline-danger btn-sm"
+                                data-confirm="¿Eliminar este material de la nota?"
+                                onclick="removeMaterial(this)">
+                            {{ icon('trash', 's-icon--sm') }} Eliminar material
+                        </button>
+                    </div>
+
+                    <div class="s-form-grid">
+                        <div>
+                            <label class="form-label" data-for="material">Material <span class="s-req" aria-hidden="true">*</span></label>
+                            <select class="form-select" name="material_id" data-field="material" required>
+                                <option value="">Selecciona material</option>
+                                {% for m in materiales %}
+                                    <option value="{{ m.id }}">{{ m.nombre }} ({{ m.unidad_medida }})</option>
                                 {% endfor %}
                             </select>
-                            <small class="text-muted">Esta sera la sucursal donde se llevara el saldo de la nota.</small>
+                        </div>
+                        <div>
+                            <label class="form-label" data-for="tipoprecio">Tipo de precio</label>
+                            <select class="form-select" name="tipo_cliente" data-field="tipoprecio">
+                                <option value="">Regular</option>
+                                <option value="mayorista">Mayorista</option>
+                                <option value="menudeo">Menudeo</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <p class="s-section-label mt-4">Pesajes</p>
+                    <div class="subpesajes-wrapper">
+                        <div class="subpesaje-group">
+                            <div>
+                                <label class="form-label" data-for="bruto">Peso bruto</label>
+                                <input class="form-control subpesaje-input" data-field="bruto" type="number" step="0.01" min="0.01" placeholder="Ej. 150.25" oninput="updatePesajes(this)">
+                            </div>
+                            <div>
+                                <label class="form-label" data-for="desc">Desc. kg</label>
+                                <input class="form-control subpesaje-desc" data-field="desc" type="number" step="0.01" min="0" placeholder="0.00" oninput="updatePesajes(this)">
+                            </div>
+                            <div>
+                                <label class="form-label" data-for="neto">Neto</label>
+                                <input class="form-control subpesaje-neto" data-field="neto" type="text" value="0.00" readonly tabindex="-1">
+                            </div>
+                            <div class="subpesaje-actions">
+                                <span class="subpesaje-actions__photo">
+                                    <input class="subpesaje-evid d-none" type="file" accept="image/*" data-capture="environment" onchange="handleEvidenceChange(this)">
+                                    <button type="button" class="btn btn-outline-secondary" aria-label="Adjuntar foto del pesaje" onclick="triggerEvidence(this)">
+                                        {{ icon('camera', 's-icon--sm') }}
+                                        <span class="evid-label" aria-live="polite">Foto</span>
+                                    </button>
+                                    <img class="evid-thumb d-none" alt="Evidencia">
+                                </span>
+                                <button type="button" class="btn btn-outline-danger btn-sm"
+                                        data-confirm="¿Eliminar este pesaje?"
+                                        onclick="removePesaje(this)">
+                                    {{ icon('trash', 's-icon--sm') }} Eliminar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <button type="button" class="btn btn-outline-primary btn-sm add-pesaje-btn" onclick="addPesaje(this)">
+                            {{ icon('plus', 's-icon--sm') }} Agregar pesaje
+                        </button>
+                    </div>
+                    <input type="hidden" name="subpesajes" value="">
+                    <p class="form-text">Ingresa peso bruto y descuento; el neto se calcula solo. Sube la evidencia desde tu galería o cámara.</p>
+
+                    {# Totales calculados: se envían con la nota y se muestran abajo como cifras, no como campos. #}
+                    <input type="hidden" name="kg_bruto">
+                    <input type="hidden" name="kg_descuento" value="0">
+
+                    {% if show_kg_real %}
+                    <div class="s-form-grid mt-3">
+                        <div>
+                            <label class="form-label" data-for="kgreal">Kg reales de inventario</label>
+                            <input class="form-control" type="number" step="0.001" min="0" name="kg_real" data-field="kgreal" placeholder="Si se deja vacío, se usa el kg neto">
+                            <p class="form-text">Interno. Afecta las existencias de inventario pero no aparece en la orden PDF.</p>
                         </div>
                     </div>
                     {% endif %}
-                    <div class="col-lg-4">
-                        <div class="note-step-panel">
-                            <label class="form-label" for="tipo_operacion">Tipo de operaci&oacute;n</label>
-                            {% if force_tipo_operacion %}
-                                <input type="hidden" id="tipo_operacion" name="tipo_operacion" value="{{ force_tipo_operacion }}">
-                                <div class="form-control bg-light">{{ 'Compra' if force_tipo_operacion == 'compra' else 'Venta' }}</div>
-                            {% else %}
-                                <select class="form-select" id="tipo_operacion" name="tipo_operacion" required onchange="togglePartner(); updateSteps();">
-                                    <option value="compra">Compra</option>
-                                    <option value="venta">Venta</option>
-                                </select>
-                            {% endif %}
-                        </div>
-                    </div>
-                    <div class="col-lg-4" id="venta-partner-kind-wrap" {% if force_tipo_operacion == 'compra' %}style="display:none"{% endif %}>
-                        <div class="note-step-panel">
-                            <label class="form-label" for="venta_partner_kind">En venta, registrar como</label>
-                            <select class="form-select" id="venta_partner_kind" name="venta_partner_kind" onchange="togglePartner(); updateSteps();">
-                                <option value="cliente">Cliente</option>
-                                <option value="proveedor">Proveedor</option>
-                            </select>
-                            <small class="text-muted">Usa proveedor solo si ese proveedor tambi&eacute;n compra material y su saldo debe netearse en su mismo record.</small>
-                        </div>
-                    </div>
-                    <div class="col-lg-4">
-                        <div class="note-step-panel">
-                            <label class="form-label" id="partner_select_label">Partner</label>
-                            <div class="d-grid gap-2">
-                                <select class="form-select" id="proveedor_compra_id" name="proveedor_compra_id">
-                                    <option value="">Proveedor para compra</option>
-                                    {% for p in proveedores %}
-                                        <option value="{{ p.id }}" data-sucursal-id="{{ p.sucursal_id or '' }}">{{ p.nombre_completo }}</option>
-                                    {% endfor %}
-                                </select>
-                                <select class="form-select" id="proveedor_venta_id" name="proveedor_venta_id">
-                                    <option value="">Proveedor comprador</option>
-                                    {% for p in proveedores_venta | default(proveedores) %}
-                                        <option value="{{ p.id }}" data-sucursal-id="{{ p.sucursal_id or '' }}">{{ p.nombre_completo }}{% if p.permite_ventas %} · compra y venta{% endif %}</option>
-                                    {% endfor %}
-                                </select>
-                                <select class="form-select" id="cliente_id" name="cliente_id">
-                                    <option value="">Cliente comprador</option>
-                                    {% for c in clientes %}
-                                        <option value="{{ c.id }}" data-sucursal-id="{{ c.sucursal_id or '' }}">{{ c.nombre_completo }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <small class="text-muted" id="partner_help_text">Selecciona la contraparte correcta seg&uacute;n la operaci&oacute;n.</small>
-                        </div>
-                    </div>
-                </div>
-            </section>
 
-            <section class="step-card worker-step-card disabled" id="step2">
-                <div class="note-step-header">
-                    <span class="chip-strong note-step-pill">Paso 2</span>
-                    <div>
-                        <div class="note-step-title">Materiales y subpesajes</div>
-                        <div class="note-step-sub">Agrega los pesos y la evidencia de cada material.</div>
+                    <p class="s-section-label mt-4">Total de este material</p>
+                    <div class="s-stack-2">
+                        <div class="s-between"><span class="text-muted small">Kg bruto</span><strong class="kg-bruto s-num">0.00</strong></div>
+                        <div class="s-between"><span class="text-muted small">Kg descuento</span><strong class="kg-desc s-num">0.00</strong></div>
+                        <div class="s-between"><span class="text-muted small">Kg neto</span><strong class="kg-neto s-num">0.00</strong></div>
+                        <div class="s-between"><span class="text-muted small">Total $</span><strong class="total-material s-money">$0.00</strong></div>
                     </div>
                 </div>
-
-                <div id="materiales-wrapper" class="d-grid gap-3 mb-3">
-                    <div class="material-row material-card worker-material-card">
-                        <div class="material-header">
-                            <div>
-                                <div class="material-title">Material</div>
-                                <div class="material-sub">Agrega subpesajes y evidencia.</div>
-                            </div>
-                            <button type="button" class="btn btn-sm remove-btn" onclick="removeMaterial(this)">Eliminar material</button>
-                        </div>
-                        <div class="row g-2">
-                            <div class="col-12">
-                                <label class="form-label">Material</label>
-                                <select class="form-select" name="material_id" required>
-                                    <option value="">Selecciona material</option>
-                                    {% for m in materiales %}
-                                        <option value="{{ m.id }}">{{ m.nombre }} ({{ m.unidad_medida }})</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="col-12">
-                                <label class="form-label">Tipo de precio</label>
-                                <select class="form-select" name="tipo_cliente">
-                                    <option value="">Regular</option>
-                                    <option value="mayorista">Mayorista</option>
-                                    <option value="menudeo">Menudeo</option>
-                                </select>
-                            </div>
-                            <div class="col-12">
-                                <label class="form-label">Subpesajes</label>
-                                <div class="subpesaje-panel">
-                                    <div class="d-grid gap-2 subpesajes-wrapper">
-                                        <div class="input-group flex-wrap align-items-center subpesaje-group">
-                                            <span class="input-group-text">Peso bruto</span>
-                                            <input class="form-control subpesaje-input" type="number" step="0.01" min="0.01" placeholder="Ej. 150.25" oninput="updatePesajes(this)">
-                                            <span class="input-group-text">Desc. kg</span>
-                                            <input class="form-control subpesaje-desc" type="number" step="0.01" min="0" placeholder="0.00" oninput="updatePesajes(this)">
-                                            <span class="input-group-text bg-light">Neto</span>
-                                            <span class="input-group-text subpesaje-neto">0.00</span>
-                                            <input class="subpesaje-evid d-none" type="file" accept="image/*" data-capture="environment" onchange="handleEvidenceChange(this)">
-                                            <button type="button" class="evidence-btn" onclick="triggerEvidence(this)" title="Tomar o seleccionar foto">
-                                                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                                                    <path d="M9 4.5 7.8 6H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-2.8L15 4.5H9Zm3 10.75a3.25 3.25 0 1 1 0-6.5 3.25 3.25 0 0 1 0 6.5Z" fill="currentColor"/>
-                                                </svg>
-                                            </button>
-                                            <img class="evid-thumb d-none" alt="Evidencia">
-                                            <span class="input-group-text bg-light evid-label">Sin foto</span>
-                                            <button type="button" class="btn btn-outline-danger" onclick="removePesaje(this)">Eliminar</button>
-                                        </div>
-                                    </div>
-                                    <div class="subpesaje-actions">
-                                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="addPesaje(this)">Agregar pesaje</button>
-                                    </div>
-                                    <input type="hidden" name="subpesajes" value="">
-                                    <div class="form-text">Ingresa peso bruto y descuento; el neto se calcula solo. Sube la evidencia desde tu galer&iacute;a o c&aacute;mara.</div>
-                                </div>
-                            </div>
-                            <div class="col-6">
-                                <label class="form-label">Kg bruto total (auto)</label>
-                                <input class="form-control" type="number" step="0.01" min="0" name="kg_bruto" readonly>
-                                <div class="form-text">Suma de todos los pesajes brutos.</div>
-                            </div>
-                            <div class="col-6">
-                                <label class="form-label">Kg descuento total (auto)</label>
-                                <input class="form-control" type="number" step="0.01" min="0" name="kg_descuento" value="0" readonly>
-                            </div>
-                            {% if show_kg_real %}
-                            <div class="col-12">
-                                <label class="form-label">Kg reales inventario <span class="text-muted fw-normal">(opcional)</span></label>
-                                <input class="form-control" type="number" step="0.001" min="0" name="kg_real" placeholder="Si se deja vacío, se usa el kg neto">
-                                <div class="form-text">Interno. Afecta existencias de inventario pero no aparece en la orden PDF.</div>
-                            </div>
-                            {% endif %}
-                            <div class="col-12">
-                                <div class="material-summary border rounded p-2 bg-white">
-                                    <div class="d-flex justify-content-between">
-                                        <span class="text-muted small">Kg bruto</span>
-                                        <strong class="kg-bruto">0.00</strong>
-                                    </div>
-                                    <div class="d-flex justify-content-between">
-                                        <span class="text-muted small">Kg descuento</span>
-                                        <strong class="kg-desc">0.00</strong>
-                                    </div>
-                                    <div class="d-flex justify-content-between">
-                                        <span class="text-muted small">Kg neto</span>
-                                        <strong class="kg-neto">0.00</strong>
-                                    </div>
-                                    <div class="d-flex justify-content-between">
-                                        <span class="text-muted small">Total $ (se calculará)</span>
-                                        <strong class="total-material text-muted">-</strong>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="d-flex justify-content-center">
-                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="addMaterial()">Agregar material</button>
-                </div>
-                <div class="note-summary-panel border rounded p-3 bg-white mt-3">
-                    <h3 class="h6 mb-2">Resumen de la nota (auto)</h3>
-                    <div class="d-flex justify-content-between">
-                        <span class="text-muted small">Kg bruto</span>
-                        <strong id="nota-kg-bruto">0.00</strong>
-                    </div>
-                    <div class="d-flex justify-content-between">
-                        <span class="text-muted small">Kg descuento</span>
-                        <strong id="nota-kg-desc">0.00</strong>
-                    </div>
-                    <div class="d-flex justify-content-between">
-                        <span class="text-muted small">Kg neto</span>
-                        <strong id="nota-kg-neto">0.00</strong>
-                    </div>
-                    <div class="d-flex justify-content-between">
-                        <span class="text-muted small">Total $</span>
-                        <strong id="nota-total" class="text-muted">-</strong>
-                    </div>
-                </div>
-            </section>
-
-            <section class="step-card worker-step-card disabled" id="step3">
-                <div class="note-step-header">
-                    <span class="chip-strong note-step-pill">Paso 3</span>
-                    <div>
-                        <div class="note-step-title">Comentarios</div>
-                        <div class="note-step-sub">Agrega contexto adicional para el revisor.</div>
-                    </div>
-                </div>
-                <div class="note-step-panel">
-                    <textarea class="form-control" id="comentarios_trabajador" name="comentarios_trabajador" rows="2" placeholder="Notas para el revisor (opcional)" disabled></textarea>
-                </div>
-            </section>
-
-            <section class="step-card worker-step-card" id="step4">
-                <div class="note-step-header">
-                    <span class="chip-strong note-step-pill">Paso 4</span>
-                    <div>
-                        <div class="note-step-title">Evidencia extra</div>
-                        <div class="note-step-sub">Agrega fotos adicionales para respaldar la nota.</div>
-                    </div>
-                </div>
-                <div class="note-step-panel">
-                    <div class="d-flex flex-column flex-sm-row gap-2 align-items-sm-center justify-content-between">
-                        <div class="text-muted small">Fotos cargadas: <strong id="extra-evidence-count">0</strong></div>
-                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="triggerExtraEvidence()">Agregar fotos</button>
-                    </div>
-                    <input class="d-none" type="file" id="extra_evidence_input" accept="image/*" multiple>
-                    <input type="hidden" name="extra_evidencias" id="extra_evidencias" value="[]">
-                    <div id="extra-evidence-list" class="extra-evidence-grid mt-3"></div>
-                    <div class="form-text">Puedes seleccionar varias fotos desde tu galer&iacute;a. Max {{ max_mb }}MB por imagen.</div>
-                </div>
-            </section>
-
-            <div class="note-submit-panel d-grid gap-2">
-                <button type="submit" class="btn btn-primary btn-lg" id="submitBtn" disabled>{{ submit_label or "Guardar borrador" }}</button>
-                <small class="text-muted">Este registro quedará en estado borrador y será visible para revisión.</small>
             </div>
-        </form>
+
+            <div class="mt-3">
+                <button type="button" class="btn btn-outline-primary btn-sm" onclick="addMaterial()">
+                    {{ icon('plus', 's-icon--sm') }} Agregar material
+                </button>
+            </div>
+
+            <div class="s-subpanel mt-4">
+                <p class="s-section-label">Total de la nota</p>
+                <div class="s-stack-2">
+                    <div class="s-between"><span class="text-muted small">Kg bruto</span><strong id="nota-kg-bruto" class="s-num">0.00</strong></div>
+                    <div class="s-between"><span class="text-muted small">Kg descuento</span><strong id="nota-kg-desc" class="s-num">0.00</strong></div>
+                    <div class="s-between"><span class="text-muted small">Kg neto</span><strong id="nota-kg-neto" class="s-num">0.00</strong></div>
+                    <div class="s-between"><span class="text-muted small">Total $</span><strong id="nota-total" class="s-money">$0.00</strong></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-body">
+            <h2 class="s-card-title">Comentarios y evidencia extra</h2>
+            <p class="s-card-sub">Contexto para quien revisa la nota y fotos adicionales de respaldo.</p>
+
+            <div class="mt-3" id="step3">
+                <label class="form-label" for="comentarios_trabajador">Comentarios para el revisor</label>
+                <textarea class="form-control" id="comentarios_trabajador" name="comentarios_trabajador" rows="2" placeholder="Opcional" disabled></textarea>
+            </div>
+
+            <div class="s-subpanel mt-4" id="step4">
+                <div class="s-between">
+                    <div>
+                        <p class="s-section-label mb-0">Evidencia extra</p>
+                        <span class="text-muted small">Fotos cargadas: <strong id="extra-evidence-count">0</strong></span>
+                    </div>
+                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="triggerExtraEvidence()">
+                        {{ icon('plus', 's-icon--sm') }} Agregar fotos
+                    </button>
+                </div>
+                <input class="d-none" type="file" id="extra_evidence_input" accept="image/*" multiple>
+                <input type="hidden" name="extra_evidencias" id="extra_evidencias" value="[]">
+                <div id="extra-evidence-list" class="extra-evidence-grid mt-3"></div>
+                <p class="form-text">Puedes seleccionar varias fotos desde tu galería. Máx. {{ max_mb }} MB por imagen.</p>
+            </div>
+        </div>
+    </section>
+
+    <div class="s-stack-2">
+        <button type="submit" class="btn btn-primary btn-lg w-100" id="submitBtn"
+                data-loading-text="Guardando…" disabled>{{ submit_label or "Guardar borrador" }}</button>
+        <p class="form-text text-center mb-0">Este registro quedará en estado borrador y será visible para revisión.</p>
     </div>
-</div>
+</form>
 
 <div class="evidence-picker-modal" id="workerEvidencePickerModal" aria-hidden="true">
     <div class="evidence-picker-backdrop" data-evidence-close></div>
@@ -278,12 +252,12 @@
             <h3 id="workerEvidencePickerTitle">Agregar evidencia</h3>
             <button type="button" class="evidence-picker-close" data-evidence-close aria-label="Cerrar">&times;</button>
         </div>
-        <p class="text-muted small mb-0">Elige c&oacute;mo quieres subir la foto.</p>
+        <p class="text-muted small mb-0">Elige cómo quieres subir la foto.</p>
         <div class="evidence-picker-actions">
             <button type="button" class="btn btn-primary w-100" data-evidence-option="camera">Tomar foto</button>
-            <button type="button" class="btn btn-outline-primary w-100" data-evidence-option="gallery">Elegir de la galer&iacute;a</button>
+            <button type="button" class="btn btn-outline-primary w-100" data-evidence-option="gallery">Elegir de la galería</button>
         </div>
-        <div class="evidence-picker-hint text-muted small">Formatos JPG/PNG. Max {{ max_mb }}MB.</div>
+        <div class="evidence-picker-hint text-muted small">Formatos JPG/PNG. Máx. {{ max_mb }} MB.</div>
     </div>
 </div>
 
@@ -303,6 +277,62 @@
     const extraEvidenceHidden = document.getElementById('extra_evidencias');
     const extraEvidenceCount = document.getElementById('extra-evidence-count');
     let extraEvidenceUrls = [];
+
+    /* Markup for one weighing row. Kept in one place so the server-rendered
+       row and every row added at runtime stay identical. */
+    const SUBPESAJE_INNER_HTML = `
+        <div>
+            <label class="form-label" data-for="bruto">Peso bruto</label>
+            <input class="form-control subpesaje-input" data-field="bruto" type="number" step="0.01" min="0.01" placeholder="Ej. 150.25" oninput="updatePesajes(this)">
+        </div>
+        <div>
+            <label class="form-label" data-for="desc">Desc. kg</label>
+            <input class="form-control subpesaje-desc" data-field="desc" type="number" step="0.01" min="0" placeholder="0.00" oninput="updatePesajes(this)">
+        </div>
+        <div>
+            <label class="form-label" data-for="neto">Neto</label>
+            <input class="form-control subpesaje-neto" data-field="neto" type="text" value="0.00" readonly tabindex="-1">
+        </div>
+        <div class="subpesaje-actions">
+            <span class="subpesaje-actions__photo">
+                <input class="subpesaje-evid d-none" type="file" accept="image/*" data-capture="environment" onchange="handleEvidenceChange(this)">
+                <button type="button" class="btn btn-outline-secondary" aria-label="Adjuntar foto del pesaje" onclick="triggerEvidence(this)">
+                    <svg class="s-icon s-icon--sm" aria-hidden="true" focusable="false"><use href="#i-camera"></use></svg>
+                    <span class="evid-label" aria-live="polite">Foto</span>
+                </button>
+                <img class="evid-thumb d-none" alt="Evidencia">
+            </span>
+            <button type="button" class="btn btn-outline-danger btn-sm" data-confirm="¿Eliminar este pesaje?" onclick="removePesaje(this)">
+                <svg class="s-icon s-icon--sm" aria-hidden="true" focusable="false"><use href="#i-trash"></use></svg> Eliminar
+            </button>
+        </div>
+    `;
+
+    /* Material rows and weighing rows are cloned, so their ids cannot be
+       written in the template. Every control marked data-field gets a unique
+       id here and its data-for label is pointed at it. */
+    let fieldSeq = 0;
+    function bindFieldLabels(scope) {
+        if (!scope) return;
+        const controls = [];
+        if (scope.matches && scope.matches('[data-field]')) controls.push(scope);
+        scope.querySelectorAll('[data-field]').forEach((el) => controls.push(el));
+        controls.forEach((el) => {
+            fieldSeq += 1;
+            const id = `f-${el.dataset.field}-${fieldSeq}`;
+            el.id = id;
+            const parent = el.parentElement;
+            const label = parent ? parent.querySelector(`label[data-for="${el.dataset.field}"]`) : null;
+            if (label) label.setAttribute('for', id);
+        });
+    }
+    function makeSubpesajeGroup() {
+        const group = document.createElement('div');
+        group.className = 'subpesaje-group';
+        group.innerHTML = SUBPESAJE_INNER_HTML;
+        bindFieldLabels(group);
+        return group;
+    }
 
     function formatNumber(value, decimals) {
         const safe = Number(value || 0);
@@ -369,7 +399,7 @@
         alertEl.classList.add('d-none');
     }
     function triggerEvidence(btn) {
-        const group = btn.closest('.input-group');
+        const group = btn.closest('.subpesaje-group');
         const input = group ? group.querySelector('.subpesaje-evid') : null;
         if (!input) return;
         if (!evidenceModal) {
@@ -389,7 +419,7 @@
     }
     function handleEvidenceChange(inputEl) {
         const file = inputEl.files && inputEl.files[0];
-        const group = inputEl.closest('.input-group');
+        const group = inputEl.closest('.subpesaje-group');
         if (!file || !group) return;
         clearEvidenceAlert();
         if (file.size > MAX_MB * 1024 * 1024) {
@@ -397,15 +427,15 @@
             inputEl.dataset.error = '1';
             inputEl.dataset.url = '';
             inputEl.dataset.uploading = '';
-            setEvidenceLabel(group, `Imagen muy pesada (max ${MAX_MB}MB).`, 'error');
-            showEvidenceAlert(`La imagen supera ${MAX_MB}MB. Usa un archivo m&aacute;s ligero.`, 'warning');
+            setEvidenceLabel(group, 'Muy pesada', 'error');
+            showEvidenceAlert(`La imagen supera ${MAX_MB} MB. Usa un archivo más ligero.`, 'warning');
             updatePesajes(inputEl);
             return;
         }
         inputEl.dataset.error = '';
         inputEl.dataset.uploading = '1';
         inputEl.dataset.url = '';
-        setEvidenceLabel(group, 'Subiendo...', 'uploading');
+        setEvidenceLabel(group, 'Subiendo…', 'uploading');
         const thumb = group.querySelector('.evid-thumb');
         if (thumb) {
             const objectUrl = URL.createObjectURL(file);
@@ -440,11 +470,11 @@
             clearEvidenceAlert();
             inputEl.dataset.url = data.url;
             inputEl.dataset.error = '';
-            setEvidenceLabel(inputEl.closest('.input-group'), 'Evidencia cargada', 'ready');
+            setEvidenceLabel(inputEl.closest('.subpesaje-group'), 'Foto lista', 'ready');
         } catch (err) {
             inputEl.dataset.error = '1';
             inputEl.dataset.url = '';
-            setEvidenceLabel(inputEl.closest('.input-group'), 'Error al subir', 'error');
+            setEvidenceLabel(inputEl.closest('.subpesaje-group'), 'Error', 'error');
             showEvidenceAlert(err && err.message ? err.message : 'No se pudo subir la evidencia. Intenta de nuevo.', 'danger');
         } finally {
             inputEl.dataset.uploading = '';
@@ -486,7 +516,7 @@
             const removeBtn = document.createElement('button');
             removeBtn.type = 'button';
             removeBtn.className = 'btn btn-outline-danger btn-sm';
-            removeBtn.textContent = 'Quitar';
+            removeBtn.textContent = 'Eliminar';
             removeBtn.addEventListener('click', () => {
                 extraEvidenceUrls.splice(index, 1);
                 renderExtraEvidence();
@@ -495,7 +525,7 @@
             link.href = url;
             link.target = '_blank';
             link.rel = 'noopener';
-            link.className = 'small text-muted';
+            link.className = 'btn btn-outline-secondary btn-sm';
             link.textContent = 'Ver';
             actions.appendChild(link);
             actions.appendChild(removeBtn);
@@ -508,7 +538,7 @@
         for (const file of files) {
             if (!file) continue;
             if (file.size > MAX_MB * 1024 * 1024) {
-                showEvidenceAlert(`La imagen supera ${MAX_MB}MB. Usa un archivo mas ligero.`, 'warning');
+                showEvidenceAlert(`La imagen supera ${MAX_MB} MB. Usa un archivo más ligero.`, 'warning');
                 continue;
             }
             pendingUploads += 1;
@@ -550,6 +580,19 @@
             uploadExtraEvidenceFiles(files);
         });
     }
+    /* Only the select that applies to the current operation stays on screen;
+       the other two used to sit below it and read as a three-row list box. */
+    function setPartnerSelect(selectEl, active) {
+        if (!selectEl) return;
+        if (active) {
+            selectEl.removeAttribute('disabled');
+            selectEl.classList.remove('d-none');
+        } else {
+            selectEl.setAttribute('disabled', 'disabled');
+            selectEl.value = '';
+            selectEl.classList.add('d-none');
+        }
+    }
     function togglePartner() {
         const tipo = document.getElementById('tipo_operacion').value;
         const sucursalSel = document.getElementById('sucursal_contable_id');
@@ -566,41 +609,23 @@
             : '';
         if (tipo === 'compra') {
             if (ventaPartnerWrap) ventaPartnerWrap.classList.add('d-none');
-            if (proveedorCompraSel) proveedorCompraSel.removeAttribute('disabled');
-            if (proveedorVentaSel) {
-                proveedorVentaSel.setAttribute('disabled', 'disabled');
-                proveedorVentaSel.value = '';
-            }
-            if (clienteSel) {
-                clienteSel.setAttribute('disabled', 'disabled');
-                clienteSel.value = '';
-            }
+            setPartnerSelect(proveedorCompraSel, true);
+            setPartnerSelect(proveedorVentaSel, false);
+            setPartnerSelect(clienteSel, false);
             if (partnerLabel) partnerLabel.textContent = 'Proveedor';
-            if (partnerHelp) partnerHelp.textContent = 'Selecciona el proveedor que le vende material a la metaleria.' + branchHint;
+            if (partnerHelp) partnerHelp.textContent = 'Selecciona el proveedor que le vende material a la metalería.' + branchHint;
         } else if (ventaPartnerKind === 'proveedor') {
             if (ventaPartnerWrap) ventaPartnerWrap.classList.remove('d-none');
-            if (proveedorCompraSel) {
-                proveedorCompraSel.setAttribute('disabled', 'disabled');
-                proveedorCompraSel.value = '';
-            }
-            if (proveedorVentaSel) proveedorVentaSel.removeAttribute('disabled');
-            if (clienteSel) {
-                clienteSel.setAttribute('disabled', 'disabled');
-                clienteSel.value = '';
-            }
+            setPartnerSelect(proveedorCompraSel, false);
+            setPartnerSelect(proveedorVentaSel, true);
+            setPartnerSelect(clienteSel, false);
             if (partnerLabel) partnerLabel.textContent = 'Proveedor comprador';
-            if (partnerHelp) partnerHelp.textContent = 'La venta se registrar\u00e1 contra este proveedor y su saldo se netear\u00e1 en el mismo record.' + branchHint;
+            if (partnerHelp) partnerHelp.textContent = 'La venta se registrará contra este proveedor y su saldo se neteará en el mismo registro.' + branchHint;
         } else {
             if (ventaPartnerWrap) ventaPartnerWrap.classList.remove('d-none');
-            if (proveedorCompraSel) {
-                proveedorCompraSel.setAttribute('disabled', 'disabled');
-                proveedorCompraSel.value = '';
-            }
-            if (proveedorVentaSel) {
-                proveedorVentaSel.setAttribute('disabled', 'disabled');
-                proveedorVentaSel.value = '';
-            }
-            clienteSel.removeAttribute('disabled');
+            setPartnerSelect(proveedorCompraSel, false);
+            setPartnerSelect(proveedorVentaSel, false);
+            setPartnerSelect(clienteSel, true);
             if (partnerLabel) partnerLabel.textContent = 'Cliente comprador';
             if (partnerHelp) partnerHelp.textContent = 'Selecciona el cliente al que se le vende material.' + branchHint;
         }
@@ -641,7 +666,7 @@
         inputEl.dataset.url = cleanUrl;
         inputEl.dataset.uploading = '';
         inputEl.dataset.error = '';
-        const group = inputEl.closest('.input-group');
+        const group = inputEl.closest('.subpesaje-group');
         if (!group) return;
         const thumb = group.querySelector('.evid-thumb');
         const label = group.querySelector('.evid-label');
@@ -659,10 +684,10 @@
         if (label) {
             label.classList.remove('is-uploading', 'is-error', 'is-ready');
             if (cleanUrl) {
-                label.textContent = 'Evidencia cargada';
+                label.textContent = 'Foto lista';
                 label.classList.add('is-ready');
             } else {
-                label.textContent = 'Sin foto';
+                label.textContent = 'Foto';
             }
         }
     }
@@ -687,7 +712,7 @@
         }
 
         const subWrapper = row.querySelector('.subpesajes-wrapper');
-        const addBtn = row.querySelector('.subpesaje-actions button');
+        const addBtn = row.querySelector('.add-pesaje-btn');
         const subList = Array.isArray(data?.subpesajes) && data.subpesajes.length > 0
             ? data.subpesajes
             : [{ peso_kg: 0, descuento_kg: 0, foto_url: null }];
@@ -712,6 +737,7 @@
             setEvidenceInputUrl(evidInput, sp?.foto_url || '');
         });
 
+        bindFieldLabels(row);
         const firstInput = row.querySelector('.subpesaje-input');
         if (firstInput) updatePesajes(firstInput);
         return row;
@@ -766,51 +792,18 @@
         // limpiar selects/inputs
         clone.querySelectorAll('select').forEach(sel => sel.selectedIndex = 0);
         clone.querySelectorAll('input').forEach(inp => {
-            if (inp.type === 'hidden') inp.value = '';
-            else if (inp.name === 'kg_descuento') inp.value = '0';
-            else inp.value = '';
+            inp.value = inp.name === 'kg_descuento' ? '0' : '';
         });
-        clone.querySelectorAll('.subpesaje-evid').forEach(inp => {
-            inp.dataset.url = '';
-            inp.dataset.uploading = '';
-            inp.dataset.error = '';
-        });
-        clone.querySelectorAll('.evid-thumb').forEach(img => {
-            img.removeAttribute('src');
-            img.dataset.local = '';
-            img.classList.add('d-none');
-        });
-        const evidLabel = clone.querySelector('.evid-label');
-        if (evidLabel) {
-            evidLabel.textContent = 'Sin foto';
-            evidLabel.classList.remove('is-uploading', 'is-error', 'is-ready');
-        }
         // reset subpesajes a solo una fila vacía
         const subWrapper = clone.querySelector('.subpesajes-wrapper');
-        subWrapper.innerHTML = `
-            <div class="input-group flex-wrap align-items-center subpesaje-group">
-                <span class="input-group-text">Peso bruto</span>
-                <input class="form-control subpesaje-input" type="number" step="0.01" min="0.01" placeholder="Ej. 150.25" oninput="updatePesajes(this)">
-                <span class="input-group-text">Desc. kg</span>
-                <input class="form-control subpesaje-desc" type="number" step="0.01" min="0" placeholder="0.00" oninput="updatePesajes(this)">
-                <span class="input-group-text bg-light">Neto</span>
-                <span class="input-group-text subpesaje-neto">0.00</span>
-                <input class="subpesaje-evid d-none" type="file" accept="image/*" data-capture="environment" onchange="handleEvidenceChange(this)">
-                <button type="button" class="evidence-btn" onclick="triggerEvidence(this)" title="Tomar o seleccionar foto">
-                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                        <path d="M9 4.5 7.8 6H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-2.8L15 4.5H9Zm3 10.75a3.25 3.25 0 1 1 0-6.5 3.25 3.25 0 0 1 0 6.5Z" fill="currentColor"/>
-                    </svg>
-                </button>
-                <img class="evid-thumb d-none" alt="Evidencia">
-                <span class="input-group-text bg-light evid-label">Sin foto</span>
-                <button type="button" class="btn btn-outline-danger" onclick="removePesaje(this)">Eliminar</button>
-            </div>
-        `;
+        subWrapper.innerHTML = '';
+        subWrapper.appendChild(makeSubpesajeGroup());
         // reset resúmenes por material
         clone.querySelector('.kg-bruto').textContent = '0.00';
         clone.querySelector('.kg-desc').textContent = '0.00';
         clone.querySelector('.kg-neto').textContent = '0.00';
-        clone.querySelector('.total-material').textContent = '-';
+        clone.querySelector('.total-material').textContent = formatMoney(0);
+        bindFieldLabels(clone);
         wrapper.appendChild(clone);
         updateSteps();
     }
@@ -835,23 +828,23 @@
             const isUploading = evidInput.dataset.uploading === '1';
             const hasError = evidInput.dataset.error === '1';
             const netoPesaje = Math.max(bruto - desc, 0);
-            const groupEl = evidInput.closest('.input-group');
-            const netoLabel = groupEl?.querySelector('.subpesaje-neto');
+            const groupEl = evidInput.closest('.subpesaje-group');
+            const netoField = groupEl?.querySelector('.subpesaje-neto');
             const evidLabel = groupEl?.querySelector('.evid-label');
-            if (netoLabel) netoLabel.textContent = formatNumber(netoPesaje, 2);
+            if (netoField) netoField.value = formatNumber(netoPesaje, 2);
             if (evidLabel) {
                 evidLabel.classList.remove('is-uploading', 'is-error', 'is-ready');
                 if (isUploading) {
-                    evidLabel.textContent = 'Subiendo...';
+                    evidLabel.textContent = 'Subiendo…';
                     evidLabel.classList.add('is-uploading');
                 } else if (hasError) {
-                    evidLabel.textContent = 'Error al subir';
+                    evidLabel.textContent = 'Error';
                     evidLabel.classList.add('is-error');
                 } else if (evidenciaUrl) {
-                    evidLabel.textContent = 'Evidencia cargada';
+                    evidLabel.textContent = 'Foto lista';
                     evidLabel.classList.add('is-ready');
                 } else {
-                    evidLabel.textContent = 'Sin foto';
+                    evidLabel.textContent = 'Foto';
                 }
             }
             if (bruto > 0 || desc > 0 || evidenciaUrl) {
@@ -866,54 +859,34 @@
         const kgDescInput = materialRow.querySelector('input[name=\"kg_descuento\"]');
         kgBrutoInput.value = totalBruto > 0 ? totalBruto.toFixed(2) : '';
         kgDescInput.value = totalDesc > 0 ? totalDesc.toFixed(2) : '0';
-        materialRow.querySelector('.kg-bruto').textContent = kgBrutoInput.value || '0.00';
-        materialRow.querySelector('.kg-desc').textContent = kgDescInput.value || '0.00';
-        materialRow.querySelector('.kg-neto').textContent = totalNeto > 0 ? formatNumber(totalNeto, 2) : '0.00';
+        materialRow.querySelector('.kg-bruto').textContent = formatNumber(totalBruto, 2);
+        materialRow.querySelector('.kg-desc').textContent = formatNumber(totalDesc, 2);
+        materialRow.querySelector('.kg-neto').textContent = formatNumber(totalNeto, 2);
         // precio por material
         const tipoOp = document.getElementById('tipo_operacion').value;
         const tipoCli = materialRow.querySelector('select[name=\"tipo_cliente\"]').value || 'regular';
         const matId = parseInt(materialRow.querySelector('select[name=\"material_id\"]').value || '0');
-        let subtotalText = '-';
+        let subtotal = 0;
         if (PRICE_MAP[matId] && PRICE_MAP[matId][tipoOp]) {
             const priceMap = PRICE_MAP[matId][tipoOp];
             const price = priceMap[tipoCli] ?? priceMap['regular'];
             if (price !== undefined && price !== null) {
-                const subtotal = totalNeto * parseFloat(price);
-                subtotalText = formatMoney(subtotal);
+                subtotal = totalNeto * parseFloat(price);
             }
         }
-        materialRow.querySelector('.total-material').textContent = subtotalText;
+        materialRow.querySelector('.total-material').textContent = formatMoney(subtotal);
         updateSteps();
     }
     function addPesaje(btn) {
         const materialRow = btn.closest('.material-row');
         const wrapper = materialRow.querySelector('.subpesajes-wrapper');
-        const group = document.createElement('div');
-        group.className = 'input-group flex-wrap align-items-center subpesaje-group';
-        group.innerHTML = `
-            <span class="input-group-text">Peso bruto</span>
-            <input class="form-control subpesaje-input" type="number" step="0.01" min="0.01" placeholder="Ej. 150.25" oninput="updatePesajes(this)">
-            <span class="input-group-text">Desc. kg</span>
-            <input class="form-control subpesaje-desc" type="number" step="0.01" min="0" placeholder="0.00" oninput="updatePesajes(this)">
-            <span class="input-group-text bg-light">Neto</span>
-            <span class="input-group-text subpesaje-neto">0.00</span>
-                <input class="subpesaje-evid d-none" type="file" accept="image/*" data-capture="environment" onchange="handleEvidenceChange(this)">
-            <button type="button" class="evidence-btn" onclick="triggerEvidence(this)" title="Tomar o seleccionar foto">
-                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                    <path d="M9 4.5 7.8 6H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-2.8L15 4.5H9Zm3 10.75a3.25 3.25 0 1 1 0-6.5 3.25 3.25 0 0 1 0 6.5Z" fill="currentColor"/>
-                </svg>
-            </button>
-            <img class="evid-thumb d-none" alt="Evidencia">
-            <span class="input-group-text bg-light evid-label">Sin foto</span>
-            <button type="button" class="btn btn-outline-danger" onclick="removePesaje(this)">Eliminar</button>
-        `;
-        wrapper.appendChild(group);
+        wrapper.appendChild(makeSubpesajeGroup());
     }
     function removePesaje(btn) {
-        const group = btn.closest('.input-group');
+        const group = btn.closest('.subpesaje-group');
         const materialRow = btn.closest('.material-row');
         const wrapper = materialRow.querySelector('.subpesajes-wrapper');
-        if (wrapper.querySelectorAll('.input-group').length <= 1) {
+        if (wrapper.querySelectorAll('.subpesaje-group').length <= 1) {
             const inputs = wrapper.querySelectorAll('input');
             inputs.forEach(i => i.value = '');
             const evidInput = wrapper.querySelector('.subpesaje-evid');
@@ -921,10 +894,10 @@
                 evidInput.dataset.url = '';
                 evidInput.dataset.uploading = '';
                 evidInput.dataset.error = '';
-                const groupEl = evidInput.closest('.input-group');
+                const groupEl = evidInput.closest('.subpesaje-group');
                 const evidLabel = groupEl ? groupEl.querySelector('.evid-label') : null;
                 if (evidLabel) {
-                    evidLabel.textContent = 'Sin foto';
+                    evidLabel.textContent = 'Foto';
                     evidLabel.classList.remove('is-uploading', 'is-error', 'is-ready');
                 }
                 const thumb = groupEl ? groupEl.querySelector('.evid-thumb') : null;
@@ -989,12 +962,11 @@
         // Resumen general
         const rows = document.querySelectorAll('#materiales-wrapper .material-row');
         let totBruto = 0, totDesc = 0, totNeto = 0, totMonto = 0;
-        let tienePrecio = false;
         const tipoOp = document.getElementById('tipo_operacion').value;
         rows.forEach(row => {
             const kgBr = parseFloat(row.querySelector('input[name="kg_bruto"]').value || '0');
             const kgDe = parseFloat(row.querySelector('input[name="kg_descuento"]').value || '0');
-            const kgNe = parseFloat(row.querySelector('.kg-neto').textContent || '0');
+            const kgNe = parseFloat((row.querySelector('.kg-neto').textContent || '0').replace(/,/g, ''));
             totBruto += kgBr;
             totDesc += kgDe;
             totNeto += kgNe;
@@ -1006,23 +978,22 @@
                 const price = priceMap[tipoCli] ?? priceMap['regular'];
                 if (price !== undefined && price !== null) {
                     totMonto += kgNe * parseFloat(price);
-                    tienePrecio = true;
                 }
             }
         });
         document.getElementById('nota-kg-bruto').textContent = formatNumber(totBruto, 2);
         document.getElementById('nota-kg-desc').textContent = formatNumber(totDesc, 2);
         document.getElementById('nota-kg-neto').textContent = formatNumber(totNeto, 2);
-        document.getElementById('nota-total').textContent = tienePrecio ? formatMoney(totMonto) : '-';
+        document.getElementById('nota-total').textContent = formatMoney(totMonto);
 
         const submitBtn = document.getElementById('submitBtn');
         if (submitBtn) {
             const blocked = pendingUploads > 0;
             submitBtn.disabled = !step2Valid || blocked;
-            submitBtn.textContent = blocked ? 'Subiendo evidencias...' : SUBMIT_LABEL;
+            submitBtn.textContent = blocked ? 'Subiendo evidencias…' : SUBMIT_LABEL;
         }
     }
-    const formEl = document.querySelector('form');
+    const formEl = document.querySelector('form.worker-note-form');
     if (formEl) {
         formEl.addEventListener('submit', (event) => {
             if (pendingUploads > 0) {
@@ -1033,6 +1004,7 @@
     }
     // inicializar partner visible y steps
     loadInitialNoteData();
+    bindFieldLabels(document.getElementById('materiales-wrapper'));
     filterPartnersBySucursal();
     togglePartner();
     updateSteps();

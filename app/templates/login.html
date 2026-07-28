@@ -1,66 +1,44 @@
 {% extends "base.html" %}
+{% from "_macros.html" import icon %}
 
-{% block title %}Login &middot; Scrap360{% endblock %}
+{% block title %}Iniciar sesión{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-12 col-lg-10 col-xl-8">
-        <div class="card hover-lift">
-            <div class="row g-0">
-                <div class="col-lg-6 login-panel">
-                    <div class="d-flex align-items-center gap-2 mb-2">
-                        <span class="brand-mark"></span>
-                        <span class="fw-semibold text-uppercase small text-muted">Scrap360</span>
-                    </div>
-                    <h2 class="h4 fw-bold mb-2">Bienvenido de vuelta</h2>
-                    <p class="text-muted mb-3">Control seguro de inventario, compras y ventas en un solo panel.</p>
-                    <span class="accent-chip mb-3">Acceso seguro &middot; Roles claros</span>
-                    <ul class="mini-list">
-                        <li><span class="dot"></span>Super admin, admin y trabajadores diferenciados</li>
-                        <li><span class="dot"></span>Precios versionados con auditoría</li>
-                        <li><span class="dot"></span>Catálogo de proveedores y clientes</li>
-                    </ul>
-                </div>
-                <div class="col-lg-6 login-form-wrap">
-                    <p class="text-uppercase text-muted small mb-1">Acceso</p>
-                    <h1 class="h4 fw-bold mb-3">Iniciar sesión</h1>
+<div class="s-auth">
+    <div class="s-auth__card">
+        <div class="s-auth__brand">
+            <span class="brand-mark"></span>
+            <span class="s-auth__wordmark">Scrap360</span>
+        </div>
 
-                    {% if error %}
-                        <div class="alert alert-danger py-2 small">
-                            {{ error }}
-                        </div>
-                    {% endif %}
+        <h1 class="h3 mb-1">Iniciar sesi&oacute;n</h1>
+        <p class="text-muted small mb-4">Accede con las credenciales que te asign&oacute; tu administrador.</p>
 
-                    <form method="post" action="/web/login" class="d-grid gap-3">
-                        <div>
-                            <label for="username" class="form-label">Usuario</label>
-                            <input
-                                type="text"
-                                class="form-control form-control-lg"
-                                id="username"
-                                name="username"
-                                required
-                                placeholder="Ej. administrador"
-                            >
-                        </div>
-                        <div>
-                            <label for="password" class="form-label">Contraseña</label>
-                            <input
-                                type="password"
-                                class="form-control form-control-lg"
-                                id="password"
-                                name="password"
-                                required
-                                placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;"
-                            >
-                        </div>
-                        <button type="submit" class="btn btn-primary btn-lg w-100">
-                            Entrar
-                        </button>
-                    </form>
+        {% if error %}
+            <div class="alert alert-danger d-flex align-items-start gap-2 mb-4" role="alert">
+                {{ icon('alert', 's-icon--sm') }}
+                <span>{{ error }}</span>
+            </div>
+        {% endif %}
+
+        <form method="post" action="/web/login" class="s-stack" data-submit-once="1">
+            <div>
+                <label for="username" class="form-label">Usuario <span class="s-req" aria-hidden="true">*</span></label>
+                <input type="text" class="form-control" id="username" name="username"
+                       required autocomplete="username" autocapitalize="none" autofocus>
+            </div>
+            <div>
+                <label for="password" class="form-label">Contrase&ntilde;a <span class="s-req" aria-hidden="true">*</span></label>
+                <div class="s-password">
+                    <input type="password" class="form-control" id="password" name="password"
+                           required autocomplete="current-password">
+                    <button type="button" class="s-password__toggle" data-password-toggle="password"
+                            aria-label="Mostrar contrase&ntilde;a">{{ icon('eye', 's-icon--sm') }}</button>
                 </div>
             </div>
-        </div>
+            <button type="submit" class="btn btn-primary btn-lg w-100"
+                    data-loading-text="Entrando&hellip;">Entrar</button>
+        </form>
     </div>
 </div>
 {% endblock %}

@@ -1,136 +1,107 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, icon %}
 
 {% block title %}Nuevo usuario &middot; Admin{% endblock %}
 
 {% block content %}
 {% set fd = form_data or {} %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Administracion</p>
-        <h1 class="h4 text-white mb-0">Crear usuario</h1>
-        <p class="text-muted small mb-0">Asigna el rol correcto y define exactamente a qu&eacute; sucursales puede acceder.</p>
-    </div>
-    <a href="/web/admin/users" class="btn btn-outline-secondary btn-sm">Volver a usuarios</a>
-</div>
+{% call page_header('Nuevo usuario',
+                    eyebrow='Administración',
+                    sub='Asigna el rol correcto y define exactamente a qué sucursales puede acceder.') %}
+    <a href="/web/admin/users" class="btn btn-outline-secondary">Volver</a>
+{% endcall %}
 
 {% if error %}
     <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
 {% endif %}
 
-<div class="user-form-shell">
-    <div class="user-form-main">
-        <div class="card hover-lift user-form-card">
-            <div class="card-body">
-                <form method="post" action="/web/admin/users/nuevo" class="user-form-grid" id="user-admin-form">
-                    <section class="user-form-section">
-                        <div class="d-flex align-items-center gap-2 mb-3">
-                            <span class="chip-strong">Identidad</span>
-                            <span class="text-muted small">Datos base del acceso</span>
+<div class="card">
+    <div class="card-body">
+        <form method="post" action="/web/admin/users/nuevo" id="user-admin-form">
+            <fieldset class="s-fieldset">
+                <legend>Identidad</legend>
+                <div class="s-form-grid">
+                    <div>
+                        <label class="form-label" for="username">Usuario <span class="s-req" aria-hidden="true">*</span></label>
+                        <input class="form-control" type="text" id="username" name="username" value="{{ fd.get('username', '') or '' }}" required autocapitalize="none">
+                        <p class="form-text">Con este nombre inicia sesión la persona.</p>
+                    </div>
+                    <div>
+                        <label class="form-label" for="nombre_completo">Nombre completo <span class="s-req" aria-hidden="true">*</span></label>
+                        <input class="form-control" type="text" id="nombre_completo" name="nombre_completo" value="{{ fd.get('nombre_completo', '') or '' }}" required>
+                        <p class="form-text">Aparece en el historial de notas y movimientos.</p>
+                    </div>
+                    <div>
+                        <label class="form-label" for="password">Contraseña <span class="s-req" aria-hidden="true">*</span></label>
+                        <div class="s-password">
+                            <input class="form-control" type="password" id="password" name="password" required autocomplete="new-password">
+                            <button type="button" class="s-password__toggle" data-password-toggle="password"
+                                    aria-label="Mostrar contraseña">{{ icon('eye', 's-icon--sm') }}</button>
                         </div>
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label" for="username">Usuario</label>
-                                <input class="form-control" type="text" id="username" name="username" value="{{ fd.get('username', '') }}" required>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" for="nombre_completo">Nombre completo</label>
-                                <input class="form-control" type="text" id="nombre_completo" name="nombre_completo" value="{{ fd.get('nombre_completo', '') }}" required>
-                            </div>
-                        </div>
-                    </section>
+                        <p class="form-text">Compártela con la persona y pídele que la cambie.</p>
+                    </div>
+                </div>
+            </fieldset>
 
-                    <section class="user-form-section">
-                        <div class="d-flex align-items-center gap-2 mb-3">
-                            <span class="chip-strong">Permisos</span>
-                            <span class="text-muted small">Define el alcance operativo</span>
-                        </div>
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label" for="rol">Rol</label>
-                                <select class="form-select" id="rol" name="rol" required>
-                                    <option value="super_admin" {% if fd.get('rol') == 'super_admin' %}selected{% endif %}>Super admin</option>
-                                    <option value="admin" {% if fd.get('rol', 'admin') == 'admin' %}selected{% endif %}>Admin</option>
-                                    <option value="visor" {% if fd.get('rol') == 'visor' %}selected{% endif %}>Visor (solo lectura)</option>
-                                    <option value="trabajador" {% if fd.get('rol') == 'trabajador' %}selected{% endif %}>Trabajador</option>
-                                </select>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" for="password">Contrasena</label>
-                                <input class="form-control" type="password" id="password" name="password" required>
-                            </div>
-                        </div>
+            <fieldset class="s-fieldset">
+                <legend>Permisos</legend>
+                <div class="s-form-grid">
+                    <div>
+                        <label class="form-label" for="rol">Rol <span class="s-req" aria-hidden="true">*</span></label>
+                        <select class="form-select" id="rol" name="rol" required>
+                            <option value="super_admin" {% if fd.get('rol') == 'super_admin' %}selected{% endif %}>Super admin</option>
+                            <option value="admin" {% if fd.get('rol', 'admin') == 'admin' %}selected{% endif %}>Admin</option>
+                            <option value="visor" {% if fd.get('rol') == 'visor' %}selected{% endif %}>Visor (solo lectura)</option>
+                            <option value="trabajador" {% if fd.get('rol') == 'trabajador' %}selected{% endif %}>Trabajador</option>
+                        </select>
+                    </div>
+                </div>
 
-                        <div class="user-role-explainer" id="user-role-explainer">
-                            <strong id="user-role-title">Admin</strong>
-                            <p id="user-role-copy" class="mb-0">Gestiona operacion diaria y una o varias sucursales asignadas.</p>
-                        </div>
+                <div class="s-subpanel mt-3" id="user-role-explainer">
+                    <strong id="user-role-title">Admin</strong>
+                    <p id="user-role-copy" class="form-text mb-0">Gestiona la operación diaria y solo las sucursales que le asignas.</p>
+                </div>
 
-                        <div class="row g-3 mt-1">
-                            <div class="col-md-6 role-worker-only">
-                                <label class="form-label" for="sucursal_id">Sucursal del trabajador</label>
-                                <select class="form-select" id="sucursal_id" name="sucursal_id">
-                                    <option value="">Selecciona sucursal</option>
-                                    {% for s in sucursales %}
-                                        <option value="{{ s.id }}" {% if fd.get('sucursal_id') == s.id|string %}selected{% endif %}>{{ s.nombre }}</option>
-                                    {% endfor %}
-                                </select>
-                                <div class="form-text">Obligatoria cuando el rol es trabajador.</div>
+                <div class="s-form-grid mt-4">
+                    <div class="role-worker-only">
+                        <label class="form-label" for="sucursal_id">Sucursal del trabajador</label>
+                        <select class="form-select" id="sucursal_id" name="sucursal_id">
+                            <option value="">Selecciona una sucursal</option>
+                            {% for s in sucursales %}
+                                <option value="{{ s.id }}" {% if fd.get('sucursal_id') == s.id|string %}selected{% endif %}>{{ s.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                        <p class="form-text">Obligatoria cuando el rol es trabajador.</p>
+                    </div>
+                    <div class="role-admin-only">
+                        <span class="form-label d-block" id="admin_sucursal_ids_label">Sucursales para admin</span>
+                        {% if sucursales %}
+                            <div class="s-subpanel" role="group" aria-labelledby="admin_sucursal_ids_label">
+                                {% for s in sucursales %}
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox"
+                                               id="admin_sucursal_{{ s.id }}"
+                                               name="admin_sucursal_ids"
+                                               value="{{ s.id }}"
+                                               {% if s.id|string in fd.get('admin_sucursal_ids', []) %}checked{% endif %}>
+                                        <label class="form-check-label" for="admin_sucursal_{{ s.id }}">{{ s.nombre }}</label>
+                                    </div>
+                                {% endfor %}
                             </div>
-                            <div class="col-md-6 role-admin-only">
-                                <label class="form-label" for="admin_sucursal_ids">Sucursales para admin</label>
-                                <select class="form-select" id="admin_sucursal_ids" name="admin_sucursal_ids" multiple size="6">
-                                    {% for s in sucursales %}
-                                        <option value="{{ s.id }}" {% if s.id|string in fd.get('admin_sucursal_ids', []) %}selected{% endif %}>{{ s.nombre }}</option>
-                                    {% endfor %}
-                                </select>
-                                <div class="form-text">Selecciona una o varias sucursales para este admin.</div>
-                            </div>
-                        </div>
-                    </section>
+                            <p class="form-text">Marca una o varias sucursales para este admin.</p>
+                        {% else %}
+                            <p class="form-text">No hay sucursales disponibles.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </fieldset>
 
-                    <section class="user-form-section">
-                        <div class="d-flex align-items-center gap-2 mb-3">
-                            <span class="chip-strong">Guardar</span>
-                            <span class="text-muted small">Crea el acceso con la configuracion elegida</span>
-                        </div>
-                        <div class="d-flex gap-2 flex-wrap">
-                            <button type="submit" class="btn btn-primary">Guardar usuario</button>
-                            <a href="/web/admin/users" class="btn btn-outline-secondary">Cancelar</a>
-                        </div>
-                    </section>
-                </form>
+            <div class="s-form-actions">
+                <a href="/web/admin/users" class="btn btn-outline-secondary">Cancelar</a>
+                <button type="submit" class="btn btn-primary">Crear usuario</button>
             </div>
-        </div>
+        </form>
     </div>
-
-    <aside class="user-form-side">
-        <div class="card hover-lift user-side-card mb-3">
-            <div class="card-body">
-                <div class="d-flex align-items-center gap-2 mb-2">
-                    <span class="chip-strong">Guia rapida</span>
-                    <span class="text-muted small">Elige el perfil correcto</span>
-                </div>
-                <div class="user-persona-grid">
-                    <div class="user-persona-card">
-                        <strong>Super admin</strong>
-                        <p>Control total del sistema y todas las sucursales.</p>
-                    </div>
-                    <div class="user-persona-card">
-                        <strong>Admin</strong>
-                        <p>Opera una o varias sucursales y gestiona la operacion diaria.</p>
-                    </div>
-                    <div class="user-persona-card">
-                        <strong>Visor</strong>
-                        <p>Consulta informacion sin riesgo de mover datos.</p>
-                    </div>
-                    <div class="user-persona-card">
-                        <strong>Trabajador</strong>
-                        <p>Captura notas y evidencias para una sucursal especifica.</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </aside>
 </div>
 
 <script>
@@ -144,15 +115,15 @@
     const roleMeta = {
         super_admin: {
             title: 'Super admin',
-            copy: 'Control total de configuracion, notas, contabilidad, inventario y usuarios.'
+            copy: 'Control total de configuración, notas, contabilidad, inventario y usuarios.'
         },
         admin: {
             title: 'Admin',
-            copy: 'Gestiona operacion diaria y solo las sucursales que le asignas.'
+            copy: 'Gestiona la operación diaria y solo las sucursales que le asignas.'
         },
         visor: {
             title: 'Visor',
-            copy: 'Consulta informacion operativa y contable sin poder modificar registros.'
+            copy: 'Consulta información operativa y contable sin poder modificar registros.'
         },
         trabajador: {
             title: 'Trabajador',

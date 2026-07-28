@@ -1,57 +1,61 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, icon, badge, money, empty_row %}
 
 {% block title %}Cuentas Scrap360 &middot; Admin{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Finanzas</p>
-        <h1 class="h4 text-white mb-0">Cuentas Scrap360</h1>
-    </div>
-    <a href="/web/admin/cuentas-scrap360/nueva" class="btn btn-primary btn-sm">Nueva cuenta</a>
-</div>
+{% call page_header('Cuentas Scrap360', eyebrow='Finanzas',
+                    sub='Cuentas internas de tesorería con su saldo inicial y su saldo actual.') %}
+    <a href="/web/admin/cuentas-scrap360/nueva" class="btn btn-primary">
+        {{ icon('plus', 's-icon--sm') }} Nueva cuenta
+    </a>
+{% endcall %}
 
-<form method="get" class="row g-2 mb-3">
-    <div class="col-lg-4 col-md-6">
-        <label class="form-label">Buscar</label>
-        <input
-            type="text"
-            class="form-control"
-            name="q"
-            placeholder="Nombre de cuenta"
-            value="{{ q }}"
-        >
-    </div>
-    <div class="col-lg-3 col-md-6">
-        <label class="form-label">Tipo</label>
-        <select class="form-select" name="tipo">
-            <option value="">Todos</option>
-            {% for t in tipos_scrap360 %}
-                <option value="{{ t }}" {% if tipo == t %}selected{% endif %}>{{ t|capitalize }}</option>
-            {% endfor %}
-        </select>
-    </div>
-    <div class="col-lg-3 col-md-6">
-        <label class="form-label">Sucursal</label>
-        <select class="form-select" name="sucursal_id">
-            <option value="">Todas</option>
-            {% for s in sucursales %}
-                <option value="{{ s.id }}" {% if sucursal_id and sucursal_id == s.id %}selected{% endif %}>{{ s.nombre }}</option>
-            {% endfor %}
-        </select>
-    </div>
-    <div class="col-lg-2 col-md-4">
-        <label class="form-label">Estado</label>
-        <select class="form-select" name="activo">
-            <option value="">Todos</option>
-            <option value="1" {% if activo == '1' %}selected{% endif %}>Activa</option>
-            <option value="0" {% if activo == '0' %}selected{% endif %}>Inactiva</option>
-        </select>
-    </div>
-    <div class="col-md-2 d-grid">
-        <button class="btn btn-outline-primary">Filtrar</button>
-    </div>
-</form>
+<details class="s-filters-collapse" open>
+    <summary>Filtros</summary>
+    <form class="s-filters" method="get">
+        <div class="s-filters__field s-filters__field--wide">
+            <label for="f-q" class="form-label">Búsqueda</label>
+            <input
+                type="text"
+                id="f-q"
+                class="form-control"
+                name="q"
+                placeholder="Nombre de cuenta"
+                value="{{ q }}"
+            >
+        </div>
+        <div class="s-filters__field">
+            <label for="f-tipo" class="form-label">Tipo</label>
+            <select class="form-select" id="f-tipo" name="tipo">
+                <option value="">Todos</option>
+                {% for t in tipos_scrap360 %}
+                    <option value="{{ t }}" {% if tipo == t %}selected{% endif %}>{{ t|capitalize }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="s-filters__field">
+            <label for="f-sucursal" class="form-label">Sucursal</label>
+            <select class="form-select" id="f-sucursal" name="sucursal_id">
+                <option value="">Todas</option>
+                {% for s in sucursales %}
+                    <option value="{{ s.id }}" {% if sucursal_id and sucursal_id == s.id %}selected{% endif %}>{{ s.nombre }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="s-filters__field">
+            <label for="f-activo" class="form-label">Estado</label>
+            <select class="form-select" id="f-activo" name="activo">
+                <option value="">Todos</option>
+                <option value="1" {% if activo == '1' %}selected{% endif %}>Activa</option>
+                <option value="0" {% if activo == '0' %}selected{% endif %}>Inactiva</option>
+            </select>
+        </div>
+        <div class="s-filters__actions">
+            <button class="btn btn-outline-primary" type="submit">Filtrar</button>
+        </div>
+    </form>
+</details>
 
 {% if sucursal_error %}
     <div class="alert alert-danger py-2 small mb-3">{{ sucursal_error }}</div>
@@ -63,20 +67,20 @@
     <div class="alert alert-danger py-2 small mb-3">{{ delete_error }}</div>
 {% endif %}
 
-<div class="card hover-lift">
+<div class="card">
     <div class="card-body">
         <div class="table-responsive">
-            <table class="table table-hover table-sm align-middle mb-0">
+            <table class="table table-hover align-middle">
                 <thead>
                 <tr>
                     <th>ID</th>
-                    <th>Nombre</th>
+                    <th data-title-col>Nombre</th>
                     <th>Tipo</th>
                     <th>Sucursales</th>
                     <th class="text-end">Saldo inicial</th>
                     <th class="text-end">Saldo actual</th>
                     <th>Estado</th>
-                    <th></th>
+                    <th><span class="s-visually-hidden">Acciones</span></th>
                 </tr>
                 </thead>
                 <tbody>
@@ -87,32 +91,30 @@
                         <td class="fw-semibold">{{ cuenta.nombre }}</td>
                         <td>{{ cuenta.tipo|capitalize }}</td>
                         <td>{{ row.sucursales_label }}</td>
-                        <td class="text-end">${{ "{:,.2f}".format(cuenta.saldo_inicial or 0) }}</td>
-                        <td class="text-end">${{ "{:,.2f}".format(cuenta.saldo_actual or 0) }}</td>
+                        <td class="text-end">{{ money(cuenta.saldo_inicial or 0) }}</td>
+                        <td class="text-end">{{ money(cuenta.saldo_actual or 0) }}</td>
                         <td>
-                            <span class="badge {{ 'bg-success' if cuenta.activo else 'bg-secondary' }}">
-                                {{ 'Activa' if cuenta.activo else 'Inactiva' }}
-                            </span>
+                            {{ badge('Activa', 'ok') if cuenta.activo else badge('Inactiva', 'muted') }}
                         </td>
-                        <td class="text-end">
-                            <div class="d-flex gap-2 justify-content-end flex-wrap">
-                                <a href="/web/admin/cuentas-scrap360/{{ cuenta.id }}" class="btn btn-sm btn-outline-primary">Detalle</a>
+                        <td>
+                            <span class="s-actions">
+                                <a href="/web/admin/cuentas-scrap360/{{ cuenta.id }}" class="btn btn-sm btn-outline-secondary">Ver</a>
                                 <a href="/web/admin/cuentas-scrap360/{{ cuenta.id }}/editar" class="btn btn-sm btn-outline-secondary">Editar</a>
                                 {% if user.rol == 'super_admin' %}
-                                    <form method="post" action="/web/admin/cuentas-scrap360/{{ cuenta.id }}/eliminar" onsubmit="return confirm('¿Eliminar esta cuenta? Esta acción no se puede deshacer.');">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+                                    <form method="post" action="/web/admin/cuentas-scrap360/{{ cuenta.id }}/eliminar">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                data-confirm="¿Eliminar esta cuenta? Esta acción no se puede deshacer.">Eliminar</button>
                                     </form>
                                 {% endif %}
-                            </div>
+                            </span>
                         </td>
                     </tr>
+                {% else %}
+                    {{ empty_row(8, 'No hay cuentas con estos filtros.') }}
                 {% endfor %}
                 </tbody>
             </table>
         </div>
-        {% if cuentas|length == 0 %}
-            <p class="text-muted small mt-3 mb-0">No hay cuentas con estos filtros.</p>
-        {% endif %}
     </div>
 </div>
 {% endblock %}

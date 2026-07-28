@@ -1,148 +1,113 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, badge, empty_row %}
 
 {% block title %}{{ 'Editar sucursal' if sucursal else 'Nueva sucursal' }} &middot; Admin{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Administracion</p>
-        <h1 class="h4 text-white mb-0">{{ 'Editar sucursal' if sucursal else 'Nueva sucursal' }}</h1>
-        <p class="text-muted small mb-0">Configura nombre, imagen institucional, responsables y personal operativo.</p>
-    </div>
-    <a href="/web/admin/sucursales" class="btn btn-outline-secondary btn-sm">Volver a sucursales</a>
-</div>
+{% call page_header('Editar sucursal' if sucursal else 'Nueva sucursal',
+                    eyebrow='Administración',
+                    sub='Configura nombre, imagen institucional y los admins responsables de la sede.') %}
+    <a href="/web/admin/sucursales" class="btn btn-outline-secondary">Volver</a>
+{% endcall %}
 
 {% if error %}
     <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
 {% endif %}
 
-<div class="entity-form-shell">
-    <div class="entity-form-main">
-        <div class="card hover-lift entity-form-card">
-            <div class="card-body">
-                <form method="post" enctype="multipart/form-data" action="{{ '/web/admin/sucursales/' ~ sucursal.id ~ '/editar' if sucursal else '/web/admin/sucursales/nueva' }}" class="entity-form-grid">
-                    <section class="entity-form-section">
-                        <div class="d-flex align-items-center gap-2 mb-3">
-                            <span class="chip-strong">Identidad</span>
-                            <span class="text-muted small">Nombre visible y direccion base</span>
-                        </div>
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label" for="nombre">Nombre</label>
-                                <input class="form-control" type="text" id="nombre" name="nombre" required value="{{ sucursal.nombre if sucursal else '' }}">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" for="direccion">Direccion</label>
-                                <input class="form-control" type="text" id="direccion" name="direccion" value="{{ sucursal.direccion if sucursal else '' }}" placeholder="Opcional">
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="entity-form-section">
-                        <div class="d-flex align-items-center gap-2 mb-3">
-                            <span class="chip-strong">Imagen y responsables</span>
-                            <span class="text-muted small">Logo institucional y admins asignados</span>
-                        </div>
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label">Logo</label>
-                                <input class="form-control" type="file" accept="image/*" name="logo_file">
-                                <div class="form-text">Sube una imagen desde tu dispositivo. Se guarda en Firebase.</div>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Admins asignados</label>
-                                <select class="form-select" name="admin_ids" multiple size="6">
-                                    {% for a in admins %}
-                                        <option value="{{ a.id }}" {% if a.id in selected_admin_ids %}selected{% endif %}>
-                                            {{ a.nombre_completo }} ({{ a.username }})
-                                        </option>
-                                    {% endfor %}
-                                </select>
-                                <div class="form-text">Selecciona uno o varios admins responsables de la sucursal.</div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="entity-form-section">
-                        <div class="d-flex align-items-center gap-2 mb-3">
-                            <span class="chip-strong">Guardar</span>
-                            <span class="text-muted small">Aplica la configuracion de la sucursal</span>
-                        </div>
-                        <div class="d-flex gap-2 flex-wrap">
-                            <button type="submit" class="btn btn-primary">{{ 'Guardar cambios' if sucursal else 'Crear sucursal' }}</button>
-                            <a href="/web/admin/sucursales" class="btn btn-outline-secondary">Cancelar</a>
-                        </div>
-                    </section>
-                </form>
-            </div>
-        </div>
-
-        {% if sucursal %}
-        <div class="card hover-lift entity-form-card mt-3">
-            <div class="card-body">
-                <div class="d-flex align-items-center gap-2 mb-3">
-                    <span class="chip-strong">Trabajadores</span>
-                    <span class="text-muted small">Personal actualmente ligado a esta sucursal</span>
-                </div>
-                {% if trabajadores|length == 0 %}
-                    <p class="text-muted small mb-0">No hay trabajadores asignados a esta sucursal.</p>
-                {% else %}
-                    <div class="table-scroll-shell">
-                        <div class="table-responsive scroll-x">
-                            <table class="table table-sm align-middle mb-0 entity-table">
-                                <thead>
-                                    <tr>
-                                        <th>ID</th>
-                                        <th>Nombre</th>
-                                        <th>Usuario</th>
-                                        <th>Estado</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for t in trabajadores %}
-                                        <tr>
-                                            <td>{{ t.id }}</td>
-                                            <td>{{ t.nombre_completo }}</td>
-                                            <td>{{ t.username }}</td>
-                                            <td>
-                                                <span class="user-status-chip {{ 'is-active' if t.estado.value == 'activo' else 'is-inactive' }}">
-                                                    {{ t.estado.value|capitalize }}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                {% endif %}
-            </div>
-        </div>
-        {% endif %}
-    </div>
-
-    <aside class="entity-form-side">
-        <div class="card hover-lift entity-side-card mb-3">
-            <div class="card-body">
-                <div class="d-flex align-items-center gap-2 mb-2">
-                    <span class="chip-strong">Vista previa</span>
-                    <span class="text-muted small">Identidad de la sucursal</span>
-                </div>
-                <div class="entity-preview-card">
-                    <span class="entity-avatar entity-avatar-lg">
-                        {% if sucursal and sucursal.logo_url %}
-                            <img src="{{ sucursal.logo_url }}" alt="{{ sucursal.nombre }}">
-                        {% else %}
-                            {{ ((sucursal.nombre if sucursal else 'S') or 'S')[:1]|upper }}
-                        {% endif %}
-                    </span>
+<div class="card">
+    <div class="card-body">
+        <form method="post" enctype="multipart/form-data" action="{{ '/web/admin/sucursales/' ~ sucursal.id ~ '/editar' if sucursal else '/web/admin/sucursales/nueva' }}">
+            <fieldset class="s-fieldset">
+                <legend>Identidad</legend>
+                <div class="s-form-grid">
                     <div>
-                        <strong>{{ sucursal.nombre if sucursal else 'Nueva sucursal' }}</strong>
-                        <p class="mb-0">{{ sucursal.direccion if sucursal and sucursal.direccion else 'Sin direccion registrada' }}</p>
+                        <label class="form-label" for="nombre">Nombre <span class="s-req" aria-hidden="true">*</span></label>
+                        <input class="form-control" type="text" id="nombre" name="nombre" required value="{{ (sucursal.nombre if sucursal else '') or '' }}">
+                        <p class="form-text">Nombre visible de la sede en notas, reportes e inventario.</p>
+                    </div>
+                    <div>
+                        <label class="form-label" for="direccion">Dirección</label>
+                        <input class="form-control" type="text" id="direccion" name="direccion" value="{{ (sucursal.direccion if sucursal else '') or '' }}">
+                        <p class="form-text">Opcional. Se imprime en los comprobantes de la sede.</p>
                     </div>
                 </div>
+            </fieldset>
+
+            <fieldset class="s-fieldset">
+                <legend>Imagen y responsables</legend>
+                <div class="s-form-grid">
+                    <div>
+                        <label class="form-label" for="logo_file">Logo</label>
+                        <input class="form-control" type="file" accept="image/*" id="logo_file" name="logo_file">
+                        <p class="form-text">Formatos JPG o PNG.</p>
+                    </div>
+                    <div>
+                        <span class="form-label d-block" id="admin_ids_label">Admins asignados</span>
+                        {% if admins %}
+                            <div class="s-subpanel" role="group" aria-labelledby="admin_ids_label">
+                                {% for a in admins %}
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox"
+                                               id="admin_{{ a.id }}"
+                                               name="admin_ids"
+                                               value="{{ a.id }}"
+                                               {% if a.id in selected_admin_ids %}checked{% endif %}>
+                                        <label class="form-check-label" for="admin_{{ a.id }}">{{ a.nombre_completo }} ({{ a.username }})</label>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                            <p class="form-text">Marca uno o varios admins responsables de la sucursal.</p>
+                        {% else %}
+                            <p class="form-text">No hay admins disponibles.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </fieldset>
+
+            <div class="s-form-actions">
+                <a href="/web/admin/sucursales" class="btn btn-outline-secondary">Cancelar</a>
+                <button type="submit" class="btn btn-primary">{{ 'Guardar cambios' if sucursal else 'Crear sucursal' }}</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if sucursal %}
+<div class="card mt-4">
+    <div class="card-body">
+        <div class="s-card-head">
+            <div>
+                <p class="s-card-title">Trabajadores</p>
+                <p class="s-card-sub">Personal actualmente ligado a esta sucursal.</p>
             </div>
         </div>
-    </aside>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th data-title-col>Nombre</th>
+                        <th>Usuario</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in trabajadores %}
+                        <tr>
+                            <td>{{ t.id }}</td>
+                            <td>{{ t.nombre_completo }}</td>
+                            <td>{{ t.username }}</td>
+                            <td>
+                                {{ badge(t.estado.value|capitalize, 'ok' if t.estado.value == 'activo' else 'muted') }}
+                            </td>
+                        </tr>
+                    {% else %}
+                        {{ empty_row(4, 'No hay trabajadores asignados a esta sucursal.') }}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
+{% endif %}
 {% endblock %}

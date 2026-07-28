@@ -1,322 +1,257 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
+{% from "_macros.html" import page_header, icon, stat, badge, money, kg, empty_row %}
 
 {% block title %}Movimientos de inventario{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Inventario</p>
-        <h1 class="h4 text-white mb-0">Movimientos</h1>
-    </div>
-</div>
+{% set TIPO_MOV = {
+    'compra': ('Compra', 'ok'),
+    'venta': ('Venta', 'info'),
+    'ajuste': ('Ajuste', 'warn'),
+    'conversion': ('Conversión', 'muted'),
+    'transferencia': ('Transferencia', 'muted'),
+} %}
+{% call page_header('Movimientos de inventario', eyebrow='Inventario',
+                    sub='Compras, ventas, ajustes y conversiones que movieron el saldo en el rango seleccionado.') %}
+    <a href="/web/admin/inventario" class="btn btn-outline-secondary">
+        {{ icon('arrow-left', 's-icon--sm') }} Volver
+    </a>
+{% endcall %}
 
-<div class="card hover-lift mb-3">
-    <div class="card-body">
-        <form class="row g-2 align-items-end" method="get">
-            {% if user.rol in ['super_admin', 'visor'] or (user.rol == 'admin' and sucursales|length > 1) %}
-                <div class="col-lg-3 col-md-4">
-                    <label class="form-label">Sucursal</label>
-                    <select class="form-select" name="sucursal_id">
-                        <option value="">Todas</option>
-                        {% for s in sucursales %}
-                            <option value="{{ s.id }}" {% if sucursal_id and sucursal_id == s.id %}selected{% endif %}>{{ s.nombre }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-            {% else %}
-                <div class="col-lg-3 col-md-4">
-                    <label class="form-label">Sucursal</label>
-                    {% set suc = sucursales|selectattr('id','equalto',sucursal_id)|list|first %}
-                    <div class="form-control-plaintext fw-semibold">{{ suc.nombre if suc else sucursal_id }}</div>
-                </div>
-            {% endif %}
-            <div class="col-lg-3 col-md-4">
-                <label class="form-label">Material</label>
-                <select class="form-select" name="material_id">
-                    <option value="">Todos</option>
-                    {% for m in materiales %}
-                        <option value="{{ m.id }}" {% if material_id and material_id == m.id %}selected{% endif %}>{{ m.nombre }}</option>
+<details class="s-filters-collapse" open>
+    <summary>Filtros</summary>
+    <form class="s-filters" method="get">
+        {% if user.rol in ['super_admin', 'visor'] or (user.rol == 'admin' and sucursales|length > 1) %}
+            <div class="s-filters__field">
+                <label for="f-sucursal" class="form-label">Sucursal</label>
+                <select class="form-select" id="f-sucursal" name="sucursal_id">
+                    <option value="">Todas</option>
+                    {% for s in sucursales %}
+                        <option value="{{ s.id }}" {% if sucursal_id and sucursal_id == s.id %}selected{% endif %}>{{ s.nombre }}</option>
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-lg-2 col-md-4">
-                <label class="form-label">Tipo</label>
-                <select class="form-select" name="tipo">
-                    <option value="">Todos</option>
-                    <option value="compra" {% if tipo == 'compra' %}selected{% endif %}>Compra</option>
-                    <option value="venta" {% if tipo == 'venta' %}selected{% endif %}>Venta</option>
-                    <option value="ajuste" {% if tipo == 'ajuste' %}selected{% endif %}>Ajuste</option>
-                    <option value="conversion" {% if tipo == 'conversion' %}selected{% endif %}>Conversion</option>
-                </select>
+        {% else %}
+            <div class="s-filters__field">
+                {% set suc = sucursales|selectattr('id','equalto',sucursal_id)|list|first %}
+                <span class="s-def__label">Sucursal</span>
+                <span class="s-def__value">{{ suc.nombre if suc else sucursal_id }}</span>
             </div>
-            <div class="col-lg-2 col-md-4">
-                <label class="form-label">Desde</label>
-                <input class="form-control" type="date" name="from" value="{{ date_from }}">
-            </div>
-            <div class="col-lg-2 col-md-4">
-                <label class="form-label">Hasta</label>
-                <input class="form-control" type="date" name="to" value="{{ date_to }}">
-            </div>
-            <div class="col-md-2 d-grid">
-                <button class="btn btn-outline-primary">Filtrar</button>
-            </div>
-            {% if can_export_inventory %}
-                <div class="col-lg-3 col-md-6 d-grid">
-                    <div class="d-flex gap-2">
-                        <select class="form-select" id="invExportFormat">
-                            <option value="csv">CSV</option>
-                            <option value="xlsx">Excel</option>
-                            <option value="pdf">PDF</option>
-                        </select>
-                        <button type="button" class="btn btn-export w-100" onclick="exportInventario()">Exportar</button>
-                    </div>
-                </div>
-            {% endif %}
-        </form>
-        {% if date_error %}
-            <div class="alert alert-warning py-2 small mt-3 mb-0">{{ date_error }}</div>
         {% endif %}
+        <div class="s-filters__field">
+            <label for="f-material" class="form-label">Material</label>
+            <select class="form-select" id="f-material" name="material_id">
+                <option value="">Todos</option>
+                {% for m in materiales %}
+                    <option value="{{ m.id }}" {% if material_id and material_id == m.id %}selected{% endif %}>{{ m.nombre }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="s-filters__field">
+            <label for="f-tipo" class="form-label">Tipo</label>
+            <select class="form-select" id="f-tipo" name="tipo">
+                <option value="">Todos</option>
+                <option value="compra" {% if tipo == 'compra' %}selected{% endif %}>Compra</option>
+                <option value="venta" {% if tipo == 'venta' %}selected{% endif %}>Venta</option>
+                <option value="ajuste" {% if tipo == 'ajuste' %}selected{% endif %}>Ajuste</option>
+                <option value="conversion" {% if tipo == 'conversion' %}selected{% endif %}>Conversión</option>
+            </select>
+        </div>
+        <div class="s-filters__field">
+            <label for="f-from" class="form-label">Desde</label>
+            <input class="form-control" id="f-from" type="date" name="from" value="{{ date_from }}">
+        </div>
+        <div class="s-filters__field">
+            <label for="f-to" class="form-label">Hasta</label>
+            <input class="form-control" id="f-to" type="date" name="to" value="{{ date_to }}">
+        </div>
+        <div class="s-filters__actions">
+            <button class="btn btn-outline-primary" type="submit">Filtrar</button>
+        </div>
+    </form>
+</details>
+
+{% if can_export_inventory %}
+    <div class="s-actions mb-3">
+        <label for="invExportFormat" class="s-visually-hidden">Formato de exportación</label>
+        <select class="form-select form-select-sm" id="invExportFormat">
+            <option value="csv">CSV</option>
+            <option value="xlsx">Excel</option>
+            <option value="pdf">PDF</option>
+        </select>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="exportInventario()">
+            {{ icon('download', 's-icon--sm') }} Exportar
+        </button>
     </div>
+{% endif %}
+
+{% if date_error %}
+    <div class="alert alert-warning py-2 small mb-3">{{ date_error }}</div>
+{% endif %}
+
+<div class="s-stats">
+    {{ stat('Compras en el rango', kg(compra_total_kg), date_scope_label) }}
+    {{ stat('Monto comprado', money(compra_total_monto, 'plain'), 'Subtotal acumulado del material comprado') }}
+    {% if selected_material %}
+        {{ stat('Precio promedio de compra', money(precio_promedio_compra, 'plain'), 'Promedio ponderado por kg de ' ~ selected_material.nombre) }}
+    {% else %}
+        {{ stat('Materiales analizados', compra_material_rows|length, 'Materiales con compras en el rango') }}
+    {% endif %}
+    {{ stat('Notas de compra', compra_total_notas, compra_total_movimientos ~ ' movimientos de compra considerados') }}
 </div>
 
-<div class="row g-3 mb-3">
-    <div class="col-xl-3 col-lg-6">
-        <div class="card hover-lift h-100">
-            <div class="card-body">
-                <p class="text-uppercase text-muted small mb-2">Compras en rango</p>
-                <div class="d-flex align-items-end justify-content-between gap-3">
-                    <div>
-                        <div class="h4 text-white mb-1">{{ "{:,.2f}".format(compra_total_kg or 0) }} kg</div>
-                        <div class="text-muted small">{{ date_scope_label }}</div>
-                    </div>
-                    <span class="badge bg-soft-success text-success">Compras</span>
-                </div>
-                <div class="text-muted small mt-3">
-                    {% if selected_material %}
-                        Material analizado: <strong class="text-white">{{ selected_material.nombre }}</strong>
-                    {% else %}
-                        Material analizado: <strong class="text-white">Todos</strong>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-xl-3 col-lg-6">
-        <div class="card hover-lift h-100">
-            <div class="card-body">
-                <p class="text-uppercase text-muted small mb-2">Monto comprado</p>
-                <div class="h4 text-white mb-1">${{ "{:,.2f}".format(compra_total_monto or 0) }}</div>
-                <div class="text-muted small">Subtotal acumulado del material comprado en el rango.</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-xl-3 col-lg-6">
-        <div class="card hover-lift h-100">
-            <div class="card-body">
-                <p class="text-uppercase text-muted small mb-2">Precio promedio compra</p>
-                {% if selected_material %}
-                    <div class="h4 text-white mb-1">${{ "{:,.5f}".format(precio_promedio_compra or 0) }}</div>
-                    <div class="text-muted small">Promedio ponderado por kg para {{ selected_material.nombre }}.</div>
+<div class="card mb-3">
+    <div class="card-body">
+        <h2 class="s-card-title">Precio promedio de compra por material</h2>
+        <p class="s-card-sub">Promedio ponderado por kilos dentro del rango seleccionado.</p>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                <tr>
+                    <th data-title-col>Material</th>
+                    <th class="text-end">Kg comprados</th>
+                    <th class="text-end">Monto comprado</th>
+                    <th class="text-end">Precio promedio por kg</th>
+                    <th class="text-end">Notas</th>
+                    <th>Sucursales</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for row in compra_material_rows %}
+                    <tr>
+                        <td><span class="fw-semibold">{{ row.material }}</span></td>
+                        <td class="text-end">{{ kg(row.cantidad_kg) }}</td>
+                        <td class="text-end">{{ money(row.monto) }}</td>
+                        <td class="text-end">{{ money(row.precio_promedio) }}</td>
+                        <td class="text-end">{{ row.notas_count }}</td>
+                        <td>{{ row.sucursales|join(', ') if row.sucursales else '—' }}</td>
+                    </tr>
                 {% else %}
-                    <div class="h4 text-white mb-1">{{ compra_material_rows|length }}</div>
-                    <div class="text-muted small">Materiales con compras en el rango. El promedio por material aparece abajo.</div>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-    <div class="col-xl-3 col-lg-6">
-        <div class="card hover-lift h-100">
-            <div class="card-body">
-                <p class="text-uppercase text-muted small mb-2">Notas de compra</p>
-                <div class="h4 text-white mb-1">{{ compra_total_notas }}</div>
-                <div class="text-muted small">{{ compra_total_movimientos }} movimientos de compra considerados.</div>
-            </div>
+                    {{ empty_row(6, 'No hay compras registradas en el rango para calcular el precio promedio.') }}
+                {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
 
-<div class="card hover-lift mb-3">
+<div class="card mb-3">
     <div class="card-body">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-            <div>
-                <h2 class="h5 text-white mb-1">Precio promedio de compra por material</h2>
-                <p class="text-muted small mb-0">Promedio ponderado por kilos dentro del rango seleccionado.</p>
-            </div>
-            <div class="text-muted small">
-                {{ compra_material_rows|length }} materiales analizados
-            </div>
-        </div>
-        <div class="table-scroll-shell">
-            <div class="table-responsive scroll-x note-table-scroll">
-                <table class="table table-hover table-sm align-middle mb-0">
-                    <thead>
+        <h2 class="s-card-title">Notas de compra del rango</h2>
+        <p class="s-card-sub">
+            Resumen por nota para identificar cuánto material se compró en las fechas filtradas.
+            {{ compra_total_notas }} notas &middot; {{ "{:,.2f}".format(compra_total_kg or 0) }} kg &middot; ${{ "{:,.2f}".format(compra_total_monto or 0) }}.
+        </p>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                <tr>
+                    <th data-title-col>Folio</th>
+                    <th>Fecha</th>
+                    <th>Proveedor</th>
+                    <th>Sucursal</th>
+                    <th>Materiales</th>
+                    <th class="text-end">Cantidad comprada</th>
+                    <th class="text-end">Total comprado</th>
+                    <th><span class="s-visually-hidden">Acciones</span></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for row in compra_notas_rows %}
                     <tr>
-                        <th>Material</th>
-                        <th>Kg comprados</th>
-                        <th>Monto comprado</th>
-                        <th>Precio promedio/kg</th>
-                        <th>Notas</th>
-                        <th>Sucursal(es)</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {% for row in compra_material_rows %}
-                        <tr>
-                            <td><span class="fw-semibold">{{ row.material }}</span></td>
-                            <td>{{ "{:,.2f}".format(row.cantidad_kg or 0) }} kg</td>
-                            <td>${{ "{:,.2f}".format(row.monto or 0) }}</td>
-                            <td class="fw-semibold">${{ "{:,.5f}".format(row.precio_promedio or 0) }}</td>
-                            <td>{{ row.notas_count }}</td>
-                            <td>{{ row.sucursales|join(', ') if row.sucursales else '-' }}</td>
-                        </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para comparar el promedio de compra entre materiales y sucursales.</div>
-        </div>
-        {% if compra_material_rows|length == 0 %}
-            <p class="text-muted small mt-3 mb-0">No hay compras registradas en el rango para calcular precio promedio.</p>
-        {% endif %}
-    </div>
-</div>
-
-<div class="card hover-lift mb-3">
-    <div class="card-body">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-            <div>
-                <h2 class="h5 text-white mb-1">Notas de compra del rango</h2>
-                <p class="text-muted small mb-0">Resumen por nota para identificar cuanto material se compro en las fechas filtradas.</p>
-            </div>
-            <div class="text-muted small">
-                {{ compra_total_notas }} notas · {{ "{:,.2f}".format(compra_total_kg or 0) }} kg · ${{ "{:,.2f}".format(compra_total_monto or 0) }}
-            </div>
-        </div>
-        <div class="table-scroll-shell">
-            <div class="table-responsive scroll-x note-table-scroll">
-                <table class="table table-hover table-sm align-middle mb-0">
-                    <thead>
-                    <tr>
-                        <th>Folio</th>
-                        <th>Fecha</th>
-                        <th>Proveedor</th>
-                        <th>Sucursal</th>
-                        <th>Material(es)</th>
-                        <th>Cantidad comprada</th>
-                        <th>Total comprado $</th>
-                        <th class="text-end"></th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {% for row in compra_notas_rows %}
-                        <tr>
-                            <td><span class="fw-semibold">{{ row.folio }}</span></td>
-                            <td>{{ row.fecha|datetime_local if row.fecha else '-' }}</td>
-                            <td>{{ row.proveedor }}</td>
-                            <td>{{ row.sucursal }}</td>
-                            <td>
-                                {% if row.materiales %}
-                                    {{ row.materiales|join(', ') }}
-                                {% else %}
-                                    -
-                                {% endif %}
-                            </td>
-                            <td class="fw-semibold">{{ "{:,.2f}".format(row.cantidad_kg or 0) }} kg</td>
-                            <td class="fw-semibold">${{ "{:,.2f}".format(row.monto or 0) }}</td>
-                            <td class="text-end">
+                        <td><span class="fw-semibold">{{ row.folio }}</span></td>
+                        <td>{{ row.fecha|datetime_local if row.fecha else '—' }}</td>
+                        <td>{{ row.proveedor }}</td>
+                        <td>{{ row.sucursal }}</td>
+                        <td>{{ row.materiales|join(', ') if row.materiales else '—' }}</td>
+                        <td class="text-end">{{ kg(row.cantidad_kg) }}</td>
+                        <td class="text-end">{{ money(row.monto) }}</td>
+                        <td>
+                            <span class="s-actions">
                                 <a class="btn btn-sm btn-outline-secondary" href="/web/admin/notas/{{ row.nota_id }}">Ver nota</a>
-                            </td>
-                        </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para revisar las notas incluidas y el total comprado por material.</div>
-        </div>
-        {% if compra_notas_rows|length == 0 %}
-            <p class="text-muted small mt-3 mb-0">No hay compras registradas con ese material y rango de fechas.</p>
-        {% endif %}
-    </div>
-</div>
-
-<div class="card hover-lift mb-3">
-    <div class="card-body">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-            <div>
-                <h2 class="h5 text-white mb-1">Ajustes manuales del rango</h2>
-                <p class="text-muted small mb-0">Ajustes aplicados al inventario dentro del rango seleccionado.</p>
-            </div>
-            <div class="text-muted small">
-                {{ ajuste_rows|length }} ajuste(s) · {{ "{:+,.2f}".format(ajuste_total_kg or 0) }} kg neto
-            </div>
-        </div>
-        <div class="table-scroll-shell">
-            <div class="table-responsive scroll-x note-table-scroll">
-                <table class="table table-hover table-sm align-middle mb-0">
-                    <thead>
-                    <tr>
-                        <th>Fecha</th>
-                        <th>Sucursal</th>
-                        <th>Material</th>
-                        <th>Delta</th>
-                        <th>Stock resultante</th>
-                        <th>Comentario</th>
-                        <th class="text-end"></th>
+                            </span>
+                        </td>
                     </tr>
-                    </thead>
-                    <tbody>
-                    {% for row in ajuste_rows %}
-                        <tr>
-                            <td>{{ row.created_at|datetime_local if row.created_at else '-' }}</td>
-                            <td>{{ row.sucursal }}</td>
-                            <td>{{ row.material }}</td>
-                            <td class="fw-semibold {% if (row.cantidad_kg or 0) < 0 %}text-danger{% elif (row.cantidad_kg or 0) > 0 %}text-success{% endif %}">
-                                {{ "{:+,.2f}".format(row.cantidad_kg or 0) }} kg
-                            </td>
-                            <td class="{% if (row.saldo_resultante or 0) < 0 %}text-danger fw-semibold{% endif %}">
-                                {{ "{:,.2f}".format(row.saldo_resultante or 0) }} kg
-                            </td>
-                            <td class="small text-muted">{{ row.comentario or '-' }}</td>
-                            <td class="text-end">
-                                {% if row.ajuste_id %}
-                                    <a class="btn btn-sm btn-outline-secondary" href="/web/admin/inventario/ajustes/{{ row.ajuste_id }}">Detalle</a>
-                                {% else %}
-                                    <span class="text-muted small">-</span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para ver el detalle de cada ajuste manual de inventario.</div>
+                {% else %}
+                    {{ empty_row(8, 'No hay compras registradas con ese material y rango de fechas.') }}
+                {% endfor %}
+                </tbody>
+            </table>
         </div>
-        {% if ajuste_rows|length == 0 %}
-            <p class="text-muted small mt-3 mb-0">No hay ajustes manuales registrados en el rango seleccionado.</p>
-        {% endif %}
     </div>
 </div>
 
-<div class="card hover-lift">
+<div class="card mb-3">
     <div class="card-body">
-        <div class="d-flex justify-content-end text-muted small mb-2">
-            Total (firmado): <strong class="ms-1">{{ "{:,.2f}".format(total_firmado or 0) }} kg</strong>
+        <h2 class="s-card-title">Ajustes manuales del rango</h2>
+        <p class="s-card-sub">
+            Ajustes aplicados al inventario dentro del rango seleccionado.
+            {{ ajuste_rows|length }} ajuste{{ '' if ajuste_rows|length == 1 else 's' }} &middot; {{ "{:+,.2f}".format(ajuste_total_kg or 0) }} kg neto.
+        </p>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Sucursal</th>
+                    <th data-title-col>Material</th>
+                    <th class="text-end">Movimiento</th>
+                    <th class="text-end">Existencias resultantes</th>
+                    <th>Motivo del ajuste</th>
+                    <th><span class="s-visually-hidden">Acciones</span></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for row in ajuste_rows %}
+                    <tr>
+                        <td>{{ row.created_at|datetime_local if row.created_at else '—' }}</td>
+                        <td>{{ row.sucursal }}</td>
+                        <td>{{ row.material }}</td>
+                        <td class="text-end"><span class="s-num">{{ "{:+,.2f}".format(row.cantidad_kg or 0) }} kg</span></td>
+                        <td class="text-end">
+                            <span class="{% if (row.saldo_resultante or 0) < 0 %}text-danger fw-semibold{% endif %}">{{ kg(row.saldo_resultante) }}</span>
+                        </td>
+                        <td class="small text-muted">{{ row.comentario or '—' }}</td>
+                        <td>
+                            {% if row.ajuste_id %}
+                                <span class="s-actions">
+                                    <a class="btn btn-sm btn-outline-secondary" href="/web/admin/inventario/ajustes/{{ row.ajuste_id }}">Detalle</a>
+                                </span>
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% else %}
+                    {{ empty_row(7, 'No hay ajustes manuales registrados en el rango seleccionado.') }}
+                {% endfor %}
+                </tbody>
+            </table>
         </div>
-        <div class="table-scroll-shell">
-            <div class="table-responsive scroll-x note-table-scroll">
-                <table class="table table-hover table-sm align-middle mb-0">
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <h2 class="s-card-title">Movimientos del rango</h2>
+        <p class="s-card-sub">
+            Cada entrada y salida de inventario con su saldo resultante.
+            Total neto: <strong>{{ "{:,.2f}".format(total_firmado or 0) }} kg</strong>.
+        </p>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
                 <thead>
                 <tr>
                     <th>Sucursal</th>
-                    <th>Material</th>
+                    <th data-title-col>Material</th>
                     <th>Tipo</th>
-                    <th>Cantidad</th>
-                    <th>Saldo</th>
+                    <th class="text-end">Cantidad</th>
+                    <th class="text-end">Saldo</th>
                     <th>Folio</th>
-                    <th>Proveedor / cliente</th>
+                    <th>Proveedor o cliente</th>
                     <th>Fecha</th>
                     <th>Comentario</th>
-                    <th class="text-end"></th>
+                    <th><span class="s-visually-hidden">Acciones</span></th>
                 </tr>
                 </thead>
                 <tbody>
@@ -326,36 +261,42 @@
                     {% if mov.tipo == 'venta' %}
                         {% set qty = qty * -1 %}
                     {% endif %}
+                    {% set tipo_meta = TIPO_MOV.get(mov.tipo) %}
                     <tr>
-                        <td>{{ mov.inventario.sucursal.nombre if mov.inventario and mov.inventario.sucursal else '-' }}</td>
-                        <td>{{ mov.inventario.material.nombre if mov.inventario and mov.inventario.material else '-' }}</td>
-                        <td class="text-uppercase">{{ mov.tipo }}</td>
-                        <td>{{ "{:,.2f}".format(qty) }} kg</td>
-                        <td class="{% if (mov.saldo_resultante or 0) < 0 %}text-danger fw-semibold{% endif %}">
-                            {{ "{:,.2f}".format(mov.saldo_resultante or 0) }} kg
+                        <td>{{ mov.inventario.sucursal.nombre if mov.inventario and mov.inventario.sucursal else '—' }}</td>
+                        <td>{{ mov.inventario.material.nombre if mov.inventario and mov.inventario.material else '—' }}</td>
+                        <td>
+                            {% if tipo_meta %}
+                                {{ badge(tipo_meta[0], tipo_meta[1]) }}
+                            {% else %}
+                                {{ badge((mov.tipo or '—')|replace('_', ' ')|capitalize, 'muted') }}
+                            {% endif %}
                         </td>
-                        <td>{% if mov.nota_id %}<a href="/web/admin/notas/{{ mov.nota_id }}">{{ note_meta.folio if note_meta else ('#' ~ mov.nota_id) }}</a>{% else %}-{% endif %}</td>
-                        <td>{{ note_meta.partner if note_meta else '-' }}</td>
-                        <td>{{ mov.created_at|datetime_local if mov.created_at else '-' }}</td>
-                        <td class="small text-muted">{{ mov.comentario or '-' }}</td>
+                        <td class="text-end">{{ kg(qty) }}</td>
                         <td class="text-end">
+                            <span class="{% if (mov.saldo_resultante or 0) < 0 %}text-danger fw-semibold{% endif %}">{{ kg(mov.saldo_resultante) }}</span>
+                        </td>
+                        <td>{% if mov.nota_id %}<a href="/web/admin/notas/{{ mov.nota_id }}">{{ note_meta.folio if note_meta else ('#' ~ mov.nota_id) }}</a>{% else %}—{% endif %}</td>
+                        <td>{{ note_meta.partner if note_meta else '—' }}</td>
+                        <td>{{ mov.created_at|datetime_local if mov.created_at else '—' }}</td>
+                        <td class="small text-muted">{{ mov.comentario or '—' }}</td>
+                        <td>
                             {% set ajuste = ajustes_by_mov_id.get(mov.id) %}
                             {% if ajuste %}
-                                <a class="btn btn-sm btn-outline-secondary" href="/web/admin/inventario/ajustes/{{ ajuste.id }}">Detalle</a>
+                                <span class="s-actions">
+                                    <a class="btn btn-sm btn-outline-secondary" href="/web/admin/inventario/ajustes/{{ ajuste.id }}">Detalle</a>
+                                </span>
                             {% else %}
-                                <span class="text-muted small">-</span>
+                                <span class="text-muted">—</span>
                             {% endif %}
                         </td>
                     </tr>
+                {% else %}
+                    {{ empty_row(10, 'No hay movimientos con estos filtros.') }}
                 {% endfor %}
                 </tbody>
-                </table>
-            </div>
-            <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para abrir detalles de ajustes manuales y revisar cada movimiento.</div>
+            </table>
         </div>
-        {% if movimientos|length == 0 %}
-            <p class="text-muted small mt-3 mb-0">No hay movimientos con estos filtros.</p>
-        {% endif %}
     </div>
 </div>
 <script>
@@ -367,4 +308,3 @@
     }
 </script>
 {% endblock %}
-

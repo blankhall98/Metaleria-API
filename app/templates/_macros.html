@@ -1,0 +1,134 @@
+{#
+  ==========================================================================
+  Scrap360 shared macros
+  --------------------------------------------------------------------------
+  The one vocabulary every template uses. Import at the top of a template:
+
+      {% from "_macros.html" import page_head, stat, badge, icon, empty %}
+
+  Rules of the house (see docs/DESIGN_SYSTEM.md):
+    * One .btn-primary per screen.
+    * Money is right-aligned and tabular; a settled zero is muted, not red.
+    * Status is a tinted badge, never a saturated block.
+    * Icons come from the sprite in _icons.html. Emoji are never icons.
+  ==========================================================================
+#}
+
+{# --- Icon from the sprite ------------------------------------------------ #}
+{% macro icon(name, cls="") -%}
+<svg class="s-icon {{ cls }}" aria-hidden="true" focusable="false"><use href="#i-{{ name }}"></use></svg>
+{%- endmacro %}
+
+{# --- Page header ---------------------------------------------------------
+   Every screen opens the same way: section eyebrow, title, one line of
+   purpose, actions on the right.
+#}
+{% macro page_head(title, eyebrow="", sub="", caller_actions=None) -%}
+<header class="s-page-head">
+    <div class="s-page-head__main">
+        {% if eyebrow %}<span class="s-eyebrow">{{ eyebrow }}</span>{% endif %}
+        <h1 class="s-page-title">{{ title }}</h1>
+        {% if sub %}<p class="s-page-sub">{{ sub }}</p>{% endif %}
+    </div>
+    {% if caller_actions %}<div class="s-page-head__actions">{{ caller_actions }}</div>{% endif %}
+</header>
+{%- endmacro %}
+
+{# Same header, but actions are supplied as a {% call %} block. #}
+{% macro page_header(title, eyebrow="", sub="") -%}
+<header class="s-page-head">
+    <div class="s-page-head__main">
+        {% if eyebrow %}<span class="s-eyebrow">{{ eyebrow }}</span>{% endif %}
+        <h1 class="s-page-title">{{ title }}</h1>
+        {% if sub %}<p class="s-page-sub">{{ sub }}</p>{% endif %}
+    </div>
+    {% if caller is defined and caller %}<div class="s-page-head__actions">{{ caller() }}</div>{% endif %}
+</header>
+{%- endmacro %}
+
+{# --- Stat tile -----------------------------------------------------------
+   tone: "" | ok | warn | bad | info | brass
+#}
+{% macro stat(label, value, sub="", tone="") -%}
+<div class="s-stat{% if tone %} s-stat--{{ tone }}{% endif %}">
+    <span class="s-stat__label">{{ label }}</span>
+    <span class="s-stat__value">{{ value }}</span>
+    {% if sub %}<span class="s-stat__sub">{{ sub }}</span>{% endif %}
+</div>
+{%- endmacro %}
+
+{# --- Status badge --------------------------------------------------------
+   tone: ok | warn | bad | info | muted
+#}
+{% macro badge(text, tone="muted") -%}
+<span class="badge s-badge--{{ tone }}">{{ text }}</span>
+{%- endmacro %}
+
+{# --- Empty state ---------------------------------------------------------
+   Replaces the tall blank cards that said only "No hay registros".
+#}
+{% macro empty(title, text="", icon_name="inbox") -%}
+<div class="s-empty">
+    {{ icon(icon_name, "s-icon--lg") }}
+    <p class="s-empty__title">{{ title }}</p>
+    {% if text %}<p class="s-empty__text">{{ text }}</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{# --- Empty table row ----------------------------------------------------- #}
+{% macro empty_row(colspan, text="Sin registros para los filtros aplicados.") -%}
+<tr><td colspan="{{ colspan }}" class="text-center text-muted py-4">{{ text }}</td></tr>
+{%- endmacro %}
+
+{# --- Money ---------------------------------------------------------------
+   A settled zero reads as settled, not as an error. Negative amounts keep
+   the sign inside the currency: -$1,990.00.
+#}
+{% macro money(amount, tone="auto") -%}
+{%- set value = amount or 0 -%}
+{%- if tone == "auto" -%}
+    {%- if value == 0 -%}{% set cls = "s-zero" %}
+    {%- elif value < 0 -%}{% set cls = "text-danger" %}
+    {%- else -%}{% set cls = "" %}
+    {%- endif -%}
+{%- elif tone == "plain" -%}{% set cls = "" %}
+{%- else -%}{% set cls = "text-" ~ tone %}
+{%- endif -%}
+<span class="s-money {{ cls }}">{% if value < 0 %}-{% endif %}${{ "{:,.2f}".format(value|abs) }}</span>
+{%- endmacro %}
+
+{# --- Weight in kilos ----------------------------------------------------- #}
+{% macro kg(amount) -%}
+<span class="s-num">{{ "{:,.2f}".format(amount or 0) }} kg</span>
+{%- endmacro %}
+
+{# --- Filter bar ----------------------------------------------------------
+   Collapses behind a summary on phones so the data, not the form, is the
+   first thing on screen. Use with a {% call %} block containing the fields.
+#}
+{% macro filters(label="Filtros") -%}
+<details class="s-filters-collapse" open>
+    <summary>{{ label }}</summary>
+    <form class="s-filters" method="get">
+        {{ caller() }}
+    </form>
+</details>
+{%- endmacro %}
+
+{# --- Table shell ---------------------------------------------------------
+   app.js labels the cells and turns the table into record cards on phones.
+#}
+{% macro table_open(cls="") -%}
+<div class="table-responsive">
+<table class="table table-hover align-middle {{ cls }}">
+{%- endmacro %}
+
+{% macro table_close() -%}
+</table>
+</div>
+{%- endmacro %}
+
+{# --- Section label inside a card ----------------------------------------- #}
+{% macro section_label(text) -%}
+<p class="s-section-label">{{ text }}</p>
+{%- endmacro %}

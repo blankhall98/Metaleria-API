@@ -1,19 +1,16 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header %}
 
 {% block title %}
     {% if cliente %}Editar cliente{% else %}Nuevo cliente{% endif %} &middot; Admin
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Relaciones</p>
-        <h1 class="h4 text-white mb-0">
-            {% if cliente %}Editar cliente{% else %}Nuevo cliente{% endif %}
-        </h1>
-    </div>
-    <a href="/web/admin/clientes" class="btn btn-outline-secondary btn-sm">Volver</a>
-</div>
+{% call page_header('Editar cliente' if cliente else 'Nuevo cliente',
+                    eyebrow='Relaciones',
+                    sub='Datos de contacto, sucursal de origen y placas registradas del cliente.') %}
+    <a href="/web/admin/clientes" class="btn btn-outline-secondary">Volver</a>
+{% endcall %}
 
 {% if error %}
     <div class="alert alert-danger py-2 small">
@@ -22,7 +19,7 @@
 {% endif %}
 {% if link_ok %}
     <div class="alert alert-success py-2 small">
-        {{ link_msg or "Relacion actualizada correctamente." }}
+        {{ link_msg or "Relación actualizada correctamente." }}
     </div>
 {% endif %}
 {% if link_warn %}
@@ -36,136 +33,143 @@
     </div>
 {% endif %}
 
-<div class="card hover-lift">
+<div class="card">
     <div class="card-body">
         <form
             method="post"
             action="{% if cliente %}/web/admin/clientes/{{ cliente.id }}/editar{% else %}/web/admin/clientes/nuevo{% endif %}"
-            class="d-grid gap-3"
         >
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label" for="nombre_completo">Nombre completo</label>
-                    <input
-                        class="form-control"
-                        type="text"
-                        id="nombre_completo"
-                        name="nombre_completo"
-                        required
-                        value="{{ cliente.nombre_completo if cliente else '' }}"
-                    >
-                </div>
-
-                <div class="col-md-6">
-                    <label class="form-label" for="telefono">Teléfono</label>
-                    <input
-                        class="form-control"
-                        type="text"
-                        id="telefono"
-                        name="telefono"
-                        value="{{ cliente.telefono if cliente and cliente.telefono else '' }}"
-                    >
-                </div>
-            </div>
-
-            <div class="row g-3">
-                <div class="col-md-6">
-                    {% set selected_sucursal = sucursal_id_selected if sucursal_id_selected is not none else (cliente.sucursal_id if cliente and cliente.sucursal_id else '') %}
-                    <label class="form-label" for="sucursal_id">Sucursal</label>
-                    <select class="form-select" id="sucursal_id" name="sucursal_id" required>
-                        <option value="">Selecciona una sucursal</option>
-                        {% for s in sucursales %}
-                            <option value="{{ s.id }}" {% if selected_sucursal and selected_sucursal == s.id %}selected{% endif %}>{{ s.nombre }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-            </div>
-
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label" for="correo_electronico">Correo electrónico</label>
-                    <input
-                        class="form-control"
-                        type="email"
-                        id="correo_electronico"
-                        name="correo_electronico"
-                        value="{{ cliente.correo_electronico if cliente and cliente.correo_electronico else '' }}"
-                    >
-                </div>
-
-                <div class="col-md-6">
-                    <label class="form-label">Placas</label>
-                    <div class="input-group">
-                        <input class="form-control" type="text" id="placa_input" placeholder="ABC123" aria-label="Placa">
-                        <button class="btn btn-outline-primary" type="button" id="add_placa_btn">Agregar nueva placa</button>
+            <fieldset class="s-fieldset">
+                <legend>Identidad</legend>
+                <div class="s-form-grid">
+                    <div>
+                        <label class="form-label" for="nombre_completo">Nombre completo <span class="s-req" aria-hidden="true">*</span></label>
+                        <input
+                            class="form-control"
+                            type="text"
+                            id="nombre_completo"
+                            name="nombre_completo"
+                            required
+                            value="{{ (cliente.nombre_completo if cliente else '') or '' }}"
+                        >
+                        <p class="form-text">Aparece en las notas y en el estado de cuenta.</p>
                     </div>
-                    <input type="hidden" name="placas" id="placas_field" value="{{ placas_text if placas_text is defined else (cliente.placas if cliente and cliente.placas else '') }}">
-                    <div id="placas_tags" class="d-flex flex-wrap gap-2 mt-2"></div>
-                    <div class="form-text">Puedes agregar varias placas. Haz clic en la "x" para eliminar.</div>
+
+                    <div>
+                        <label class="form-label" for="telefono">Teléfono</label>
+                        <input
+                            class="form-control"
+                            type="text"
+                            id="telefono"
+                            name="telefono"
+                            value="{{ (cliente.telefono if cliente else '') or '' }}"
+                        >
+                        <p class="form-text">Opcional. Se usa para contactar al cliente.</p>
+                    </div>
+
+                    <div>
+                        <label class="form-label" for="correo_electronico">Correo electrónico</label>
+                        <input
+                            class="form-control"
+                            type="email"
+                            id="correo_electronico"
+                            name="correo_electronico"
+                            value="{{ (cliente.correo_electronico if cliente else '') or '' }}"
+                        >
+                        <p class="form-text">Opcional. Se usa para enviar comprobantes.</p>
+                    </div>
                 </div>
-            </div>
+            </fieldset>
+
+            <fieldset class="s-fieldset">
+                <legend>Operación</legend>
+                <div class="s-form-grid">
+                    <div>
+                        {% set selected_sucursal = sucursal_id_selected if sucursal_id_selected is not none else (cliente.sucursal_id if cliente and cliente.sucursal_id else '') %}
+                        <label class="form-label" for="sucursal_id">Sucursal <span class="s-req" aria-hidden="true">*</span></label>
+                        <select class="form-select" id="sucursal_id" name="sucursal_id" required>
+                            <option value="">Selecciona una sucursal</option>
+                            {% for s in sucursales %}
+                                <option value="{{ s.id }}" {% if selected_sucursal and selected_sucursal == s.id %}selected{% endif %}>{{ s.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                        <p class="form-text">Las ventas a este cliente se registran en esta sede.</p>
+                    </div>
+
+                    <div>
+                        <label class="form-label" for="placa_input">Placas</label>
+                        <div class="input-group">
+                            <input class="form-control" type="text" id="placa_input" placeholder="ABC123">
+                            <button class="btn btn-outline-primary" type="button" id="add_placa_btn">Agregar</button>
+                        </div>
+                        <input type="hidden" name="placas" id="placas_field" value="{{ placas_text if placas_text is defined else ((cliente.placas if cliente else '') or '') }}">
+                        <div id="placas_tags" class="d-flex flex-wrap gap-2 mt-2"></div>
+                        <p class="form-text">Opcional. Puedes agregar varias placas; usa la &laquo;x&raquo; para quitarlas.</p>
+                    </div>
+                </div>
+
+                {% if cliente %}
+                    <div class="form-check mt-3">
+                        <input
+                            class="form-check-input"
+                            type="checkbox"
+                            id="activo"
+                            name="activo"
+                            {% if cliente.activo %}checked{% endif %}
+                        >
+                        <label class="form-check-label" for="activo">
+                            Cliente activo
+                        </label>
+                    </div>
+                {% endif %}
+            </fieldset>
 
             {% if cliente %}
-                <div class="partner-match-card {% if counterpart_suggestion and counterpart_suggestion.is_linked %}is-linked{% endif %}">
-                    <input type="hidden" name="next_url" value="/web/admin/clientes/{{ cliente.id }}/editar">
-                    {% if counterpart_suggestion and counterpart_suggestion.is_linked %}
-                        <div>
-                            <div class="partner-match-title">Este cliente tambien opera como proveedor</div>
-                            <div class="text-muted small">
+                <fieldset class="s-fieldset">
+                    <legend>Contraparte como proveedor</legend>
+                    <div class="s-subpanel">
+                        <input type="hidden" name="next_url" value="/web/admin/clientes/{{ cliente.id }}/editar">
+                        {% if counterpart_suggestion and counterpart_suggestion.is_linked %}
+                            <p class="s-card-title mb-2">Este cliente también opera como proveedor</p>
+                            <p class="form-text mt-0">
                                 Proveedor ID {{ counterpart_suggestion.candidate.id }} · {{ counterpart_suggestion.candidate.nombre_completo }}
+                            </p>
+                            <p class="form-text">{{ counterpart_suggestion.message }}</p>
+                            <div class="s-row mt-3">
+                                <a href="/web/admin/proveedores/{{ counterpart_suggestion.candidate.id }}/record" class="btn btn-outline-primary btn-sm">Ver proveedor</a>
                             </div>
-                            <div class="text-muted small mt-1">{{ counterpart_suggestion.message }}</div>
-                        </div>
-                        <div class="d-flex gap-2 flex-wrap">
-                            <a href="/web/admin/proveedores/{{ counterpart_suggestion.candidate.id }}/record" class="btn btn-outline-primary btn-sm">Ver proveedor</a>
-                        </div>
-                    {% elif counterpart_suggestion %}
-                        <div>
-                            <div class="partner-match-title">Proveedor sugerido para vincular</div>
-                            <div class="text-muted small">
+                        {% elif counterpart_suggestion %}
+                            <p class="s-card-title mb-2">Proveedor sugerido para vincular</p>
+                            <p class="form-text mt-0">
                                 Proveedor ID {{ counterpart_suggestion.candidate.id }} · {{ counterpart_suggestion.candidate.nombre_completo }}
+                            </p>
+                            <p class="form-text">{{ counterpart_suggestion.reason }}</p>
+                            <p class="form-text">{{ counterpart_suggestion.message }}</p>
+                            <div class="s-row mt-3">
+                                {% if counterpart_suggestion.can_link %}
+                                    <button class="btn btn-outline-primary btn-sm" type="submit" formaction="/web/admin/clientes/{{ cliente.id }}/crear-proveedor" formmethod="post" formnovalidate>Vincular proveedor existente</button>
+                                {% endif %}
+                                <a href="/web/admin/proveedores/{{ counterpart_suggestion.candidate.id }}/record" class="btn btn-outline-secondary btn-sm">Ver proveedor</a>
                             </div>
-                            <div class="text-muted small mt-1">{{ counterpart_suggestion.reason }}</div>
-                            <div class="text-muted small mt-1">{{ counterpart_suggestion.message }}</div>
-                        </div>
-                        <div class="d-flex gap-2 flex-wrap">
-                            {% if counterpart_suggestion.can_link %}
-                                <button class="btn btn-outline-success btn-sm" type="submit" formaction="/web/admin/clientes/{{ cliente.id }}/crear-proveedor" formmethod="post" formnovalidate>Vincular proveedor existente</button>
-                            {% endif %}
-                            <a href="/web/admin/proveedores/{{ counterpart_suggestion.candidate.id }}/record" class="btn btn-outline-primary btn-sm">Ver proveedor</a>
-                        </div>
-                    {% else %}
-                        <div>
-                            <div class="partner-match-title">Agregar como proveedor</div>
-                            <div class="text-muted small">
-                                Si aun no existe la contraparte, el sistema la crea automaticamente. Si ya existe una coincidencia clara, la vincula sin duplicar.
+                        {% else %}
+                            <p class="s-card-title mb-2">Agregar como proveedor</p>
+                            <p class="form-text mt-0">
+                                Si aún no existe la contraparte, el sistema la crea automáticamente. Si ya existe una
+                                coincidencia clara, la vincula sin duplicar.
+                            </p>
+                            <div class="s-row mt-3">
+                                <button class="btn btn-outline-primary btn-sm" type="submit" formaction="/web/admin/clientes/{{ cliente.id }}/crear-proveedor" formmethod="post" formnovalidate>Agregar como proveedor</button>
                             </div>
-                        </div>
-                        <button class="btn btn-outline-success btn-sm" type="submit" formaction="/web/admin/clientes/{{ cliente.id }}/crear-proveedor" formmethod="post" formnovalidate>Agregar como proveedor</button>
-                    {% endif %}
-                </div>
+                        {% endif %}
+                    </div>
+                </fieldset>
             {% endif %}
 
-            {% if cliente %}
-                <div class="form-check mb-2">
-                    <input
-                        class="form-check-input"
-                        type="checkbox"
-                        id="activo"
-                        name="activo"
-                        {% if cliente.activo %}checked{% endif %}
-                    >
-                    <label class="form-check-label" for="activo">
-                        Cliente activo
-                    </label>
-                </div>
-            {% endif %}
-
-            <div class="d-flex gap-2">
-                <button type="submit" class="btn btn-primary">
-                    Guardar
-                </button>
+            <div class="s-form-actions">
                 <a href="/web/admin/clientes" class="btn btn-outline-secondary">Cancelar</a>
+                <button type="submit" class="btn btn-primary">
+                    {% if cliente %}Guardar cambios{% else %}Crear cliente{% endif %}
+                </button>
             </div>
         </form>
     </div>
@@ -188,7 +192,8 @@
                 const close = document.createElement('button');
                 close.type = 'button';
                 close.className = 'chip-remove';
-                close.textContent = '\u00d7';
+                close.textContent = '×';
+                close.setAttribute('aria-label', 'Quitar placa ' + pl);
                 close.onclick = () => {
                     placas.splice(idx, 1);
                     syncHidden();
@@ -228,4 +233,3 @@
     })();
 </script>
 {% endblock %}
-

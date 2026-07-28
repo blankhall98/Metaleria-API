@@ -1,107 +1,92 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, icon, stat, badge, money, empty_row %}
 
 {% block title %}Proveedores &middot; Admin{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Relaciones</p>
-        <h1 class="h4 text-white mb-0">Proveedores</h1>
-        <div class="text-muted small mt-1">Busqueda, saldo neto y proveedores que tambien compran material.</div>
-    </div>
+{% call page_header('Proveedores', eyebrow='Relaciones',
+                    sub='Búsqueda, saldo neto y proveedores que también compran material.') %}
     {% if user.rol in ['super_admin', 'admin'] %}
-        <a href="/web/admin/proveedores/nuevo" class="btn btn-primary btn-sm">
-            Nuevo proveedor
+        <a href="/web/admin/contabilidad" class="btn btn-outline-secondary">
+            {{ icon('ledger', 's-icon--sm') }} Contabilidad
+        </a>
+        <a href="/web/admin/proveedores/nuevo" class="btn btn-primary">
+            {{ icon('plus', 's-icon--sm') }} Nuevo proveedor
         </a>
     {% endif %}
+{% endcall %}
+
+<div class="s-stats">
+    {{ stat('Total', total_proveedores, 'Proveedores registrados') }}
+    {{ stat('Compra y venta', compra_venta_count, 'También venden material') }}
+    {{ stat('Con saldo neto', con_saldo_count, 'Saldo distinto de cero', 'info') }}
 </div>
 
-<div class="ops-kpi-strip mb-3">
-    <div class="ops-kpi-pill">
-        <span class="ops-kpi-label">Total</span>
-        <strong>{{ total_proveedores }}</strong>
-    </div>
-    <div class="ops-kpi-pill">
-        <span class="ops-kpi-label">Compra y venta</span>
-        <strong>{{ compra_venta_count }}</strong>
-    </div>
-    <div class="ops-kpi-pill">
-        <span class="ops-kpi-label">Con saldo neto</span>
-        <strong>{{ con_saldo_count }}</strong>
-    </div>
-    <div class="ops-kpi-pill">
-        <span class="ops-kpi-label">Legado</span>
-        <strong>{{ legado_count }}</strong>
-    </div>
-</div>
-
-<form method="get" class="row g-2 mb-3">
-    <div class="col-sm-12 col-md-5">
-        <input
-            type="text"
-            class="form-control"
-            name="q"
-            placeholder="Buscar por nombre, teléfono, correo o placas..."
-            value="{{ q }}"
-        >
-    </div>
-    <div class="col-sm-8 col-md-4">
-        <select class="form-select" name="sucursal_id">
-            <option value="">Todas las sucursales</option>
-            {% for s in sucursales %}
-                <option value="{{ s.id }}" {% if sucursal_id and sucursal_id == s.id %}selected{% endif %}>{{ s.nombre }}</option>
-            {% endfor %}
-        </select>
-    </div>
-    <div class="col-sm-8 col-md-3">
-        <select class="form-select" name="modo">
-            <option value="TODOS" {% if modo_current == 'TODOS' %}selected{% endif %}>Todos los proveedores</option>
-            <option value="COMPRA_VENTA" {% if modo_current == 'COMPRA_VENTA' %}selected{% endif %}>Solo compra y venta</option>
-            <option value="CON_SALDO" {% if modo_current == 'CON_SALDO' %}selected{% endif %}>Solo con saldo neto</option>
-        </select>
-    </div>
-    <div class="col-auto">
-        <button class="btn btn-outline-secondary btn-sm" type="submit">Buscar</button>
-    </div>
-    {% if q or sucursal_id or modo_current != 'TODOS' %}
-        <div class="col-auto">
-            <a class="btn btn-outline-secondary btn-sm" href="/web/admin/proveedores">Limpiar</a>
+<details class="s-filters-collapse" open>
+    <summary>Filtros</summary>
+    <form class="s-filters" method="get">
+        <div class="s-filters__field s-filters__field--wide">
+            <label for="f-q" class="form-label">Búsqueda</label>
+            <input
+                type="text"
+                id="f-q"
+                class="form-control"
+                name="q"
+                placeholder="Nombre, teléfono, correo o placas"
+                value="{{ q }}"
+            >
         </div>
-    {% endif %}
-</form>
+        <div class="s-filters__field">
+            <label for="f-sucursal" class="form-label">Sucursal</label>
+            <select class="form-select" id="f-sucursal" name="sucursal_id">
+                <option value="">Todas las sucursales</option>
+                {% for s in sucursales %}
+                    <option value="{{ s.id }}" {% if sucursal_id and sucursal_id == s.id %}selected{% endif %}>{{ s.nombre }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="s-filters__field">
+            <label for="f-modo" class="form-label">Modo</label>
+            <select class="form-select" id="f-modo" name="modo">
+                <option value="TODOS" {% if modo_current == 'TODOS' %}selected{% endif %}>Todos los proveedores</option>
+                <option value="COMPRA_VENTA" {% if modo_current == 'COMPRA_VENTA' %}selected{% endif %}>Solo compra y venta</option>
+                <option value="CON_SALDO" {% if modo_current == 'CON_SALDO' %}selected{% endif %}>Solo con saldo neto</option>
+            </select>
+        </div>
+        <div class="s-filters__actions">
+            <button class="btn btn-outline-primary" type="submit">Filtrar</button>
+            {% if q or sucursal_id or modo_current != 'TODOS' %}
+                <a class="btn btn-outline-secondary" href="/web/admin/proveedores">Limpiar</a>
+            {% endif %}
+        </div>
+    </form>
+</details>
+
 {% if sucursal_error %}
     <div class="alert alert-danger py-2 small mb-3">{{ sucursal_error }}</div>
 {% endif %}
+{% if delete_ok %}
+    <div class="alert alert-success py-2 small mb-3">Proveedor eliminado correctamente.</div>
+{% endif %}
+{% if delete_error %}
+    <div class="alert alert-danger py-2 small mb-3">{{ delete_error }}</div>
+{% endif %}
 
-<div class="card hover-lift">
+<div class="card">
     <div class="card-body">
-        {% if delete_ok %}
-            <div class="alert alert-success py-2 small mb-3">Proveedor eliminado correctamente.</div>
-        {% endif %}
-        {% if delete_error %}
-            <div class="alert alert-danger py-2 small mb-3">{{ delete_error }}</div>
-        {% endif %}
-        <div class="ops-inline-toolbar mb-3">
-            <a href="/web/admin/proveedores?modo=TODOS{% if q %}&q={{ q }}{% endif %}{% if sucursal_id %}&sucursal_id={{ sucursal_id }}{% endif %}" class="ops-inline-pill {{ 'active' if modo_current == 'TODOS' else '' }}">Todos</a>
-            <a href="/web/admin/proveedores?modo=COMPRA_VENTA{% if q %}&q={{ q }}{% endif %}{% if sucursal_id %}&sucursal_id={{ sucursal_id }}{% endif %}" class="ops-inline-pill {{ 'active' if modo_current == 'COMPRA_VENTA' else '' }}">Compra y venta</a>
-            <a href="/web/admin/proveedores?modo=CON_SALDO{% if q %}&q={{ q }}{% endif %}{% if sucursal_id %}&sucursal_id={{ sucursal_id }}{% endif %}" class="ops-inline-pill {{ 'active' if modo_current == 'CON_SALDO' else '' }}">Con saldo</a>
-            {% if user.rol in ['super_admin', 'admin'] %}
-                <a href="/web/admin/contabilidad" class="ops-inline-pill">Log contable</a>
-            {% endif %}
-        </div>
         <div class="table-responsive">
-            <table class="table table-hover table-sm align-middle mb-0">
+            <table class="table table-hover align-middle">
                 <thead>
                 <tr>
                     <th>ID</th>
-                    <th>Nombre</th>
+                    <th data-title-col>Nombre</th>
                     <th>Sucursal</th>
                     <th>Teléfono</th>
                     <th>Correo</th>
                     <th>Placas</th>
                     <th class="text-end">Saldo neto</th>
-                    <th>Activo</th>
-                    <th></th>
+                    <th>Estado</th>
+                    <th><span class="s-visually-hidden">Acciones</span></th>
                 </tr>
                 </thead>
                 <tbody>
@@ -112,12 +97,11 @@
                         <td>
                             <div class="fw-semibold">{{ p.nombre_completo }}</div>
                             <div class="d-flex flex-wrap gap-1 mt-1">
-                                <span class="partner-role-badge">Proveedor</span>
                                 {% if row.direct_enabled %}
-                                    <span class="partner-role-badge dual prominent">Compra y venta</span>
+                                    {{ badge('Compra y venta', 'info') }}
                                 {% endif %}
                                 {% if row.linked_cliente %}
-                                    <span class="partner-role-badge unified">Cliente legado vinculado</span>
+                                    {{ badge('Cliente vinculado', 'muted') }}
                                 {% endif %}
                             </div>
                             {% if row.direct_enabled %}
@@ -130,7 +114,7 @@
                                 </div>
                             {% elif row.linked_cliente %}
                                 <div class="text-muted small mt-1">
-                                    Vinculado con cliente legado ID {{ row.linked_cliente.id }}
+                                    Vinculado con el cliente {{ row.linked_cliente.id }}
                                 </div>
                             {% endif %}
                         </td>
@@ -143,32 +127,26 @@
                                 <span class="text-muted small">{{ p.placas or '-' }}</span>
                             {% else %}
                                 {% for pl in lista %}
-                                    <span class="badge bg-secondary me-1">{{ pl.placa }}</span>
+                                    {{ badge(pl.placa, 'muted') }}
                                 {% endfor %}
                             {% endif %}
                         </td>
                         <td class="text-end">
-                            {% if row.saldo_neto >= 0 %}
-                                <span class="text-danger fw-semibold">${{ "{:,.2f}".format(row.saldo_neto) }}</span>
-                            {% else %}
-                                <span class="text-success fw-semibold">-${{ "{:,.2f}".format(-row.saldo_neto) }}</span>
-                            {% endif %}
+                            {{ money(row.saldo_neto) }}
                             {% if row.direct_enabled or row.linked_cliente %}
                                 <div class="text-muted small mt-1">Saldo neto compra/venta</div>
                             {% endif %}
                         </td>
                         <td>
-                            <span class="badge {{ 'bg-success' if p.activo else 'bg-secondary' }}">
-                                {{ 'Sí' if p.activo else 'No' }}
-                            </span>
+                            {{ badge('Activo', 'ok') if p.activo else badge('Inactivo', 'muted') }}
                         </td>
-                        <td class="text-end">
-                            <div class="d-flex gap-2 justify-content-end flex-wrap">
-                                <a href="/web/admin/proveedores/{{ p.id }}/record" class="btn btn-sm btn-outline-primary">
+                        <td>
+                            <span class="s-actions">
+                                <a href="/web/admin/proveedores/{{ p.id }}/record" class="btn btn-sm btn-outline-secondary">
                                     Historial
                                 </a>
                                 {% if user.rol in ['super_admin', 'admin'] %}
-                                    <a href="/web/admin/cuentas?owner_key=proveedor:{{ p.id }}" class="btn btn-sm btn-outline-primary">
+                                    <a href="/web/admin/cuentas?owner_key=proveedor:{{ p.id }}" class="btn btn-sm btn-outline-secondary">
                                         Cuentas
                                     </a>
                                     <a href="/web/admin/proveedores/{{ p.id }}/editar" class="btn btn-sm btn-outline-secondary">
@@ -176,13 +154,16 @@
                                     </a>
                                 {% endif %}
                                 {% if user.rol == 'super_admin' %}
-                                    <form method="post" action="/web/admin/proveedores/{{ p.id }}/eliminar" onsubmit="return confirm('¿Eliminar este proveedor? Esta acción no se puede deshacer.');">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+                                    <form method="post" action="/web/admin/proveedores/{{ p.id }}/eliminar">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                data-confirm="¿Eliminar este proveedor? Esta acción no se puede deshacer.">Eliminar</button>
                                     </form>
                                 {% endif %}
-                            </div>
+                            </span>
                         </td>
                     </tr>
+                {% else %}
+                    {{ empty_row(9) }}
                 {% endfor %}
                 </tbody>
             </table>
@@ -190,4 +171,3 @@
     </div>
 </div>
 {% endblock %}
-

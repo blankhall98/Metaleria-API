@@ -1,378 +1,206 @@
 {% extends "base.html" %}
+{% from "_macros.html" import icon, stat, money, kg %}
 
-{% block title %}Inicio &middot; Scrap360{% endblock %}
+{% block title %}Inicio{% endblock %}
 
 {% block content %}
+
+{# ---------------------------------------------------------------- worker #}
 {% if user and user.rol == 'trabajador' %}
-    <section class="hero card mb-4">
-        <div class="card-body hero-content">
-            <div class="d-flex flex-column flex-lg-row align-items-start align-items-lg-center justify-content-between gap-3">
+    <header class="s-page-head">
+        <div class="s-page-head__main">
+            <span class="s-eyebrow">Panel del trabajador</span>
+            <h1 class="s-page-title">Hola, {{ user.username }}</h1>
+            <p class="s-page-sub">Captura una nota de pesaje o revisa las que ya enviaste.</p>
+        </div>
+        <div class="s-page-head__actions">
+            <a href="/web/worker/notes/nueva" class="btn btn-primary btn-lg">
+                {{ icon('plus') }} Nueva nota
+            </a>
+        </div>
+    </header>
+
+    <div class="s-tiles">
+        <a href="/web/worker/notes/nueva" class="s-tile">
+            <span class="s-icon-tile">{{ icon('note') }}</span>
+            <span class="s-tile__body">
+                <span class="s-tile__title">Nueva nota</span>
+                <span class="s-tile__text">Captura de compra o venta con materiales y subpesajes.</span>
+            </span>
+        </a>
+        <a href="/web/worker/notes" class="s-tile">
+            <span class="s-icon-tile">{{ icon('notes') }}</span>
+            <span class="s-tile__body">
+                <span class="s-tile__title">Mis notas</span>
+                <span class="s-tile__text">Consulta el estado de las notas que capturaste.</span>
+            </span>
+        </a>
+    </div>
+
+{# ------------------------------------------------- admin / visor / super #}
+{% elif user %}
+    {% set solo_lectura = user.rol == 'visor' %}
+
+    <header class="s-page-head">
+        <div class="s-page-head__main">
+            <span class="s-eyebrow">{% if solo_lectura %}Consulta{% else %}Panel operativo{% endif %}</span>
+            <h1 class="s-page-title">Resumen de hoy</h1>
+            <p class="s-page-sub">
+                {% if solo_lectura %}
+                    Estado actual de notas, saldos e inventario en modo solo lectura.
+                {% else %}
+                    Estado actual de la operaci&oacute;n. Usa el men&uacute; lateral para llegar a cada m&oacute;dulo.
+                {% endif %}
+            </p>
+        </div>
+        {% if not solo_lectura %}
+        <div class="s-page-head__actions">
+            <a href="/web/admin/notas/compra-administrativa" class="btn btn-outline-secondary">
+                {{ icon('plus', 's-icon--sm') }} Compra
+            </a>
+            <a href="/web/admin/notas/venta-administrativa" class="btn btn-outline-secondary">
+                {{ icon('plus', 's-icon--sm') }} Venta
+            </a>
+            <a href="/web/admin/corte-caja" class="btn btn-primary">
+                {{ icon('cash', 's-icon--sm') }} Corte de caja
+            </a>
+        </div>
+        {% endif %}
+    </header>
+
+    {% if resumen %}
+        <div class="s-stats">
+            {{ stat('En revisión', resumen.en_revision,
+                    'Notas esperando aprobación',
+                    'warn' if resumen.en_revision else '') }}
+            {{ stat('Vencidas', resumen.vencidas,
+                    'Requieren seguimiento inmediato',
+                    'bad' if resumen.vencidas else '') }}
+            {{ stat('Por vencer', resumen.por_vencer,
+                    'Dentro de los próximos 5 días',
+                    'warn' if resumen.por_vencer else '') }}
+            {{ stat('Notas de hoy', resumen.notas_hoy, 'Capturadas desde las 00:00', 'info') }}
+        </div>
+
+        <div class="s-stats">
+            {{ stat('Por pagar a proveedores', money(resumen.por_pagar, 'plain'),
+                    'Saldo vivo de notas de compra') }}
+            {{ stat('Por cobrar a clientes', money(resumen.por_cobrar, 'plain'),
+                    'Saldo vivo de notas de venta') }}
+            {{ stat('Inventario total', kg(resumen.inventario_kg),
+                    'Stock actual en todas las sucursales') }}
+        </div>
+    {% endif %}
+
+    {% if resumen and resumen.en_revision %}
+        <div class="alert alert-warning d-flex flex-wrap align-items-center gap-3" role="alert">
+            {{ icon('alert', 's-icon--sm') }}
+            <span class="s-grow">
+                Hay <strong>{{ resumen.en_revision }}</strong>
+                nota{{ 's' if resumen.en_revision != 1 }} esperando tu revisi&oacute;n.
+            </span>
+            <a href="/web/admin/notas?estado=EN_REVISION" class="btn btn-sm btn-primary">Revisar ahora</a>
+        </div>
+    {% endif %}
+
+    {% if resumen and resumen.vencidas %}
+        <div class="alert alert-danger d-flex flex-wrap align-items-center gap-3" role="alert">
+            {{ icon('alert', 's-icon--sm') }}
+            <span class="s-grow">
+                <strong>{{ resumen.vencidas }}</strong>
+                nota{{ 's' if resumen.vencidas != 1 }} con pago vencido.
+            </span>
+            <a href="/web/admin/notas?seguimiento=VENCIDAS" class="btn btn-sm btn-outline-danger">Ver vencidas</a>
+        </div>
+    {% endif %}
+
+    {# Direct routes for the handful of tasks run many times a day. The full
+       module list lives in the navigation, not here. #}
+    <section class="s-card mt-4">
+        <div class="card-body">
+            <div class="s-card-head">
                 <div>
-                    <div class="d-flex align-items-center gap-2 mb-2">
-                        <span class="hero-badge">Panel trabajador</span>
-                    </div>
-                    <h1 class="display-6 fw-bold mb-2 text-white">Crear nueva nota</h1>
-                    <p class="mb-3 text-muted">
-                        Captura guiada de compra o venta con materiales y subpesajes. Optimizado para móvil.
-                    </p>
-                    <div class="hero-badges">
-                        <span class="hero-badge"><strong>1</strong> Selecciona operación y partner</span>
-                        <span class="hero-badge"><strong>2</strong> Agrega materiales y subpesajes</span>
-                        <span class="hero-badge"><strong>3</strong> Guarda borrador / enviar a revisión</span>
-                    </div>
-                </div>
-                <div class="d-flex flex-column gap-2 align-self-start align-self-lg-center text-center w-100" style="max-width: 260px;">
-                    <a href="/web/worker/notes/nueva" class="btn btn-primary btn-lg w-100">Nueva nota</a>
-                    <a href="/web/worker/notes" class="btn btn-outline-secondary btn-sm w-100">Ver mis notas</a>
+                    <h2 class="s-card-title">Accesos frecuentes</h2>
+                    <p class="s-card-sub">Las tareas que se ejecutan varias veces al d&iacute;a.</p>
                 </div>
             </div>
-        </div>
-    </section>
-{% elif user and user.rol == 'visor' %}
-    <section class="hero card mb-4">
-        <div class="card-body hero-content">
-            <div class="d-flex flex-column flex-lg-row align-items-start align-items-lg-center justify-content-between gap-3">
-                <div>
-                    <div class="d-flex align-items-center gap-2 mb-2">
-                        <span class="hero-badge">Panel solo lectura</span>
-                    </div>
-                    <h1 class="display-6 fw-bold mb-2 text-white">Consulta de saldos, notas e inventario</h1>
-                    <p class="mb-3 text-muted">
-                        Vista segura para revisar informacion operativa sin riesgo de modificar datos.
-                    </p>
-                    <div class="hero-badges">
-                        <span class="hero-badge"><strong>Notas</strong> filtros por sucursal y estado</span>
-                        <span class="hero-badge"><strong>Partners</strong> saldos de clientes y proveedores</span>
-                        <span class="hero-badge"><strong>Inventario</strong> stock y movimientos</span>
-                    </div>
-                </div>
-                <div class="d-flex flex-column gap-2 align-self-start align-self-lg-center text-center w-100" style="max-width: 260px;">
-                    <a href="/web/admin/notas" class="btn btn-primary btn-lg w-100">Ver notas</a>
-                    <a href="/web/admin/proveedores" class="btn btn-outline-secondary btn-sm w-100">Ver saldos</a>
-                </div>
-            </div>
-        </div>
-    </section>
-{% else %}
-    <section class="hero card mb-4">
-        <div class="card-body hero-content">
-            <div class="d-flex flex-column flex-lg-row align-items-start align-items-lg-center justify-content-between gap-3">
-                <div>
-                    <div class="d-flex align-items-center gap-2 mb-2">
-                        <span class="hero-badge">Panel operativo</span>
-                    </div>
-                    <h1 class="display-6 fw-bold mb-2 text-white">Scrap360 &middot; Control y Administración</h1>
-                    <p class="mb-3 text-muted">
-                        Inventario, compras, ventas y catálogos en un mismo lugar. Diseñado para equipos de campo y oficina.
-                    </p>
-                    <div class="hero-badges">
-                        <span class="hero-badge"><strong>Roles</strong> super admin / admin / trabajador</span>
-                        <span class="hero-badge"><strong>Precios</strong> versionados con auditoría</span>
-                        <span class="hero-badge"><strong>Catálogos</strong> materiales, proveedores, clientes</span>
-                    </div>
-                </div>
-                {% if not user %}
-                    <div class="d-flex gap-2 flex-wrap justify-content-lg-end">
-                        <a href="/web/login" class="btn btn-primary">Entrar al panel</a>
-                    </div>
+
+            <div class="s-tiles">
+                <a href="/web/admin/notas?pago=PENDIENTES" class="s-tile">
+                    <span class="s-icon-tile">{{ icon('coins') }}</span>
+                    <span class="s-tile__body">
+                        <span class="s-tile__title">Cobranza y pagos</span>
+                        <span class="s-tile__text">Abre solo las notas pendientes por saldar.</span>
+                    </span>
+                </a>
+                <a href="/web/admin/inventario" class="s-tile">
+                    <span class="s-icon-tile">{{ icon('box') }}</span>
+                    <span class="s-tile__body">
+                        <span class="s-tile__title">Inventario</span>
+                        <span class="s-tile__text">Stock por sucursal y movimientos.</span>
+                    </span>
+                </a>
+                <a href="/web/admin/contabilidad" class="s-tile">
+                    <span class="s-icon-tile">{{ icon('ledger') }}</span>
+                    <span class="s-tile__body">
+                        <span class="s-tile__title">Contabilidad</span>
+                        <span class="s-tile__text">Movimientos de compra, venta y ajustes.</span>
+                    </span>
+                </a>
+                <a href="/web/admin/capital" class="s-tile">
+                    <span class="s-icon-tile">{{ icon('chart') }}</span>
+                    <span class="s-tile__body">
+                        <span class="s-tile__title">Capital real</span>
+                        <span class="s-tile__text">Activos, pasivos y capital actual.</span>
+                    </span>
+                </a>
+
+                {% if not solo_lectura %}
+                <a href="/web/admin/inventario/aumentar" class="s-tile">
+                    <span class="s-icon-tile">{{ icon('sliders') }}</span>
+                    <span class="s-tile__body">
+                        <span class="s-tile__title">Ajuste de inventario</span>
+                        <span class="s-tile__text">Aumenta o disminuye material con trazabilidad.</span>
+                    </span>
+                </a>
+                <a href="/web/admin/proveedores/nuevo" class="s-tile">
+                    <span class="s-icon-tile">{{ icon('truck') }}</span>
+                    <span class="s-tile__body">
+                        <span class="s-tile__title">Alta de proveedor</span>
+                        <span class="s-tile__text">Crea un nuevo perfil operativo.</span>
+                    </span>
+                </a>
+                <a href="/web/admin/reporte-saldos" class="s-tile">
+                    <span class="s-icon-tile">{{ icon('scale') }}</span>
+                    <span class="s-tile__body">
+                        <span class="s-tile__title">Reporte de saldos</span>
+                        <span class="s-tile__text">Lo que debes y lo que te deben.</span>
+                    </span>
+                </a>
+                <a href="/web/admin/transferencias" class="s-tile">
+                    <span class="s-icon-tile">{{ icon('transfer') }}</span>
+                    <span class="s-tile__body">
+                        <span class="s-tile__title">Transferencias</span>
+                        <span class="s-tile__text">Movimientos entre sucursales.</span>
+                    </span>
+                </a>
                 {% endif %}
             </div>
         </div>
     </section>
+
+{# ------------------------------------------------------------ logged out #}
+{% else %}
+    <div class="s-auth">
+        <div class="s-auth__card text-center">
+            <div class="s-auth__brand justify-content-center">
+                <span class="brand-mark"></span>
+                <span class="s-auth__wordmark">Scrap360</span>
+            </div>
+            <p class="text-muted mb-4">Control de inventario, compras y ventas.</p>
+            <a href="/web/login" class="btn btn-primary btn-lg w-100">Entrar al panel</a>
+        </div>
+    </div>
 {% endif %}
 
-{% if user %}
-    {% if user.rol == 'visor' %}
-        <div class="card soft mb-4">
-            <div class="card-body">
-                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-                    <div>
-                        <p class="text-uppercase text-muted small mb-1">Consulta</p>
-                        <h2 class="h5 text-white mb-0">Panel de visor</h2>
-                    </div>
-                </div>
-                <div class="action-grid">
-                    <a href="/web/admin/notas" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                        <div class="action-top"><div class="action-icon">&#x1F4DD;</div></div>
-                        <div><h3 class="h6 mb-1 text-white">Notas</h3><p class="text-muted mb-0">Consulta notas de todas las sucursales con filtros por estado y pago.</p></div>
-                    </a>
-                    <a href="/web/admin/proveedores" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                        <div class="action-top"><div class="action-icon">&#x1F69A;</div></div>
-                        <div><h3 class="h6 mb-1 text-white">Proveedores</h3><p class="text-muted mb-0">Saldos netos, historial y filtro por sucursal.</p></div>
-                    </a>
-                    <a href="/web/admin/clientes" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                        <div class="action-top"><div class="action-icon">&#x1F9FE;</div></div>
-                        <div><h3 class="h6 mb-1 text-white">Clientes</h3><p class="text-muted mb-0">Consulta saldos, notas y pagos sin permisos de edicion.</p></div>
-                    </a>
-                    <a href="/web/admin/inventario" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                        <div class="action-top"><div class="action-icon">&#x1F4E6;</div></div>
-                        <div><h3 class="h6 mb-1 text-white">Inventario</h3><p class="text-muted mb-0">Stock por sucursal y movimientos historicos.</p></div>
-                    </a>
-                    <a href="/web/admin/capital" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                        <div class="action-top"><div class="action-icon">&#x1F4CA;</div></div>
-                        <div><h3 class="h6 mb-1 text-white">Capital</h3><p class="text-muted mb-0">Activos, pasivos y capital real en modo solo lectura.</p></div>
-                    </a>
-                </div>
-            </div>
-        </div>
-    {% elif user.rol != 'trabajador' %}
-        <div class="card soft mb-4">
-            <div class="card-body">
-                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-                    <div>
-                        <p class="text-uppercase text-muted small mb-1">Accesos rápidos</p>
-                        <h2 class="h5 text-white mb-0">Panel de {{ user.rol|replace('_', ' ')|title }}</h2>
-                    </div>
-                </div>
-                <div class="action-grid">
-                    {% if user.rol == 'super_admin' %}
-                        <a href="/web/admin/users" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                            <div class="action-top">
-                                <div class="action-icon">&#x1F464;</div>
-                            </div>
-                            <div>
-                                <h3 class="h6 mb-1 text-white">Usuarios</h3>
-                                <p class="text-muted mb-0">Gestiona credenciales, roles y accesos.</p>
-                            </div>
-                        </a>
-                        <a href="/web/admin/sucursales" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                            <div class="action-top">
-                                <div class="action-icon">&#x1F3E2;</div>
-                            </div>
-                            <div>
-                                <h3 class="h6 mb-1 text-white">Sucursales</h3>
-                                <p class="text-muted mb-0">Catálogo de sedes y estado operativo.</p>
-                            </div>
-                        </a>
-                    {% endif %}
-
-                    {% if user.rol in ['super_admin', 'admin'] %}
-                        <a href="/web/admin/notas" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1 position-relative">
-                            {% set badge_count = (notas_revision_count if notas_revision_count is defined else request.state.notas_revision_count) or 0 %}
-                            {% if badge_count > 0 %}
-                                <span class="badge bg-danger action-badge">
-                                    {{ badge_count }}
-                                </span>
-                            {% endif %}
-                            <div class="action-top">
-                                <div class="action-icon">&#x1F4DD;</div>
-                            </div>
-                            <div>
-                                <h3 class="h6 mb-1 text-white">Notas</h3>
-                                <p class="text-muted mb-0">Revisa y aprueba notas en revisión.</p>
-                            </div>
-                        </a>
-                        <a href="/web/admin/materiales" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                            <div class="action-top">
-                                <div class="action-icon">&#x1F9F1;</div>
-                            </div>
-                            <div>
-                                <h3 class="h6 mb-1 text-white">Materiales</h3>
-                                <p class="text-muted mb-0">Catálogo de materiales y versiones de precios.</p>
-                            </div>
-                        </a>
-                        <a href="/web/admin/proveedores" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                            <div class="action-top">
-                                <div class="action-icon">&#x1F69A;</div>
-                            </div>
-                            <div>
-                                <h3 class="h6 mb-1 text-white">Proveedores</h3>
-                                <p class="text-muted mb-0">Contactos, teléfonos, placas y estado.</p>
-                            </div>
-                        </a>
-                        <a href="/web/admin/clientes" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                            <div class="action-top">
-                                <div class="action-icon">&#x1F9FE;</div>
-                            </div>
-                            <div>
-                                <h3 class="h6 mb-1 text-white">Clientes</h3>
-                                <p class="text-muted mb-0">Clientes, placas y datos de contacto.</p>
-                            </div>
-                        </a>
-                        <a href="/web/admin/comisionarios" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                            <div class="action-top">
-                                <div class="action-icon">&#x1F4B8;</div>
-                            </div>
-                            <div>
-                                <h3 class="h6 mb-1 text-white">Comisiones</h3>
-                                <p class="text-muted mb-0">Comisionarios, notas y pagos por material.</p>
-                            </div>
-                        </a>
-                        <a href="/web/admin/inventario" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                            <div class="action-top">
-                                <div class="action-icon">&#x1F4E6;</div>
-                            </div>
-                            <div>
-                                <h3 class="h6 mb-1 text-white">Inventario</h3>
-                                <p class="text-muted mb-0">Stock por sucursal y movimientos automáticos.</p>
-                            </div>
-                        </a>
-                        <a href="/web/admin/inventario/aumentar" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                            <div class="action-top">
-                                <div class="action-icon">&#x2795;</div>
-                            </div>
-                            <div>
-                                <h3 class="h6 mb-1 text-white">Aumentar materiales</h3>
-                                <p class="text-muted mb-0">Aumenta o disminuye stock con ajuste manual.</p>
-                            </div>
-                        </a>
-                        {% if user.rol == 'super_admin' %}
-                            <a href="/web/admin/conversiones-materiales" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                                <div class="action-top">
-                                    <div class="action-icon">&#x1F504;</div>
-                                </div>
-                                <div>
-                                    <h3 class="h6 mb-1 text-white">Conversion de materiales</h3>
-                                    <p class="text-muted mb-0">Transforma stock entre materiales con trazabilidad.</p>
-                                </div>
-                            </a>
-                        {% endif %}
-                        <a href="/web/admin/transferencias" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                            <div class="action-top">
-                                <div class="action-icon">&#x1F501;</div>
-                            </div>
-                            <div>
-                                <h3 class="h6 mb-1 text-white">Transferencias</h3>
-                                <p class="text-muted mb-0">Movimientos entre sucursales con notas automaticas.</p>
-                            </div>
-                        </a>
-                        <a href="/web/admin/contabilidad" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                            <div class="action-top">
-                                <div class="action-icon">&#x1F4BC;</div>
-                            </div>
-                            <div>
-                                <h3 class="h6 mb-1 text-white">Log contable</h3>
-                                <p class="text-muted mb-0">Movimientos por compra/venta y ajustes.</p>
-                            </div>
-                        </a>
-                        <a href="/web/admin/capital" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                            <div class="action-top">
-                                <div class="action-icon">&#x1F4CA;</div>
-                            </div>
-                            <div>
-                                <h3 class="h6 mb-1 text-white">Capital real</h3>
-                                <p class="text-muted mb-0">Activos menos deudas para conocer tu capital actual.</p>
-                            </div>
-                        </a>
-                        <a href="/web/admin/corte-caja" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                            <div class="action-top">
-                                <div class="action-icon">&#x1F4B5;</div>
-                            </div>
-                            <div>
-                                <h3 class="h6 mb-1 text-white">Corte de caja</h3>
-                                <p class="text-muted mb-0">Control diario de efectivo y caja chica.</p>
-                            </div>
-                        </a>
-                        <a href="/web/admin/reporte-asistencias" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                            <div class="action-top">
-                                <div class="action-icon">&#x1F4C5;</div>
-                            </div>
-                            <div>
-                                <h3 class="h6 mb-1 text-white">Asistencias</h3>
-                                <p class="text-muted mb-0">Reporte de visitas de proveedores por periodo.</p>
-                            </div>
-                        </a>
-                        <a href="/web/admin/reporte-saldos" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                            <div class="action-top">
-                                <div class="action-icon">&#x1F4B4;</div>
-                            </div>
-                            <div>
-                                <h3 class="h6 mb-1 text-white">Reporte de saldos</h3>
-                                <p class="text-muted mb-0">Lo que debes y te deben por proveedor y cliente.</p>
-                            </div>
-                        </a>
-                        <a href="/web/admin/cuentas" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                            <div class="action-top">
-                                <div class="action-icon">&#x1F4B3;</div>
-                            </div>
-                            <div>
-                                <h3 class="h6 mb-1 text-white">Cuentas</h3>
-                                <p class="text-muted mb-0">Chequeras y vinculos para notas y pagos.</p>
-                            </div>
-                        </a>
-                        <a href="/web/admin/cuentas-scrap360" class="action-card text-decoration-none text-white hover-lift d-flex flex-column gap-1">
-                            <div class="action-top">
-                                <div class="action-icon">&#x1F4B0;</div>
-                            </div>
-                            <div>
-                                <h3 class="h6 mb-1 text-white">Cuentas Scrap360</h3>
-                                <p class="text-muted mb-0">Caja interna, saldos y movimientos por cuenta.</p>
-                            </div>
-                        </a>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-
-        <section class="ops-shortcut-panel mb-4">
-            <div class="ops-shortcut-panel__head">
-                <div>
-                    <p class="ops-shortcut-panel__eyebrow mb-1">Uso diario</p>
-                    <h2 class="ops-shortcut-panel__title mb-1">Operaciones frecuentes</h2>
-                    <p class="ops-shortcut-panel__copy mb-0">Atajos directos para las tareas que normalmente se ejecutan varias veces durante el dia.</p>
-                </div>
-            </div>
-            <div class="ops-shortcut-grid">
-                {% set badge_count = (notas_revision_count if notas_revision_count is defined else request.state.notas_revision_count) or 0 %}
-                <a href="/web/admin/notas?estado=EN_REVISION#tabla-principal" class="ops-shortcut-card">
-                    <div class="ops-shortcut-topline">
-                        <span class="ops-shortcut-icon">&#x1F50E;</span>
-                        <span class="ops-shortcut-label">Revision de notas</span>
-                    </div>
-                    <strong>{{ badge_count }}</strong>
-                    <div class="ops-shortcut-copy">Pendientes de validar</div>
-                </a>
-                <a href="/web/admin/notas?pago=PENDIENTES#tabla-principal" class="ops-shortcut-card">
-                    <div class="ops-shortcut-topline">
-                        <span class="ops-shortcut-icon">&#x1F4B8;</span>
-                        <span class="ops-shortcut-label">Cobranza y pagos</span>
-                    </div>
-                    <strong>Notas</strong>
-                    <div class="ops-shortcut-copy">Abre solo pendientes por saldar</div>
-                </a>
-                <a href="/web/admin/proveedores?modo=COMPRA_VENTA" class="ops-shortcut-card">
-                    <div class="ops-shortcut-topline">
-                        <span class="ops-shortcut-icon">&#x21C4;</span>
-                        <span class="ops-shortcut-label">Proveedores compra y venta</span>
-                    </div>
-                    <strong>Neteo</strong>
-                    <div class="ops-shortcut-copy">Ver partners que compran y venden</div>
-                </a>
-                <a href="/web/admin/proveedores/nuevo" class="ops-shortcut-card">
-                    <div class="ops-shortcut-topline">
-                        <span class="ops-shortcut-icon">&#x2795;</span>
-                        <span class="ops-shortcut-label">Alta rapida</span>
-                    </div>
-                    <strong>Proveedor</strong>
-                    <div class="ops-shortcut-copy">Crear nuevo perfil operativo</div>
-                </a>
-                <a href="/web/admin/inventario/aumentar" class="ops-shortcut-card">
-                    <div class="ops-shortcut-topline">
-                        <span class="ops-shortcut-icon">&#x1F4E6;</span>
-                        <span class="ops-shortcut-label">Inventario</span>
-                    </div>
-                    <strong>Ajuste</strong>
-                    <div class="ops-shortcut-copy">Aumentar o disminuir material</div>
-                </a>
-                <a href="/web/admin/corte-caja" class="ops-shortcut-card">
-                    <div class="ops-shortcut-topline">
-                        <span class="ops-shortcut-icon">&#x1F4B5;</span>
-                        <span class="ops-shortcut-label">Corte de caja</span>
-                    </div>
-                    <strong>Diario</strong>
-                    <div class="ops-shortcut-copy">Registrar movimientos y cierre</div>
-                </a>
-                <a href="/web/admin/capital" class="ops-shortcut-card">
-                    <div class="ops-shortcut-topline">
-                        <span class="ops-shortcut-icon">&#x1F4CA;</span>
-                        <span class="ops-shortcut-label">Capital real</span>
-                    </div>
-                    <strong>Global</strong>
-                    <div class="ops-shortcut-copy">Ver activos, pasivos y capital actual</div>
-                </a>
-            </div>
-        </section>
-
-    {% endif %}
-{% endif %}
 {% endblock %}

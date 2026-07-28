@@ -59,7 +59,7 @@
 <div class="note-detail-page note-detail-page--review">
     <div class="page-header note-page-header">
         <div>
-            <p class="text-uppercase text-muted small mb-1">Revision y control</p>
+            <p class="text-uppercase text-muted small mb-1">Revisión y control</p>
             <h1 class="h4 text-dark mb-1">Nota {{ folio or '-' }}</h1>
             <p class="text-muted mb-0">{{ operation_label }} vinculada a {{ partner_label|lower }}: {{ partner_name }}</p>
         </div>
@@ -88,10 +88,10 @@
         <div class="alert alert-success py-2 small mb-3">La nota fue aprobada correctamente.{% if auto_open_pdf_query and user.rol == 'super_admin' %} El PDF se abrio en una pestaña lista para imprimir.{% endif %}</div>
     {% endif %}
     {% if edit_updated %}
-        <div class="alert alert-success py-2 small mb-3">Edicion guardada correctamente.</div>
+        <div class="alert alert-success py-2 small mb-3">Edición guardada correctamente.</div>
     {% endif %}
     {% if request.query_params.get("cancelled") == "1" %}
-        <div class="alert alert-success py-2 small mb-3">La devolucion total fue aplicada correctamente. Puedes revisar la verificacion automatica o revertirla desde esta misma vista.</div>
+        <div class="alert alert-success py-2 small mb-3">La devolución total fue aplicada correctamente. Puedes revisar la verificacion automática o revertirla desde esta misma vista.</div>
     {% endif %}
     {% if precios_updated %}
         <div class="alert alert-success py-2 small mb-3">Precios actualizados correctamente.</div>
@@ -100,31 +100,31 @@
         <div class="alert alert-success py-2 small mb-3">Abono registrado correctamente.</div>
     {% endif %}
     {% if pago_reverted %}
-        <div class="alert alert-success py-2 small mb-3">Abono deshecho correctamente. Se revirtieron saldo, log contable y movimiento en Cuenta Scrap360 si existia.</div>
+        <div class="alert alert-success py-2 small mb-3">Abono deshecho correctamente. Se revirtieron saldo, log contable y movimiento en Cuenta Scrap360 si existía.</div>
     {% endif %}
     {% if ajuste_manual_updated %}
         <div class="alert alert-success py-2 small mb-3">Ajuste manual ligado a la nota registrado correctamente. La nota conserva sus montos; solo cambia el inventario auditado para esta nota.</div>
     {% endif %}
     {% if ajuste_manual_reverted %}
-        <div class="alert alert-success py-2 small mb-3">Ajuste manual revertido correctamente. Se genero la reversa auditada y el historial de la nota quedo actualizado.</div>
+        <div class="alert alert-success py-2 small mb-3">Ajuste manual revertido correctamente. Se generó la reversa auditada y el historial de la nota quedó actualizado.</div>
     {% endif %}
     {% if ajuste_saldo_updated %}
         <div class="alert alert-success py-2 small mb-3">Ajuste de saldo registrado correctamente. La nota conserva sus montos y su inventario; solo cambia el saldo efectivo auditado.</div>
     {% endif %}
     {% if ajuste_saldo_reverted %}
-        <div class="alert alert-success py-2 small mb-3">Ajuste de saldo revertido correctamente. El saldo efectivo de la nota quedo restaurado mediante una reversa auditada.</div>
+        <div class="alert alert-success py-2 small mb-3">Ajuste de saldo revertido correctamente. El saldo efectivo de la nota quedó restaurado mediante una reversa auditada.</div>
     {% endif %}
     {% if pago_inicial_updated %}
         <div class="alert alert-success py-2 small mb-3">Pago inicial actualizado correctamente.</div>
     {% endif %}
     {% if devolucion_parcial_updated %}
-        <div class="alert alert-success py-2 small mb-3">Devolucion parcial aplicada correctamente. El saldo se recalculo y cualquier sobrepago permanece como saldo a favor.</div>
+        <div class="alert alert-success py-2 small mb-3">Devolución parcial aplicada correctamente. El saldo se recalculó y cualquier sobrepago permanece como saldo a favor.</div>
     {% endif %}
     {% if devolucion_parcial_reverted %}
-        <div class="alert alert-success py-2 small mb-3">La linea de devolucion parcial fue revertida correctamente.</div>
+        <div class="alert alert-success py-2 small mb-3">La linea de devolución parcial fue revertida correctamente.</div>
     {% endif %}
     {% if devolucion_total_reverted %}
-        <div class="alert alert-success py-2 small mb-3">La devolucion total fue revertida. La nota regreso a estado aprobada con sus efectos contables e inventario restaurados.</div>
+        <div class="alert alert-success py-2 small mb-3">La devolución total fue revertida. La nota regresó a estado aprobada con sus efectos contables e inventario restaurados.</div>
     {% endif %}
     {% if request.query_params.get('success') == 'referencia_pago' %}
         <div class="alert alert-success py-2 small mb-3">Referencia de pago actualizada correctamente.</div>
@@ -142,7 +142,7 @@
             <div class="ops-inline-toolbar mt-3">
                 <a href="#note-summary" class="ops-inline-pill active">Resumen</a>
                 {% if show_review_workspace %}
-                    <a href="#note-review-approval" class="ops-inline-pill">Aprobacion</a>
+                    <a href="#note-review-approval" class="ops-inline-pill">Aprobación</a>
                 {% endif %}
                 {% if is_approved or saldo_a_favor > 0 %}
                     <a href="#note-payments" class="ops-inline-pill">Pagos</a>
@@ -172,7 +172,7 @@
                         {% if note_state == 'BORRADOR' %}
                             <span class="badge bg-secondary">Borrador</span>
                         {% elif note_state == 'EN_REVISION' %}
-                            <span class="badge bg-warning text-dark">En revision</span>
+                            <span class="badge bg-warning text-dark">En revisión</span>
                         {% elif note_state == 'APROBADA' %}
                             <span class="badge bg-success">Aprobada</span>
                         {% else %}
@@ -244,7 +244,7 @@
                     <strong>{{ inventario_sucursal.nombre if inventario_sucursal else '-' }}</strong>
                     <div class="note-meta-sub">
                         {% if inventario_sucursal_diff %}
-                            El saldo se lleva en {{ sucursal.nombre if sucursal else '-' }} y el material entra fisicamente en {{ inventario_sucursal.nombre if inventario_sucursal else '-' }}.
+                            El saldo se lleva en {{ sucursal.nombre if sucursal else '-' }} y el material entra físicamente en {{ inventario_sucursal.nombre if inventario_sucursal else '-' }}.
                         {% else %}
                             Coincide con la sucursal contable.
                         {% endif %}
@@ -273,7 +273,7 @@
                     <div class="note-meta-sub">{% if nota.iva_incluido %}{{ "{:,.2f}".format(iva_pct or 0) }}%{% else %}No incluido{% endif %}</div>
                 </div>
                 <div class="note-meta-item">
-                    <span class="note-meta-label">Metodo base</span>
+                    <span class="note-meta-label">Método base</span>
                     <strong>{{ nota.metodo_pago|capitalize if nota.metodo_pago else '-' }}</strong>
                     <div class="note-meta-sub">{{ nota.cuenta.display_label if nota.cuenta else '-' }}</div>
                     {% if nota.numero_cheque %}
@@ -288,7 +288,7 @@
                 <div class="note-meta-item">
                     <span class="note-meta-label">Pagos revertidos</span>
                     <strong>{{ pagos_revertidos_count }}</strong>
-                    <div class="note-meta-sub">Se mantienen visibles por auditoria</div>
+                    <div class="note-meta-sub">Se mantienen visibles por auditoría</div>
                 </div>
                 {% if is_transfer %}
                     <div class="note-meta-item">
@@ -311,7 +311,7 @@
                 <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
                     <div>
                         <div class="fw-semibold">La nota tiene saldo a favor</div>
-                        <div class="text-muted small">Esto suele ocurrir cuando hubo un sobrepago o una devolucion parcial redujo el total de la nota despues de haber registrado abonos.</div>
+                        <div class="text-muted small">Esto suele ocurrir cuando hubo un sobrepago o una devolución parcial redujo el total de la nota después de haber registrado abonos.</div>
                     </div>
                     <div class="text-success fw-semibold">${{ "{:,.2f}".format(saldo_a_favor or 0) }}</div>
                 </div>
@@ -323,8 +323,8 @@
         <div class="card hover-lift mb-3">
             <div class="card-body">
                 <div class="d-flex align-items-center gap-2 mb-2">
-                    <span class="chip-strong">Devolucion</span>
-                    <span class="text-muted small">Verificacion automatica</span>
+                    <span class="chip-strong">Devolución</span>
+                    <span class="text-muted small">Verificacion automática</span>
                 </div>
                 {% if devolucion_check and devolucion_check.aplica %}
                     <div class="note-meta-grid">
@@ -346,7 +346,7 @@
                         </div>
                     </div>
                 {% else %}
-                    <p class="text-muted small mb-0">No hay movimientos registrados para verificar esta devolucion.</p>
+                    <p class="text-muted small mb-0">No hay movimientos registrados para verificar esta devolución.</p>
                 {% endif %}
             </div>
         </div>
@@ -355,7 +355,7 @@
                 <div class="card-body">
                     <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
                         <div>
-                            <div class="fw-semibold">Devolucion total activa</div>
+                            <div class="fw-semibold">Devolución total activa</div>
                             <div class="text-muted small">
                                 Accion #{{ devolucion_total_activa.id }}
                                 &middot; {{ devolucion_total_activa.created_at|datetime_local if devolucion_total_activa.created_at else '-' }}
@@ -365,7 +365,7 @@
                         </div>
                         {% if can_manage_note %}
                             <form method="post" action="/web/admin/notas/{{ nota.id }}/devolucion-total/{{ devolucion_total_activa.id }}/revertir" onsubmit="return confirm('La nota volvera a estado aprobada y se restauraran inventario, contabilidad y pagos activos. Deseas continuar?');">
-                                <button type="submit" class="btn btn-outline-primary">Revertir devolucion total</button>
+                                <button type="submit" class="btn btn-outline-primary">Revertir devolución total</button>
                             </form>
                         {% endif %}
                     </div>
@@ -380,7 +380,7 @@
                 <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
                     <div>
                         <h2 class="h6 text-dark mb-1">Historial de devoluciones totales</h2>
-                        <p class="text-muted small mb-0">Cada devolucion total conserva su estado y, si fue revertida, queda enlazada a la restauracion posterior.</p>
+                        <p class="text-muted small mb-0">Cada devolución total conserva su estado y, si fue revertida, queda enlazada a la restauracion posterior.</p>
                     </div>
                     <span class="badge bg-light text-dark border">{{ devoluciones_totales|length }} acciones</span>
                 </div>
@@ -393,7 +393,7 @@
                                 <th>Estado</th>
                                 <th>Usuario</th>
                                 <th>Comentario</th>
-                                <th>Reversion</th>
+                                <th>Reversión</th>
                             </tr>
                             </thead>
                             <tbody>
@@ -435,13 +435,13 @@
                         <div class="card-body">
                             <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
                                 <div>
-                                    <h2 class="h6 text-dark mb-1">Revision de materiales</h2>
+                                    <h2 class="h6 text-dark mb-1">Revisión de materiales</h2>
                                     <p class="text-muted small mb-0">Ajusta pesos, descuentos y precios antes de aprobar. Si necesitas que inventario reciba otra cantidad, usa <strong>Kg reales inventario</strong>; es interno y no cambia la orden PDF.</p>
                                 </div>
                             </div>
                             <div class="note-table-assist mb-3">
                                 <div>
-                                    <div class="note-table-assist-title">Mesa de revision</div>
+                                    <div class="note-table-assist-title">Mesa de revisión</div>
                                     <div class="note-table-assist-copy">La tabla de materiales prioriza lectura horizontal en escritorio. Puedes arrastrar la tabla o usar `Shift + rueda` para revisar sin perder contexto.</div>
                                 </div>
                                 <div class="note-table-assist-pills">
@@ -478,7 +478,7 @@
                                                 {% if m.subpesajes %}
                                                     <div class="text-muted small">Con subpesajes registrados</div>
                                                 {% else %}
-                                                    <div class="text-muted small">Edicion directa de kg habilitada</div>
+                                                    <div class="text-muted small">Edición directa de kg habilitada</div>
                                                 {% endif %}
                                             </td>
                                             <td class="text-end">{{ "{:,.2f}".format(m.kg_bruto or 0) }}</td>
@@ -504,7 +504,7 @@
                                                            min="0"
                                                            name="kg_neto_{{ m.id }}"
                                                            value="{{ kg_neto_override if kg_neto_override is not none else ('%.3f'|format(m.kg_neto or 0)) }}">
-                                                    <div class="form-text text-muted">Si cambias el neto, el descuento se balancea automaticamente.</div>
+                                                    <div class="form-text text-muted">Si cambias el neto, el descuento se balancea automáticamente.</div>
                                                 {% else %}
                                                     {{ "{:,.2f}".format(m.kg_neto or 0) }}
                                                 {% endif %}
@@ -548,7 +548,7 @@
                                                            type="number"
                                                            step="0.01"
                                                            min="0"
-                                                           name="subtotal_{{ m.id }}"
+                                                           name="subtotal_{{ m.id }}" aria-label="Subtotal de la línea"
                                                            value="{{ subtotal_override if subtotal_override is not none else ('%.2f'|format(m.subtotal) if m.subtotal is not none else '') }}"
                                                            placeholder="0.00">
                                                 </td>
@@ -591,40 +591,40 @@
                     <div class="card hover-lift mb-3 note-side-card">
                         <div class="card-body">
                             <div class="d-flex align-items-center gap-2 mb-3">
-                                <span class="chip-strong">Aprobacion</span>
+                                <span class="chip-strong">Aprobación</span>
                                 <span class="text-muted small">Condiciones de pago y cierre</span>
                             </div>
                             <div class="row g-3">
                                 <div class="col-12">
-                                    <label class="form-label">Fecha de caducidad de pago</label>
+                                    <label class="form-label" for="f_fecha_caducidad_pago">Fecha de caducidad de pago</label>
                                     {% set fecha_val = form_fecha if form_fecha is not none else (nota.fecha_caducidad_pago|date_local if nota.fecha_caducidad_pago else "") %}
-                                    <input class="form-control" type="date" name="fecha_caducidad_pago" value="{{ fecha_val }}">
+                                    <input class="form-control" type="date" name="fecha_caducidad_pago" value="{{ fecha_val }}" id="f_fecha_caducidad_pago">
                                 </div>
                                 <div class="col-12">
                                     {% if nota.tipo_operacion.value == 'compra' %}
-                                    <label class="form-label">Sucursal fisica del inventario</label>
+                                    <label class="form-label" for="f_inventario_sucursal_id">Sucursal fisica del inventario</label>
                                     {% set inventario_sucursal_val = form_inventario_sucursal_id if form_inventario_sucursal_id is not none else (inventario_sucursal.id if inventario_sucursal else nota.sucursal_id) %}
-                                    <select class="form-select" name="inventario_sucursal_id">
+                                    <select class="form-select" name="inventario_sucursal_id" id="f_inventario_sucursal_id">
                                         {% for s in inventory_sucursales %}
                                             <option value="{{ s.id }}" {% if inventario_sucursal_val|string == s.id|string %}selected{% endif %}>{{ s.nombre }}</option>
                                         {% endfor %}
                                     </select>
-                                    <div class="form-text text-muted">La nota seguira contablemente en {{ sucursal.nombre if sucursal else '-' }}, pero el stock se registrara en la sucursal fisica seleccionada.</div>
+                                    <div class="form-text text-muted">La nota seguira contablemente en {{ sucursal.nombre if sucursal else '-' }}, pero el stock se registrará en la sucursal fisica seleccionada.</div>
                                     {% endif %}
                                 </div>
                                 <div class="col-12">
-                                    <label class="form-label">Metodo de pago</label>
+                                    <label class="form-label" for="metodo_pago_select">Método de pago</label>
                                     {% set selected_metodo = form_metodo if form_metodo is not none else nota.metodo_pago %}
                                     <select class="form-select" name="metodo_pago" id="metodo_pago_select" required>
-                                        <option value="" {% if not selected_metodo %}selected{% endif %}>Selecciona metodo</option>
+                                        <option value="" {% if not selected_metodo %}selected{% endif %}>Selecciona método</option>
                                         <option value="transferencia" {% if selected_metodo == 'transferencia' %}selected{% endif %}>Transferencia</option>
                                         <option value="efectivo" {% if selected_metodo == 'efectivo' %}selected{% endif %}>Efectivo</option>
                                         <option value="cheque" {% if selected_metodo == 'cheque' %}selected{% endif %}>Cheque</option>
                                     </select>
-                                    <div class="form-text text-muted">Define el metodo previsto. Si el pago inicial pasa por cuentas registradas, seleccionalas. Si fue una transferencia o cheque externo, puedes dejar ambas cuentas vacias.</div>
+                                    <div class="form-text text-muted">Define el método previsto. Si el pago inicial pasa por cuentas registradas, seleccionalas. Si fue una transferencia o cheque externo, puedes dejar ambas cuentas vacias.</div>
                                 </div>
                                 <div class="col-12">
-                                    <label class="form-label">Cuenta del proveedor / cliente</label>
+                                    <label class="form-label" for="cuenta_financiera_select">Cuenta del proveedor / cliente</label>
                                     {% set cuenta_val = form_cuenta if form_cuenta is not none else (nota.cuenta_financiera_id or "") %}
                                     <select class="form-select" name="cuenta_financiera" id="cuenta_financiera_select">
                                         <option value="" {% if not cuenta_val %}selected{% endif %}>Selecciona cuenta</option>
@@ -646,17 +646,17 @@
                                     {% if cuentas_sucursal|length == 0 and cuentas_partner|length == 0 %}
                                         <div class="form-text text-muted">No hay cuentas registradas para esta nota.</div>
                                     {% else %}
-                                        <div class="form-text text-muted">Opcional. Usala si la transferencia o cheque cae en una cuenta registrada del partner; si es un movimiento externo, puedes dejarla vacia.</div>
+                                        <div class="form-text text-muted">Opcional. Úsala si la transferencia o cheque cae en una cuenta registrada del partner; si es un movimiento externo, puedes dejarla vacía.</div>
                                     {% endif %}
                                 </div>
                                 <div class="col-12" id="numero_cheque_group">
-                                    <label class="form-label">Numero de cheque</label>
+                                    <label class="form-label" for="f_numero_cheque">Número de cheque</label>
                                     {% set cheque_val = form_numero_cheque if form_numero_cheque is not none else (nota.numero_cheque or '') %}
-                                    <input class="form-control" type="text" name="numero_cheque" value="{{ cheque_val }}" placeholder="Ej. 001234" maxlength="80">
-                                    <div class="form-text text-muted">Solo aplica si el metodo es cheque. Opcional.</div>
+                                    <input class="form-control" type="text" name="numero_cheque" value="{{ cheque_val }}" placeholder="Ej. 001234" maxlength="80" id="f_numero_cheque">
+                                    <div class="form-text text-muted">Solo aplica si el método es cheque. Opcional.</div>
                                 </div>
                                 <div class="col-12">
-                                    <label class="form-label">Sucursal de caja</label>
+                                    <label class="form-label" for="caja_sucursal_select">Sucursal de caja</label>
                                     {% set caja_sucursal_val = form_caja_sucursal_id if form_caja_sucursal_id is not none else (nota.sucursal_id or "") %}
                                     <select class="form-select" name="caja_sucursal_id" id="caja_sucursal_select">
                                         <option value="" {% if not caja_sucursal_val %}selected{% endif %}>Usar sucursal contable</option>
@@ -664,10 +664,10 @@
                                             <option value="{{ s.id }}" {% if caja_sucursal_val|string == s.id|string %}selected{% endif %}>{{ s.nombre }}</option>
                                         {% endfor %}
                                     </select>
-                                    <div class="form-text text-muted">Solo aplica para efectivo. Si no cambias la seleccion, el corte tomara la sucursal contable.</div>
+                                    <div class="form-text text-muted">Solo aplica para efectivo. Si no cambias la selección, el corte tomara la sucursal contable.</div>
                                 </div>
                                 <div class="col-12">
-                                    <label class="form-label">Cuenta Scrap360</label>
+                                    <label class="form-label" for="cuenta_scrap360_select">Cuenta Scrap360</label>
                                     {% set cuenta_scrap_val = form_cuenta_scrap360 if form_cuenta_scrap360 is not none else "" %}
                                     <select class="form-select" name="cuenta_scrap360_id" id="cuenta_scrap360_select">
                                         <option value="" {% if not cuenta_scrap_val %}selected{% endif %}>Selecciona cuenta</option>
@@ -675,18 +675,18 @@
                                             <option value="{{ c.id }}" {% if cuenta_scrap_val|string == c.id|string %}selected{% endif %}>{{ c.nombre }} &middot; {{ c.tipo|capitalize }}</option>
                                         {% endfor %}
                                     </select>
-                                    <div class="form-text text-muted">Opcional. Solo se descuenta si registras un pago inicial y eliges una Cuenta Scrap360. Si la transferencia o cheque fue externo, dejala vacia.</div>
+                                    <div class="form-text text-muted">Opcional. Solo se descuenta si registras un pago inicial y eliges una Cuenta Scrap360. Si la transferencia o cheque fue externo, déjala vacía.</div>
                                 </div>
                                 <div class="col-md-6 col-12">
-                                    <label class="form-label">Pago inicial</label>
+                                    <label class="form-label" for="f_monto_pagado">Pago inicial</label>
                                     {% set pagado_val = form_pagado if form_pagado is not none else '' %}
-                                    <input class="form-control" type="number" step="0.01" min="0" name="monto_pagado" value="{{ pagado_val }}" placeholder="0.00">
-                                    <div class="form-text text-muted">Dejalo vacio si la nota inicia en cero.</div>
+                                    <input class="form-control" type="number" step="0.01" min="0" name="monto_pagado" value="{{ pagado_val }}" placeholder="0.00" aria-label="Monto pagado" id="f_monto_pagado">
+                                    <div class="form-text text-muted">Déjalo vacío si la nota inicia en cero.</div>
                                 </div>
                                 <div class="col-md-6 col-12">
-                                    <label class="form-label">IVA %</label>
+                                    <label class="form-label" for="f_iva_porcentaje">IVA %</label>
                                     {% set iva_pct_val = form_iva_porcentaje if form_iva_porcentaje is not none else iva_pct %}
-                                    <input class="form-control" type="number" step="0.01" min="0" max="100" name="iva_porcentaje" value="{{ iva_pct_val }}">
+                                    <input class="form-control" type="number" step="0.01" min="0" max="100" name="iva_porcentaje" value="{{ iva_pct_val }}" id="f_iva_porcentaje">
                                     <div class="form-text text-muted">Mexico: 16% por defecto.</div>
                                 </div>
                                 <div class="col-12">
@@ -697,13 +697,13 @@
                                     </div>
                                 </div>
                                 <div class="col-12">
-                                    <label class="form-label">Comentarios de aprobacion</label>
+                                    <label class="form-label" for="f_comentarios_admin">Comentarios de aprobación</label>
                                     {% set comentarios_val = form_comentarios if form_comentarios is not none else (nota.comentarios_admin or "") %}
-                                    <textarea class="form-control" name="comentarios_admin" rows="4" placeholder="Observaciones, condiciones de pago, notas administrativas.">{{ comentarios_val }}</textarea>
+                                    <textarea class="form-control" name="comentarios_admin" rows="4" placeholder="Observaciones, condiciones de pago, notas administrativas." id="f_comentarios_admin">{{ comentarios_val }}</textarea>
                                 </div>
                             </div>
                             <div class="note-actions mt-3">
-                                <div class="note-actions-title">Acciones de aprobacion</div>
+                                <div class="note-actions-title">Acciones de aprobación</div>
                                 <div class="note-actions-row">
                                     <input type="hidden" name="auto_open_pdf" value="0">
                                     <input type="hidden" name="print_window" value="">
@@ -725,7 +725,7 @@
             <div class="card-body">
                 <div class="d-flex align-items-center gap-2 mb-3">
                     <span class="chip-strong">Control</span>
-                    <span class="text-muted small">Devolucion o regreso a trabajador</span>
+                    <span class="text-muted small">Devolución o regresó a trabajador</span>
                 </div>
                 <label class="form-label">Comentario de control</label>
                 <textarea class="form-control" id="note_control_comment" rows="4" placeholder="Motivo de rechazo, comentario de correccion o referencia administrativa."></textarea>
@@ -756,7 +756,7 @@
                 <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
                     <div>
                         <h2 class="h6 text-dark mb-1">Materiales registrados</h2>
-                        <p class="text-muted small mb-0">Vista consolidada del pesaje y valuacion de la nota.</p>
+                        <p class="text-muted small mb-0">Vista consolidada del pesaje y valuación de la nota.</p>
                     </div>
                     <div class="d-flex gap-2 flex-wrap">
                         {% if user.rol == 'super_admin' and not is_cancelled %}
@@ -841,10 +841,10 @@
                         <div class="card-body">
                             <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
                                 <div>
-                                    <h2 class="h6 text-dark mb-1">Devolucion parcial</h2>
-                                    <p class="text-muted small mb-0">Edita cuantas unidades regresan por material y a que precio por kilo se valora la devolucion.</p>
+                                    <h2 class="h6 text-dark mb-1">Devolución parcial</h2>
+                                    <p class="text-muted small mb-0">Edita cuantas unidades regresan por material y a que precio por kilo se valora la devolución.</p>
                                 </div>
-                                <span class="badge bg-light text-dark border">No genera reembolso automatico</span>
+                                <span class="badge bg-light text-dark border">No genera reembolso automático</span>
                             </div>
                             <form method="post" action="/web/admin/notas/{{ nota.id }}/devolucion-parcial" class="note-return-form" data-current-total="{{ nota.total_monto or 0 }}" data-current-paid="{{ nota.monto_pagado or 0 }}" data-iva-factor="{{ (1 + ((iva_pct or 0) / 100)) if nota.iva_incluido else 1 }}">
                             <div class="table-scroll-shell">
@@ -856,7 +856,7 @@
                                         <th class="text-end">Kg neto actual</th>
                                         <th class="text-end">Precio actual/kg</th>
                                         <th class="text-end">Kg a devolver</th>
-                                        <th class="text-end">Precio devolucion/kg</th>
+                                        <th class="text-end">Precio devolución/kg</th>
                                         <th class="text-end">Impacto estimado</th>
                                     </tr>
                                     </thead>
@@ -868,16 +868,16 @@
                                             <td>
                                                 <div class="fw-semibold">{{ nm.material.nombre if nm.material else ('Material #' ~ nm.material_id) }}</div>
                                                 {% if nm.subpesajes %}
-                                                    <div class="text-muted small">La devolucion descuenta neto desde subpesajes.</div>
+                                                    <div class="text-muted small">La devolución descuenta neto desde subpesajes.</div>
                                                 {% endif %}
                                             </td>
                                             <td class="text-end">{{ "{:,.3f}".format(nm.kg_neto or 0) }}</td>
                                             <td class="text-end">${{ "{:,.5f}".format(nm.precio_unitario or 0) }}</td>
                                             <td class="text-end note-return-input-cell">
-                                                <input class="form-control form-control-sm text-end note-return-kg-input" type="number" step="0.001" min="0" max="{{ nm.kg_neto or 0 }}" name="devol_kg_{{ nm.id }}" value="{{ kg_input if kg_input is not none else '' }}">
+                                                <input class="form-control form-control-sm text-end note-return-kg-input" type="number" step="0.001" min="0" max="{{ nm.kg_neto or 0 }}" name="devol_kg_{{ nm.id }}" aria-label="Kilos a devolver de {{ nm.material.nombre if nm.material else ('material #' ~ nm.material_id) }}" value="{{ kg_input if kg_input is not none else '' }}">
                                             </td>
                                             <td class="text-end note-return-input-cell">
-                                                <input class="form-control form-control-sm text-end note-return-price-input" type="number" step="0.00001" min="0" name="devol_precio_{{ nm.id }}" value="{{ precio_input if precio_input is not none else (nm.precio_unitario or 0) }}">
+                                                <input class="form-control form-control-sm text-end note-return-price-input" type="number" step="0.00001" min="0" name="devol_precio_{{ nm.id }}" aria-label="Precio de devolución de {{ nm.material.nombre if nm.material else ('material #' ~ nm.material_id) }}" value="{{ precio_input if precio_input is not none else (nm.precio_unitario or 0) }}">
                                             </td>
                                             <td class="text-end note-return-preview">$0.00</td>
                                         </tr>
@@ -885,7 +885,7 @@
                                     </tbody>
                                     </table>
                                 </div>
-                                <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para capturar kilos y precios de devolucion.</div>
+                                <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para capturar kilos y precios de devolución.</div>
                             </div>
                             <div class="note-return-summary-grid mt-3">
                                 <div class="note-return-summary-item">
@@ -904,12 +904,12 @@
                             <div class="row g-3 align-items-end mt-1">
                                 <div class="col-lg-8">
                                     {% set devol_comment_val = form_devol_comment if form_devol_comment is not none else '' %}
-                                    <label class="form-label">Comentario de devolucion</label>
-                                    <input class="form-control form-control-sm" type="text" name="comentario_devolucion_parcial" placeholder="Motivo o referencia" value="{{ devol_comment_val }}">
+                                    <label class="form-label" for="comentario_devolucion_parcial">Comentario de devolución</label>
+                                    <input class="form-control form-control-sm" type="text" id="comentario_devolucion_parcial" name="comentario_devolucion_parcial" placeholder="Motivo o referencia" value="{{ devol_comment_val }}">
                                     <div class="form-text text-muted">Si la nota ya estaba pagada por encima del nuevo total, el excedente queda como saldo a favor.</div>
                                 </div>
                                 <div class="col-lg-4 d-grid">
-                                    <button type="submit" class="btn btn-outline-danger">Aplicar devolucion parcial</button>
+                                    <button type="submit" class="btn btn-outline-danger">Aplicar devolución parcial</button>
                                 </div>
                             </div>
                             </form>
@@ -937,12 +937,12 @@
                                 <div class="note-form-card-title">Corregir pago inicial</div>
                                 <div class="row g-2 align-items-end">
                                     <div class="col-md-6">
-                                        <label class="form-label">Pago inicial objetivo</label>
+                                        <label class="form-label" for="pago_inicial_monto">Pago inicial objetivo</label>
                                         {% set pago_inicial_val = form_pago_inicial_monto if form_pago_inicial_monto is not none else (pago_inicial_total or 0) %}
-                                        <input class="form-control form-control-sm" type="number" step="0.01" min="0" name="pago_inicial_monto" value="{{ pago_inicial_val }}">
+                                        <input class="form-control form-control-sm" type="number" step="0.01" min="0" name="pago_inicial_monto" id="pago_inicial_monto" value="{{ pago_inicial_val }}">
                                     </div>
                                     <div class="col-md-6">
-                                        <label class="form-label">Metodo</label>
+                                        <label class="form-label" for="pago_inicial_metodo_select">Método</label>
                                         {% set pago_inicial_metodo_val = form_pago_inicial_metodo if form_pago_inicial_metodo else nota.metodo_pago %}
                                         <select class="form-select form-select-sm" name="pago_inicial_metodo" id="pago_inicial_metodo_select">
                                             <option value="" {% if not pago_inicial_metodo_val %}selected{% endif %}>Selecciona</option>
@@ -952,26 +952,26 @@
                                         </select>
                                     </div>
                                     <div class="col-12">
-                                        <label class="form-label">Cuenta del proveedor / cliente</label>
+                                        <label class="form-label" for="pago_inicial_cuenta_select">Cuenta del proveedor / cliente</label>
                                         {% set pago_inicial_cuenta_val = form_pago_inicial_cuenta if form_pago_inicial_cuenta is not none else (nota.cuenta_financiera_id or "") %}
                                         <select class="form-select form-select-sm" name="pago_inicial_cuenta" id="pago_inicial_cuenta_select">
                                             <option value="" {% if not pago_inicial_cuenta_val %}selected{% endif %}>Selecciona cuenta</option>
                                             {% if cuentas_sucursal %}<optgroup label="Sucursal">{% for cuenta in cuentas_sucursal %}<option value="{{ cuenta.id }}" {% if pago_inicial_cuenta_val|string == cuenta.id|string %}selected{% endif %}>{{ cuenta.display_label }}</option>{% endfor %}</optgroup>{% endif %}
                                             {% if cuentas_partner %}<optgroup label="{{ cuentas_partner_label }}">{% for cuenta in cuentas_partner %}<option value="{{ cuenta.id }}" {% if pago_inicial_cuenta_val|string == cuenta.id|string %}selected{% endif %}>{{ cuenta.display_label }}</option>{% endfor %}</optgroup>{% endif %}
                                         </select>
-                                        <div class="form-text text-muted">Opcional. Seleccionala solo si el pago inicial por transferencia o cheque llega a una cuenta registrada del partner.</div>
+                                        <div class="form-text text-muted">Opcional. Selecciónala solo si el pago inicial por transferencia o cheque llega a una cuenta registrada del partner.</div>
                                     </div>
                                     <div class="col-12">
-                                        <label class="form-label">Cuenta Scrap360</label>
+                                        <label class="form-label" for="pago_inicial_cuenta_scrap360_select">Cuenta Scrap360</label>
                                         {% set pago_inicial_cuenta_scrap_val = form_pago_inicial_cuenta_scrap360 if form_pago_inicial_cuenta_scrap360 is not none else "" %}
                                         <select class="form-select form-select-sm" name="pago_inicial_cuenta_scrap360_id" id="pago_inicial_cuenta_scrap360_select">
                                             <option value="" {% if not pago_inicial_cuenta_scrap_val %}selected{% endif %}>Selecciona cuenta</option>
                                             {% for c in cuentas_scrap360 %}<option value="{{ c.id }}" {% if pago_inicial_cuenta_scrap_val|string == c.id|string %}selected{% endif %}>{{ c.nombre }} &middot; {{ c.tipo|capitalize }}</option>{% endfor %}
                                         </select>
-                                        <div class="form-text text-muted">Opcional. Solo se descuenta al guardar si eliges una Cuenta Scrap360. Para transferencias o cheques externos, dejala vacia.</div>
+                                        <div class="form-text text-muted">Opcional. Solo se descuenta al guardar si eliges una Cuenta Scrap360. Para transferencias o cheques externos, déjala vacía.</div>
                                     </div>
                                     <div class="col-12">
-                                        <label class="form-label">Sucursal de caja</label>
+                                        <label class="form-label" for="pago_inicial_caja_sucursal_select">Sucursal de caja</label>
                                         {% set pago_inicial_caja_sucursal_val = form_pago_inicial_caja_sucursal_id if form_pago_inicial_caja_sucursal_id is not none else (nota.sucursal_id or "") %}
                                         <select class="form-select form-select-sm" name="pago_inicial_caja_sucursal_id" id="pago_inicial_caja_sucursal_select">
                                             <option value="" {% if not pago_inicial_caja_sucursal_val %}selected{% endif %}>Usar sucursal contable</option>
@@ -979,26 +979,26 @@
                                         </select>
                                     </div>
                                     <div class="col-12">
-                                        <label class="form-label">Comentario</label>
+                                        <label class="form-label" for="pago_inicial_comentario">Comentario</label>
                                         {% set pago_inicial_comment_val = form_pago_inicial_comentario if form_pago_inicial_comentario is not none else "" %}
-                                        <input class="form-control form-control-sm" name="pago_inicial_comentario" placeholder="Opcional" value="{{ pago_inicial_comment_val }}">
+                                        <input class="form-control form-control-sm" id="pago_inicial_comentario" name="pago_inicial_comentario" placeholder="Opcional" value="{{ pago_inicial_comment_val }}">
                                     </div>
                                     <div class="col-12 d-grid">
                                         <button type="submit" class="btn btn-outline-secondary btn-sm">Actualizar pago inicial</button>
                                     </div>
                                 </div>
-                                <div class="form-text text-muted mt-2">Util cuando la nota se aprobo con un pago inicial incorrecto. Si eliges una Cuenta Scrap360, el descuento saldra de ahi; si fue una transferencia o cheque externo, puedes dejar las cuentas vacias.</div>
+                                <div class="form-text text-muted mt-2">Útil cuando la nota se aprobó con un pago inicial incorrecto. Si eliges una Cuenta Scrap360, el descuento saldra de ahi; si fue una transferencia o cheque externo, puedes dejar las cuentas vacias.</div>
                                 </form>
                                 <form method="post" action="/web/admin/notas/{{ nota.id }}/pago" class="note-payment-form">
                                 <div class="note-form-card-title">Registrar nuevo abono</div>
                                 <div class="row g-2 align-items-end">
                                     <div class="col-md-6">
-                                        <label class="form-label">Monto</label>
+                                        <label class="form-label" for="f_monto_pagado">Monto</label>
                                         {% set pago_monto_val = form_pago_monto if form_pago_monto is not none else "" %}
-                                        <input class="form-control form-control-sm" type="number" step="0.01" min="0" name="monto_pagado" value="{{ pago_monto_val }}" placeholder="0.00" required>
+                                        <input class="form-control form-control-sm" type="number" step="0.01" min="0" name="monto_pagado" value="{{ pago_monto_val }}" placeholder="0.00" required aria-label="Monto del abono" id="f_monto_pagado">
                                     </div>
                                     <div class="col-md-6">
-                                        <label class="form-label">Metodo</label>
+                                        <label class="form-label" for="pago_metodo_select">Método</label>
                                         {% set pago_metodo_val = form_pago_metodo if form_pago_metodo else nota.metodo_pago %}
                                         <select class="form-select form-select-sm" name="pago_metodo" id="pago_metodo_select">
                                             <option value="" {% if not pago_metodo_val %}selected{% endif %}>Selecciona</option>
@@ -1008,26 +1008,26 @@
                                         </select>
                                     </div>
                                     <div class="col-12">
-                                        <label class="form-label">Cuenta del proveedor / cliente</label>
+                                        <label class="form-label" for="pago_cuenta_select">Cuenta del proveedor / cliente</label>
                                         {% set pago_cuenta_val = form_pago_cuenta if form_pago_cuenta is not none else (nota.cuenta_financiera_id or "") %}
                                         <select class="form-select form-select-sm" name="pago_cuenta" id="pago_cuenta_select">
                                             <option value="" {% if not pago_cuenta_val %}selected{% endif %}>Selecciona cuenta</option>
                                             {% if cuentas_sucursal %}<optgroup label="Sucursal">{% for cuenta in cuentas_sucursal %}<option value="{{ cuenta.id }}" {% if pago_cuenta_val|string == cuenta.id|string %}selected{% endif %}>{{ cuenta.display_label }}</option>{% endfor %}</optgroup>{% endif %}
                                             {% if cuentas_partner %}<optgroup label="{{ cuentas_partner_label }}">{% for cuenta in cuentas_partner %}<option value="{{ cuenta.id }}" {% if pago_cuenta_val|string == cuenta.id|string %}selected{% endif %}>{{ cuenta.display_label }}</option>{% endfor %}</optgroup>{% endif %}
                                         </select>
-                                        <div class="form-text text-muted">Opcional. Usala solo si el abono por transferencia o cheque cae en una cuenta registrada del partner.</div>
+                                        <div class="form-text text-muted">Opcional. Úsala solo si el abono por transferencia o cheque cae en una cuenta registrada del partner.</div>
                                     </div>
                                     <div class="col-12">
-                                        <label class="form-label">Cuenta Scrap360</label>
+                                        <label class="form-label" for="pago_cuenta_scrap360_select">Cuenta Scrap360</label>
                                         {% set pago_cuenta_scrap_val = form_pago_cuenta_scrap360 if form_pago_cuenta_scrap360 is not none else "" %}
                                         <select class="form-select form-select-sm" name="pago_cuenta_scrap360_id" id="pago_cuenta_scrap360_select">
                                             <option value="" {% if not pago_cuenta_scrap_val %}selected{% endif %}>Selecciona cuenta</option>
                                             {% for c in cuentas_scrap360 %}<option value="{{ c.id }}" {% if pago_cuenta_scrap_val|string == c.id|string %}selected{% endif %}>{{ c.nombre }} &middot; {{ c.tipo|capitalize }}</option>{% endfor %}
                                         </select>
-                                        <div class="form-text text-muted">Opcional. Si eliges una Cuenta Scrap360, el saldo se descuenta en cuanto registras el abono. Si la transferencia o cheque fue externo, puedes dejarla vacia.</div>
+                                        <div class="form-text text-muted">Opcional. Si eliges una Cuenta Scrap360, el saldo se descuenta en cuanto registras el abono. Si la transferencia o cheque fue externo, puedes dejarla vacía.</div>
                                     </div>
                                     <div class="col-12">
-                                        <label class="form-label">Sucursal de caja</label>
+                                        <label class="form-label" for="pago_caja_sucursal_select">Sucursal de caja</label>
                                         {% set pago_caja_sucursal_val = form_pago_caja_sucursal_id if form_pago_caja_sucursal_id is not none else (nota.sucursal_id or "") %}
                                         <select class="form-select form-select-sm" name="pago_caja_sucursal_id" id="pago_caja_sucursal_select">
                                             <option value="" {% if not pago_caja_sucursal_val %}selected{% endif %}>Usar sucursal contable</option>
@@ -1035,9 +1035,9 @@
                                         </select>
                                     </div>
                                     <div class="col-12">
-                                        <label class="form-label">Comentario</label>
+                                        <label class="form-label" for="pago_comentario">Comentario</label>
                                         {% set pago_comment_val = form_pago_comentario if form_pago_comentario is not none else "" %}
-                                        <input class="form-control form-control-sm" name="pago_comentario" placeholder="Opcional" value="{{ pago_comment_val }}">
+                                        <input class="form-control form-control-sm" id="pago_comentario" name="pago_comentario" placeholder="Opcional" value="{{ pago_comment_val }}">
                                     </div>
                                     <div class="col-12 d-grid">
                                         <button type="submit" class="btn btn-outline-primary btn-sm">Agregar abono</button>
@@ -1051,7 +1051,7 @@
                                     <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
                                         <div>
                                             <div class="fw-semibold">Vista de solo lectura</div>
-                                            <div class="text-muted small">Aqui puedes consultar el historial de pagos y abonos, pero no registrar ni deshacer movimientos.</div>
+                                            <div class="text-muted small">Aquí puedes consultar el historial de pagos y abonos, pero no registrar ni deshacer movimientos.</div>
                                         </div>
                                     </div>
                                 </div>
@@ -1066,7 +1066,7 @@
                                     <th>Fecha</th>
                                     <th>Estado</th>
                                     <th class="text-end">Monto</th>
-                                    <th>Metodo</th>
+                                    <th>Método</th>
                                     <th>Caja</th>
                                     <th>Cuenta</th>
                                     <th>Cuenta Scrap360</th>
@@ -1098,7 +1098,7 @@
                                                     <span class="text-muted small">Solo consulta</span>
                                                 {% endif %}
                                             {% else %}
-                                                <span class="text-muted small">Solo auditoria</span>
+                                                <span class="text-muted small">Solo auditoría</span>
                                             {% endif %}
                                         </td>
                                     </tr>
@@ -1109,7 +1109,7 @@
                             <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para ver cuentas, comentarios y acciones del abono.</div>
                         </div>
                         {% if pagos|length == 0 %}
-                            <p class="text-muted small mb-0 mt-3">Aun no hay pagos registrados para esta nota.</p>
+                            <p class="text-muted small mb-0 mt-3">Aún no hay pagos registrados para esta nota.</p>
                         {% endif %}
                     </div>
                 </div>
@@ -1124,11 +1124,11 @@
                                 <span class="text-muted small">Acciones sobre nota aprobada</span>
                             </div>
                             <form method="post" action="/web/admin/notas/{{ nota.id }}/cancelar">
-                            <label class="form-label">Comentario de devolucion total</label>
-                            <textarea class="form-control" name="comentarios_admin" rows="4" placeholder="Motivo, referencia o explicacion administrativa.">{{ nota.comentarios_admin or '' }}</textarea>
-                            <div class="form-text text-muted">La devolucion total revierte inventario, movimientos contables y pagos activos.</div>
+                            <label class="form-label" for="f_comentarios_admin">Comentario de devolución total</label>
+                            <textarea class="form-control" name="comentarios_admin" rows="4" placeholder="Motivo, referencia o explicacion administrativa." id="f_comentarios_admin">{{ nota.comentarios_admin or '' }}</textarea>
+                            <div class="form-text text-muted">La devolución total revierte inventario, movimientos contables y pagos activos.</div>
                             <div class="d-grid gap-2 mt-3">
-                                <button type="submit" class="btn btn-outline-danger">Aplicar devolucion total</button>
+                                <button type="submit" class="btn btn-outline-danger">Aplicar devolución total</button>
                                 {% if user.rol == 'super_admin' %}
                                     <a href="/web/admin/notas/{{ nota.id }}/editar" class="btn btn-outline-primary">Editar nota aprobada</a>
                                 {% endif %}
@@ -1141,11 +1141,11 @@
                         <div class="card-body">
                             <div class="d-flex align-items-center gap-2 mb-3">
                                 <span class="chip-strong">Referencia de pago</span>
-                                <span class="text-muted small">Metodo y cuenta tentativa</span>
+                                <span class="text-muted small">Método y cuenta tentativa</span>
                             </div>
                             <form method="post" action="/web/admin/notas/{{ nota.id }}/referencia-pago" data-submit-once="1">
                                 <div class="mb-2">
-                                    <label class="form-label">Metodo de pago</label>
+                                    <label class="form-label" for="ref_metodo_pago_select">Método de pago</label>
                                     <select class="form-select form-select-sm" name="metodo_pago" id="ref_metodo_pago_select">
                                         <option value="" {% if not nota.metodo_pago %}selected{% endif %}>Sin definir</option>
                                         <option value="transferencia" {% if nota.metodo_pago == 'transferencia' %}selected{% endif %}>Transferencia</option>
@@ -1154,8 +1154,8 @@
                                     </select>
                                 </div>
                                 <div class="mb-2">
-                                    <label class="form-label">Cuenta del partner</label>
-                                    <select class="form-select form-select-sm" name="cuenta_financiera">
+                                    <label class="form-label" for="f_cuenta_financiera">Cuenta del partner</label>
+                                    <select class="form-select form-select-sm" name="cuenta_financiera" id="f_cuenta_financiera">
                                         <option value="" {% if not nota.cuenta_financiera_id %}selected{% endif %}>Sin cuenta</option>
                                         {% if cuentas_sucursal %}
                                             <optgroup label="Sucursal">
@@ -1174,8 +1174,8 @@
                                     </select>
                                 </div>
                                 <div class="mb-2">
-                                    <label class="form-label">Cuenta Scrap360 <span class="text-muted small">(cuenta emisora)</span></label>
-                                    <select class="form-select form-select-sm" name="cuenta_scrap360_id">
+                                    <label class="form-label" for="f_cuenta_scrap360_id">Cuenta Scrap360 <span class="text-muted small">(cuenta emisora)</span></label>
+                                    <select class="form-select form-select-sm" name="cuenta_scrap360_id" id="f_cuenta_scrap360_id">
                                         <option value="" {% if not nota.cuenta_scrap360_id %}selected{% endif %}>Sin especificar</option>
                                         {% for c in cuentas_scrap360 %}
                                             <option value="{{ c.id }}" {% if nota.cuenta_scrap360_id == c.id %}selected{% endif %}>{{ c.nombre }} ({{ c.tipo }})</option>
@@ -1183,8 +1183,8 @@
                                     </select>
                                 </div>
                                 <div class="mb-3" id="ref_cheque_group">
-                                    <label class="form-label">Numero de cheque</label>
-                                    <input class="form-control form-control-sm" type="text" name="numero_cheque" value="{{ nota.numero_cheque or '' }}" placeholder="Ej. 001234" maxlength="80">
+                                    <label class="form-label" for="f_numero_cheque">Número de cheque</label>
+                                    <input class="form-control form-control-sm" type="text" name="numero_cheque" value="{{ nota.numero_cheque or '' }}" placeholder="Ej. 001234" maxlength="80" id="f_numero_cheque">
                                 </div>
                                 <div class="d-grid">
                                     <button type="submit" class="btn btn-outline-secondary btn-sm">Guardar referencia</button>
@@ -1240,19 +1240,19 @@
                         <form method="post" action="/web/admin/notas/{{ nota.id }}/ajuste-saldo" class="note-adjust-form">
                             <div class="note-adjust-form-grid">
                                 <div class="note-adjust-field">
-                                    <label class="form-label">Tipo de ajuste</label>
+                                    <label class="form-label" for="note_balance_adjust_type">Tipo de ajuste</label>
                                     <select class="form-select" name="ajuste_saldo_tipo" id="note_balance_adjust_type">
                                         <option value="reducir" {% if form_ajuste_saldo_tipo == 'reducir' %}selected{% endif %}>Reducir saldo de la nota</option>
                                         <option value="aumentar" {% if form_ajuste_saldo_tipo == 'aumentar' %}selected{% endif %}>Aumentar saldo de la nota</option>
                                     </select>
                                 </div>
                                 <div class="note-adjust-field">
-                                    <label class="form-label">Monto</label>
+                                    <label class="form-label" for="note_balance_adjust_amount">Monto</label>
                                     <input class="form-control" type="number" step="0.01" min="0.01" name="ajuste_saldo_monto" id="note_balance_adjust_amount" value="{{ form_ajuste_saldo_monto or '' }}" placeholder="0.00" required>
                                 </div>
                                 <div class="note-adjust-field note-adjust-field--comment">
-                                    <label class="form-label">Comentario</label>
-                                    <input class="form-control" type="text" name="ajuste_saldo_comentario" value="{{ form_ajuste_saldo_comentario or '' }}" placeholder="Obligatorio. Ejemplo: nota cubierta por acuerdo comercial." required>
+                                    <label class="form-label" for="f_ajuste_saldo_comentario">Comentario</label>
+                                    <input class="form-control" type="text" name="ajuste_saldo_comentario" value="{{ form_ajuste_saldo_comentario or '' }}" placeholder="Obligatorio. Ejemplo: nota cubierta por acuerdo comercial." required id="f_ajuste_saldo_comentario">
                                 </div>
                             </div>
                             <div class="note-adjust-actions">
@@ -1316,7 +1316,7 @@
                                         <td>{{ ajuste.created_at|datetime_local if ajuste.created_at else '-' }}</td>
                                         <td>
                                             {% if ajuste.reversal_of_id %}
-                                                <span class="badge bg-light text-dark border">Reversion</span>
+                                                <span class="badge bg-light text-dark border">Reversión</span>
                                             {% elif ajuste.reverted_at %}
                                                 <span class="badge bg-secondary">Revertido</span>
                                             {% else %}
@@ -1336,7 +1336,7 @@
                                                         <button type="submit" class="btn btn-sm btn-outline-danger">Revertir</button>
                                                     </form>
                                                 {% else %}
-                                                    <span class="text-muted small">Solo auditoria</span>
+                                                    <span class="text-muted small">Solo auditoría</span>
                                                 {% endif %}
                                             </div>
                                         </td>
@@ -1349,8 +1349,8 @@
                     </div>
                 {% else %}
                     <div class="note-empty-state mt-3">
-                        <div class="note-empty-state-title">Aun no hay ajustes de saldo ligados a esta nota.</div>
-                        <div class="text-muted small">Usa este modulo cuando necesites liquidar, bonificar o cargar una diferencia financiera específica sin tocar inventario.</div>
+                        <div class="note-empty-state-title">Aún no hay ajustes de saldo ligados a esta nota.</div>
+                        <div class="text-muted small">Usa este módulo cuando necesites liquidar, bonificar o cargar una diferencia financiera específica sin tocar inventario.</div>
                     </div>
                 {% endif %}
             </div>
@@ -1362,7 +1362,7 @@
                 <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2 mb-3">
                     <div>
                         <h2 class="h6 text-dark mb-1">Ajuste manual ligado a esta nota</h2>
-                        <p class="text-muted small mb-0">Corrige inventario operativo desde esta nota sin modificar totales, pagos o valuacion. El ajuste queda auditado y se puede revertir una sola vez.</p>
+                        <p class="text-muted small mb-0">Corrige inventario operativo desde esta nota sin modificar totales, pagos o valuación. El ajuste queda auditado y se puede revertir una sola vez.</p>
                     </div>
                     <div class="note-adjust-badges">
                         <span class="badge bg-light text-dark border">{{ note_adjustments|length }} registros</span>
@@ -1376,7 +1376,7 @@
                         <form method="post" action="/web/admin/notas/{{ nota.id }}/ajuste-manual" class="note-adjust-form">
                             <div class="note-adjust-form-grid">
                                 <div class="note-adjust-field note-adjust-field--material">
-                                    <label class="form-label">Material de la nota</label>
+                                    <label class="form-label" for="note_adjust_material">Material de la nota</label>
                                     <select class="form-select" name="ajuste_nota_material_id" id="note_adjust_material" required>
                                         <option value="">Selecciona material</option>
                                         {% for item in note_material_options %}
@@ -1391,19 +1391,19 @@
                                     <div class="form-text text-muted">Solo puedes ajustar materiales que ya pertenecen a esta nota.</div>
                                 </div>
                                 <div class="note-adjust-field">
-                                    <label class="form-label">Movimiento</label>
+                                    <label class="form-label" for="note_adjust_operation">Movimiento</label>
                                     <select class="form-select" name="ajuste_operacion" id="note_adjust_operation">
                                         <option value="aumentar" {% if form_ajuste_operacion == 'aumentar' %}selected{% endif %}>Aumentar stock</option>
                                         <option value="disminuir" {% if form_ajuste_operacion == 'disminuir' %}selected{% endif %}>Disminuir stock</option>
                                     </select>
                                 </div>
                                 <div class="note-adjust-field">
-                                    <label class="form-label">Cantidad (kg)</label>
+                                    <label class="form-label" for="note_adjust_qty">Cantidad (kg)</label>
                                     <input class="form-control" type="number" step="0.001" min="0.001" name="ajuste_cantidad_kg" id="note_adjust_qty" value="{{ form_ajuste_cantidad or '' }}" placeholder="0.000" required>
                                 </div>
                                 <div class="note-adjust-field note-adjust-field--comment">
-                                    <label class="form-label">Comentario</label>
-                                    <input class="form-control" type="text" name="ajuste_comentario" value="{{ form_ajuste_comentario or '' }}" placeholder="Opcional. Ejemplo: diferencia detectada en patio.">
+                                    <label class="form-label" for="f_ajuste_comentario">Comentario</label>
+                                    <input class="form-control" type="text" name="ajuste_comentario" value="{{ form_ajuste_comentario or '' }}" placeholder="Opcional. Ejemplo: diferencia detectada en patio." id="f_ajuste_comentario">
                                 </div>
                             </div>
                             <div class="note-adjust-actions">
@@ -1428,7 +1428,7 @@
                                     <strong id="note_adjust_preview_result">-</strong>
                                 </div>
                             </div>
-                            <div class="note-adjust-preview-hint">Puedes aumentar o disminuir stock. Si la disminucion deja inventario negativo, el sistema la bloqueara.</div>
+                            <div class="note-adjust-preview-hint">Puedes aumentar o disminuir stock. Si la disminución deja inventario negativo, el sistema la bloqueará.</div>
                         </div>
                     </div>
                 {% else %}
@@ -1439,9 +1439,9 @@
                                     <div class="fw-semibold">{% if can_manage_note %}La nota ya no admite nuevos ajustes manuales{% else %}Vista de solo lectura{% endif %}</div>
                                     <div class="text-muted small">
                                         {% if can_manage_note %}
-                                            Como la nota no esta aprobada, solo puedes auditar o revertir los ajustes historicos que ya quedaron vinculados a esta nota.
+                                            Como la nota no esta aprobada, solo puedes auditar o revertir los ajustes históricos que ya quedaron vinculados a esta nota.
                                         {% else %}
-                                            Puedes auditar los ajustes historicos ligados a esta nota, pero no registrar nuevos ni revertirlos desde este perfil.
+                                            Puedes auditar los ajustes históricos ligados a esta nota, pero no registrar nuevos ni revertirlos desde este perfil.
                                         {% endif %}
                                     </div>
                                 </div>
@@ -1482,7 +1482,7 @@
                                         </td>
                                         <td>
                                             {% if ajuste.reversal_of_id %}
-                                                <span class="badge bg-light text-dark border">Reversion</span>
+                                                <span class="badge bg-light text-dark border">Reversión</span>
                                             {% elif ajuste.reverted_at %}
                                                 <span class="badge bg-secondary">Revertido</span>
                                             {% else %}
@@ -1503,7 +1503,7 @@
                                                         <button type="submit" class="btn btn-sm btn-outline-danger">Revertir</button>
                                                     </form>
                                                 {% else %}
-                                                    <span class="text-muted small">Solo auditoria</span>
+                                                    <span class="text-muted small">Solo auditoría</span>
                                                 {% endif %}
                                             </div>
                                         </td>
@@ -1516,8 +1516,8 @@
                     </div>
                 {% else %}
                     <div class="note-empty-state mt-3">
-                        <div class="note-empty-state-title">Aun no hay ajustes manuales ligados a esta nota.</div>
-                        <div class="text-muted small">Usa este modulo cuando necesites corregir inventario operativo de esta nota sin editar sus montos o sus pagos.</div>
+                        <div class="note-empty-state-title">Aún no hay ajustes manuales ligados a esta nota.</div>
+                        <div class="text-muted small">Usa este módulo cuando necesites corregir inventario operativo de esta nota sin editar sus montos o sus pagos.</div>
                     </div>
                 {% endif %}
             </div>
@@ -1530,7 +1530,7 @@
                     <div>
                         <h2 class="h6 text-dark mb-1">Historial de devoluciones parciales</h2>
                         {% if is_cancelled %}
-                            <p class="text-muted small mb-0">La nota esta en devolucion total. Puedes auditar las devoluciones parciales previas y, si necesitas cambiarlas, primero revierte la devolucion total.</p>
+                            <p class="text-muted small mb-0">La nota esta en devolución total. Puedes auditar las devoluciones parciales previas y, si necesitas cambiarlas, primero revierte la devolución total.</p>
                         {% else %}
                             <p class="text-muted small mb-0">Cada linea se puede revertir una sola vez mientras la nota siga aprobada y el inventario lo permita.</p>
                         {% endif %}
@@ -1581,13 +1581,13 @@
                                         </td>
                                         <td class="text-end">
                                             {% if can_manage_note and not linea.reverted_at and is_approved %}
-                                                <form method="post" action="/web/admin/notas/{{ nota.id }}/devolucion-parcial/{{ linea.id }}/revertir" class="d-inline" onsubmit="return confirm('Se restauraran exactamente los kg y el valor de esta linea de devolucion parcial. Deseas continuar?');">
+                                                <form method="post" action="/web/admin/notas/{{ nota.id }}/devolucion-parcial/{{ linea.id }}/revertir" class="d-inline" onsubmit="return confirm('Se restauraran exactamente los kg y el valor de esta linea de devolución parcial. Deseas continuar?');">
                                                     <button type="submit" class="btn btn-sm btn-outline-primary">Revertir linea</button>
                                                 </form>
                                             {% elif not linea.reverted_at and is_cancelled %}
-                                                <span class="text-muted small">Revertir primero la devolucion total</span>
+                                                <span class="text-muted small">Revertir primero la devolución total</span>
                                             {% else %}
-                                                <span class="text-muted small">Solo auditoria</span>
+                                                <span class="text-muted small">Solo auditoría</span>
                                             {% endif %}
                                         </td>
                                     </tr>

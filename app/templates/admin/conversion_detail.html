@@ -1,97 +1,76 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
+{% from "_macros.html" import page_header, icon, stat, badge, kg %}
 
-{% block title %}Conversion {{ conversion.id }}{% endblock %}
+{% block title %}Conversión {{ conversion.id }}{% endblock %}
 
 {% block content %}
-<div class="page-header note-page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Super Admin</p>
-        <h1 class="h4 text-dark mb-1">Detalle de conversion #{{ conversion.id }}</h1>
-        <p class="text-muted mb-0">Revisa el impacto en inventario y, si procede, revierte la accion desde aqui.</p>
-    </div>
-    <div class="d-flex gap-2 flex-wrap">
-        <a href="/web/admin/conversiones-materiales" class="btn btn-outline-secondary btn-sm">Volver</a>
-    </div>
-</div>
+{% call page_header('Detalle de conversión #' ~ conversion.id, eyebrow='Inventario',
+                    sub='Revisa el impacto en inventario y, si procede, revierte la acción desde aquí.') %}
+    <a href="/web/admin/conversiones-materiales" class="btn btn-outline-secondary">
+        {{ icon('arrow-left', 's-icon--sm') }} Volver
+    </a>
+{% endcall %}
 
 {% if error %}
     <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
 {% endif %}
 {% if reverted_ok %}
-    <div class="alert alert-success py-2 small mb-3">La conversion fue revertida correctamente. Se genero una conversion compensatoria para auditoria.</div>
+    <div class="alert alert-success py-2 small mb-3">La conversión fue revertida correctamente. Se generó una conversión compensatoria para auditoría.</div>
 {% endif %}
 
-<div class="card hover-lift mb-3 note-hero-card">
+<div class="card mb-3">
     <div class="card-body">
-        <div class="note-hero-header">
-            <div class="note-hero-copy">
-                <div class="d-flex flex-wrap gap-2 mb-2">
+        <div class="s-between mb-3">
+            <div>
+                <div class="mb-2">
                     {% if is_reversal %}
-                        <span class="badge bg-light text-dark border">Reversion</span>
+                        {{ badge('Reversión', 'muted') }}
                     {% elif reversion_link %}
-                        <span class="badge bg-warning text-dark">Revertida</span>
+                        {{ badge('Revertida', 'warn') }}
                     {% else %}
-                        <span class="badge bg-success">Activa</span>
+                        {{ badge('Activa', 'ok') }}
                     {% endif %}
                 </div>
-                <h2 class="h5 text-dark mb-1">{{ conversion.material_origen.nombre if conversion.material_origen else conversion.material_origen_id }} &rarr; {{ conversion.material_destino.nombre if conversion.material_destino else conversion.material_destino_id }}</h2>
-                <p class="text-muted mb-0">
+                <h2 class="s-card-title">{{ conversion.material_origen.nombre if conversion.material_origen else conversion.material_origen_id }} &rarr; {{ conversion.material_destino.nombre if conversion.material_destino else conversion.material_destino_id }}</h2>
+                <p class="s-card-sub">
                     {{ conversion.sucursal.nombre if conversion.sucursal else conversion.sucursal_id }} &middot;
-                    {{ conversion.usuario.username if conversion.usuario else (conversion.usuario_id or '-') }} &middot;
-                    {{ conversion.created_at|datetime_local if conversion.created_at else '-' }}
+                    {{ conversion.usuario.username if conversion.usuario else (conversion.usuario_id or '—') }} &middot;
+                    {{ conversion.created_at|datetime_local if conversion.created_at else '—' }}
                 </p>
             </div>
-            <div class="note-hero-side text-lg-end">
-                <div class="note-hero-label">Comentario</div>
-                <div class="text-muted small">{{ conversion.comentario or 'Sin comentario.' }}</div>
+            <div>
+                <span class="s-def__label">Motivo de la conversión</span>
+                <span class="s-def__value">{{ conversion.comentario or 'Sin comentario.' }}</span>
             </div>
         </div>
 
-        <div class="note-kpi-grid note-kpi-grid-detail">
-            <div class="notes-kpi-card tone-amber">
-                <span class="notes-kpi-label">Salida</span>
-                <strong>{{ "{:,.3f}".format(conversion.cantidad_origen or 0) }} kg</strong>
-                <div class="notes-kpi-sub">{{ conversion.material_origen.nombre if conversion.material_origen else conversion.material_origen_id }}</div>
-            </div>
-            <div class="notes-kpi-card tone-green">
-                <span class="notes-kpi-label">Entrada</span>
-                <strong>{{ "{:,.3f}".format(conversion.cantidad_destino or 0) }} kg</strong>
-                <div class="notes-kpi-sub">{{ conversion.material_destino.nombre if conversion.material_destino else conversion.material_destino_id }}</div>
-            </div>
-            <div class="notes-kpi-card tone-blue">
-                <span class="notes-kpi-label">Stock origen actual</span>
-                <strong>{{ "{:,.3f}".format(inv_origen.stock_actual if inv_origen else 0) }} kg</strong>
-                <div class="notes-kpi-sub">Despues de esta accion</div>
-            </div>
-            <div class="notes-kpi-card tone-blue">
-                <span class="notes-kpi-label">Stock destino actual</span>
-                <strong>{{ "{:,.3f}".format(inv_destino.stock_actual if inv_destino else 0) }} kg</strong>
-                <div class="notes-kpi-sub">Despues de esta accion</div>
-            </div>
+        <div class="s-stats">
+            {{ stat('Salida', kg(conversion.cantidad_origen),
+                    conversion.material_origen.nombre if conversion.material_origen else conversion.material_origen_id, 'warn') }}
+            {{ stat('Entrada', kg(conversion.cantidad_destino),
+                    conversion.material_destino.nombre if conversion.material_destino else conversion.material_destino_id, 'ok') }}
+            {{ stat('Existencias origen', kg(inv_origen.stock_actual if inv_origen else 0), 'Después de esta acción') }}
+            {{ stat('Existencias destino', kg(inv_destino.stock_actual if inv_destino else 0), 'Después de esta acción') }}
         </div>
     </div>
 </div>
 
-<div class="card hover-lift">
-    <div class="card-body">
-        <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
-            <div>
-                <h2 class="h6 text-dark mb-1">Control de reversion</h2>
-                {% if is_reversal %}
-                    <p class="text-muted small mb-0">Esta accion ya es una reversion de la conversion original <a href="/web/admin/conversiones-materiales/{{ original_conversion.id }}">#{{ original_conversion.id }}</a>. No puede revertirse nuevamente.</p>
-                {% elif reversion_link %}
-                    <p class="text-muted small mb-0">Esta conversion ya fue revertida. La accion compensatoria esta en <a href="/web/admin/conversiones-materiales/{{ reversion_link.reversal_conversion_id }}">#{{ reversion_link.reversal_conversion_id }}</a>.</p>
-                {% else %}
-                    <p class="text-muted small mb-0">La reversa creara una conversion compensatoria exacta y solo se permitira si el material destino actual tiene stock suficiente.</p>
-                {% endif %}
-            </div>
-            {% if not is_reversal and not reversion_link %}
-                <form method="post" action="/web/admin/conversiones-materiales/{{ conversion.id }}/revertir" onsubmit="return confirm('Se generara una conversion compensatoria exacta para revertir esta accion. Deseas continuar?');">
-                    <button type="submit" class="btn btn-outline-primary">Revertir accion</button>
-                </form>
-            {% endif %}
-        </div>
+<div class="s-between">
+    <div>
+        <h2 class="s-card-title">Reversión de la conversión</h2>
+        {% if is_reversal %}
+            <p class="s-card-sub">Esta acción ya es la reversión de la conversión original <a href="/web/admin/conversiones-materiales/{{ original_conversion.id }}">#{{ original_conversion.id }}</a>. No puede revertirse nuevamente.</p>
+        {% elif reversion_link %}
+            <p class="s-card-sub">Esta conversión ya fue revertida. La acción compensatoria está en <a href="/web/admin/conversiones-materiales/{{ reversion_link.reversal_conversion_id }}">#{{ reversion_link.reversal_conversion_id }}</a>.</p>
+        {% else %}
+            <p class="s-card-sub">La reversa creará una conversión compensatoria exacta y solo se permitirá si el material destino tiene existencias suficientes.</p>
+        {% endif %}
     </div>
+    {% if not is_reversal and not reversion_link %}
+        <form method="post" action="/web/admin/conversiones-materiales/{{ conversion.id }}/revertir">
+            <button type="submit" class="btn btn-outline-danger"
+                    data-confirm="¿Revertir esta conversión? Se creará una conversión compensatoria.">Revertir acción</button>
+        </form>
+    {% endif %}
 </div>
 {% endblock %}
-

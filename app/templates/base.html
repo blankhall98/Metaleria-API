@@ -2,13 +2,15 @@
 <html lang="es-MX">
 <head>
     <meta charset="UTF-8">
-    <title>SCRAP360 | {% block title %}Scrap360 MVP{% endblock %}</title>
+    <title>{% block title %}Scrap360{% endblock %} · Scrap360</title>
     <link rel="icon" href="{{ url_for('static', path='favicon.svg') }}" type="image/svg+xml">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#ffffff">
+    <meta name="color-scheme" content="light">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 
     <link
         href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
@@ -18,182 +20,185 @@
     >
 
     <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/scrap360.css') }}">
+    {% block head_extra %}{% endblock %}
 </head>
 {% set current_path = request.url.path if request and request.url else '' %}
 {% set show_mobile_dock = user and user.rol in ['super_admin', 'admin', 'visor', 'trabajador'] %}
 <body class="{% if show_mobile_dock %}app-has-mobile-dock {% endif %}{% if user %}role-{{ user.rol }}{% else %}role-guest{% endif %}">
-<nav class="navbar mb-4">
+
+{% include "_icons.html" %}
+{% from "_macros.html" import icon %}
+
+<a class="s-skip-link" href="#contenido">Ir al contenido</a>
+
+<nav class="navbar">
     <div class="container-fluid">
-        <a class="navbar-brand d-flex align-items-center fw-bold" href="/web">
+        <a class="navbar-brand d-flex align-items-center" href="/web">
             <span class="brand-mark"></span>
             Scrap360
         </a>
 
+        {% if user %}
         <div class="d-flex align-items-center gap-2 ms-auto">
-            {% if user %}
-                <span class="user-chip d-none d-sm-inline-flex">
-                    <span class="user-avatar">{{ user.username[0]|upper }}</span>
-                    <span class="d-none d-md-inline">{{ user.username }}</span>
-                    <span class="text-muted d-none d-md-inline">&middot; {{ user.rol|replace('_', ' ')|title }}</span>
-                </span>
-            {% endif %}
-            <button class="btn btn-outline-secondary btn-sm menu-trigger" type="button" aria-label="Abrir menú" onclick="toggleDrawer(true)">
-                <span class="menu-trigger-icon">&#9776;</span>
-                <span class="menu-trigger-text d-none d-sm-inline">Men&uacute;</span>
+            <span class="user-chip d-none d-sm-inline-flex">
+                <span class="user-avatar">{{ user.username[0]|upper }}</span>
+                <span class="d-none d-md-inline">{{ user.username }}</span>
+                <span class="text-muted d-none d-md-inline">&middot; {{ user.rol|replace('_', ' ')|title }}</span>
+            </span>
+            <button class="btn btn-outline-secondary btn-sm menu-trigger" type="button"
+                    aria-label="Abrir menú" aria-expanded="false" aria-controls="navDrawer"
+                    onclick="toggleDrawer(true)">
+                {{ icon('menu', 's-icon--sm') }}
+                <span class="d-none d-sm-inline">Men&uacute;</span>
             </button>
         </div>
+        {% endif %}
     </div>
 </nav>
 
-<div id="navDrawer" class="nav-drawer">
-    <div class="nav-drawer-header d-flex align-items-center justify-content-between">
+{% if user %}
+{% macro nav_link(href, label, icon_name, exact=False) %}
+    {% set is_active = (current_path == href) if exact else (current_path.startswith(href)) %}
+    <a class="nav-drawer-link d-flex align-items-center gap-2 {% if is_active %}active{% endif %}"
+       href="{{ href }}"{% if is_active %} aria-current="page"{% endif %}>
+        {{ icon(icon_name, 's-icon--sm') }}
+        <span class="s-grow">{{ label }}</span>
+        {% if href == '/web/admin/notas' %}
+            {% set badge_count = (notas_revision_count if notas_revision_count is defined else request.state.notas_revision_count) or 0 %}
+            {% if badge_count > 0 %}<span class="badge s-count-badge">{{ badge_count }}</span>{% endif %}
+        {% endif %}
+    </a>
+{% endmacro %}
+
+<div id="navDrawer" class="nav-drawer" role="dialog" aria-label="Men&uacute; de navegaci&oacute;n" aria-hidden="true">
+    <div class="nav-drawer-header">
         <div class="d-flex align-items-center gap-2 footer-brand">
             <span class="brand-mark"></span>
             <strong>Scrap360</strong>
         </div>
-        <button class="btn btn-outline-secondary btn-sm" aria-label="Cerrar menú" onclick="toggleDrawer(false)">&times;</button>
+        <button class="btn btn-outline-secondary btn-sm btn-icon" type="button"
+                aria-label="Cerrar men&uacute;" onclick="toggleDrawer(false)">{{ icon('close', 's-icon--sm') }}</button>
     </div>
-    <div class="nav-drawer-body{% if user and user.rol == 'trabajador' %} nav-drawer-body-compact{% endif %}">
-        <a class="nav-drawer-link {% if request.url.path == '/web' %}active{% endif %}" href="/web">Inicio</a>
-        {% if user %}
-            {% if user.rol == 'super_admin' %}
-                <a class="nav-drawer-link" href="/web/admin/users">Usuarios</a>
-                <a class="nav-drawer-link" href="/web/admin/sucursales">Sucursales</a>
-            {% endif %}
 
-            {% if user.rol in ['super_admin', 'admin'] %}
-                <a class="nav-drawer-link d-flex justify-content-between align-items-center" href="/web/admin/notas">
-                    <span>Notas</span>
-                    {% set badge_count = (notas_revision_count if notas_revision_count is defined else request.state.notas_revision_count) or 0 %}
-                    {% if badge_count > 0 %}
-                        <span class="badge bg-danger ms-2">{{ badge_count }}</span>
-                    {% endif %}
-                </a>
-                {% if user.rol == 'super_admin' %}
-                    <a class="nav-drawer-link" href="/web/admin/materiales">Materiales</a>
-                {% endif %}
-                <a class="nav-drawer-link" href="/web/admin/proveedores">Proveedores</a>
-                <a class="nav-drawer-link" href="/web/admin/clientes">Clientes</a>
-                <a class="nav-drawer-link" href="/web/admin/comisionarios">Comisiones</a>
-                <a class="nav-drawer-link" href="/web/admin/inventario">Inventario</a>
-                <a class="nav-drawer-link" href="/web/admin/inventario/aumentar">Aumentar materiales</a>
-                {% if user.rol == 'super_admin' %}
-                    <a class="nav-drawer-link" href="/web/admin/conversiones-materiales">Conversion de materiales</a>
-                {% endif %}
-                <a class="nav-drawer-link" href="/web/admin/transferencias">Transferencias</a>
-                <a class="nav-drawer-link" href="/web/admin/contabilidad">Contabilidad</a>
-                <a class="nav-drawer-link" href="/web/admin/capital">Capital</a>
-                <a class="nav-drawer-link" href="/web/admin/corte-caja">Corte de Caja</a>
-                <a class="nav-drawer-link" href="/web/admin/reporte-asistencias">Asistencias</a>
-                <a class="nav-drawer-link" href="/web/admin/reporte-saldos">Reporte de saldos</a>
-                <a class="nav-drawer-link" href="/web/admin/cuentas">Cuentas</a>
-                <a class="nav-drawer-link" href="/web/admin/cuentas-scrap360">Cuentas Scrap360</a>
-            {% endif %}
+    <div class="nav-drawer-body{% if user.rol == 'trabajador' %} nav-drawer-body-compact{% endif %}">
 
-            {% if user.rol == 'visor' %}
-                <a class="nav-drawer-link" href="/web/admin/notas">Notas</a>
-                <a class="nav-drawer-link" href="/web/admin/proveedores">Proveedores</a>
-                <a class="nav-drawer-link" href="/web/admin/clientes">Clientes</a>
-                <a class="nav-drawer-link" href="/web/admin/inventario">Inventario</a>
-                <a class="nav-drawer-link" href="/web/admin/inventario/movimientos">Movimientos de inventario</a>
-                <a class="nav-drawer-link" href="/web/admin/contabilidad">Contabilidad</a>
-                <a class="nav-drawer-link" href="/web/admin/capital">Capital</a>
-            {% endif %}
+        {% if user.rol == 'trabajador' %}
+            {{ nav_link('/web', 'Inicio', 'home', True) }}
+            {{ nav_link('/web/worker/notes', 'Mis notas', 'notes', True) }}
+            {{ nav_link('/web/worker/notes/nueva', 'Nueva nota', 'plus') }}
 
-            {% if user.rol == 'trabajador' %}
-                <a class="nav-drawer-link" href="/web/worker/notes">Mis notas</a>
-                <a class="nav-drawer-link" href="/web/worker/notes/nueva">Nueva nota</a>
-            {% endif %}
+        {% elif user.rol == 'visor' %}
+            <p class="nav-drawer-group-label">Operaci&oacute;n</p>
+            {{ nav_link('/web', 'Inicio', 'home', True) }}
+            {{ nav_link('/web/admin/notas', 'Notas', 'notes') }}
 
-            <div class="mt-3 d-grid gap-2">
-                <div class="d-flex align-items-center gap-2">
-                    <span class="user-avatar">{{ user.username[0]|upper }}</span>
-                    <div class="small">
-                        <div class="fw-semibold">{{ user.username }}</div>
-                        <div class="text-muted">Rol: {{ user.rol|replace('_', ' ')|title }}</div>
-                    </div>
-                </div>
-                <a class="btn btn-outline-secondary btn-sm" href="/web/logout">Salir</a>
-            </div>
+            <p class="nav-drawer-group-label">Cat&aacute;logos</p>
+            {{ nav_link('/web/admin/proveedores', 'Proveedores', 'truck') }}
+            {{ nav_link('/web/admin/clientes', 'Clientes', 'users') }}
+
+            <p class="nav-drawer-group-label">Inventario</p>
+            {{ nav_link('/web/admin/inventario', 'Inventario', 'box', True) }}
+            {{ nav_link('/web/admin/inventario/movimientos', 'Movimientos', 'transfer') }}
+
+            <p class="nav-drawer-group-label">Finanzas</p>
+            {{ nav_link('/web/admin/contabilidad', 'Contabilidad', 'ledger') }}
+            {{ nav_link('/web/admin/capital', 'Capital', 'chart') }}
+
         {% else %}
-            <a class="nav-drawer-link" href="/web/login">Login</a>
+            <p class="nav-drawer-group-label">Operaci&oacute;n</p>
+            {{ nav_link('/web', 'Inicio', 'home', True) }}
+            {{ nav_link('/web/admin/notas', 'Notas', 'notes') }}
+            {{ nav_link('/web/admin/corte-caja', 'Corte de caja', 'cash') }}
+
+            <p class="nav-drawer-group-label">Cat&aacute;logos</p>
+            {% if user.rol == 'super_admin' %}
+                {{ nav_link('/web/admin/materiales', 'Materiales', 'tag') }}
+            {% endif %}
+            {{ nav_link('/web/admin/proveedores', 'Proveedores', 'truck') }}
+            {{ nav_link('/web/admin/clientes', 'Clientes', 'users') }}
+            {{ nav_link('/web/admin/comisionarios', 'Comisiones', 'percent') }}
+
+            <p class="nav-drawer-group-label">Inventario</p>
+            {{ nav_link('/web/admin/inventario', 'Inventario', 'box', True) }}
+            {{ nav_link('/web/admin/inventario/aumentar', 'Aumentar materiales', 'plus') }}
+            {% if user.rol == 'super_admin' %}
+                {{ nav_link('/web/admin/conversiones-materiales', 'Conversi&oacute;n de materiales'|safe, 'refresh') }}
+            {% endif %}
+            {{ nav_link('/web/admin/transferencias', 'Transferencias', 'transfer') }}
+
+            <p class="nav-drawer-group-label">Finanzas</p>
+            {{ nav_link('/web/admin/contabilidad', 'Contabilidad', 'ledger') }}
+            {{ nav_link('/web/admin/capital', 'Capital real', 'chart') }}
+            {{ nav_link('/web/admin/cuentas', 'Cuentas bancarias', 'bank', True) }}
+            {{ nav_link('/web/admin/cuentas-scrap360', 'Cuentas Scrap360', 'wallet') }}
+
+            <p class="nav-drawer-group-label">Reportes</p>
+            {{ nav_link('/web/admin/reporte-asistencias', 'Asistencias', 'calendar') }}
+            {{ nav_link('/web/admin/reporte-saldos', 'Saldos', 'coins') }}
+
+            {% if user.rol == 'super_admin' %}
+                <p class="nav-drawer-group-label">Administraci&oacute;n</p>
+                {{ nav_link('/web/admin/users', 'Usuarios', 'user') }}
+                {{ nav_link('/web/admin/sucursales', 'Sucursales', 'branch') }}
+            {% endif %}
         {% endif %}
+
+        <div class="s-divider"></div>
+        <div class="d-flex align-items-center gap-2 px-2 pb-2">
+            <span class="user-avatar">{{ user.username[0]|upper }}</span>
+            <div class="small s-grow">
+                <div class="fw-semibold">{{ user.username }}</div>
+                <div class="text-muted">{{ user.rol|replace('_', ' ')|title }}</div>
+            </div>
+        </div>
+        <a class="btn btn-outline-secondary btn-sm" href="/web/logout">
+            {{ icon('logout', 's-icon--sm') }} Cerrar sesi&oacute;n
+        </a>
     </div>
 </div>
 <div id="navOverlay" class="nav-overlay" onclick="toggleDrawer(false)"></div>
+{% endif %}
 
-{% if user and user.rol in ['super_admin', 'admin'] %}
-    <nav class="mobile-dock mobile-dock--admin" aria-label="Navegaci&oacute;n m&oacute;vil administrativa">
-        <a class="mobile-dock-link {% if current_path == '/web' %}active{% endif %}" href="/web">
-            <span class="mobile-dock-icon">&#8962;</span>
-            <span class="mobile-dock-label">Inicio</span>
-        </a>
-        <a class="mobile-dock-link {% if current_path.startswith('/web/admin/notas') %}active{% endif %}" href="/web/admin/notas">
-            <span class="mobile-dock-icon">&#9998;</span>
-            <span class="mobile-dock-label">Notas</span>
-        </a>
-        <a class="mobile-dock-link {% if current_path.startswith('/web/admin/proveedores') or current_path.startswith('/web/admin/clientes') %}active{% endif %}" href="/web/admin/proveedores">
-            <span class="mobile-dock-icon">&#128101;</span>
-            <span class="mobile-dock-label">Partners</span>
-        </a>
-        <a class="mobile-dock-link {% if current_path.startswith('/web/admin/inventario') %}active{% endif %}" href="/web/admin/inventario">
-            <span class="mobile-dock-icon">&#128230;</span>
-            <span class="mobile-dock-label">Inventario</span>
-        </a>
-        <button class="mobile-dock-link mobile-dock-link--menu" type="button" onclick="toggleDrawer(true)" aria-label="Abrir men&uacute;">
-            <span class="mobile-dock-icon">&#9776;</span>
-            <span class="mobile-dock-label">Men&uacute;</span>
-        </button>
-    </nav>
-{% elif user and user.rol == 'visor' %}
-    <nav class="mobile-dock mobile-dock--admin" aria-label="Navegaci&oacute;n m&oacute;vil de solo lectura">
-        <a class="mobile-dock-link {% if current_path == '/web' %}active{% endif %}" href="/web">
-            <span class="mobile-dock-icon">&#8962;</span>
-            <span class="mobile-dock-label">Inicio</span>
-        </a>
-        <a class="mobile-dock-link {% if current_path.startswith('/web/admin/notas') %}active{% endif %}" href="/web/admin/notas">
-            <span class="mobile-dock-icon">&#9998;</span>
-            <span class="mobile-dock-label">Notas</span>
-        </a>
-        <a class="mobile-dock-link {% if current_path.startswith('/web/admin/proveedores') or current_path.startswith('/web/admin/clientes') %}active{% endif %}" href="/web/admin/proveedores">
-            <span class="mobile-dock-icon">&#128101;</span>
-            <span class="mobile-dock-label">Saldos</span>
-        </a>
-        <a class="mobile-dock-link {% if current_path.startswith('/web/admin/inventario') %}active{% endif %}" href="/web/admin/inventario">
-            <span class="mobile-dock-icon">&#128230;</span>
-            <span class="mobile-dock-label">Inventario</span>
-        </a>
-        <button class="mobile-dock-link mobile-dock-link--menu" type="button" onclick="toggleDrawer(true)" aria-label="Abrir men&uacute;">
-            <span class="mobile-dock-icon">&#9776;</span>
+{% macro dock_link(href, label, icon_name, active) %}
+    <a class="mobile-dock-link {% if active %}active{% endif %}" href="{{ href }}"{% if active %} aria-current="page"{% endif %}>
+        {{ icon(icon_name) }}
+        <span class="mobile-dock-label">{{ label }}</span>
+    </a>
+{% endmacro %}
+
+{% if user and user.rol in ['super_admin', 'admin', 'visor'] %}
+    <nav class="mobile-dock mobile-dock--admin" aria-label="Navegaci&oacute;n principal">
+        {{ dock_link('/web', 'Inicio', 'home', current_path == '/web') }}
+        {{ dock_link('/web/admin/notas', 'Notas', 'notes', current_path.startswith('/web/admin/notas')) }}
+        {{ dock_link('/web/admin/proveedores', 'Partners', 'users',
+                     current_path.startswith('/web/admin/proveedores') or current_path.startswith('/web/admin/clientes')) }}
+        {{ dock_link('/web/admin/inventario', 'Inventario', 'box', current_path.startswith('/web/admin/inventario')) }}
+        <button class="mobile-dock-link mobile-dock-link--menu" type="button"
+                onclick="toggleDrawer(true)" aria-label="Abrir men&uacute;">
+            {{ icon('menu') }}
             <span class="mobile-dock-label">Men&uacute;</span>
         </button>
     </nav>
 {% elif user and user.rol == 'trabajador' %}
-    <nav class="mobile-dock mobile-dock--worker" aria-label="Navegaci&oacute;n m&oacute;vil del trabajador">
-        <a class="mobile-dock-link {% if current_path == '/web' %}active{% endif %}" href="/web">
-            <span class="mobile-dock-icon">&#8962;</span>
-            <span class="mobile-dock-label">Inicio</span>
-        </a>
-        <a class="mobile-dock-link {% if current_path.startswith('/web/worker/notes') and not current_path.endswith('/nueva') %}active{% endif %}" href="/web/worker/notes">
-            <span class="mobile-dock-icon">&#9998;</span>
-            <span class="mobile-dock-label">Mis notas</span>
-        </a>
-        <a class="mobile-dock-link {% if current_path.endswith('/web/worker/notes/nueva') or current_path.endswith('/notes/nueva') %}active{% endif %}" href="/web/worker/notes/nueva">
-            <span class="mobile-dock-icon">&#65291;</span>
-            <span class="mobile-dock-label">Nueva</span>
-        </a>
-        <button class="mobile-dock-link mobile-dock-link--menu" type="button" onclick="toggleDrawer(true)" aria-label="Abrir men&uacute;">
-            <span class="mobile-dock-icon">&#9776;</span>
+    <nav class="mobile-dock mobile-dock--worker" aria-label="Navegaci&oacute;n principal">
+        {{ dock_link('/web', 'Inicio', 'home', current_path == '/web') }}
+        {{ dock_link('/web/worker/notes', 'Mis notas', 'notes',
+                     current_path.startswith('/web/worker/notes') and not current_path.endswith('/nueva')) }}
+        {{ dock_link('/web/worker/notes/nueva', 'Nueva', 'plus', current_path.endswith('/notes/nueva')) }}
+        <button class="mobile-dock-link mobile-dock-link--menu" type="button"
+                onclick="toggleDrawer(true)" aria-label="Abrir men&uacute;">
+            {{ icon('menu') }}
             <span class="mobile-dock-label">Men&uacute;</span>
         </button>
     </nav>
 {% endif %}
 
-<main class="page-shell {% if current_path.startswith('/web/admin/notas') or current_path.startswith('/web/worker/notes') %}page-shell-notes{% endif %}">
+<main id="contenido" class="page-shell {% if current_path.startswith('/web/admin/notas') or current_path.startswith('/web/worker/notes') %}page-shell-notes{% endif %}">
     {% block content %}{% endblock %}
 </main>
 
-<footer class="footer border-top">
+<footer class="footer">
     <div class="container py-4 d-flex flex-column flex-lg-row align-items-center justify-content-between gap-3">
         <div class="d-flex align-items-center gap-2">
             <span class="brand-mark"></span>
@@ -203,274 +208,28 @@
             </div>
         </div>
         <div class="text-muted small footer-meta">
+            {% if user %}
             <div class="footer-meta-line">
-                <span>Entorno: {{ env or 'dev' }}</span>
+                {% if env and env != 'prod' %}<span>Entorno: {{ env }}</span>{% endif %}
                 <span>Versi&oacute;n 0.1.0</span>
             </div>
             <div class="footer-meta-line">Soporte: xblankhallx@gmail.com</div>
+            {% endif %}
             <div class="footer-meta-line footer-credit">
-                Programado con <span class="footer-heart">&#10084;</span> por <a href="https://www.zero2hero.lat" target="_blank" rel="noopener">zero2hero</a>
+                Programado con <span class="footer-heart">&#10084;</span> por
+                <a href="https://www.zero2hero.lat" target="_blank" rel="noopener">zero2hero</a>
             </div>
         </div>
     </div>
 </footer>
 
-<div id="floatingTableScrollbar" class="floating-table-scrollbar" hidden>
-    <div id="floatingTableScrollbarTrack" class="floating-table-scrollbar-track" aria-label="Scroll horizontal de tabla">
-        <div id="floatingTableScrollbarSpacer" class="floating-table-scrollbar-spacer"></div>
-    </div>
-</div>
-
+{# The integrity value here was stale, so the browser blocked the bundle and
+   every data-bs-toggle on the site silently stopped working. Verified against
+   sha384 of the published 5.3.3 bundle. #}
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
-        integrity="sha384-p1HkL1rZgGSqtEtFPi0PfrxGX2YeliYg+6TSGT+bV39Y5n0jvfUlr8enE82D6a9x"
+        integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
         crossorigin="anonymous"></script>
-<script>
-    function toggleDrawer(open) {
-        const drawer = document.getElementById('navDrawer');
-        const overlay = document.getElementById('navOverlay');
-        document.body.classList.toggle('drawer-open', !!open);
-        if (open) {
-            drawer.classList.add('open');
-            overlay.classList.add('open');
-        } else {
-            drawer.classList.remove('open');
-            overlay.classList.remove('open');
-        }
-    }
-
-    function ensureScrollableTableShells() {
-        document.querySelectorAll('.table-responsive').forEach((area) => {
-            area.classList.add('scroll-x');
-
-            if (area.closest('.table-scroll-shell')) {
-                const shell = area.closest('.table-scroll-shell');
-                if (!shell.querySelector('.table-scroll-hint')) {
-                    const hint = document.createElement('div');
-                    hint.className = 'table-scroll-hint';
-                    hint.textContent = area.dataset.scrollHint || 'Arrastra con el mouse o desliza lateralmente para revisar el contenido completo.';
-                    shell.appendChild(hint);
-                }
-                return;
-            }
-
-            const shell = document.createElement('div');
-            shell.className = 'table-scroll-shell table-scroll-shell-auto';
-            const parent = area.parentNode;
-            if (!parent) return;
-
-            parent.insertBefore(shell, area);
-            shell.appendChild(area);
-
-            const hint = document.createElement('div');
-            hint.className = 'table-scroll-hint';
-            hint.textContent = area.dataset.scrollHint || 'Arrastra con el mouse o desliza lateralmente para revisar el contenido completo.';
-            shell.appendChild(hint);
-        });
-    }
-
-    function updateTableScrollCues() {
-        document.querySelectorAll('.table-scroll-shell').forEach((shell) => {
-            const area = shell.querySelector('.table-responsive');
-            if (!area) return;
-
-            const hasOverflow = area.scrollWidth - area.clientWidth > 4;
-            const canScrollLeft = area.scrollLeft > 4;
-            const canScrollRight = area.scrollLeft + area.clientWidth < area.scrollWidth - 4;
-
-            shell.classList.toggle('is-scrollable', hasOverflow);
-            shell.classList.toggle('can-scroll-left', hasOverflow && canScrollLeft);
-            shell.classList.toggle('can-scroll-right', hasOverflow && canScrollRight);
-        });
-    }
-
-    const floatingTableScrollbar = document.getElementById('floatingTableScrollbar');
-    const floatingTableScrollbarTrack = document.getElementById('floatingTableScrollbarTrack');
-    const floatingTableScrollbarSpacer = document.getElementById('floatingTableScrollbarSpacer');
-    let activeFloatingScrollArea = null;
-    let syncFromFloatingScrollbar = false;
-    let dragScrollState = null;
-
-    function getFloatingScrollCandidates() {
-        return Array.from(document.querySelectorAll('.table-scroll-shell .table-responsive')).filter((area) => {
-            const shell = area.closest('.table-scroll-shell');
-            if (!shell) return false;
-
-            const hasOverflow = area.scrollWidth - area.clientWidth > 4;
-            if (!hasOverflow) return false;
-
-            const rect = shell.getBoundingClientRect();
-            const isVisible = rect.top < window.innerHeight - 48 && rect.bottom > 64;
-            const nativeScrollbarOffscreen = rect.top < 0 || rect.bottom > window.innerHeight - 32;
-            return isVisible && nativeScrollbarOffscreen;
-        });
-    }
-
-    function resolveFloatingScrollArea() {
-        const candidates = getFloatingScrollCandidates();
-        if (!candidates.length) {
-            return null;
-        }
-
-        const anchor = Math.min(Math.max(window.innerHeight * 0.35, 140), window.innerHeight - 140);
-        let bestArea = null;
-        let bestScore = Number.POSITIVE_INFINITY;
-
-        candidates.forEach((area) => {
-            const shell = area.closest('.table-scroll-shell');
-            const rect = shell.getBoundingClientRect();
-            const containsAnchor = rect.top <= anchor && rect.bottom >= anchor;
-            const distance = containsAnchor
-                ? 0
-                : Math.min(Math.abs(rect.top - anchor), Math.abs(rect.bottom - anchor)) + 200;
-            const extraPenalty = rect.top > anchor ? 50 : 0;
-            const score = distance + extraPenalty;
-
-            if (score < bestScore) {
-                bestScore = score;
-                bestArea = area;
-            }
-        });
-
-        return bestArea;
-    }
-
-    function hideFloatingScrollbar() {
-        activeFloatingScrollArea = null;
-        floatingTableScrollbar.hidden = true;
-    }
-
-    function syncFloatingScrollbarPosition() {
-        if (!activeFloatingScrollArea) {
-            hideFloatingScrollbar();
-            return;
-        }
-
-        const rect = activeFloatingScrollArea.getBoundingClientRect();
-        const clampedLeft = Math.max(12, rect.left);
-        const maxWidth = Math.max(160, window.innerWidth - clampedLeft - 12);
-        const width = Math.min(rect.width, maxWidth);
-
-        floatingTableScrollbar.style.left = `${clampedLeft}px`;
-        floatingTableScrollbar.style.width = `${width}px`;
-        floatingTableScrollbarSpacer.style.width = `${activeFloatingScrollArea.scrollWidth}px`;
-
-        if (!syncFromFloatingScrollbar) {
-            floatingTableScrollbarTrack.scrollLeft = activeFloatingScrollArea.scrollLeft;
-        }
-    }
-
-    function updateFloatingScrollbar() {
-        const nextArea = resolveFloatingScrollArea();
-        if (!nextArea) {
-            hideFloatingScrollbar();
-            return;
-        }
-
-        activeFloatingScrollArea = nextArea;
-        floatingTableScrollbar.hidden = false;
-        syncFloatingScrollbarPosition();
-    }
-
-    function stopTableDragScroll() {
-        if (!dragScrollState) return;
-        dragScrollState.area.classList.remove('is-dragging');
-        dragScrollState = null;
-    }
-
-    document.addEventListener('wheel', () => {
-        if (document.activeElement && document.activeElement.type === 'number') {
-            document.activeElement.blur();
-        }
-    }, { passive: true });
-
-    /* Prevent double-submit on forms marked with data-submit-once */
-    document.addEventListener('submit', function (e) {
-        var form = e.target;
-        if (!form.dataset.submitOnce) return;
-        var btns = form.querySelectorAll('button[type="submit"], input[type="submit"]');
-        btns.forEach(function (btn) {
-            btn.disabled = true;
-            if (btn.dataset.loadingText) btn.textContent = btn.dataset.loadingText;
-        });
-    }, true);
-
-    document.addEventListener('DOMContentLoaded', () => {
-        ensureScrollableTableShells();
-        document.querySelectorAll('.nav-drawer a').forEach((link) => {
-            link.addEventListener('click', () => toggleDrawer(false));
-        });
-        document.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape') {
-                toggleDrawer(false);
-            }
-        });
-
-        document.querySelectorAll('.table-scroll-shell .table-responsive').forEach((area) => {
-            area.addEventListener('mousedown', (event) => {
-                if (event.button !== 0) return;
-                if (area.scrollWidth - area.clientWidth <= 4) return;
-                if (event.target.closest('input, select, textarea, button, a, label, option')) return;
-
-                dragScrollState = {
-                    area,
-                    startX: event.clientX,
-                    startScrollLeft: area.scrollLeft,
-                };
-                area.classList.add('is-dragging');
-                event.preventDefault();
-            });
-
-            area.addEventListener('wheel', (event) => {
-                if (area.scrollWidth - area.clientWidth <= 4) return;
-                const horizontalIntent = Math.abs(event.deltaX) > Math.abs(event.deltaY);
-                if (!event.shiftKey && !horizontalIntent) return;
-
-                const delta = horizontalIntent ? event.deltaX : event.deltaY;
-                if (!delta) return;
-
-                const previous = area.scrollLeft;
-                area.scrollLeft += delta;
-                if (area.scrollLeft !== previous) {
-                    event.preventDefault();
-                    updateTableScrollCues();
-                    updateFloatingScrollbar();
-                }
-            }, { passive: false });
-
-            area.addEventListener('scroll', () => {
-                updateTableScrollCues();
-                if (area === activeFloatingScrollArea && !syncFromFloatingScrollbar) {
-                    floatingTableScrollbarTrack.scrollLeft = area.scrollLeft;
-                }
-                updateFloatingScrollbar();
-            }, { passive: true });
-        });
-
-        floatingTableScrollbarTrack.addEventListener('scroll', () => {
-            if (!activeFloatingScrollArea) return;
-            syncFromFloatingScrollbar = true;
-            activeFloatingScrollArea.scrollLeft = floatingTableScrollbarTrack.scrollLeft;
-            updateTableScrollCues();
-            window.requestAnimationFrame(() => {
-                syncFromFloatingScrollbar = false;
-            });
-        }, { passive: true });
-
-        updateTableScrollCues();
-        updateFloatingScrollbar();
-        window.addEventListener('resize', () => {
-            updateTableScrollCues();
-            updateFloatingScrollbar();
-        });
-        window.addEventListener('scroll', updateFloatingScrollbar, { passive: true });
-        window.addEventListener('mousemove', (event) => {
-            if (!dragScrollState) return;
-            const deltaX = event.clientX - dragScrollState.startX;
-            dragScrollState.area.scrollLeft = dragScrollState.startScrollLeft - deltaX;
-        });
-        window.addEventListener('mouseup', stopTableDragScroll);
-        window.addEventListener('mouseleave', stopTableDragScroll);
-    });
-</script>
+<script src="{{ url_for('static', path='js/app.js') }}"></script>
+{% block scripts %}{% endblock %}
 </body>
 </html>

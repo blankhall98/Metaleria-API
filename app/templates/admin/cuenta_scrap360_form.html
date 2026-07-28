@@ -1,87 +1,100 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, money %}
 
-{% block title %}Cuenta Scrap360 &middot; Admin{% endblock %}
+{% block title %}{{ 'Editar cuenta Scrap360' if cuenta else 'Nueva cuenta Scrap360' }} &middot; Admin{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Finanzas</p>
-        <h1 class="h4 text-white mb-0">{{ 'Editar cuenta' if cuenta else 'Nueva cuenta' }}</h1>
-    </div>
-    <a href="/web/admin/cuentas-scrap360" class="btn btn-outline-secondary btn-sm">Volver</a>
-</div>
+{% call page_header('Editar cuenta Scrap360' if cuenta else 'Nueva cuenta Scrap360',
+                    eyebrow='Finanzas',
+                    sub='Cuenta interna de tesorería donde Scrap360 concentra su propio efectivo, transferencias y cheques.') %}
+    <a href="/web/admin/cuentas-scrap360" class="btn btn-outline-secondary">Volver</a>
+{% endcall %}
 
 {% if error %}
     <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
 {% endif %}
 
-<div class="card hover-lift">
+<div class="card">
     <div class="card-body">
-        <form method="post" class="row g-3">
-            <div class="col-lg-6">
-                <label class="form-label">Nombre</label>
-                <input class="form-control" name="nombre" value="{{ form_nombre }}" required>
-            </div>
-            <div class="col-lg-3 col-md-6">
-                <label class="form-label">Tipo</label>
-                <select class="form-select" name="tipo" required>
-                    <option value="">Selecciona</option>
-                    {% for t in tipos_scrap360 %}
-                        <option value="{{ t }}" {% if form_tipo == t %}selected{% endif %}>{{ t|capitalize }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-lg-3 col-md-6">
-                <label class="form-label">Estado</label>
-                <div class="form-check mt-2">
+        <form method="post">
+            <fieldset class="s-fieldset">
+                <legend>Identidad</legend>
+                <div class="s-form-grid">
+                    <div>
+                        <label class="form-label" for="nombre">Nombre <span class="s-req" aria-hidden="true">*</span></label>
+                        <input class="form-control" id="nombre" name="nombre" value="{{ form_nombre or '' }}" required>
+                        <p class="form-text">Con este nombre aparece la cuenta en los movimientos internos.</p>
+                    </div>
+                    <div>
+                        <label class="form-label" for="tipo">Tipo <span class="s-req" aria-hidden="true">*</span></label>
+                        <select class="form-select" id="tipo" name="tipo" required>
+                            <option value="">Selecciona un tipo</option>
+                            {% for t in tipos_scrap360 %}
+                                <option value="{{ t }}" {% if form_tipo == t %}selected{% endif %}>{{ t|capitalize }}</option>
+                            {% endfor %}
+                        </select>
+                        <p class="form-text">Determina cómo se clasifica el dinero que entra y sale.</p>
+                    </div>
+                </div>
+
+                <div class="form-check mt-3">
                     <input class="form-check-input" type="checkbox" name="activo" value="1" id="activoCheck" {% if form_activo %}checked{% endif %}>
-                    <label class="form-check-label" for="activoCheck">Activa</label>
+                    <label class="form-check-label" for="activoCheck">Cuenta activa</label>
                 </div>
-            </div>
+            </fieldset>
 
-            <div class="col-lg-6">
-                <label class="form-label">Sucursales vinculadas</label>
-                <div class="d-flex flex-wrap gap-3">
-                    {% for s in sucursales %}
-                        <div class="form-check">
-                            <input
-                                class="form-check-input"
-                                type="checkbox"
-                                name="sucursal_ids"
-                                id="sucursal_{{ s.id }}"
-                                value="{{ s.id }}"
-                                {% if s.id in selected_sucursales %}checked{% endif %}
-                            >
-                            <label class="form-check-label" for="sucursal_{{ s.id }}">{{ s.nombre }}</label>
+            <fieldset class="s-fieldset">
+                <legend>Sucursales vinculadas</legend>
+                {% if sucursales %}
+                    <div class="s-subpanel" role="group" aria-labelledby="sucursales_label">
+                        <span class="s-visually-hidden" id="sucursales_label">Sucursales vinculadas</span>
+                        {% for s in sucursales %}
+                            <div class="form-check">
+                                <input
+                                    class="form-check-input"
+                                    type="checkbox"
+                                    name="sucursal_ids"
+                                    id="sucursal_{{ s.id }}"
+                                    value="{{ s.id }}"
+                                    {% if s.id in selected_sucursales %}checked{% endif %}
+                                >
+                                <label class="form-check-label" for="sucursal_{{ s.id }}">{{ s.nombre }}</label>
+                            </div>
+                        {% endfor %}
+                    </div>
+                    <p class="form-text">Marca al menos una sucursal que pueda mover dinero en esta cuenta.</p>
+                {% else %}
+                    <p class="form-text">No hay sucursales disponibles.</p>
+                {% endif %}
+            </fieldset>
+
+            <fieldset class="s-fieldset">
+                <legend>Saldos</legend>
+                <div class="s-form-grid">
+                    {% if cuenta %}
+                        <div>
+                            <span class="form-label d-block">Saldo inicial</span>
+                            <p class="s-stat__value mb-0">{{ money(cuenta.saldo_inicial) }}</p>
+                            <p class="form-text">Se define solo al crear la cuenta.</p>
                         </div>
-                    {% endfor %}
+                        <div>
+                            <span class="form-label d-block">Saldo actual</span>
+                            <p class="s-stat__value mb-0">{{ money(cuenta.saldo_actual) }}</p>
+                            <p class="form-text">Resultado del saldo inicial más los movimientos registrados.</p>
+                        </div>
+                    {% else %}
+                        <div>
+                            <label class="form-label" for="saldo_inicial">Saldo inicial</label>
+                            <input class="form-control" id="saldo_inicial" name="saldo_inicial" value="{{ form_saldo or '' }}" placeholder="0.00">
+                            <p class="form-text">Opcional. Dinero con el que arranca la cuenta; no se puede cambiar después.</p>
+                        </div>
+                    {% endif %}
                 </div>
-                {% if sucursales|length == 0 %}
-                    <div class="form-text text-muted">No hay sucursales disponibles.</div>
-                {% endif %}
-            </div>
+            </fieldset>
 
-            <div class="col-lg-3 col-md-6">
-                <label class="form-label">Saldo inicial</label>
-                {% if cuenta %}
-                    <input class="form-control" value="{{ "{:,.2f}".format(cuenta.saldo_inicial or 0) }}" disabled>
-                    <div class="form-text text-muted">Se define solo al crear la cuenta.</div>
-                {% else %}
-                    <input class="form-control" name="saldo_inicial" value="{{ form_saldo }}" placeholder="0.00">
-                {% endif %}
-            </div>
-            <div class="col-lg-3 col-md-6">
-                <label class="form-label">Saldo actual</label>
-                {% if cuenta %}
-                    <input class="form-control" value="{{ "{:,.2f}".format(cuenta.saldo_actual or 0) }}" disabled>
-                {% else %}
-                    <input class="form-control" value="0.00" disabled>
-                {% endif %}
-            </div>
-
-            <div class="col-12 d-flex gap-2">
-                <button class="btn btn-primary" type="submit">{{ 'Guardar cambios' if cuenta else 'Crear cuenta' }}</button>
+            <div class="s-form-actions">
                 <a href="/web/admin/cuentas-scrap360" class="btn btn-outline-secondary">Cancelar</a>
+                <button class="btn btn-primary" type="submit">{{ 'Guardar cambios' if cuenta else 'Crear cuenta' }}</button>
             </div>
         </form>
     </div>

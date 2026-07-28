@@ -1,182 +1,140 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, icon, stat, badge, empty_row %}
 
 {% block title %}Usuarios &middot; Admin{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Administracion</p>
-        <h1 class="h4 text-white mb-0">Usuarios</h1>
-        <p class="text-muted small mb-0">Controla accesos, permisos y sucursales desde una sola vista.</p>
-    </div>
-    <div class="d-flex gap-2 flex-wrap">
-        <a href="/web/admin/sucursales" class="btn btn-outline-secondary btn-sm">Sucursales</a>
-        <a href="/web/admin/users/nuevo" class="btn btn-primary btn-sm">Nuevo usuario</a>
-    </div>
+{% call page_header('Usuarios', eyebrow='Administración',
+                    sub='Controla accesos, permisos y sucursales desde una sola vista.') %}
+    <a href="/web/admin/sucursales" class="btn btn-outline-secondary">
+        {{ icon('branch', 's-icon--sm') }} Sucursales
+    </a>
+    <a href="/web/admin/users/nuevo" class="btn btn-primary">
+        {{ icon('plus', 's-icon--sm') }} Nuevo usuario
+    </a>
+{% endcall %}
+
+<div class="s-stats">
+    {{ stat('Total', users_summary.total, 'Usuarios registrados') }}
+    {{ stat('Activos', users_summary.activos, 'Con acceso vigente', 'ok') }}
+    {{ stat('Super admins', users_summary.super_admins, 'Acceso total') }}
+    {{ stat('Admins', users_summary.admins, 'Acceso por sucursal') }}
+    {{ stat('Trabajadores', users_summary.trabajadores, 'Captura de notas') }}
+    {{ stat('Visores', users_summary.visores, 'Solo lectura') }}
 </div>
 
-<div class="ops-kpi-strip users-summary-strip mb-3">
-    <div class="ops-kpi-pill">
-        <span class="ops-kpi-label">Total</span>
-        <strong>{{ users_summary.total }}</strong>
-    </div>
-    <div class="ops-kpi-pill">
-        <span class="ops-kpi-label">Activos</span>
-        <strong>{{ users_summary.activos }}</strong>
-    </div>
-    <div class="ops-kpi-pill">
-        <span class="ops-kpi-label">Super admins</span>
-        <strong>{{ users_summary.super_admins }}</strong>
-    </div>
-    <div class="ops-kpi-pill">
-        <span class="ops-kpi-label">Admins</span>
-        <strong>{{ users_summary.admins }}</strong>
-    </div>
-    <div class="ops-kpi-pill">
-        <span class="ops-kpi-label">Trabajadores</span>
-        <strong>{{ users_summary.trabajadores }}</strong>
-    </div>
-    <div class="ops-kpi-pill">
-        <span class="ops-kpi-label">Visores</span>
-        <strong>{{ users_summary.visores }}</strong>
-    </div>
-</div>
-
-<div class="card hover-lift mb-3 user-toolbar-card">
-    <div class="card-body">
-        {% if updated %}
-            <div class="alert alert-success py-2 small mb-3">Usuario actualizado correctamente.</div>
-        {% endif %}
-        {% if delete_ok %}
-            <div class="alert alert-success py-2 small mb-3">Usuario eliminado correctamente.</div>
-        {% endif %}
-        {% if delete_error %}
-            <div class="alert alert-danger py-2 small mb-3">{{ delete_error }}</div>
-        {% endif %}
-
-        <form class="row g-3 align-items-end" method="get">
-            <div class="col-lg-4 col-md-6">
-                <label class="form-label">Sucursal</label>
-                <select class="form-select" name="sucursal_id" onchange="this.form.submit()">
-                    <option value="">Todas las sucursales</option>
-                    {% for sid, suc in sucursales_map.items() %}
-                        <option value="{{ sid }}" {% if sucursal_id and sucursal_id == sid %}selected{% endif %}>{{ suc.nombre }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-lg-8 col-md-6">
-                <div class="user-toolbar-copy">
-                    {% if sucursal_id and sucursales_map.get(sucursal_id) %}
-                        <span class="chip-strong">Vista filtrada</span>
-                        <span class="text-muted small">Mostrando usuarios ligados a {{ sucursales_map[sucursal_id].nombre }}.</span>
-                    {% else %}
-                        <span class="chip-strong">Vista global</span>
-                        <span class="text-muted small">Admins, trabajadores, visores y super admins de toda la operacion.</span>
-                    {% endif %}
-                </div>
-            </div>
-        </form>
-    </div>
-</div>
-
-<div class="card hover-lift users-management-card">
-    <div class="card-body">
-        <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2 mb-3">
-            <div>
-                <h2 class="h6 text-dark mb-1">Directorio de usuarios</h2>
-                <p class="text-muted small mb-0">Consulta rol, alcance, sucursal principal y acciones disponibles de cada perfil.</p>
-            </div>
-            <div class="note-payment-summary">
-                <span>Registros: <strong>{{ usuarios|length }}</strong></span>
-                <span>Activos: <strong>{{ users_summary.activos }}</strong></span>
-            </div>
+<details class="s-filters-collapse" open>
+    <summary>Filtros</summary>
+    <form class="s-filters" method="get">
+        <div class="s-filters__field s-filters__field--wide">
+            <label for="f-sucursal" class="form-label">Sucursal</label>
+            <select class="form-select" id="f-sucursal" name="sucursal_id">
+                <option value="">Todas las sucursales</option>
+                {% for sid, suc in sucursales_map.items() %}
+                    <option value="{{ sid }}" {% if sucursal_id and sucursal_id == sid %}selected{% endif %}>{{ suc.nombre }}</option>
+                {% endfor %}
+            </select>
         </div>
+        <div class="s-filters__actions">
+            <button class="btn btn-outline-primary" type="submit">Filtrar</button>
+        </div>
+    </form>
+</details>
 
-        <div class="table-scroll-shell">
-            <div class="table-responsive scroll-x">
-                <table class="table table-hover align-middle mb-0 users-table">
-                    <thead>
+{% if updated %}
+    <div class="alert alert-success py-2 small mb-3">Usuario actualizado correctamente.</div>
+{% endif %}
+{% if delete_ok %}
+    <div class="alert alert-success py-2 small mb-3">Usuario eliminado correctamente.</div>
+{% endif %}
+{% if delete_error %}
+    <div class="alert alert-danger py-2 small mb-3">{{ delete_error }}</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-body">
+        <h2 class="h6 mb-1">Directorio de usuarios</h2>
+        <p class="text-muted small mb-3">Consulta rol, alcance, sucursal principal y acciones disponibles de cada perfil.</p>
+
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th data-title-col>Usuario</th>
+                        <th>Rol y estado</th>
+                        <th>Acceso</th>
+                        <th>Sucursal primaria</th>
+                        <th><span class="s-visually-hidden">Acciones</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in usuarios %}
+                        {% set delete_meta = user_delete_meta.get(u.id, {}) %}
+                        {% set access_labels = user_access_map.get(u.id, []) %}
                         <tr>
-                            <th>Usuario</th>
-                            <th>Rol y estado</th>
-                            <th>Acceso</th>
-                            <th>Sucursal primaria</th>
-                            <th class="text-end">Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for u in usuarios %}
-                            {% set delete_meta = user_delete_meta.get(u.id, {}) %}
-                            {% set access_labels = user_access_map.get(u.id, []) %}
-                            {% set initials = ((u.nombre_completo or u.username or 'U')[:1]).upper() %}
-                            <tr>
-                                <td>
-                                    <div class="users-identity">
-                                        <span class="user-table-avatar">{{ initials }}</span>
-                                        <div>
-                                            <div class="fw-semibold text-dark">{{ u.nombre_completo }}</div>
-                                            <div class="text-muted small">@{{ u.username }} &middot; ID {{ u.id }}</div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td>
-                                    <div class="users-role-stack">
-                                        <span class="user-role-chip role-{{ u.rol.value }}">
-                                            {% if u.rol.value == 'visor' %}
-                                                Visor
-                                            {% elif u.rol.value == 'super_admin' %}
-                                                Super admin
-                                            {% else %}
-                                                {{ u.rol.value|capitalize }}
-                                            {% endif %}
-                                        </span>
-                                        <span class="user-status-chip {{ 'is-active' if u.estado.value == 'activo' else 'is-inactive' }}">
-                                            {{ u.estado.value|capitalize }}
-                                        </span>
-                                        {% if u.super_admin_original %}
-                                            <span class="user-flag-chip">Original</span>
+                            <td>
+                                <div class="fw-semibold">{{ u.nombre_completo }}</div>
+                                <div class="text-muted small">@{{ u.username }} &middot; ID {{ u.id }}</div>
+                            </td>
+                            <td>
+                                <div class="d-flex flex-wrap gap-1">
+                                    <span class="user-role-chip role-{{ u.rol.value }}">
+                                        {% if u.rol.value == 'visor' %}
+                                            Visor
+                                        {% elif u.rol.value == 'super_admin' %}
+                                            Super admin
+                                        {% else %}
+                                            {{ u.rol.value|capitalize }}
                                         {% endif %}
-                                    </div>
-                                </td>
-                                <td>
-                                    <div class="user-access-chips">
-                                        {% for label in access_labels %}
-                                            <span class="user-access-chip">{{ label }}</span>
-                                        {% endfor %}
-                                    </div>
-                                </td>
-                                <td>
-                                    {% if u.sucursal_id and sucursales_map.get(u.sucursal_id) %}
-                                        <span class="fw-semibold">{{ sucursales_map[u.sucursal_id].nombre }}</span>
-                                    {% elif u.rol.value == 'visor' %}
-                                        <span class="text-muted">Global</span>
-                                    {% elif u.rol.value == 'super_admin' %}
-                                        <span class="text-muted">Toda la operacion</span>
+                                    </span>
+                                    {% if u.estado.value == 'activo' %}
+                                        {{ badge('Activo', 'ok') }}
                                     {% else %}
-                                        <span class="text-muted">-</span>
+                                        {{ badge(u.estado.value|capitalize, 'muted') }}
                                     {% endif %}
-                                </td>
-                                <td class="text-end">
-                                    <div class="users-action-stack">
-                                        <div class="d-inline-flex gap-2 flex-wrap justify-content-end">
-                                            <a href="/web/admin/users/{{ u.id }}/editar" class="btn btn-outline-primary btn-sm">Editar</a>
-                                            {% if delete_meta.can_delete %}
-                                                <form method="post" action="/web/admin/users/{{ u.id }}/eliminar" onsubmit="return confirm('Eliminar este usuario? Esta accion no se puede deshacer.');">
-                                                    <button class="btn btn-outline-danger btn-sm" type="submit">Eliminar</button>
-                                                </form>
-                                            {% endif %}
-                                        </div>
-                                        {% if not delete_meta.can_delete %}
-                                            <div class="text-muted small">{{ delete_meta.reason }}</div>
-                                        {% endif %}
-                                    </div>
-                                </td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para revisar usuarios, roles y accesos completos.</div>
+                                    {% if u.super_admin_original %}
+                                        {{ badge('Original', 'info') }}
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td>
+                                <div class="d-flex flex-wrap gap-1">
+                                    {% for label in access_labels %}
+                                        {{ badge(label, 'muted') }}
+                                    {% endfor %}
+                                </div>
+                            </td>
+                            <td>
+                                {% if u.sucursal_id and sucursales_map.get(u.sucursal_id) %}
+                                    <span class="fw-semibold">{{ sucursales_map[u.sucursal_id].nombre }}</span>
+                                {% elif u.rol.value == 'visor' %}
+                                    <span class="text-muted">Global</span>
+                                {% elif u.rol.value == 'super_admin' %}
+                                    <span class="text-muted">Toda la operación</span>
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="s-actions">
+                                    <a href="/web/admin/users/{{ u.id }}/editar" class="btn btn-outline-secondary btn-sm">Editar</a>
+                                    {% if delete_meta.can_delete %}
+                                        <form method="post" action="/web/admin/users/{{ u.id }}/eliminar">
+                                            <button class="btn btn-outline-danger btn-sm" type="submit"
+                                                    data-confirm="¿Eliminar este usuario? Esta acción no se puede deshacer.">Eliminar</button>
+                                        </form>
+                                    {% endif %}
+                                </span>
+                                {% if not delete_meta.can_delete %}
+                                    <div class="text-muted small mt-1">{{ delete_meta.reason }}</div>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% else %}
+                        {{ empty_row(5, 'No hay usuarios para este filtro.') }}
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
 </div>

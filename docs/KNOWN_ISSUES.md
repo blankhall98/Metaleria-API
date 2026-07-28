@@ -24,9 +24,15 @@ Confirmed findings from the July 2026 full-codebase audit. Ordered by severity. 
 
 ## Operational
 
-9. **Local git repo has zero commits.** HEAD is unborn (`git log` → "branch appears to be broken") while remotes `origin` (GitHub `blankhall98/Metaleria-API`) and `heroku` exist and hold the deployed history. Everything is staged but nothing committed locally. Re-establish history (fetch from origin and reset, or commit fresh) before further deploys.
+9. ~~Local git repo has a corrupted `main` ref~~ — **FIXED 2026-07-28**: `.git/refs/heads/main` held blanks instead of a SHA, breaking `git log`/`fetch`/`status`. Repaired by deleting the ref, fetching `origin`, pointing `main` at `f2b73a2` and resetting the index. No history was lost — the working tree was untouched and both remotes still held the real history. If it recurs, the same sequence works.
 
-10. **No tests, no test tooling.** `tests/` is empty; pytest isn't in requirements. ~24k lines of business logic are unverified. If adding tests, start with `note_service` state transitions and the balance formula.
+10. **No tests, no test tooling.** `tests/` is empty; pytest isn't in requirements. ~24k lines of business logic are unverified. If adding tests, start with `note_service` state transitions and the balance formula. The UI does have guards now — `scripts/check_ui.js` and `scripts/fix_accents.py --check` — but they cover presentation only.
+
+11. ~~Bootstrap JS blocked on every page~~ — **FIXED 2026-07-28**: `base.html` carried a stale `integrity` hash for `bootstrap.bundle.min.js`, so the browser refused the script and every `data-bs-toggle` silently did nothing. Corrected against the published sha384 (cross-checked against the CSS hash, which was already correct).
+
+12. **`comisionario_form` renders an unchecked "activo" box when editing an active comisionario.** `form_data` is always truthy (the route injects `sucursal_id`), so `activo_val` reads from an empty form instead of the record. The same bug for the name/phone/email fields was fixed 2026-07-28; this one was left because correcting it changes what the form submits.
+
+13. **Two service files still build unaccented Spanish into persisted comments**: `note_service.py` (`"Devolucion parcial nota #…"`) and `conversion_service.py` (`"Conversion #…"`, `"Reversion conversion #…"`). Nothing matches on these strings, so they are safe to accent — but they are written into the audit trail, so it was left for a deliberate change. Note `"Pago inicial"` in `note_service.py` **is** load-bearing (`admin.py` matches it with `.lower().startswith("pago inicial")`) and must not be touched.
 
 11. **Seed data is from a different business.** `seed_initial_materials_and_prices.py` seeds construction materials (Varilla, Cemento, Arena…) and fictional sucursal addresses — leftovers from an earlier framing. Harmless (idempotent, prod already has real data) but don't run blindly.
 

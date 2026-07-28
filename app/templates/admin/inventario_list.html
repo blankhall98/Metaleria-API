@@ -1,59 +1,79 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
+{% from "_macros.html" import page_header, icon, stat, kg, empty_row %}
 
 {% block title %}Inventario{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Inventario</p>
-        <h1 class="h4 text-white mb-0">Stock por sucursal y material</h1>
-    </div>
+{% call page_header('Existencias por sucursal y material', eyebrow='Inventario',
+                    sub='Saldo vivo en kilogramos de cada material, con la fecha del último movimiento.') %}
+    <a href="/web/admin/inventario/movimientos" class="btn btn-outline-secondary">
+        {{ icon('layers', 's-icon--sm') }} Ver movimientos
+    </a>
+    <a href="/web/admin/inventario/valor{% if sucursal_id %}?sucursal_id={{ sucursal_id }}{% endif %}" class="btn btn-outline-secondary">
+        {{ icon('chart', 's-icon--sm') }} Valor del inventario
+    </a>
+    {% if can_manage_inventory %}
+        <a href="/web/admin/inventario/ajuste" class="btn btn-primary">
+            {{ icon('sliders', 's-icon--sm') }} Actualizar existencias
+        </a>
+    {% endif %}
+{% endcall %}
+
+{% set total_kg = inventarios | map(attribute='stock_actual') | select | sum %}
+{% set con_existencias = inventarios | selectattr('stock_actual') | list | length %}
+{% set sucursales_en_vista = inventarios | map(attribute='sucursal_id') | unique | list | length %}
+<div class="s-stats">
+    {{ stat('Existencias totales', kg(total_kg), 'Suma de los saldos de esta vista') }}
+    {{ stat('Materiales con saldo', con_existencias, 'Renglones con existencias distintas de cero') }}
+    {{ stat('Sucursales', sucursales_en_vista, 'Sucursales incluidas en la vista') }}
 </div>
 
-<div class="card hover-lift">
-    <div class="card-body">
-        <form class="row g-2 align-items-end mb-3" method="get">
-            {% if user.rol in ['super_admin', 'visor'] or (user.rol == 'admin' and sucursales|length > 1) %}
-                <div class="col-md-4">
-                    <label class="form-label">Sucursal</label>
-                    <select class="form-select" name="sucursal_id" onchange="this.form.submit()">
-                        <option value="">Todas</option>
-                        {% for s in sucursales %}
-                            <option value="{{ s.id }}" {% if sucursal_id and sucursal_id == s.id %}selected{% endif %}>{{ s.nombre }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-            {% else %}
-                <div class="col-md-4">
-                    <label class="form-label">Sucursal</label>
-                    {% set suc = sucursales|selectattr('id','equalto',sucursal_id)|list|first %}
-                    <div class="form-control-plaintext fw-semibold">{{ suc.nombre if suc else sucursal_id }}</div>
-                </div>
-            {% endif %}
-            <div class="col-md-4 d-grid d-md-flex gap-2">
-                <a class="btn btn-outline-primary" href="/web/admin/inventario/movimientos">Ver movimientos</a>
-                <a class="btn btn-outline-primary" href="/web/admin/inventario/valor{% if sucursal_id %}?sucursal_id={{ sucursal_id }}{% endif %}">Valor inventario</a>
-                {% if can_manage_inventory %}
-                    <a class="btn btn-primary" href="/web/admin/inventario/ajuste">Ajuste</a>
-                {% endif %}
+<details class="s-filters-collapse" open>
+    <summary>Filtros</summary>
+    <form class="s-filters" method="get">
+        {% if user.rol in ['super_admin', 'visor'] or (user.rol == 'admin' and sucursales|length > 1) %}
+            <div class="s-filters__field">
+                <label for="f-sucursal" class="form-label">Sucursal</label>
+                <select class="form-select" id="f-sucursal" name="sucursal_id">
+                    <option value="">Todas las sucursales</option>
+                    {% for s in sucursales %}
+                        <option value="{{ s.id }}" {% if sucursal_id and sucursal_id == s.id %}selected{% endif %}>{{ s.nombre }}</option>
+                    {% endfor %}
+                </select>
             </div>
-        </form>
-        {% if negative_inventory_count %}
-            <div class="alert alert-warning py-2 small mb-3">
-                Hay <strong>{{ negative_inventory_count }}</strong> saldos negativos en esta vista por un total de
-                <strong>{{ "{:,.2f}".format(negative_inventory_kg|abs) }} kg</strong>.
-                Esto representa material ya vendido o comprometido pendiente de compensar con compras, traspasos o ajustes posteriores.
+        {% else %}
+            <div class="s-filters__field">
+                {% set suc = sucursales|selectattr('id','equalto',sucursal_id)|list|first %}
+                <span class="s-def__label">Sucursal</span>
+                <span class="s-def__value">{{ suc.nombre if suc else sucursal_id }}</span>
             </div>
         {% endif %}
-        <div class="table-scroll-shell">
+        <div class="s-filters__actions">
+            <button class="btn btn-outline-primary" type="submit">Filtrar</button>
+            {% if sucursal_id %}
+                <a class="btn btn-outline-secondary" href="/web/admin/inventario">Limpiar</a>
+            {% endif %}
+        </div>
+    </form>
+</details>
+
+{% if negative_inventory_count %}
+    <div class="alert alert-warning py-2 small mb-3">
+        Hay <strong>{{ negative_inventory_count }}</strong> saldos negativos en esta vista por un total de
+        <strong>{{ "{:,.2f}".format(negative_inventory_kg|abs) }} kg</strong>.
+        Esto representa material ya vendido o comprometido pendiente de compensar con compras, traspasos o ajustes posteriores.
+    </div>
+{% endif %}
+
+<div class="card">
+    <div class="card-body">
         <div class="table-responsive">
-            <table class="table table-hover table-sm align-middle mb-0 data-table">
+            <table class="table table-hover align-middle">
                 <thead>
                 <tr>
                     <th>Sucursal</th>
-                    <th>Material</th>
-                    <th>Stock inicial</th>
-                    <th>Stock actual</th>
+                    <th data-title-col>Material</th>
+                    <th class="text-end">Existencias actuales</th>
                     <th>Actualizado</th>
                 </tr>
                 </thead>
@@ -62,24 +82,20 @@
                     <tr>
                         <td>{{ inv.sucursal.nombre if inv.sucursal else inv.sucursal_id }}</td>
                         <td>{{ inv.material.nombre if inv.material else inv.material_id }}</td>
-                        <td>{{ "{:,.2f}".format(inv.stock_inicial or 0) }} kg</td>
-                        <td class="{% if (inv.stock_actual or 0) < 0 %}text-danger fw-semibold{% endif %}">
-                            {{ "{:,.2f}".format(inv.stock_actual or 0) }} kg
+                        <td class="text-end">
+                            <span class="{% if (inv.stock_actual or 0) < 0 %}text-danger fw-semibold{% endif %}">{{ kg(inv.stock_actual) }}</span>
                             {% if (inv.stock_actual or 0) < 0 %}
                                 <div class="small text-danger">Saldo en contra</div>
                             {% endif %}
                         </td>
-                        <td>{{ inv.updated_at|datetime_local if inv.updated_at else "-" }}</td>
+                        <td>{{ inv.updated_at|datetime_local if inv.updated_at else "—" }}</td>
                     </tr>
+                {% else %}
+                    {{ empty_row(4, 'Aún no hay inventario registrado para esta vista.') }}
                 {% endfor %}
                 </tbody>
             </table>
         </div>
-        </div>
-        {% if inventarios|length == 0 %}
-            <p class="text-muted small mt-3 mb-0">AÃºn no hay inventario registrado.</p>
-        {% endif %}
     </div>
 </div>
 {% endblock %}
-

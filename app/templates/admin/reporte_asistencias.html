@@ -1,181 +1,138 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, icon, stat, badge, empty %}
 
-{% block title %}Reporte de Asistencias{% endblock %}
+{% block title %}Reporte de asistencias{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Reportes</p>
-        <h1 class="h4 text-white mb-0">Asistencias de Proveedores</h1>
-    </div>
-</div>
 
-{# ── FILTER FORM ── #}
-<div class="card hover-lift mb-4">
-    <div class="card-body">
-        <form method="get" action="/web/admin/reporte-asistencias" class="row g-3 align-items-end">
-            {% if sucursales | length > 1 %}
-            <div class="col-12 col-sm-6 col-md-3">
-                <label class="form-label small fw-semibold" for="sucursal_id">Sucursal</label>
-                <select class="form-select form-select-sm" id="sucursal_id" name="sucursal_id">
+{{ page_header('Asistencias de proveedores', eyebrow='Reportes',
+               sub='Días con nota registrada por proveedor dentro del período elegido.') }}
+
+<details class="s-filters-collapse" open>
+    <summary>Filtros</summary>
+    <form class="s-filters" method="get" action="/web/admin/reporte-asistencias">
+        {% if sucursales | length > 1 %}
+            <div class="s-filters__field">
+                <label class="form-label" for="sucursal_id">Sucursal</label>
+                <select class="form-select" id="sucursal_id" name="sucursal_id">
                     <option value="">Todas</option>
                     {% for s in sucursales %}
                         <option value="{{ s.id }}" {% if sucursal_id == s.id %}selected{% endif %}>{{ s.nombre }}</option>
                     {% endfor %}
                 </select>
             </div>
-            {% elif sucursales | length == 1 %}
-                <input type="hidden" name="sucursal_id" value="{{ sucursales[0].id }}">
-            {% endif %}
+        {% elif sucursales | length == 1 %}
+            <input type="hidden" name="sucursal_id" value="{{ sucursales[0].id }}">
+        {% endif %}
 
-            <div class="col-12 col-sm-6 col-md-3">
-                <label class="form-label small fw-semibold" for="fecha_inicio">Desde</label>
-                <input type="date" class="form-control form-control-sm" id="fecha_inicio" name="fecha_inicio"
-                       value="{{ fecha_inicio }}">
-            </div>
+        <div class="s-filters__field">
+            <label class="form-label" for="fecha_inicio">Desde</label>
+            <input type="date" class="form-control" id="fecha_inicio" name="fecha_inicio" value="{{ fecha_inicio }}">
+        </div>
 
-            <div class="col-12 col-sm-6 col-md-3">
-                <label class="form-label small fw-semibold" for="fecha_fin">Hasta</label>
-                <input type="date" class="form-control form-control-sm" id="fecha_fin" name="fecha_fin"
-                       value="{{ fecha_fin }}">
-            </div>
+        <div class="s-filters__field">
+            <label class="form-label" for="fecha_fin">Hasta</label>
+            <input type="date" class="form-control" id="fecha_fin" name="fecha_fin" value="{{ fecha_fin }}">
+        </div>
 
-            <div class="col-12 col-sm-6 col-md-3">
-                <button type="submit" class="btn btn-primary btn-sm w-100">Generar reporte</button>
-            </div>
-        </form>
+        <div class="s-filters__actions">
+            <button type="submit" class="btn btn-primary">Filtrar</button>
+        </div>
+    </form>
+</details>
+
+{% if rows is not defined or rows | length == 0 %}
+    {{ empty('Sin asistencias en el período seleccionado',
+             'Amplía el rango de fechas o elige otra sucursal para ver asistencias.',
+             'calendar') }}
+{% else %}
+
+    <div class="s-stats">
+        {{ stat('Total asistencias', total_asistencias) }}
+        {{ stat('Proveedores distintos', total_proveedores) }}
+        {{ stat('Período', fecha_inicio ~ ' → ' ~ fecha_fin) }}
     </div>
-</div>
 
-{# ── RESULTS ── #}
-{% if rows is defined %}
-
-    {% if rows | length == 0 %}
-        <div class="card mb-4">
-            <div class="card-body text-center text-muted py-5">
-                Sin asistencias registradas en el periodo seleccionado.
+    <div class="card mb-3">
+        <div class="card-body">
+            <h2 class="s-card-title">Resumen por proveedor</h2>
+            <p class="s-card-sub mb-3">
+                {{ total_proveedores }} proveedor{{ 'es' if total_proveedores != 1 else '' }} con asistencias en el período.
+            </p>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th class="text-end">#</th>
+                            <th data-title-col>Proveedor</th>
+                            <th class="text-end">Total asistencias</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in summary %}
+                        <tr>
+                            <td class="text-end text-muted">{{ loop.index }}</td>
+                            <td class="fw-semibold">{{ s.nombre }}</td>
+                            <td class="text-end">{{ s.total }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
         </div>
-    {% else %}
+    </div>
 
-        {# Stats bar #}
-        <div class="note-meta-grid mb-4">
-            <div class="note-meta-item">
-                <span class="note-meta-label">Total asistencias</span>
-                <strong class="fs-4">{{ total_asistencias }}</strong>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Proveedores distintos</span>
-                <strong class="fs-4">{{ total_proveedores }}</strong>
-            </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Periodo</span>
-                <strong>{{ fecha_inicio }} &rarr; {{ fecha_fin }}</strong>
-            </div>
-        </div>
-
-        {# Summary table #}
-        <div class="card hover-lift mb-4">
-            <div class="card-body">
-                <div class="d-flex align-items-center gap-2 mb-3">
-                    <span class="chip-strong">Resumen por proveedor</span>
-                    <span class="text-muted small">{{ total_proveedores }} proveedores</span>
-                </div>
-                <div class="table-scroll-shell">
-                <div class="table-responsive">
-                    <table class="table table-sm table-hover mb-0 report-table">
-                        <thead>
+    <div class="card">
+        <div class="card-body">
+            <h2 class="s-card-title">Detalle de asistencias</h2>
+            <p class="s-card-sub mb-3">
+                {{ total_asistencias }} registro{{ 's' if total_asistencias != 1 else '' }} en el período.
+            </p>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th data-title-col>Proveedor</th>
+                            <th>Fecha</th>
+                            <th>Folio</th>
+                            <th class="text-end">Asistencias en período</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% set ns = namespace(last_prov_id=None) %}
+                        {% for row in rows %}
+                            {% set is_new_prov = (row.proveedor_id != ns.last_prov_id) %}
+                            {% if is_new_prov %}
+                                {% set ns.last_prov_id = row.proveedor_id %}
+                            {% endif %}
                             <tr>
-                                <th>#</th>
-                                <th>Proveedor</th>
-                                <th class="text-end">Total asistencias</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for s in summary %}
-                            <tr>
-                                <td class="text-muted">{{ loop.index }}</td>
-                                <td class="fw-semibold">{{ s.nombre }}</td>
+                                <td>
+                                    {% if is_new_prov %}
+                                        <span class="fw-semibold">{{ row.proveedor_nombre }}</span>
+                                    {% else %}
+                                        <span class="text-muted">&#8627;</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ row.fecha|datetime_local if row.fecha else '—' }}</td>
+                                <td>
+                                    <a href="/web/admin/notas/{{ row.nota_id }}" class="s-folio">{{ row.folio }}</a>
+                                </td>
                                 <td class="text-end">
-                                    <span class="badge bg-primary">{{ s.total }}</span>
+                                    {% if is_new_prov %}
+                                        {% for s in summary if s.nombre == row.proveedor_nombre %}
+                                            {{ s.total }}
+                                        {% endfor %}
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
                                 </td>
                             </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                </div>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
         </div>
+    </div>
 
-        {# Detail table #}
-        <div class="card hover-lift mb-4">
-            <div class="card-body">
-                <div class="d-flex align-items-center gap-2 mb-3">
-                    <span class="chip-strong">Detalle de asistencias</span>
-                    <span class="text-muted small">{{ total_asistencias }} registros</span>
-                </div>
-                <div class="table-scroll-shell">
-                <div class="table-responsive">
-                    <table class="table table-sm table-hover mb-0 report-table">
-                        <thead>
-                            <tr>
-                                <th>Proveedor</th>
-                                <th>Fecha</th>
-                                <th>Folio</th>
-                                <th class="text-end">Asistencias en periodo</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% set ns = namespace(last_prov_id=None) %}
-                            {% for row in rows %}
-                                {% set is_new_prov = (row.proveedor_id != ns.last_prov_id) %}
-                                {% if is_new_prov %}
-                                    {% set ns.last_prov_id = row.proveedor_id %}
-                                {% endif %}
-                                <tr class="{% if is_new_prov %}border-top-2{% endif %}">
-                                    <td>
-                                        {% if is_new_prov %}
-                                            <span class="fw-semibold">{{ row.proveedor_nombre }}</span>
-                                        {% else %}
-                                            <span class="text-muted small">&nbsp;&nbsp;&nbsp;&nbsp;↳</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if row.fecha %}
-                                            {{ row.fecha.strftime('%d/%m/%Y') }}
-                                            <span class="text-muted small">{{ row.fecha.strftime('%H:%M') }}</span>
-                                        {% else %}
-                                            -
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        <a href="/web/admin/notas/{{ row.nota_id }}" class="text-decoration-none font-monospace small">
-                                            {{ row.folio }}
-                                        </a>
-                                    </td>
-                                    <td class="text-end">
-                                        {% if is_new_prov %}
-                                            {% for s in summary if s.nombre == row.proveedor_nombre %}
-                                                <span class="badge bg-primary">{{ s.total }}</span>
-                                            {% endfor %}
-                                        {% endif %}
-                                    </td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                </div>
-            </div>
-        </div>
-
-    {% endif %}
 {% endif %}
-
-<style>
-.border-top-2 td {
-    border-top: 2px solid #dee2e6 !important;
-}
-</style>
 {% endblock %}
