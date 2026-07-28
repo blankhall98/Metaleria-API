@@ -97,6 +97,9 @@
                     if (cellIsActions(cell)) {
                         cell.classList.add('s-cell-actions');
                         cell.setAttribute('data-label', '');
+                        /* Column width follows the header cell, so mark it too
+                           or the action column keeps absorbing spare width. */
+                        if (headRow.cells[index]) headRow.cells[index].classList.add('s-col-fit');
                     } else if (cellIsEmpty(cell)) {
                         cell.classList.add('s-cell-empty');
                     } else if (/^(id|#|no\.?|num\.?)$/i.test(labels[index] || '') &&
@@ -225,6 +228,140 @@
         (root || document).querySelectorAll('table').forEach(annotateTable);
     }
 
+    /* A row with four or five text buttons is what pushed the actions column
+       off the right edge of every list. Keep the first two inline and move the
+       rest into a "⋯" menu, the way a CRM row behaves. Done here rather than in
+       each template so every table gets it, including future ones. */
+    function inlineActionBudget(table) {
+        /* A wide table cannot afford two text buttons per row as well as its
+           columns, so it keeps one and moves the rest into the menu. */
+        var head = table && table.tHead ? table.tHead.rows[table.tHead.rows.length - 1] : null;
+        var columns = head ? head.cells.length : 0;
+        if (columns >= 10) return 0;
+        if (columns >= 8) return 1;
+        return 2;
+    }
+
+    function collapseRowActions(root) {
+        (root || document).querySelectorAll('td.s-cell-actions, td .s-actions').forEach(function (host) {
+            var cell = host.closest('td');
+            if (!cell || cell.dataset.s360Actions === 'done') return;
+            var INLINE_ACTIONS = inlineActionBudget(cell.closest('table'));
+
+            var container = cell.querySelector('.s-actions') || cell;
+            /* Destructive actions are POSTs, so they arrive wrapped in a form.
+               Treat that wrapper as one action rather than missing it. */
+            var actions = Array.prototype.filter.call(
+                container.children,
+                function (el) {
+                    return el.matches('a.btn, button.btn') ||
+                        (el.tagName === 'FORM' && el.querySelector('.btn'));
+                }
+            );
+            if (actions.length <= Math.max(INLINE_ACTIONS, 1)) {
+                cell.dataset.s360Actions = 'done';
+                return;
+            }
+            cell.dataset.s360Actions = 'done';
+
+            var overflow = actions.slice(INLINE_ACTIONS);
+
+            var wrap = document.createElement('div');
+            wrap.className = 's-rowmenu';
+
+            var toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'btn btn-sm btn-outline-secondary s-rowmenu__toggle';
+            toggle.setAttribute('aria-label', 'Más acciones');
+            toggle.setAttribute('aria-expanded', 'false');
+            toggle.innerHTML = '<span aria-hidden="true">&#8943;</span>';
+
+            var menu = document.createElement('div');
+            menu.className = 's-rowmenu__menu';
+            menu.hidden = true;
+
+            var BTN_CLASSES = ['btn', 'btn-sm', 'btn-lg', 'btn-primary', 'btn-danger',
+                               'btn-outline-secondary', 'btn-outline-primary',
+                               'btn-outline-danger', 'btn-outline-success', 'btn-outline-dark'];
+
+            overflow.forEach(function (el) {
+                var control = el.tagName === 'FORM' ? el.querySelector('.btn') : el;
+                BTN_CLASSES.forEach(function (c) { control.classList.remove(c); });
+                control.classList.add('s-rowmenu__item');
+                if (control.dataset.confirm ||
+                    /elimin|borrar|revertir|cancelar|desactiv/i.test(control.textContent)) {
+                    control.classList.add('s-rowmenu__item--danger');
+                }
+                menu.appendChild(el);
+            });
+
+            toggle.addEventListener('click', function (event) {
+                event.stopPropagation();
+                var open = menu.hidden;
+                closeAllRowMenus();
+                if (!open) return;
+
+                menu.hidden = false;
+                toggle.setAttribute('aria-expanded', 'true');
+
+                /* If any ancestor scrolls, an absolutely positioned menu gets
+                   clipped. Pin it to viewport coordinates instead. */
+                if (toggle.closest('.is-scrollable')) {
+                    var r = toggle.getBoundingClientRect();
+                    menu.classList.add('is-fixed');
+                    menu.style.left = 'auto';
+                    menu.style.top = (r.bottom + 4) + 'px';
+                    menu.style.right = Math.max(8, window.innerWidth - r.right) + 'px';
+                }
+
+                /* Flip upward when there is no room below. */
+                var mr = menu.getBoundingClientRect();
+                if (mr.bottom > window.innerHeight - 8) {
+                    var tr = toggle.getBoundingClientRect();
+                    if (menu.classList.contains('is-fixed')) {
+                        menu.style.top = Math.max(8, tr.top - mr.height - 4) + 'px';
+                    } else {
+                        menu.style.top = 'auto';
+                        menu.style.bottom = 'calc(100% + 4px)';
+                    }
+                }
+            });
+
+            wrap.appendChild(toggle);
+            wrap.appendChild(menu);
+            container.appendChild(wrap);
+        });
+    }
+
+    function closeAllRowMenus() {
+        document.querySelectorAll('.s-rowmenu__menu').forEach(function (m) { m.hidden = true; });
+        document.querySelectorAll('.s-rowmenu__toggle').forEach(function (t) {
+            t.setAttribute('aria-expanded', 'false');
+        });
+    }
+
+    /* Only tables that genuinely overflow become scroll containers. Everything
+       else keeps `overflow: visible` so its sticky header pins to the page. */
+    function updateScrollableTables() {
+        document.querySelectorAll('.table-responsive').forEach(function (wrap) {
+            var table = wrap.querySelector('table');
+            if (!table) return;
+
+            /* Try the roomy layout first; tighten the cells only if the table
+               would otherwise be cut off, and fall back to scrolling only if
+               even the compact layout does not fit. */
+            wrap.classList.remove('is-scrollable');
+            table.classList.remove('s-table-compact');
+
+            if (table.scrollWidth - wrap.clientWidth > 2) {
+                table.classList.add('s-table-compact');
+            }
+            if (table.scrollWidth - wrap.clientWidth > 2) {
+                wrap.classList.add('is-scrollable');
+            }
+        });
+    }
+
     /* Wrap bare tables so they always get the scroll shell and card behaviour. */
     function ensureTableShells(root) {
         (root || document).querySelectorAll('table.table').forEach(function (table) {
@@ -302,8 +439,21 @@
     function init() {
         ensureTableShells();
         annotateTables();
+        collapseRowActions();
+        updateScrollableTables();
         setupFilterCollapse();
         setupForms();
+
+        document.addEventListener('click', closeAllRowMenus);
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape') closeAllRowMenus();
+        });
+
+        var resizeTimer;
+        window.addEventListener('resize', function () {
+            window.clearTimeout(resizeTimer);
+            resizeTimer = window.setTimeout(updateScrollableTables, 120);
+        });
 
         document.querySelectorAll('.nav-drawer a').forEach(function (link) {
             link.addEventListener('click', function () { toggleDrawer(false); });
@@ -322,7 +472,12 @@
                         return n.nodeType === 1 && (n.matches('table') || n.querySelector('table'));
                     });
                 });
-                if (sawTable) { ensureTableShells(); annotateTables(); }
+                if (sawTable) {
+                    ensureTableShells();
+                    annotateTables();
+                    collapseRowActions();
+                    updateScrollableTables();
+                }
             });
             observer.observe(document.body, { childList: true, subtree: true });
         }

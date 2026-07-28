@@ -114,78 +114,108 @@
         </div>
     {% endif %}
 
-    {# Direct routes for the handful of tasks run many times a day. The full
-       module list lives in the navigation, not here. #}
+    {# Full module directory. Every section of the app reachable from one place,
+       grouped the way the navigation is grouped. #}
+    {% macro module(href, title, text, icon_name) %}
+        <a href="{{ href }}" class="s-tile">
+            <span class="s-icon-tile">{{ icon(icon_name) }}</span>
+            <span class="s-tile__body">
+                <span class="s-tile__title">{{ title }}</span>
+                <span class="s-tile__text">{{ text }}</span>
+            </span>
+        </a>
+    {% endmacro %}
+
     <section class="s-card mt-4">
         <div class="card-body">
             <div class="s-card-head">
                 <div>
-                    <h2 class="s-card-title">Accesos frecuentes</h2>
-                    <p class="s-card-sub">Las tareas que se ejecutan varias veces al d&iacute;a.</p>
+                    <h2 class="s-card-title">M&oacute;dulos</h2>
+                    <p class="s-card-sub">Todas las secciones del sistema.</p>
                 </div>
             </div>
 
-            <div class="s-tiles">
-                <a href="/web/admin/notas?pago=PENDIENTES" class="s-tile">
-                    <span class="s-icon-tile">{{ icon('coins') }}</span>
-                    <span class="s-tile__body">
-                        <span class="s-tile__title">Cobranza y pagos</span>
-                        <span class="s-tile__text">Abre solo las notas pendientes por saldar.</span>
-                    </span>
-                </a>
-                <a href="/web/admin/inventario" class="s-tile">
-                    <span class="s-icon-tile">{{ icon('box') }}</span>
-                    <span class="s-tile__body">
-                        <span class="s-tile__title">Inventario</span>
-                        <span class="s-tile__text">Stock por sucursal y movimientos.</span>
-                    </span>
-                </a>
-                <a href="/web/admin/contabilidad" class="s-tile">
-                    <span class="s-icon-tile">{{ icon('ledger') }}</span>
-                    <span class="s-tile__body">
-                        <span class="s-tile__title">Contabilidad</span>
-                        <span class="s-tile__text">Movimientos de compra, venta y ajustes.</span>
-                    </span>
-                </a>
-                <a href="/web/admin/capital" class="s-tile">
-                    <span class="s-icon-tile">{{ icon('chart') }}</span>
-                    <span class="s-tile__body">
-                        <span class="s-tile__title">Capital real</span>
-                        <span class="s-tile__text">Activos, pasivos y capital actual.</span>
-                    </span>
-                </a>
-
+            <p class="s-section-label">Operaci&oacute;n</p>
+            <div class="s-tiles mb-4">
+                {{ module('/web/admin/notas', 'Notas',
+                          'Revisa, aprueba y cobra notas de compra y venta.', 'notes') }}
                 {% if not solo_lectura %}
-                <a href="/web/admin/inventario/aumentar" class="s-tile">
-                    <span class="s-icon-tile">{{ icon('sliders') }}</span>
-                    <span class="s-tile__body">
-                        <span class="s-tile__title">Ajuste de inventario</span>
-                        <span class="s-tile__text">Aumenta o disminuye material con trazabilidad.</span>
-                    </span>
-                </a>
-                <a href="/web/admin/proveedores/nuevo" class="s-tile">
-                    <span class="s-icon-tile">{{ icon('truck') }}</span>
-                    <span class="s-tile__body">
-                        <span class="s-tile__title">Alta de proveedor</span>
-                        <span class="s-tile__text">Crea un nuevo perfil operativo.</span>
-                    </span>
-                </a>
-                <a href="/web/admin/reporte-saldos" class="s-tile">
-                    <span class="s-icon-tile">{{ icon('scale') }}</span>
-                    <span class="s-tile__body">
-                        <span class="s-tile__title">Reporte de saldos</span>
-                        <span class="s-tile__text">Lo que debes y lo que te deben.</span>
-                    </span>
-                </a>
-                <a href="/web/admin/transferencias" class="s-tile">
-                    <span class="s-icon-tile">{{ icon('transfer') }}</span>
-                    <span class="s-tile__body">
-                        <span class="s-tile__title">Transferencias</span>
-                        <span class="s-tile__text">Movimientos entre sucursales.</span>
-                    </span>
-                </a>
+                    {{ module('/web/admin/corte-caja', 'Corte de caja',
+                              'Control diario de efectivo y caja chica.', 'cash') }}
+                {% endif %}
+                {{ module('/web/admin/notas?pago=PENDIENTES', 'Cobranza y pagos',
+                          'Abre solo las notas pendientes por saldar.', 'coins') }}
+            </div>
+
+            <p class="s-section-label">Cat&aacute;logos</p>
+            <div class="s-tiles mb-4">
+                {% if user.rol == 'super_admin' %}
+                    {{ module('/web/admin/materiales', 'Materiales',
+                              'Cat&aacute;logo de materiales y versiones de precios.'|safe, 'tag') }}
+                {% endif %}
+                {{ module('/web/admin/proveedores', 'Proveedores',
+                          'Contactos, placas, saldos y estado de cuenta.', 'truck') }}
+                {{ module('/web/admin/clientes', 'Clientes',
+                          'Clientes, placas y datos de contacto.', 'users') }}
+                {% if not solo_lectura %}
+                    {{ module('/web/admin/comisionarios', 'Comisiones',
+                              'Comisionarios, notas y pagos por material.', 'percent') }}
                 {% endif %}
             </div>
+
+            <p class="s-section-label">Inventario</p>
+            <div class="s-tiles mb-4">
+                {{ module('/web/admin/inventario', 'Inventario',
+                          'Existencias por sucursal y material.', 'box') }}
+                {{ module('/web/admin/inventario/movimientos', 'Movimientos',
+                          'Entradas, salidas y ajustes del per&iacute;odo.'|safe, 'layers') }}
+                {% if not solo_lectura %}
+                    {{ module('/web/admin/inventario/aumentar', 'Ajustar existencias',
+                              'Aumenta o disminuye material con trazabilidad.', 'sliders') }}
+                    {% if user.rol == 'super_admin' %}
+                        {{ module('/web/admin/conversiones-materiales', 'Conversi&oacute;n de materiales'|safe,
+                                  'Transforma existencias entre materiales.', 'refresh') }}
+                    {% endif %}
+                    {{ module('/web/admin/transferencias', 'Transferencias',
+                              'Movimientos entre sucursales.', 'transfer') }}
+                {% endif %}
+                {{ module('/web/admin/inventario/valor', 'Valor del inventario',
+                          'Valuaci&oacute;n por material y sucursal.'|safe, 'scale') }}
+            </div>
+
+            <p class="s-section-label">Finanzas</p>
+            <div class="s-tiles mb-4">
+                {{ module('/web/admin/contabilidad', 'Contabilidad',
+                          'Movimientos de compra, venta y ajustes.', 'ledger') }}
+                {{ module('/web/admin/capital', 'Capital real',
+                          'Activos, pasivos y capital actual.', 'chart') }}
+                {% if not solo_lectura %}
+                    {{ module('/web/admin/cuentas', 'Cuentas bancarias',
+                              'Chequeras y v&iacute;nculos para notas y pagos.'|safe, 'bank') }}
+                    {{ module('/web/admin/cuentas-scrap360', 'Cuentas Scrap360',
+                              'Caja interna, saldos y movimientos.', 'wallet') }}
+                {% endif %}
+            </div>
+
+            {% if not solo_lectura %}
+            <p class="s-section-label">Reportes</p>
+            <div class="s-tiles mb-4">
+                {{ module('/web/admin/reporte-saldos', 'Reporte de saldos',
+                          'Lo que debes y lo que te deben.', 'coins') }}
+                {{ module('/web/admin/reporte-asistencias', 'Asistencias',
+                          'Visitas de proveedores por per&iacute;odo.'|safe, 'calendar') }}
+            </div>
+            {% endif %}
+
+            {% if user.rol == 'super_admin' %}
+            <p class="s-section-label">Administraci&oacute;n</p>
+            <div class="s-tiles">
+                {{ module('/web/admin/users', 'Usuarios',
+                          'Credenciales, roles y accesos.', 'user') }}
+                {{ module('/web/admin/sucursales', 'Sucursales',
+                          'Cat&aacute;logo de sedes y estado operativo.'|safe, 'branch') }}
+            </div>
+            {% endif %}
         </div>
     </section>
 

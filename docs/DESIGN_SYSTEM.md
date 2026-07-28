@@ -18,19 +18,21 @@ old markup inherits the new look automatically.
 
 ## 1. Direction
 
-**Instrumento industrial.** This is a measuring instrument for a scrap yard, not
-a marketing site. Admins reconcile money on a desktop; workers capture weights
-on a phone, outdoors, one-handed. The design follows from that:
+**Classic CRM.** This is business software in the Salesforce/Zoho register:
+dense but comfortable, every component a declared size, and the data grid as the
+centre of gravity. Admins reconcile money on a desktop; workers capture weights
+on a phone, outdoors, one-handed.
 
-- **Data is the product.** Tables, figures and status get the visual budget.
-  Chrome gets as little as possible.
-- **Flat surfaces, hairline borders.** No gradient washes, no pastel fills, no
-  decorative shadows. Depth comes from a 1px border and a white surface on a
-  grey canvas.
-- **Decisive typography.** A mechanical display face for headings, a technical
-  sans for the interface, tabular figures everywhere a number appears.
-- **One accent.** Steel blue means "action". Brass is the brand mark. Green,
-  amber and red are reserved for meaning, never for decoration.
+- **The table is the product.** 40px rows, zebra striping, column rules, a
+  sticky header, tabular figures. Everything else defers to it.
+- **Defined sizes, not eyeballed padding.** Every control and row height comes
+  from a token (§2), so parts built separately still line up.
+- **The app fills the monitor.** No page-width cap — a capped shell left unused
+  space on the right while columns were cut off on the left.
+- **Flat surfaces, visible borders.** No gradient washes or decorative shadows;
+  containers are defined by a 1px border on a light grey canvas.
+- **One accent.** Blue means "action". Brass is the brand mark. Green, amber and
+  red are reserved for meaning, never decoration.
 
 What this replaced: three radial-gradient background washes, 86 gradients, 59
 distinct hex colours, 20 border-radius values, five mobile breakpoints, ~280
@@ -52,7 +54,8 @@ rule.**
 | Sunken (region inside a card) | `--s-sunken` | `#f4f6f8` |
 | Border | `--s-line` / `--s-line-strong` | `#dbe1e8` / `#c2cad4` |
 | Text | `--s-text` / `--s-text-soft` / `--s-text-muted` | `#131a24` / `#4d5765` / `#6b7683` |
-| Action | `--s-p500` … `--s-p700` | `#1f5c9e` … `#123a68` |
+| Action | `--s-p500` … `--s-p700` | `#0b6bcb` … `#084681` |
+| Zebra row | `--s-zebra` | `#f4f7fa` |
 | Brand mark | `--s-brass300` / `--s-brass500` | `#d9a93f` / `#a9761b` |
 | Success | `--s-ok` + `--s-ok-tint` + `--s-ok-line` | `#11785a` |
 | Warning | `--s-warn` + tint + line | `#b45309` |
@@ -72,23 +75,40 @@ Neutrals run `--s-n0` (white) → `--s-n900` (near-black) on a cool graphite cas
 
 ### Typography
 
+One family across the product, the way business software reads. IBM Plex Sans is
+an enterprise UI face with true tabular figures.
+
 | | Family | Use |
 |---|---|---|
-| Display | **Archivo** 600/700 | headings, page titles, stat values |
-| Body | **IBM Plex Sans** 400/500/600 | everything else |
+| UI | **IBM Plex Sans** 400/500/600/700 | everything |
 | Mono | **IBM Plex Mono** 500 | folios, account numbers, ids (`.s-mono`, `.s-folio`) |
 
-Scale: `--s-fs-micro` 11px (micro-caps labels) · `xs` 12 · `sm` 13 (table body) ·
-`base` 15 (UI default) · `md` 16 (**inputs — below this iOS zooms the page**) ·
-`lg` 18 · `xl` 22 · `2xl` 28 · `3xl` 34.
+Scale: `--s-fs-micro` 11px (column headers, eyebrow) · `xs` 12 · `sm` 13 (table
+body) · `base` 14 (UI default) · `md` 16 (mobile inputs — **below 16px iOS zooms
+the page**) · `lg` 17 · `xl` 20 · `2xl` 24 · `3xl` 30.
 
 All numbers are tabular by default so columns of money align.
+
+### Defined sizes
+
+Every control and row has one declared height. Do not invent padding to reach a
+size — use the token.
+
+| Token | Value | Use |
+|---|---|---|
+| `--s-row-h` | 40px | table body row |
+| `--s-row-head-h` | 36px | table header row |
+| `--s-control-h` | 36px | input, select, button |
+| `--s-control-h-sm` | 30px | controls inside a table row |
+| `--s-control-h-lg` | 44px | primary submit; **all inputs on mobile** |
+| `--s-navbar-h` | 56px | top bar |
+| `--s-sidebar-w` | 240px | pinned navigation |
 
 ### Space, radius, elevation, motion
 
 - Space: a 4px scale, `--s-1` (4px) → `--s-12` (48px).
-- Radius: exactly four — `--s-r-sm` 6px (controls), `--s-r-md` 10px (cards,
-  tables), `--s-r-lg` 14px (page panels), `--s-r-pill` (status pills only).
+- Radius: exactly four — `--s-r-sm` 4px (controls), `--s-r-md` 6px (cards,
+  tables), `--s-r-lg` 8px (page panels), `--s-r-pill` (status pills only).
 - Elevation: exactly three — `--s-e-1/2/3`, all restrained. Cards use **no**
   shadow; borders do the work.
 - Motion: `--s-dur` 160ms, `--s-dur-lg` 240ms, `--s-ease`. Everything respects
@@ -97,7 +117,7 @@ All numbers are tabular by default so columns of money align.
 ### Breakpoints
 
 Three, and only these: **640px**, **768px** (the phone/desktop divide, where
-tables become cards), **1024px**. Plus **1400px**, where the navigation becomes
+tables become cards), **1024px**. Plus **1200px**, where the navigation becomes
 a permanent sidebar.
 
 ---
@@ -107,15 +127,18 @@ a permanent sidebar.
 Every page is:
 
 ```
-navbar (sticky)  ·  sidebar ≥1400px / drawer below  ·  main.page-shell  ·  footer
+navbar (sticky)  ·  sidebar ≥1200px / drawer below  ·  main.page-shell  ·  footer
 ```
 
 `body` is a flex column so the footer sits at the bottom of short pages instead
 of floating above a band of empty canvas.
 
-`.page-shell` is capped at `--s-shell-max` (1240px). Table-heavy screens add
-`.page-shell-notes` for the wider cap. On phones the shell reserves bottom
-padding for the fixed dock — **content is never hidden behind it**.
+**`.page-shell` is not width-capped** — the app fills the monitor, because a cap
+wasted space on the right while cutting columns off on the left. Reading-width
+content (a login card, a single narrow form) opts in with `.s-narrow`.
+
+On phones the shell reserves bottom padding for the fixed dock — **content is
+never hidden behind it**.
 
 ---
 
@@ -200,8 +223,16 @@ is already visible elsewhere on the same page.**
 
 `app.js` annotates every table on load, so you get for free:
 
-- micro-caps header, hairline rules, hover, tabular figures;
-- sticky header, and a pinned first column past six columns;
+- 40px rows, zebra striping, column rules, hover, tabular figures;
+- a **sticky header** that pins under the navbar as you scroll a long list;
+- a pinned first column past six columns;
+- **fit-first sizing**: if the table would be cut off, the layer tightens the
+  cells (`.s-table-compact`) and only falls back to horizontal scrolling if even
+  that does not fit. Do not pre-emptively add scroll wrappers;
+- a **row action menu**: past the inline budget (two actions, one on an 8-column
+  table, none at 10+) the remainder move into a `⋯` menu, with destructive items
+  in red. This is why the actions column no longer pushes lists off screen — do
+  not hand-build per-row dropdowns;
 - edge shadows that appear only on the side with more content — **do not add
   "arrastra con el mouse" instructions, ever**;
 - **below 768px each row becomes a record card**: cells are labelled from their
@@ -213,8 +244,18 @@ Controls you have:
 
 - `data-title-col` on a `<th>` — pick the column that names the record. Without
   it, the first column that isn't an id is chosen.
+- `data-mobile-primary` on a `<th>` — the columns a phone user came for. Marked
+  columns always show in card mode; the rest fold behind "Ver N campos más".
+  Without any marks the first four columns show, which is the wrong guess for a
+  ledger where the money sits in column eight.
 - `class="text-end"` on numeric columns (headers and cells).
+- `class="s-col-fit"` on a `<th>` to shrink a column to its content.
 - An empty table renders the `empty_row()` macro, never a bare header.
+
+**Keep tables to about ten columns.** Past that they stop fitting even at full
+width. Merge columns that tell one story rather than adding another — the notes
+list folds the payment badge in with the status badge, and the capture date in
+under the folio, which is how it fits.
 
 ### Section index — long record pages
 

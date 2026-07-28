@@ -250,17 +250,18 @@
             <table class="table table-hover table-sm align-middle mb-0 notes-state-table">
                 <thead>
                 <tr>
+                    {# Estado and Pago are one status story, and the capture date
+                       rides with the folio, so twelve columns become ten and the
+                       table fits the screen without hiding anything. #}
                     <th data-title-col>Folio</th>
                     <th data-mobile-primary>Operaci&oacute;n</th>
                     <th data-mobile-primary>Partner</th>
                     <th>Sucursal</th>
                     <th data-mobile-primary>Estado</th>
-                    <th data-mobile-primary>Pago</th>
                     <th class="text-end">Kg neto</th>
                     <th class="text-end" data-mobile-primary>Total</th>
                     <th class="text-end" data-mobile-primary>Saldo</th>
                     <th data-mobile-primary>Seguimiento</th>
-                    <th>Fecha</th>
                     <th><span class="s-visually-hidden">Acciones</span></th>
                 </tr>
                 </thead>
@@ -286,7 +287,7 @@
                     <tr>
                         <td>
                             <span class="s-cell-key s-folio">{{ folio_map.get(n.id, '—') }}</span>
-                            <span class="s-cell-sub">#{{ n.id }}</span>
+                            <span class="s-cell-sub">#{{ n.id }} &middot; {{ n.created_at|date_local if n.created_at else '—' }}</span>
                         </td>
                         <td>
                             {{ badge(n.tipo_operacion.value|capitalize, 'info' if n.tipo_operacion.value == 'compra' else 'muted') }}
@@ -302,25 +303,25 @@
                             {% endif %}
                         </td>
                         <td>
-                            {% if n.estado.value == 'BORRADOR' %}{{ badge('Borrador', 'muted') }}
-                            {% elif n.estado.value == 'EN_REVISION' %}{{ badge('En revisión', 'warn') }}
-                            {% elif n.estado.value == 'APROBADA' %}{{ badge('Aprobada', 'ok') }}
-                            {% else %}{{ badge('Cancelada', 'bad') }}
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if n.estado.value == 'APROBADA' %}
-                                {% if saldo_favor > 0 %}{{ badge('Saldo a favor', 'info') }}
-                                {% elif saldo_pendiente > 0 %}{{ badge('Pendiente', 'warn') }}
-                                {% else %}{{ badge('Pagada', 'ok') }}
+                            <span class="s-badge-stack">
+                                {% if n.estado.value == 'BORRADOR' %}{{ badge('Borrador', 'muted') }}
+                                {% elif n.estado.value == 'EN_REVISION' %}{{ badge('En revisión', 'warn') }}
+                                {% elif n.estado.value == 'APROBADA' %}{{ badge('Aprobada', 'ok') }}
+                                {% else %}{{ badge('Cancelada', 'bad') }}
                                 {% endif %}
+                                {% if n.estado.value == 'APROBADA' %}
+                                    {% if saldo_favor > 0 %}{{ badge('Saldo a favor', 'info') }}
+                                    {% elif saldo_pendiente > 0 %}{{ badge('Pendiente', 'warn') }}
+                                    {% else %}{{ badge('Pagada', 'ok') }}
+                                    {% endif %}
+                                {% endif %}
+                            </span>
+                            {% if n.estado.value == 'APROBADA' %}
                                 {% if ajuste_aplicado > 0 %}
                                     <span class="s-cell-sub">Cubierta por ajuste</span>
                                 {% elif ajuste_saldo_nota != 0 %}
                                     <span class="s-cell-sub">Saldo ajustado en nota</span>
                                 {% endif %}
-                            {% else %}
-                                <span class="text-muted">—</span>
                             {% endif %}
                         </td>
                         <td class="text-end">{{ kg(n.total_kg_neto) }}</td>
@@ -364,7 +365,6 @@
                                 <span class="text-muted small">Sin seguimiento</span>
                             {% endif %}
                         </td>
-                        <td>{{ n.created_at|datetime_local if n.created_at else '—' }}</td>
                         <td class="text-end">
                             <span class="s-actions">
                                 <a href="/web/admin/notas/{{ n.id }}/evidencias" class="btn btn-sm btn-outline-secondary">Evidencias</a>
@@ -373,7 +373,7 @@
                         </td>
                     </tr>
                 {% else %}
-                    {{ empty_row(12, 'No hay notas para este filtro. Prueba con otro proveedor, estado, ventana de vencimiento o filtro de pago.') }}
+                    {{ empty_row(10, 'No hay notas para este filtro. Prueba con otro proveedor, estado, ventana de vencimiento o filtro de pago.') }}
                 {% endfor %}
                 </tbody>
             </table>

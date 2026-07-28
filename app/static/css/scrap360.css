@@ -29,15 +29,15 @@
     --s-n800: #232c39;
     --s-n900: #131a24;
 
-    /* --- Primary (steel blue) — actions, links, selection --------------- */
-    --s-p50:  #edf3fa;
-    --s-p100: #d9e6f4;
-    --s-p200: #adc9e7;
-    --s-p300: #6e9fd6;
-    --s-p400: #3b79bd;
-    --s-p500: #1f5c9e;
-    --s-p600: #174a83;
-    --s-p700: #123a68;
+    /* --- Primary — actions, links, selection ---------------------------- */
+    --s-p50:  #eaf3fc;
+    --s-p100: #d1e5f8;
+    --s-p200: #a6cbf2;
+    --s-p300: #6aa9e6;
+    --s-p400: #2b83d6;
+    --s-p500: #0b6bcb;
+    --s-p600: #0a58a6;
+    --s-p700: #084681;
 
     /* --- Brass — brand mark + "needs attention" only ------------------- */
     --s-brass50:  #fdf7ea;
@@ -72,20 +72,22 @@
     --s-text-muted:  var(--s-n500);
     --s-text-invert: var(--s-n0);
 
-    /* --- Type ----------------------------------------------------------- */
-    --s-font-display: "Archivo", "Segoe UI", system-ui, sans-serif;
+    /* --- Type -----------------------------------------------------------
+       One family across the whole product, the way business software reads.
+       IBM Plex Sans is an enterprise UI face with true tabular figures. */
+    --s-font-display: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
     --s-font-body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
     --s-font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", monospace;
 
-    --s-fs-micro: 0.6875rem; /* 11px — table micro-caps, eyebrow */
+    --s-fs-micro: 0.6875rem; /* 11px — column headers, eyebrow */
     --s-fs-xs:    0.75rem;   /* 12px — meta, helper */
-    --s-fs-sm:    0.8125rem; /* 13px — dense table body, chips */
-    --s-fs-base:  0.9375rem; /* 15px — UI default */
+    --s-fs-sm:    0.8125rem; /* 13px — table body */
+    --s-fs-base:  0.875rem;  /* 14px — UI default */
     --s-fs-md:    1rem;      /* 16px — inputs (prevents iOS zoom) */
-    --s-fs-lg:    1.125rem;  /* 18px — card titles */
-    --s-fs-xl:    1.375rem;  /* 22px — section titles */
-    --s-fs-2xl:   1.75rem;   /* 28px — page title */
-    --s-fs-3xl:   2.125rem;  /* 34px — hero numbers */
+    --s-fs-lg:    1.0625rem; /* 17px — card titles */
+    --s-fs-xl:    1.25rem;   /* 20px — section titles */
+    --s-fs-2xl:   1.5rem;    /* 24px — page title */
+    --s-fs-3xl:   1.875rem;  /* 30px — stat values */
 
     /* --- Space (4px scale) ---------------------------------------------- */
     --s-1: 0.25rem;
@@ -99,10 +101,20 @@
     --s-12: 3rem;
 
     /* --- Radius (only four) --------------------------------------------- */
-    --s-r-sm: 6px;    /* controls: inputs, buttons */
-    --s-r-md: 10px;   /* cards, tables */
-    --s-r-lg: 14px;   /* page-level panels */
+    --s-r-sm: 4px;    /* controls: inputs, buttons */
+    --s-r-md: 6px;    /* cards, tables */
+    --s-r-lg: 8px;    /* page-level panels */
     --s-r-pill: 999px;/* status pills only */
+
+    /* --- Defined component sizes ----------------------------------------
+       Every control and row has one declared height, so a screen built from
+       these parts lines up without anyone eyeballing padding. */
+    --s-row-h: 40px;         /* table body row */
+    --s-row-head-h: 36px;    /* table header row */
+    --s-control-h: 36px;     /* input, select, button */
+    --s-control-h-sm: 30px;  /* in-row controls */
+    --s-control-h-lg: 44px;  /* primary submit, mobile */
+    --s-zebra: #f4f7fa;      /* alternating row fill */
 
     /* --- Elevation (only three, all restrained) ------------------------- */
     --s-e-1: 0 1px 2px rgba(19, 26, 36, 0.06);
@@ -114,11 +126,15 @@
     --s-dur-lg: 240ms;
     --s-ease: cubic-bezier(0.2, 0, 0.2, 1);
 
-    /* --- Layout ---------------------------------------------------------- */
-    --s-shell-max: 1240px;
-    --s-shell-max-wide: 1600px;
-    --s-navbar-h: 60px;
+    /* --- Layout ----------------------------------------------------------
+       The app fills the monitor. Capping the shell left a band of unused
+       space on the right while tables were cut off on the left. */
+    --s-shell-max: none;
+    --s-shell-max-wide: none;
+    --s-shell-pad: clamp(0.875rem, 1.5vw, 1.5rem);
+    --s-navbar-h: 56px;
     --s-dock-h: 64px;
+    --s-sidebar-w: 240px;
     --s-focus: 0 0 0 3px rgba(31, 92, 158, 0.32);
 
     /* --- Legacy variable remap: re-themes ~3.5k lines of old CSS -------- */
@@ -347,15 +363,18 @@ input[type="number"] {
 /* --- Page shell ------------------------------------------------------- */
 
 .page-shell {
-    max-width: var(--s-shell-max);
-    margin: 0 auto;
-    padding: var(--s-6) clamp(0.875rem, 2.5vw, 1.75rem) var(--s-12);
+    max-width: none;
+    margin: 0;
+    padding: var(--s-5) var(--s-shell-pad) var(--s-10);
 }
 
 .page-shell-notes {
-    max-width: var(--s-shell-max-wide);
-    padding-inline: clamp(0.875rem, 2.5vw, 1.75rem);
+    max-width: none;
+    padding-inline: var(--s-shell-pad);
 }
+
+/* Prose-like screens (login, a single form) still need a reading width. */
+.s-narrow { max-width: 60rem; }
 
 body.app-has-mobile-dock .page-shell {
     padding-bottom: calc(var(--s-dock-h) + env(safe-area-inset-bottom) + var(--s-8));
@@ -464,13 +483,7 @@ body.app-has-mobile-dock .page-shell {
    spare width, so navigation is always visible and every screen is one click
    away instead of two. */
 
-@media (min-width: 1400px) {
-    body.role-super_admin,
-    body.role-admin,
-    body.role-visor {
-        --s-sidebar-w: 244px;
-    }
-
+@media (min-width: 1200px) {
     body.role-super_admin .nav-drawer,
     body.role-admin .nav-drawer,
     body.role-visor .nav-drawer {
@@ -509,13 +522,7 @@ body.app-has-mobile-dock .page-shell {
     body.role-admin .page-shell,
     body.role-visor .page-shell {
         margin-left: var(--s-sidebar-w);
-        max-width: calc(var(--s-shell-max) + 40px);
-    }
-    body.role-super_admin .page-shell-notes,
-    body.role-admin .page-shell-notes,
-    body.role-visor .page-shell-notes {
         max-width: none;
-        margin-right: 0;
     }
 
     body.role-super_admin .footer > .container,
@@ -596,7 +603,7 @@ body.app-has-mobile-dock .page-shell {
    ========================================================================== */
 
 .btn {
-    --bs-btn-padding-y: 0.5rem;
+    --bs-btn-padding-y: 0;
     --bs-btn-padding-x: 0.875rem;
     font-family: var(--s-font-body);
     font-size: var(--s-fs-base);
@@ -604,11 +611,13 @@ body.app-has-mobile-dock .page-shell {
     letter-spacing: 0;
     border-radius: var(--s-r-sm);
     border-width: 1px;
-    min-height: 40px;
+    height: var(--s-control-h);
+    min-height: var(--s-control-h);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 0.4375rem;
+    white-space: nowrap;
     box-shadow: none;
     transition: background-color var(--s-dur) var(--s-ease),
                 border-color var(--s-dur) var(--s-ease),
@@ -617,19 +626,22 @@ body.app-has-mobile-dock .page-shell {
 .btn:focus-visible { box-shadow: var(--s-focus); outline: none; }
 
 .btn-sm {
-    --bs-btn-padding-y: 0.3125rem;
     --bs-btn-padding-x: 0.625rem;
     font-size: var(--s-fs-sm);
-    min-height: 34px;
-    border-radius: 5px;
+    height: var(--s-control-h-sm);
+    min-height: var(--s-control-h-sm);
 }
 
 .btn-lg {
-    --bs-btn-padding-y: 0.6875rem;
     --bs-btn-padding-x: 1.25rem;
-    font-size: var(--s-fs-md);
-    min-height: 48px;
+    font-size: var(--s-fs-base);
+    height: var(--s-control-h-lg);
+    min-height: var(--s-control-h-lg);
 }
+
+/* Buttons that wrap to two lines must not break the declared height. */
+.btn.w-100,
+.s-form-actions .btn { height: auto; min-height: var(--s-control-h); padding-block: 0.4375rem; }
 
 /* The legacy sheet declares `background: linear-gradient(...)` on some button
    variants, which resets background-color to transparent. Setting the Bootstrap
@@ -785,6 +797,66 @@ body.app-has-mobile-dock .page-shell {
     flex-wrap: nowrap;
     white-space: nowrap;
 }
+
+/* --- Row overflow menu --------------------------------------------------
+   Two actions stay inline; the rest live behind "⋯" so the actions column
+   stops pushing every list off the right edge. Built by app.js. */
+
+.s-rowmenu { position: relative; display: inline-flex; }
+
+.s-rowmenu__toggle {
+    width: var(--s-control-h-sm);
+    min-width: var(--s-control-h-sm);
+    padding: 0;
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.s-rowmenu__menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 40;
+    min-width: 11rem;
+    padding: var(--s-1);
+    background: var(--s-surface);
+    border: 1px solid var(--s-line);
+    border-radius: var(--s-r-md);
+    box-shadow: var(--s-e-3);
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+}
+.s-rowmenu__menu[hidden] { display: none; }
+
+.s-rowmenu__item {
+    display: block;
+    padding: 0.4375rem 0.625rem;
+    border: 0;
+    border-radius: var(--s-r-sm);
+    background: none;
+    color: var(--s-n700);
+    font-size: var(--s-fs-sm);
+    font-weight: 500;
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+    width: 100%;
+}
+.s-rowmenu__item:hover {
+    background: var(--s-n50);
+    color: var(--s-n900);
+    text-decoration: none;
+}
+.s-rowmenu__item--danger { color: var(--s-bad); }
+.s-rowmenu__item--danger:hover { background: var(--s-bad-tint); color: var(--s-bad); }
+
+/* A POST action arrives wrapped in its own form. */
+.s-rowmenu__menu form { display: block; margin: 0; }
+
+/* Inside a horizontally scrolling table the menu would be clipped, so app.js
+   switches it to fixed coordinates on open. */
+.s-rowmenu__menu.is-fixed { position: fixed; top: auto; right: auto; }
 
 /* ==========================================================================
    6. CARDS & PANELS
@@ -971,6 +1043,8 @@ body.app-has-mobile-dock .page-shell {
     color: var(--s-text);
 }
 
+/* Header: a defined 36px band, sticky, with a rule under it and light
+   dividers between columns so the eye can track a value up to its label. */
 .table > thead > tr > th,
 .data-table thead th,
 .entity-table thead th,
@@ -978,40 +1052,74 @@ body.app-has-mobile-dock .page-shell {
 .note-table thead th,
 .users-table thead th,
 .corte-caja-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    height: var(--s-row-head-h);
     background: var(--s-n50);
     background-image: none;
-    color: var(--s-text-muted);
+    color: var(--s-n700);
     font-family: var(--s-font-body);
     font-size: var(--s-fs-micro);
     font-weight: 600;
-    letter-spacing: 0.07em;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
     white-space: nowrap;
-    padding: 0.5625rem 0.75rem;
+    padding: 0 0.75rem;
     border-bottom: 1px solid var(--s-line-strong);
+    border-right: 1px solid var(--s-n200);
     border-top: 0;
     vertical-align: middle;
 }
+.table > thead > tr > th:last-child { border-right: 0; }
 
+/* Body: one declared row height, zebra striping, column rules. */
 .table > tbody > tr > td,
 .table > tbody > tr > th {
-    padding: 0.625rem 0.75rem;
+    height: var(--s-row-h);
+    padding: 0.375rem 0.75rem;
     border-bottom: 1px solid var(--s-n100);
+    border-right: 1px solid var(--s-n100);
     border-top: 0;
     vertical-align: middle;
     background: transparent;
 }
+.table > tbody > tr > td:last-child,
+.table > tbody > tr > th:last-child { border-right: 0; }
+
+/* Bootstrap paints cell backgrounds through --bs-table-bg on the same
+   selector depth, so the stripe has to out-specify it to show at all. */
+.table > tbody > tr:nth-of-type(even) > td,
+.table > tbody > tr:nth-of-type(even) > th,
+table.table > tbody > tr:nth-of-type(even) > * { background-color: var(--s-zebra) !important; }
+
+.table-hover > tbody > tr:hover > *,
+table.table-hover > tbody > tr:hover > * { background-color: var(--s-p50) !important; }
 
 .table > tbody > tr:last-child > td { border-bottom: 0; }
 
-.table-sm > thead > tr > th { padding: 0.5rem 0.625rem; }
-.table-sm > tbody > tr > td { padding: 0.4375rem 0.625rem; }
+/* .table-sm keeps the same rhythm, one step tighter. */
+.table-sm > thead > tr > th { height: 32px; padding: 0 0.625rem; }
+.table-sm > tbody > tr > td { height: 34px; padding: 0.25rem 0.625rem; }
+
+/* Applied by app.js only to tables that would otherwise be cut off: tighter
+   gutters buy back the width instead of hiding columns behind a scrollbar. */
+@media (min-width: 768px) {
+    .s-table-compact > thead > tr > th { padding-inline: 0.4375rem; letter-spacing: 0.02em; }
+    .s-table-compact > tbody > tr > td { padding-inline: 0.4375rem; }
+    .s-table-compact { font-size: var(--s-fs-xs); }
+    .s-table-compact .badge { padding-inline: 0.375rem; letter-spacing: 0.02em; }
+    .s-table-compact .btn-sm { --bs-btn-padding-x: 0.4375rem; }
+}
 
 .table-hover > tbody > tr:hover > * {
-    background-color: var(--s-p50);
+    background-color: var(--s-p50) !important;
     --bs-table-accent-bg: transparent;
     color: var(--s-text);
 }
+
+/* Rows carrying a stacked sub-line need to grow rather than clip. */
+.table > tbody > tr > td:has(.s-cell-sub) { height: auto; padding-block: 0.4375rem; }
 
 .table > tfoot > tr > td,
 .table > tfoot > tr > th,
@@ -1047,13 +1155,21 @@ body.app-has-mobile-dock .page-shell {
 
 /* --- Scroll shell ------------------------------------------------------ */
 
+/* A table only becomes its own scroll container when it genuinely overflows
+   (app.js measures and adds .is-scrollable). Otherwise the wrapper stays
+   `overflow: visible` so the sticky header can pin against the page while the
+   user scrolls the list — the behaviour that makes a long CRM table usable. */
 .table-responsive,
 .table-scroll-shell .table-responsive {
     border-radius: var(--s-r-md);
     border: 1px solid var(--s-line);
     background-color: var(--s-surface);
+    overflow: visible;
+}
+
+.table-responsive.is-scrollable,
+.table-scroll-shell .table-responsive.is-scrollable {
     overflow-x: auto;
-    overflow-y: visible;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
     scrollbar-color: var(--s-n300) transparent;
@@ -1072,6 +1188,16 @@ body.app-has-mobile-dock .page-shell {
     background-size: 36px 100%, 36px 100%, 12px 100%, 12px 100%;
     background-attachment: local, local, scroll, scroll;
 }
+
+/* Round the corner cells directly. Clipping the table with overflow:hidden
+   would also clip the row action menu that escapes the last cell. */
+.table-responsive > .table { border-radius: inherit; }
+.table > thead > tr:first-child > th:first-child { border-top-left-radius: inherit; }
+.table > thead > tr:first-child > th:last-child  { border-top-right-radius: inherit; }
+
+/* The page header is sticky, so the column header parks just beneath it. */
+.table > thead > tr > th { top: var(--s-navbar-h); }
+.table-responsive.is-scrollable .table > thead > tr > th { top: 0; }
 
 .table-responsive::-webkit-scrollbar,
 .table-scroll-shell .table-responsive::-webkit-scrollbar { height: 10px; }
@@ -1409,16 +1535,29 @@ body.app-has-mobile-dock .page-shell {
 .form-control,
 .form-select {
     font-family: var(--s-font-body);
-    /* 16px keeps iOS from zooming the viewport on focus */
-    font-size: var(--s-fs-md);
+    font-size: var(--s-fs-base);
     color: var(--s-text);
     background-color: var(--s-surface);
     border: 1px solid var(--s-n300);
     border-radius: var(--s-r-sm);
-    padding: 0.5rem 0.6875rem;
-    min-height: 42px;
+    padding: 0 0.625rem;
+    height: var(--s-control-h);
+    min-height: var(--s-control-h);
     box-shadow: none;
     transition: border-color var(--s-dur) var(--s-ease), box-shadow var(--s-dur) var(--s-ease);
+}
+
+/* Below 16px iOS zooms the viewport on focus, so phones get the larger size. */
+@media (max-width: 767.98px) {
+    .form-control,
+    .form-select,
+    .form-control-sm,
+    .form-select-sm {
+        font-size: var(--s-fs-md);
+        height: var(--s-control-h-lg);
+        min-height: var(--s-control-h-lg);
+    }
+    textarea.form-control { height: auto; }
 }
 
 .form-control:hover:not(:disabled):not([readonly]),
@@ -1449,10 +1588,10 @@ body.app-has-mobile-dock .page-shell {
 
 .form-control-sm,
 .form-select-sm {
-    font-size: var(--s-fs-base);
-    min-height: 36px;
-    padding: 0.3125rem 0.5625rem;
-    border-radius: 5px;
+    font-size: var(--s-fs-sm);
+    height: var(--s-control-h-sm);
+    min-height: var(--s-control-h-sm);
+    padding: 0 0.5rem;
 }
 
 .form-text {
@@ -1462,7 +1601,12 @@ body.app-has-mobile-dock .page-shell {
     line-height: 1.45;
 }
 
-textarea.form-control { min-height: 84px; line-height: 1.5; }
+textarea.form-control {
+    height: auto;
+    min-height: 76px;
+    padding: 0.5rem 0.625rem;
+    line-height: 1.5;
+}
 
 .form-check-input {
     width: 1.125rem;
@@ -2456,4 +2600,40 @@ textarea.form-control { min-height: 84px; line-height: 1.5; }
     .table { font-size: 9pt; }
     .table > thead > tr > th { background: #eee !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     a { color: inherit; text-decoration: none; }
+}
+
+/* Two badges that tell one status story sit on one line, wrapping only when
+   the column is genuinely too narrow. */
+.s-badge-stack {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+/* --- Column sizing ------------------------------------------------------
+   A table lays out on content, so a column of icon buttons will happily
+   absorb slack it has no use for. `width: 1%` is the table idiom for
+   "shrink to fit", handing that width back to the columns carrying data. */
+.table th.s-col-fit,
+.table td.s-cell-actions,
+.table td.s-cell-id {
+    width: 1%;
+    white-space: nowrap;
+}
+
+/* Numeric columns never wrap, but they are not fit-to-content: making every
+   column request the same tiny width makes the browser share the slack out
+   between them, which is how the action column ended up 180px wide. */
+.table th.text-end,
+.table td.text-end { white-space: nowrap; }
+
+/* Width-saving measures for a cramped desktop table. They must not reach the
+   phone layout, where each row is already a card and stacking these elements
+   pushed badges out of their cell. */
+@media (min-width: 768px) {
+    .s-table-compact .s-badge-stack { flex-direction: column; align-items: flex-start; }
+    .s-table-compact td .badge + .badge { margin-top: 2px; }
+    .s-table-compact td .s-cell-key { display: block; }
+    .s-table-compact td .s-cell-key + .badge { margin-top: 2px; }
 }
