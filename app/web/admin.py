@@ -18,6 +18,7 @@ from typing import Iterable, List
 from app.core.config import get_settings
 from app.core.datetime_utils import format_date_local, format_datetime_local, get_app_timezone, to_local_datetime
 from app.core.security import hash_password
+from app.services.auth import normalizar_password, normalizar_username
 from app.db.deps import get_db
 from app.models import (
     User,
@@ -4505,8 +4506,9 @@ async def user_new_post(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_superadmin),
 ):
-    username = username.strip()
+    username = normalizar_username(username)
     nombre_completo = nombre_completo.strip()
+    password = normalizar_password(password)
 
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
     form_data = _build_user_form_data(
@@ -4593,8 +4595,9 @@ async def user_new_post(
                 status_code=400,
             )
 
-    # Unicidad de username
-    existing = db.query(User).filter(User.username == username).first()
+    # Unicidad de username. Sin ignorar mayúsculas se pueden crear "Visor" y
+    # "visor" a la vez, y después nadie sabe con cuál de las dos entrar.
+    existing = db.query(User).filter(func.lower(User.username) == username.lower()).first()
     if existing:
         return templates.TemplateResponse(
             "admin/user_form.html",
@@ -4700,9 +4703,9 @@ async def user_edit_post(
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
 
-    username = username.strip()
+    username = normalizar_username(username)
     nombre_completo = nombre_completo.strip()
-    password = (password or "").strip()
+    password = normalizar_password(password)
 
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
     selected_admin_suc_ids = [int(sid) for sid in admin_sucursal_ids if sid]
@@ -4769,7 +4772,11 @@ async def user_edit_post(
         if len(found) != len(set(selected_admin_suc_ids)):
             return render_error("Una de las sucursales seleccionadas no existe.")
 
-    existing = db.query(User).filter(User.username == username, User.id != user.id).first()
+    existing = (
+        db.query(User)
+        .filter(func.lower(User.username) == username.lower(), User.id != user.id)
+        .first()
+    )
     if existing:
         return render_error("Ya existe un usuario con ese username.")
 

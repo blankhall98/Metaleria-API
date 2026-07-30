@@ -24,9 +24,11 @@ Confirmed findings from the July 2026 full-codebase audit. Ordered by severity. 
 
 ## Operational
 
-9. ~~Local git repo has a corrupted `main` ref~~ — **FIXED 2026-07-28**: `.git/refs/heads/main` held blanks instead of a SHA, breaking `git log`/`fetch`/`status`. Repaired by deleting the ref, fetching `origin`, pointing `main` at `f2b73a2` and resetting the index. No history was lost — the working tree was untouched and both remotes still held the real history. If it recurs, the same sequence works.
+9. **Cuentas cuyo hash guarda un espacio sobrante (residuo del bug de acceso).** Hasta 2026-07-30, `POST /users/nuevo` hasheaba la contraseña **sin recortar** mientras `POST /users/{id}/editar` la recortaba, y el login verificaba sin recortar. Un alta hecha pegando la clave con un espacio al final guardó el hash de `"clave "`, así que la persona nunca puede entrar escribiendo `"clave"`. Ya está corregido para altas nuevas, y el login ahora prueba la variante recortada — pero **las cuentas ya dañadas no se pueden recuperar por código**: el espacio quedó dentro del hash y no hay forma de deducirlo. Se arreglan una por una reasignando la contraseña desde *Editar usuario*. En la bitácora aparecen como `Acceso rechazado para 'usuario': password_incorrecta`.
 
-10. **No tests, no test tooling.** `tests/` is empty; pytest isn't in requirements. ~24k lines of business logic are unverified. If adding tests, start with `note_service` state transitions and the balance formula. The UI does have guards now — `scripts/check_ui.js` and `scripts/fix_accents.py --check` — but they cover presentation only.
+10. ~~Local git repo has a corrupted `main` ref~~ — **FIXED 2026-07-28**: `.git/refs/heads/main` held blanks instead of a SHA, breaking `git log`/`fetch`/`status`. Repaired by deleting the ref, fetching `origin`, pointing `main` at `f2b73a2` and resetting the index. No history was lost — the working tree was untouched and both remotes still held the real history. If it recurs, the same sequence works.
+
+11. **No tests, no test tooling.** `tests/` is empty; pytest isn't in requirements. ~24k lines of business logic are unverified. If adding tests, start with `note_service` state transitions and the balance formula. The UI does have guards now — `scripts/check_ui.js` and `scripts/fix_accents.py --check` — but they cover presentation only.
 
 11. ~~Bootstrap JS blocked on every page~~ — **FIXED 2026-07-28**: `base.html` carried a stale `integrity` hash for `bootstrap.bundle.min.js`, so the browser refused the script and every `data-bs-toggle` silently did nothing. Corrected against the published sha384 (cross-checked against the CSS hash, which was already correct).
 

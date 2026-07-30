@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI, Request, Depends, Form
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -14,10 +16,29 @@ from app.web.files import router as files_web_router
 
 from app.core.config import get_settings
 from app.db.deps import get_db
-from app.services.auth import authenticate_user
+from app.services.auth import MotivoRechazo, autenticar, normalizar_username
 from app.web.template_utils import create_templates
 
 templates = create_templates()
+
+logger = logging.getLogger(__name__)
+
+# Un mensaje por motivo: el genérico obligaba a la clienta a adivinar si la
+# cuenta estaba dada de baja, mal escrita o con otra contraseña.
+_MENSAJES_RECHAZO = {
+    MotivoRechazo.usuario_inactivo: (
+        "Tu cuenta está dada de baja. Pídele a un administrador que la reactive."
+    ),
+    MotivoRechazo.usuario_ambiguo: (
+        "Hay más de una cuenta con ese nombre. Escríbelo tal como te lo entregaron, "
+        "respetando mayúsculas y minúsculas."
+    ),
+}
+_MENSAJE_RECHAZO_GENERICO = "Usuario o contraseña inválidos."
+
+
+def _mensaje_rechazo(motivo: "MotivoRechazo | None") -> str:
+    return _MENSAJES_RECHAZO.get(motivo, _MENSAJE_RECHAZO_GENERICO)
 
 
 def _get_session_user(request: Request) -> dict | None:
@@ -184,16 +205,23 @@ def create_app() -> FastAPI:
         password: str = Form(...),
         db: Session = Depends(get_db),
     ):
-        user_obj = authenticate_user(db=db, username=username, password=password)
+        user_obj, motivo = autenticar(db=db, username=username, password=password)
 
         if not user_obj:
+            # Sin esto, un acceso fallido es indistinguible de otro y no hay
+            # forma de atender el reporte de "mi usuario y clave son correctos".
+            logger.info(
+                "Acceso rechazado para %r: %s",
+                normalizar_username(username),
+                motivo.value if motivo else "desconocido",
+            )
             return templates.TemplateResponse(
                 "login.html",
                 {
                     "request": request,
                     "env": settings.ENV,
                     "user": None,
-                    "error": "Usuario o contraseña inválidos, o usuario inactivo.",
+                    "error": _mensaje_rechazo(motivo),
                 },
                 status_code=400,
             )
