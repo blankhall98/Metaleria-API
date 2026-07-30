@@ -132,3 +132,71 @@
 {% macro section_label(text) -%}
 <p class="s-section-label">{{ text }}</p>
 {%- endmacro %}
+
+{# --- Card panel ----------------------------------------------------------
+   The standard container: a border, a white fill, a title and one line of
+   purpose. Every screen was hand-building this, which is how the titles
+   drifted apart. A card never nests in a card — for a grouped region inside
+   one, use subpanel() below.
+
+       {% call card('Estado de cuenta', 'Movimientos con saldo acumulado.') %}
+           …table…
+       {% endcall %}
+#}
+{% macro card(title="", sub="", cls="", id="") -%}
+<div class="card {{ cls }}"{% if id %} id="{{ id }}"{% endif %}>
+    <div class="card-body">
+        {% if title %}<h2 class="s-card-title">{{ title }}</h2>{% endif %}
+        {% if sub %}<p class="s-card-sub mb-3">{{ sub }}</p>{% endif %}
+        {{ caller() }}
+    </div>
+</div>
+{%- endmacro %}
+
+{# --- Grouped region inside a card ----------------------------------------
+   Sunken fill, no border-on-border. This is what a nested card should be.
+#}
+{% macro subpanel(title="", cls="") -%}
+<div class="s-subpanel {{ cls }}">
+    {% if title %}{{ section_label(title) }}{% endif %}
+    {{ caller() }}
+</div>
+{%- endmacro %}
+
+{# --- Read-only field readout ---------------------------------------------
+   Values you display but cannot edit. Never render these as disabled inputs,
+   and never as bordered mini-cards — a grid of boxes reads as a set of
+   controls the user can act on.
+
+       {% call defs() %}
+           {{ def('Teléfono', partner.telefono) }}
+           {{ def('Correo', partner.correo) }}
+       {% endcall %}
+
+   An empty value renders an em dash on its own (see .s-def__value:empty).
+#}
+{% macro defs(cls="") -%}
+<div class="s-defs {{ cls }}">{{ caller() }}</div>
+{%- endmacro %}
+
+{% macro def(label, value="", sub="") -%}
+<div class="s-def">
+    <span class="s-def__label">{{ label }}</span>
+    <span class="s-def__value">{{ value if value is not none else "" }}</span>
+    {% if sub %}<span class="s-def__sub">{{ sub }}</span>{% endif %}
+</div>
+{%- endmacro %}
+
+{# --- Section index for long record pages ---------------------------------
+   An honest jump list. Not tabs: every section is rendered, these only move
+   you down the page, so each entry must point at an id that exists.
+
+       {{ anchor_nav([('#perfil', 'Perfil'), ('#pagos', 'Pagos')]) }}
+#}
+{% macro anchor_nav(items, label="Secciones") -%}
+<nav class="s-anchor-nav" aria-label="{{ label }}">
+    {% for href, text in items %}
+    <a href="{{ href }}" class="btn btn-sm btn-outline-secondary">{{ text }}</a>
+    {% endfor %}
+</nav>
+{%- endmacro %}

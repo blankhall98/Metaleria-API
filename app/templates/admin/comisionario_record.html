@@ -43,30 +43,30 @@
         <div class="card-body">
             <h2 class="s-card-title">Perfil</h2>
             <p class="s-card-sub mb-3">Datos de contacto y sucursal asignada.</p>
-            <div class="note-meta-grid">
-                <div class="note-meta-item">
-                    <span class="note-meta-label">ID</span>
-                    <strong>{{ comisionario.id }}</strong>
+            <div class="s-defs">
+                <div class="s-def">
+                    <span class="s-def__label">ID</span>
+                    <span class="s-def__value">{{ comisionario.id }}</span>
                 </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Nombre</span>
-                    <strong>{{ comisionario.nombre_completo }}</strong>
+                <div class="s-def">
+                    <span class="s-def__label">Nombre</span>
+                    <span class="s-def__value">{{ comisionario.nombre_completo }}</span>
                 </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Teléfono</span>
-                    <strong>{{ comisionario.telefono or '—' }}</strong>
+                <div class="s-def">
+                    <span class="s-def__label">Teléfono</span>
+                    <span class="s-def__value">{{ comisionario.telefono or '—' }}</span>
                 </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Correo</span>
-                    <strong>{{ comisionario.correo_electronico or '—' }}</strong>
+                <div class="s-def">
+                    <span class="s-def__label">Correo</span>
+                    <span class="s-def__value">{{ comisionario.correo_electronico or '—' }}</span>
                 </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Sucursal asignada</span>
-                    <strong>{{ comisionario.sucursal.nombre if comisionario.sucursal else '—' }}</strong>
-                    <div class="note-meta-sub">Nuevas notas y saldos se registran en esta sucursal.</div>
+                <div class="s-def">
+                    <span class="s-def__label">Sucursal asignada</span>
+                    <span class="s-def__value">{{ comisionario.sucursal.nombre if comisionario.sucursal else '—' }}</span>
+                    <div class="s-def__sub">Nuevas notas y saldos se registran en esta sucursal.</div>
                 </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Estado</span>
+                <div class="s-def">
+                    <span class="s-def__label">Estado</span>
                     {{ badge('Activo' if comisionario.activo else 'Inactivo', 'ok' if comisionario.activo else 'muted') }}
                 </div>
             </div>

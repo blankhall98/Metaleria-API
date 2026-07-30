@@ -1,5 +1,7 @@
 ﻿{% extends "base.html" %}
 
+{% from "_macros.html" import page_header, icon, stat, badge, money, kg, empty, empty_row %}
+
 {% block title %}Nota {{ folio or '-' }}{% endblock %}
 
 {% block content %}
@@ -139,27 +141,29 @@
                 </div>
                 <a href="{{ next_step_href }}" class="btn btn-outline-primary btn-sm">{{ next_step_button }}</a>
             </div>
-            <div class="ops-inline-toolbar mt-3">
-                <a href="#note-summary" class="ops-inline-pill active">Resumen</a>
+            {# Índice de saltos, no pestañas: todas las secciones se renderizan
+               y estos enlaces solo bajan a ellas. #}
+            <nav class="s-anchor-nav" aria-label="Secciones de la nota">
+                <a href="#note-summary" class="btn btn-sm btn-outline-secondary">Resumen</a>
                 {% if show_review_workspace %}
-                    <a href="#note-review-approval" class="ops-inline-pill">Aprobación</a>
+                    <a href="#note-review-approval" class="btn btn-sm btn-outline-secondary">Aprobación</a>
                 {% endif %}
                 {% if is_approved or saldo_a_favor > 0 %}
-                    <a href="#note-payments" class="ops-inline-pill">Pagos</a>
+                    <a href="#note-payments" class="btn btn-sm btn-outline-secondary">Pagos</a>
                 {% endif %}
                 {% if (is_approved and can_manage_note) or note_balance_adjustments %}
-                    <a href="#note-balance-adjustments" class="ops-inline-pill">Saldo</a>
+                    <a href="#note-balance-adjustments" class="btn btn-sm btn-outline-secondary">Saldo</a>
                 {% endif %}
                 {% if show_returns_section %}
-                    <a href="{{ returns_href }}" class="ops-inline-pill">Devoluciones</a>
+                    <a href="{{ returns_href }}" class="btn btn-sm btn-outline-secondary">Devoluciones</a>
                 {% endif %}
                 {% if (is_approved and can_manage_note) or note_adjustments %}
-                    <a href="#note-manual-adjustments" class="ops-inline-pill">Ajustes</a>
+                    <a href="#note-manual-adjustments" class="btn btn-sm btn-outline-secondary">Ajustes</a>
                 {% endif %}
                 {% if devoluciones_parciales or devoluciones_totales or pagos %}
-                    <a href="{{ history_href }}" class="ops-inline-pill">Historial</a>
+                    <a href="{{ history_href }}" class="btn btn-sm btn-outline-secondary">Historial</a>
                 {% endif %}
-            </div>
+            </nav>
         </div>
     </div>
 
@@ -205,44 +209,36 @@
                 </div>
             </div>
 
-            <div class="note-kpi-grid note-kpi-grid-detail">
-                <div class="notes-kpi-card tone-blue">
-                    <span class="notes-kpi-label">Total nota</span>
-                    <strong id="note-total-value">${{ "{:,.2f}".format(nota.total_monto or 0) }}</strong>
-                    <div class="notes-kpi-sub">Subtotal: <span id="note-subtotal-value">${{ "{:,.2f}".format(subtotal_sin_iva or 0) }}</span></div>
-                </div>
-                <div class="notes-kpi-card tone-green">
-                    <span class="notes-kpi-label">Monto pagado</span>
-                    <strong>${{ "{:,.2f}".format(nota.monto_pagado or 0) }}</strong>
-                    <div class="notes-kpi-sub">{{ pagos_activos_count }} abonos activos</div>
-                </div>
-                <div class="notes-kpi-card {{ 'tone-amber' if saldo_pendiente > 0 else 'tone-green' }}">
-                    <span class="notes-kpi-label">Saldo pendiente</span>
-                    <strong>${{ "{:,.2f}".format(saldo_pendiente or 0) }}</strong>
-                    <div class="notes-kpi-sub">{{ payment_badge }}</div>
-                </div>
-                <div class="notes-kpi-card {{ 'tone-blue' if saldo_a_favor > 0 else 'tone-neutral' }}">
-                    <span class="notes-kpi-label">Saldo a favor</span>
-                    <strong>${{ "{:,.2f}".format(saldo_a_favor or 0) }}</strong>
-                    <div class="notes-kpi-sub">{% if saldo_a_favor > 0 %}Existe sobrepago registrado{% else %}Sin saldo favorable{% endif %}</div>
-                </div>
+            {# Los ids los actualiza el script de totales al editar materiales. #}
+            {% set v_total %}<span id="note-total-value">${{ "{:,.2f}".format(nota.total_monto or 0) }}</span>{% endset %}
+            {% set s_total %}Subtotal: <span id="note-subtotal-value">${{ "{:,.2f}".format(subtotal_sin_iva or 0) }}</span>{% endset %}
+            <div class="s-stats">
+                {# Sin tono: un total y lo pagado son hechos, no estados. Verde
+                   significa liquidado, y decirlo con saldo vivo sería mentir. #}
+                {{ stat('Total nota', v_total, s_total) }}
+                {{ stat('Monto pagado', money(nota.monto_pagado, 'plain'), pagos_activos_count ~ ' abonos activos') }}
+                {{ stat('Saldo pendiente', money(saldo_pendiente, 'plain'), payment_badge,
+                        'warn' if saldo_pendiente > 0 else '') }}
+                {{ stat('Saldo a favor', money(saldo_a_favor, 'plain'),
+                        'Existe sobrepago registrado' if saldo_a_favor > 0 else 'Sin saldo favorable',
+                        'info' if saldo_a_favor > 0 else '') }}
             </div>
 
-            <div class="note-meta-grid">
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Partner</span>
-                    <strong>{{ partner_name }}</strong>
-                    <div class="note-meta-sub">{{ partner_label }}</div>
+            <div class="s-defs">
+                <div class="s-def">
+                    <span class="s-def__label">Partner</span>
+                    <span class="s-def__value">{{ partner_name }}</span>
+                    <div class="s-def__sub">{{ partner_label }}</div>
                 </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Sucursal contable</span>
-                    <strong>{{ sucursal.nombre if sucursal else '-' }}</strong>
+                <div class="s-def">
+                    <span class="s-def__label">Sucursal contable</span>
+                    <span class="s-def__value">{{ sucursal.nombre if sucursal else '-' }}</span>
                 </div>
                 {% if nota.tipo_operacion.value == 'compra' %}
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Sucursal inventario</span>
-                    <strong>{{ inventario_sucursal.nombre if inventario_sucursal else '-' }}</strong>
-                    <div class="note-meta-sub">
+                <div class="s-def">
+                    <span class="s-def__label">Sucursal inventario</span>
+                    <span class="s-def__value">{{ inventario_sucursal.nombre if inventario_sucursal else '-' }}</span>
+                    <div class="s-def__sub">
                         {% if inventario_sucursal_diff %}
                             El saldo se lleva en {{ sucursal.nombre if sucursal else '-' }} y el material entra físicamente en {{ inventario_sucursal.nombre if inventario_sucursal else '-' }}.
                         {% else %}
@@ -251,51 +247,51 @@
                     </div>
                 </div>
                 {% endif %}
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Trabajador</span>
-                    <strong>{{ trabajador.nombre_completo if trabajador else '-' }}</strong>
-                    <div class="note-meta-sub">{{ trabajador.username if trabajador else '' }}</div>
+                <div class="s-def">
+                    <span class="s-def__label">Trabajador</span>
+                    <span class="s-def__value">{{ trabajador.nombre_completo if trabajador else '-' }}</span>
+                    <div class="s-def__sub">{{ trabajador.username if trabajador else '' }}</div>
                 </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Kg neto</span>
-                    <strong>{{ "{:,.2f}".format(nota.total_kg_neto or 0) }} kg</strong>
+                <div class="s-def">
+                    <span class="s-def__label">Kg neto</span>
+                    <span class="s-def__value">{{ "{:,.2f}".format(nota.total_kg_neto or 0) }} kg</span>
                 </div>
                 {% if user.rol == 'super_admin' %}
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Kg reales inventario</span>
-                    <strong>{{ "{:,.2f}".format(nota.total_kg_real or nota.total_kg_neto or 0) }} kg</strong>
-                    <div class="note-meta-sub">Interno. No aparece en la orden PDF.</div>
+                <div class="s-def">
+                    <span class="s-def__label">Kg reales inventario</span>
+                    <span class="s-def__value">{{ "{:,.2f}".format(nota.total_kg_real or nota.total_kg_neto or 0) }} kg</span>
+                    <div class="s-def__sub">Interno. No aparece en la orden PDF.</div>
                 </div>
                 {% endif %}
-                <div class="note-meta-item">
-                    <span class="note-meta-label">IVA</span>
-                    <strong id="note-iva-value">${{ "{:,.2f}".format(iva_monto or 0) }}</strong>
-                    <div class="note-meta-sub">{% if nota.iva_incluido %}{{ "{:,.2f}".format(iva_pct or 0) }}%{% else %}No incluido{% endif %}</div>
+                <div class="s-def">
+                    <span class="s-def__label">IVA</span>
+                    <span class="s-def__value" id="note-iva-value">${{ "{:,.2f}".format(iva_monto or 0) }}</span>
+                    <div class="s-def__sub">{% if nota.iva_incluido %}{{ "{:,.2f}".format(iva_pct or 0) }}%{% else %}No incluido{% endif %}</div>
                 </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Método base</span>
-                    <strong>{{ nota.metodo_pago|capitalize if nota.metodo_pago else '-' }}</strong>
-                    <div class="note-meta-sub">{{ nota.cuenta.display_label if nota.cuenta else '-' }}</div>
+                <div class="s-def">
+                    <span class="s-def__label">Método base</span>
+                    <span class="s-def__value">{{ nota.metodo_pago|capitalize if nota.metodo_pago else '-' }}</span>
+                    <div class="s-def__sub">{{ nota.cuenta.display_label if nota.cuenta else '-' }}</div>
                     {% if nota.numero_cheque %}
-                        <div class="note-meta-sub">No. cheque: <strong>{{ nota.numero_cheque }}</strong></div>
+                        <div class="s-def__sub">No. cheque: <span class="s-def__value">{{ nota.numero_cheque }}</span></div>
                     {% endif %}
                 </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Vence</span>
-                    <strong>{{ nota.fecha_caducidad_pago|date_local if nota.fecha_caducidad_pago else '-' }}</strong>
-                    <div class="note-meta-sub">Solo aplica si la nota queda con saldo</div>
+                <div class="s-def">
+                    <span class="s-def__label">Vence</span>
+                    <span class="s-def__value">{{ nota.fecha_caducidad_pago|date_local if nota.fecha_caducidad_pago else '-' }}</span>
+                    <div class="s-def__sub">Solo aplica si la nota queda con saldo</div>
                 </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Pagos revertidos</span>
-                    <strong>{{ pagos_revertidos_count }}</strong>
-                    <div class="note-meta-sub">Se mantienen visibles por auditoría</div>
+                <div class="s-def">
+                    <span class="s-def__label">Pagos revertidos</span>
+                    <span class="s-def__value">{{ pagos_revertidos_count }}</span>
+                    <div class="s-def__sub">Se mantienen visibles por auditoría</div>
                 </div>
                 {% if is_transfer %}
-                    <div class="note-meta-item">
-                        <span class="note-meta-label">Nota relacionada</span>
+                    <div class="s-def">
+                        <span class="s-def__label">Nota relacionada</span>
                         {% if transfer_related %}
                             <a href="/web/admin/notas/{{ transfer_related.id }}">#{{ transfer_related.id }}</a>
-                            <div class="note-meta-sub">{{ transfer_related_sucursal.nombre if transfer_related_sucursal else '-' }}</div>
+                            <div class="s-def__sub">{{ transfer_related_sucursal.nombre if transfer_related_sucursal else '-' }}</div>
                         {% else %}
                             <span class="text-muted small">Pendiente</span>
                         {% endif %}
@@ -327,21 +323,21 @@
                     <span class="text-muted small">Verificacion automática</span>
                 </div>
                 {% if devolucion_check and devolucion_check.aplica %}
-                    <div class="note-meta-grid">
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Contabilidad neta</span>
-                            <strong class="{{ 'text-success' if devolucion_check.contabilidad_ok else 'text-danger' }}">
+                    <div class="s-defs">
+                        <div class="s-def">
+                            <span class="s-def__label">Contabilidad neta</span>
+                            <span class="s-def__value {{ 'text-success' if devolucion_check.contabilidad_ok else 'text-danger' }}">
                                 {{ '+' if devolucion_check.contabilidad_saldo > 0 else '' }}${{ "{:,.2f}".format(devolucion_check.contabilidad_saldo or 0) }}
-                            </strong>
-                            <div class="note-meta-sub">Movimientos: {{ devolucion_check.contabilidad_movs }}</div>
+                            </span>
+                            <div class="s-def__sub">Movimientos: {{ devolucion_check.contabilidad_movs }}</div>
                             <span class="badge {{ 'bg-success' if devolucion_check.contabilidad_ok else 'bg-danger' }}">{{ 'OK' if devolucion_check.contabilidad_ok else 'Revisar' }}</span>
                         </div>
-                        <div class="note-meta-item">
-                            <span class="note-meta-label">Inventario neto</span>
-                            <strong class="{{ 'text-success' if devolucion_check.inventario_ok else 'text-danger' }}">
+                        <div class="s-def">
+                            <span class="s-def__label">Inventario neto</span>
+                            <span class="s-def__value {{ 'text-success' if devolucion_check.inventario_ok else 'text-danger' }}">
                                 {{ '+' if devolucion_check.inventario_saldo > 0 else '' }}{{ "{:,.3f}".format(devolucion_check.inventario_saldo or 0) }} kg
-                            </strong>
-                            <div class="note-meta-sub">Movimientos: {{ devolucion_check.inventario_movs }}</div>
+                            </span>
+                            <div class="s-def__sub">Movimientos: {{ devolucion_check.inventario_movs }}</div>
                             <span class="badge {{ 'bg-success' if devolucion_check.inventario_ok else 'bg-danger' }}">{{ 'OK' if devolucion_check.inventario_ok else 'Revisar' }}</span>
                         </div>
                     </div>
@@ -889,15 +885,15 @@
                             </div>
                             <div class="note-return-summary-grid mt-3">
                                 <div class="note-return-summary-item">
-                                    <span class="note-meta-label">Nuevo total estimado</span>
+                                    <span class="s-def__label">Nuevo total estimado</span>
                                     <strong id="return_new_total">${{ "{:,.2f}".format(nota.total_monto or 0) }}</strong>
                                 </div>
                                 <div class="note-return-summary-item">
-                                    <span class="note-meta-label">Saldo estimado</span>
+                                    <span class="s-def__label">Saldo estimado</span>
                                     <strong id="return_new_balance">${{ "{:,.2f}".format(saldo_pendiente or 0) }}</strong>
                                 </div>
                                 <div class="note-return-summary-item">
-                                    <span class="note-meta-label">Saldo a favor estimado</span>
+                                    <span class="s-def__label">Saldo a favor estimado</span>
                                     <strong id="return_new_favor">${{ "{:,.2f}".format(saldo_a_favor or 0) }}</strong>
                                 </div>
                             </div>
@@ -1265,15 +1261,15 @@
                             <div class="note-adjust-preview-copy">Esta acción solo modifica el saldo efectivo. No cambia kilos, inventario, pagos ya registrados ni el total original de la nota.</div>
                             <div class="note-adjust-preview-grid">
                                 <div class="note-adjust-preview-item">
-                                    <span class="note-meta-label">Saldo actual</span>
+                                    <span class="s-def__label">Saldo actual</span>
                                     <strong id="note_balance_adjust_preview_current">${{ "{:,.2f}".format((saldo_pendiente or 0) if saldo_pendiente > 0 else -(saldo_a_favor or 0)) }}</strong>
                                 </div>
                                 <div class="note-adjust-preview-item">
-                                    <span class="note-meta-label">Ajuste</span>
+                                    <span class="s-def__label">Ajuste</span>
                                     <strong id="note_balance_adjust_preview_delta">$0.00</strong>
                                 </div>
                                 <div class="note-adjust-preview-item">
-                                    <span class="note-meta-label">Saldo resultante</span>
+                                    <span class="s-def__label">Saldo resultante</span>
                                     <strong id="note_balance_adjust_preview_result">${{ "{:,.2f}".format((saldo_pendiente or 0) if saldo_pendiente > 0 else -(saldo_a_favor or 0)) }}</strong>
                                 </div>
                             </div>
@@ -1416,15 +1412,15 @@
                             <div class="note-adjust-preview-copy">Usa este panel para validar que el ajuste afecta el material correcto antes de guardarlo. No modifica montos, solo inventario y trazabilidad.</div>
                             <div class="note-adjust-preview-grid">
                                 <div class="note-adjust-preview-item">
-                                    <span class="note-meta-label">Kg en nota</span>
+                                    <span class="s-def__label">Kg en nota</span>
                                     <strong id="note_adjust_preview_kg">-</strong>
                                 </div>
                                 <div class="note-adjust-preview-item">
-                                    <span class="note-meta-label">Stock actual</span>
+                                    <span class="s-def__label">Stock actual</span>
                                     <strong id="note_adjust_preview_stock">-</strong>
                                 </div>
                                 <div class="note-adjust-preview-item">
-                                    <span class="note-meta-label">Stock estimado</span>
+                                    <span class="s-def__label">Stock estimado</span>
                                     <strong id="note_adjust_preview_result">-</strong>
                                 </div>
                             </div>

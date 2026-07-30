@@ -110,28 +110,28 @@
         <div class="card-body">
             <h2 class="s-card-title">Perfil</h2>
             <p class="s-card-sub mb-3">Datos de contacto y vínculos de este {{ partner_label|lower }}.</p>
-            <div class="note-meta-grid">
-                <div class="note-meta-item">
-                    <span class="note-meta-label">ID</span>
-                    <strong>{{ partner.id }}</strong>
+            <div class="s-defs">
+                <div class="s-def">
+                    <span class="s-def__label">ID</span>
+                    <span class="s-def__value">{{ partner.id }}</span>
                 </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Nombre</span>
-                    <strong>{{ partner.nombre_completo }}</strong>
+                <div class="s-def">
+                    <span class="s-def__label">Nombre</span>
+                    <span class="s-def__value">{{ partner.nombre_completo }}</span>
                 </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Teléfono</span>
-                    <strong>{{ partner.telefono or '—' }}</strong>
+                <div class="s-def">
+                    <span class="s-def__label">Teléfono</span>
+                    <span class="s-def__value">{{ partner.telefono or '—' }}</span>
                 </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Correo</span>
-                    <strong>{{ partner.correo_electronico or '—' }}</strong>
+                <div class="s-def">
+                    <span class="s-def__label">Correo</span>
+                    <span class="s-def__value">{{ partner.correo_electronico or '—' }}</span>
                 </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Placas</span>
+                <div class="s-def">
+                    <span class="s-def__label">Placas</span>
                     {% set lista = partner.placas_rel if partner.placas_rel else [] %}
                     {% if lista|length == 0 %}
-                        <strong>{{ partner.placas or '—' }}</strong>
+                        <span class="s-def__value">{{ partner.placas or '—' }}</span>
                     {% else %}
                         <div class="d-flex flex-wrap gap-1">
                             {% for pl in lista %}
@@ -140,12 +140,12 @@
                         </div>
                     {% endif %}
                 </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Estado</span>
+                <div class="s-def">
+                    <span class="s-def__label">Estado</span>
                     {{ badge('Activo' if partner.activo else 'Inactivo', 'ok' if partner.activo else 'muted') }}
                 </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Roles</span>
+                <div class="s-def">
+                    <span class="s-def__label">Roles</span>
                     <div class="d-flex flex-wrap gap-1">
                         {{ badge(partner_label, 'info') }}
                         {% if partner_base == 'proveedores' and provider_direct_sales_enabled %}
@@ -155,9 +155,9 @@
                         {% endif %}
                     </div>
                 </div>
-                <div class="note-meta-item">
-                    <span class="note-meta-label">Relación vinculada</span>
-                    <strong>
+                <div class="s-def">
+                    <span class="s-def__label">Relación vinculada</span>
+                    <span class="s-def__value">
                         {% if linked_partner %}
                             {{ linked_partner.nombre_completo }} (ID {{ linked_partner.id }})
                         {% elif partner_base == 'proveedores' and provider_direct_sales_enabled %}
@@ -165,7 +165,7 @@
                         {% else %}
                             —
                         {% endif %}
-                    </strong>
+                    </span>
                 </div>
             </div>
         </div>

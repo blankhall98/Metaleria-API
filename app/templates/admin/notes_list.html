@@ -171,26 +171,38 @@
                 </div>
                 <a href="{{ estado_links.EN_REVISION }}" class="btn btn-sm btn-outline-secondary">Ver todas</a>
             </div>
-            <div class="notes-mini-list">
-                {% for n in notas_revision[:5] %}
-                    {% if n.proveedor_id and proveedores.get(n.proveedor_id) %}
-                        {% set partner_name = proveedores.get(n.proveedor_id).nombre_completo %}
-                    {% elif n.cliente_id and clientes.get(n.cliente_id) %}
-                        {% set partner_name = clientes.get(n.cliente_id).nombre_completo %}
-                    {% else %}
-                        {% set partner_name = '—' %}
-                    {% endif %}
-                    <a class="notes-mini-item" href="/web/admin/notas/{{ n.id }}">
-                        <div>
-                            <div class="fw-semibold s-folio">{{ folio_map.get(n.id, '—') }}</div>
-                            <div class="text-muted small">{{ partner_name }} &middot; {{ sucursales.get(n.sucursal_id).nombre if n.sucursal_id and sucursales.get(n.sucursal_id) else '—' }}</div>
-                        </div>
-                        <div class="text-end">
-                            <div class="small fw-semibold">{{ money(n.total_monto, 'plain') }}</div>
-                            <div class="text-muted small">{{ n.created_at|datetime_local if n.created_at else '—' }}</div>
-                        </div>
-                    </a>
-                {% endfor %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th data-title-col data-mobile-primary>Folio</th>
+                            <th data-mobile-primary>Partner</th>
+                            <th>Sucursal</th>
+                            <th class="text-end" data-mobile-primary>Total</th>
+                            <th>Capturada</th>
+                            <th class="s-col-fit"><span class="s-visually-hidden">Acciones</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for n in notas_revision[:5] %}
+                            {% if n.proveedor_id and proveedores.get(n.proveedor_id) %}
+                                {% set partner_name = proveedores.get(n.proveedor_id).nombre_completo %}
+                            {% elif n.cliente_id and clientes.get(n.cliente_id) %}
+                                {% set partner_name = clientes.get(n.cliente_id).nombre_completo %}
+                            {% else %}
+                                {% set partner_name = '—' %}
+                            {% endif %}
+                            <tr>
+                                <td><a class="s-folio fw-semibold" href="/web/admin/notas/{{ n.id }}">{{ folio_map.get(n.id, '—') }}</a></td>
+                                <td>{{ partner_name }}</td>
+                                <td>{{ sucursales.get(n.sucursal_id).nombre if n.sucursal_id and sucursales.get(n.sucursal_id) else '—' }}</td>
+                                <td class="text-end">{{ money(n.total_monto, 'plain') }}</td>
+                                <td>{{ n.created_at|datetime_local if n.created_at else '—' }}</td>
+                                <td class="s-col-fit"><a href="/web/admin/notas/{{ n.id }}" class="btn btn-sm btn-outline-secondary">Ver</a></td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
             {% if notas_revision|length > 5 %}
                 <p class="s-card-sub mt-3">Se muestran las primeras 5 de {{ notas_revision|length }}.</p>

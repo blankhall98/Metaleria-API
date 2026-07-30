@@ -160,6 +160,13 @@ Eyebrow = the section (Operación, Relaciones, Inventario, Finanzas, Reportes,
 Administración). Title = sentence case. Sub = one line saying what the screen is
 for. Actions right-aligned; **exactly one `.btn-primary`**.
 
+**Action order is fixed**, so the same button sits in the same place on every
+screen: exports and other secondary actions first, then the destructive one, then
+`Volver`, and the single primary action last (nearest the right edge, where the
+eye lands). A screen that reads `Volver · Exportar PDF · Editar` and another that
+reads `Editar · Exportar PDF · Volver` are the same screen to the user's hand and
+two different ones to their eye.
+
 ### Buttons
 
 | Variant | Meaning | Rule |
@@ -188,9 +195,38 @@ Never both `Cancelar` and `Volver` on the same screen.
 
 ### Cards
 
+```jinja
+{% from "_macros.html" import card, subpanel %}
+{% call card('Estado de cuenta', 'Movimientos cronológicos con saldo acumulado.') %}
+    …table…
+{% endcall %}
+```
+
 `.card` / `.s-card` — a border and a white fill. **A card never nests in another
-card.** For a grouped region inside a card use `.s-subpanel` (sunken fill). A
-card that would wrap a single control is not a card: drop it.
+card.** For a grouped region inside a card use `subpanel()` / `.s-subpanel`
+(sunken fill). A card that would wrap a single control is not a card: drop it.
+
+Use the macro. Hand-building the container is how the titles drifted apart —
+`h2.h6`, `h3.section-title` and `.note-form-card-title` were three spellings of
+one thing.
+
+### Read-only values
+
+```jinja
+{% from "_macros.html" import defs, def %}
+{% call defs() %}
+    {{ def('Teléfono', partner.telefono) }}
+    {{ def('Saldo', money(saldo), 'Calculado con notas aprobadas.') }}
+{% endcall %}
+```
+
+A value you display but cannot edit is **never** a disabled input and **never** a
+bordered mini-card — a grid of boxes reads as a set of controls the user can act
+on, and the boxes nest a border inside the card that already draws one. An empty
+value renders an em dash by itself.
+
+This replaces `note-meta-grid` / `note-meta-item` / `note-meta-label`, which had
+leaked from the notes screens into proveedores, comisionarios and cuentas.
 
 ### Stat tiles — one implementation
 
@@ -264,15 +300,18 @@ A record page that stacks Resumen / Estado de cuenta / Notas / Pagos gets an
 section renders at once:
 
 ```jinja
-<nav class="s-anchor-nav" aria-label="Secciones">
-    <a href="#partner-summary" class="btn btn-sm btn-outline-secondary">Resumen</a>
-    <a href="#partner-ledger"  class="btn btn-sm btn-outline-secondary">Estado de cuenta</a>
-</nav>
+{% from "_macros.html" import anchor_nav %}
+{{ anchor_nav([('#partner-summary', 'Resumen'),
+               ('#partner-ledger',  'Estado de cuenta')]) }}
 ```
 
 Every entry must point at an `id=` that exists on the page. Do not build JS
 tabs, and never put an off-page link in this nav — that belongs in the header
 actions.
+
+This replaces `ops-inline-pill` / `ops-inline-toolbar`, which rendered a strip of
+pills with one marked `active` — the exact thing this section forbids, since
+nothing was hidden and clicking only scrolled.
 
 ### Badges
 

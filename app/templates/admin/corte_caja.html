@@ -173,7 +173,7 @@
                             {% for denom in denom_monedas %}
                                 <tr>
                                     <td>{{ denom.label }}</td>
-                                    <td class="text-end"><input class="form-control form-control-sm text-end denom-count-input" style="max-width: 7rem" type="number" min="0" step="1" inputmode="numeric" aria-label="Cantidad de {{ denom.label }}" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="coins"></td>
+                                    <td class="text-end"><input class="form-control form-control-sm text-end denom-count-input s-input-qty" type="number" min="0" step="1" inputmode="numeric" aria-label="Cantidad de {{ denom.label }}" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="coins"></td>
                                     <td class="text-end s-money" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td>
                                 </tr>
                             {% else %}
@@ -193,7 +193,7 @@
                             {% for denom in denom_billetes %}
                                 <tr>
                                     <td>{{ denom.label }}</td>
-                                    <td class="text-end"><input class="form-control form-control-sm text-end denom-count-input" style="max-width: 7rem" type="number" min="0" step="1" inputmode="numeric" aria-label="Cantidad de {{ denom.label }}" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="bills"></td>
+                                    <td class="text-end"><input class="form-control form-control-sm text-end denom-count-input s-input-qty" type="number" min="0" step="1" inputmode="numeric" aria-label="Cantidad de {{ denom.label }}" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="bills"></td>
                                     <td class="text-end s-money" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td>
                                 </tr>
                             {% else %}
@@ -220,17 +220,13 @@
 {# ══════════════════════════════════════════════════════════════════════
    STICKY INTERNAL NAV
 ══════════════════════════════════════════════════════════════════════ #}
-<div class="corte-snav sticky-top mb-3">
-    <a href="#section-registros" class="corte-snav-link {% if corte.estado.value == 'CERRADO' %}corte-snav-link--muted{% endif %}">
-        Registros
-    </a>
-    <a href="#section-operaciones" class="corte-snav-link">
-        Operaciones
-    </a>
-    <a href="#section-cierre" class="corte-snav-link">
-        Cierre
-    </a>
-</div>
+<nav class="s-anchor-nav" aria-label="Secciones del corte">
+    {% if corte.estado.value != 'CERRADO' %}
+        <a href="#section-registros" class="btn btn-sm btn-outline-secondary">Registros</a>
+    {% endif %}
+    <a href="#section-operaciones" class="btn btn-sm btn-outline-secondary">Operaciones</a>
+    <a href="#section-cierre" class="btn btn-sm btn-outline-secondary">Cierre</a>
+</nav>
 
 {# ══════════════════════════════════════════════════════════════════════
    INDICADORES
@@ -274,10 +270,10 @@
 ══════════════════════════════════════════════════════════════════════ #}
 {% if corte.estado.value == 'ABIERTO' %}
 <div id="section-registros" class="corte-section-anchor">
-    <div class="corte-section-header">
+    <div class="s-card-head">
         <div>
-            <div class="corte-section-title">Registros del día</div>
-            <div class="corte-section-sub">Gastos de caja chica, dotaciones y sobrantes</div>
+            <h2 class="s-card-title">Registros del día</h2>
+            <p class="s-card-sub">Gastos de caja chica, dotaciones y sobrantes</p>
         </div>
     </div>
 
@@ -357,10 +353,10 @@
    SECCIÓN 2 — OPERACIONES DEL DÍA
 ══════════════════════════════════════════════════════════════════════ #}
 <div id="section-operaciones" class="corte-section-anchor">
-    <div class="corte-section-header">
+    <div class="s-card-head">
         <div>
-            <div class="corte-section-title">Operaciones del día</div>
-            <div class="corte-section-sub">Compras, ventas y movimientos registrados</div>
+            <h2 class="s-card-title">Operaciones del día</h2>
+            <p class="s-card-sub">Compras, ventas y movimientos registrados</p>
         </div>
     </div>
 
@@ -787,12 +783,12 @@
    SECCIÓN 3 — CIERRE Y ARQUEO
 ══════════════════════════════════════════════════════════════════════ #}
 <div id="section-cierre" class="corte-section-anchor">
-    <div class="corte-section-header corte-section-header--final">
+    <div class="s-card-head">
         <div>
-            <div class="corte-section-title">Cierre y arqueo</div>
-            <div class="corte-section-sub">
+            <h2 class="s-card-title">Cierre y arqueo</h2>
+            <p class="s-card-sub">
                 {% if corte.estado.value == 'ABIERTO' %}Paso final: cuenta el efectivo y cierra el corte{% else %}Corte cerrado el {{ corte.closed_at|datetime_local if corte.closed_at else '—' }}{% endif %}
-            </div>
+            </p>
         </div>
     </div>
 
@@ -830,7 +826,7 @@
                                             {% for denom in denom_monedas %}
                                             <tr>
                                                 <td>{{ denom.label }}</td>
-                                                <td class="text-end"><input class="form-control form-control-sm text-end denom-count-input" style="max-width: 7rem" type="number" min="0" step="1" inputmode="numeric" aria-label="Cantidad de {{ denom.label }}" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="coins"></td>
+                                                <td class="text-end"><input class="form-control form-control-sm text-end denom-count-input s-input-qty" type="number" min="0" step="1" inputmode="numeric" aria-label="Cantidad de {{ denom.label }}" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="coins"></td>
                                                 <td class="text-end s-money" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td>
                                             </tr>
                                             {% else %}
@@ -850,7 +846,7 @@
                                             {% for denom in denom_billetes %}
                                             <tr>
                                                 <td>{{ denom.label }}</td>
-                                                <td class="text-end"><input class="form-control form-control-sm text-end denom-count-input" style="max-width: 7rem" type="number" min="0" step="1" inputmode="numeric" aria-label="Cantidad de {{ denom.label }}" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="bills"></td>
+                                                <td class="text-end"><input class="form-control form-control-sm text-end denom-count-input s-input-qty" type="number" min="0" step="1" inputmode="numeric" aria-label="Cantidad de {{ denom.label }}" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="bills"></td>
                                                 <td class="text-end s-money" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td>
                                             </tr>
                                             {% else %}
@@ -925,7 +921,7 @@
                                     <thead><tr><th data-title-col>Denominación</th><th class="text-end">Cantidad</th><th class="text-end">Total</th></tr></thead>
                                     <tbody>
                                         {% for denom in denom_monedas %}
-                                            <tr><td>{{ denom.label }}</td><td class="text-end"><input class="form-control form-control-sm text-end denom-count-input" style="max-width: 7rem" type="number" min="0" step="1" inputmode="numeric" aria-label="Cantidad de {{ denom.label }}" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="coins" disabled></td><td class="text-end s-money" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td></tr>
+                                            <tr><td>{{ denom.label }}</td><td class="text-end"><input class="form-control form-control-sm text-end denom-count-input s-input-qty" type="number" min="0" step="1" inputmode="numeric" aria-label="Cantidad de {{ denom.label }}" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="coins" disabled></td><td class="text-end s-money" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td></tr>
                                         {% else %}
                                             {{ empty_row(3, 'Sin denominaciones registradas.') }}
                                         {% endfor %}
@@ -941,7 +937,7 @@
                                     <thead><tr><th data-title-col>Denominación</th><th class="text-end">Cantidad</th><th class="text-end">Total</th></tr></thead>
                                     <tbody>
                                         {% for denom in denom_billetes %}
-                                            <tr><td>{{ denom.label }}</td><td class="text-end"><input class="form-control form-control-sm text-end denom-count-input" style="max-width: 7rem" type="number" min="0" step="1" inputmode="numeric" aria-label="Cantidad de {{ denom.label }}" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="bills" disabled></td><td class="text-end s-money" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td></tr>
+                                            <tr><td>{{ denom.label }}</td><td class="text-end"><input class="form-control form-control-sm text-end denom-count-input s-input-qty" type="number" min="0" step="1" inputmode="numeric" aria-label="Cantidad de {{ denom.label }}" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="bills" disabled></td><td class="text-end s-money" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td></tr>
                                         {% else %}
                                             {{ empty_row(3, 'Sin denominaciones registradas.') }}
                                         {% endfor %}
@@ -1153,140 +1149,4 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 </script>
-<style>
-/* ── Row color coding ─────────────────────────────────────────────── */
-.corte-row-cash td { background-color: #d4edda !important; }
-.corte-row-account-1 td { background-color: #cce5ff !important; }
-.corte-row-account-2 td { background-color: #fff3cd !important; }
-.corte-row-account-3 td { background-color: #f8d7da !important; }
-.corte-row-account-4 td { background-color: #d6d8f7 !important; }
-.corte-row-account-5 td { background-color: #d1ecf1 !important; }
-.corte-row-transfer td { background-color: #e2e3e5 !important; }
-
-/* ── Legend badges ────────────────────────────────────────────────── */
-.corte-color-legend { font-size: 0.78rem; }
-.corte-legend-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-weight: 600; border: 1px solid rgba(0,0,0,0.1); }
-.corte-legend-badge.corte-row-cash { background-color: #d4edda; color: #155724; }
-.corte-legend-badge.corte-row-account-1 { background-color: #cce5ff; color: #004085; }
-.corte-legend-badge.corte-row-account-2 { background-color: #fff3cd; color: #856404; }
-.corte-legend-badge.corte-row-account-3 { background-color: #f8d7da; color: #721c24; }
-.corte-legend-badge.corte-row-account-4 { background-color: #d6d8f7; color: #383d75; }
-.corte-legend-badge.corte-row-account-5 { background-color: #d1ecf1; color: #0c5460; }
-.corte-legend-badge.corte-row-transfer { background-color: #e2e3e5; color: #383d41; }
-
-/* ── Pago pills ───────────────────────────────────────────────────── */
-.corte-pago-pill { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; font-weight: 500; padding: 0.4rem 0.75rem; border-radius: 999px; white-space: nowrap; line-height: 1.4; border: 1px solid transparent; cursor: default; min-height: 2.25rem; }
-button.corte-pago-pill { cursor: pointer; }
-button.corte-pago-pill:hover { opacity: 0.85; }
-.corte-pago-pill--pending { background-color: #fff8e1; border-color: #ffe082; color: #7c5800; }
-.corte-pago-pill--ok { background-color: #e3f0ff; border-color: #93c5fd; color: #1e40af; }
-
-/* ── Internal sticky nav ──────────────────────────────────────────── */
-.corte-snav {
-    background: #fff;
-    border-top: none;
-    border-left: none;
-    border-right: none;
-    border-bottom: 1px solid #e5e7eb;
-    border-radius: 0;
-    padding: 0 0.5rem;
-    display: flex;
-    align-items: stretch;
-    gap: 0;
-    top: 60px;
-    z-index: 90;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-}
-.corte-snav-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.6rem 0.9rem;
-    border-radius: 0;
-    text-decoration: none;
-    color: #6b7280;
-    font-size: 0.83rem;
-    font-weight: 500;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    transition: color 0.15s, border-color 0.15s;
-}
-.corte-snav-link:hover { color: #111827; border-bottom-color: #d1d5db; background: none; }
-.corte-snav-link--muted { opacity: 0.4; pointer-events: none; }
-
-/* ── Section headers ──────────────────────────────────────────────── */
-.corte-section-anchor { scroll-margin-top: 110px; }
-.corte-section-header {
-    display: flex;
-    align-items: center;
-    gap: 0;
-    padding: 0.35rem 0 0.6rem;
-    margin-bottom: 1rem;
-    border-bottom: 1px solid #e5e7eb;
-}
-.corte-section-header--final { border-bottom-color: #2563eb; }
-.corte-section-title { font-weight: 600; font-size: 0.92rem; color: #111827; text-transform: uppercase; letter-spacing: 0.04em; }
-.corte-section-sub { font-size: 0.78rem; color: #9ca3af; margin-top: 0.1rem; }
-
-/* ── Section-divider collapse (replaces card wrappers for tables) ─── */
-.corte-sdiv {
-    margin-bottom: 0.25rem;
-}
-.corte-sdiv-trigger {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    width: 100%;
-    padding: 0.55rem 0;
-    background: none;
-    border: none;
-    border-bottom: 1px solid #e5e7eb;
-    cursor: pointer;
-    text-align: left;
-    transition: border-color 0.15s;
-}
-.corte-sdiv-trigger:hover { border-bottom-color: #9ca3af; }
-.corte-sdiv-trigger[aria-expanded="true"] { border-bottom-color: #6b7280; }
-.corte-sdiv-body { padding: 1rem 0 0.5rem; }
-
-/* ── Collapse triggers ────────────────────────────────────────────── */
-.corte-collapse-chevron { font-size: 1.1rem; color: #9ca3af; display: inline-block; transition: transform 0.2s; }
-
-/* ── Floating bar ─────────────────────────────────────────────────── */
-.corte-floating-bar {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: #1f2937;
-    color: #f9fafb;
-    display: flex;
-    align-items: center;
-    gap: 0;
-    padding: 0.55rem 1.25rem;
-    z-index: 150;
-    font-size: 0.83rem;
-    box-shadow: 0 -2px 12px rgba(0,0,0,0.18);
-}
-.app-has-mobile-dock .corte-floating-bar { bottom: 56px; }
-.corte-float-item { display: flex; flex-direction: column; gap: 0; padding: 0 1rem; }
-.corte-float-item:first-child { padding-left: 0; }
-.corte-float-item span { font-size: 0.68rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em; }
-.corte-float-item strong { font-size: 0.95rem; font-weight: 700; }
-.float-positive { color: #4ade80; }
-.float-negative { color: #f87171; }
-.corte-float-divider { width: 1px; height: 2rem; background: rgba(255,255,255,0.15); flex-shrink: 0; }
-.corte-float-action {
-    color: #f9fafb;
-    text-decoration: none;
-    font-weight: 500;
-    padding: 0.3rem 0.85rem;
-    border: 1px solid rgba(255,255,255,0.3);
-    border-radius: 6px;
-    font-size: 0.8rem;
-    white-space: nowrap;
-    transition: background 0.15s;
-}
-.corte-float-action:hover { background: rgba(255,255,255,0.1); color: #fff; }
-</style>
 {% endblock %}

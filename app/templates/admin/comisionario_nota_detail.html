@@ -37,17 +37,17 @@
     <div class="card-body">
         <h2 class="s-card-title">Datos de la nota</h2>
         <p class="s-card-sub mb-3">Comisionario, sucursal y estado del documento.</p>
-        <div class="note-meta-grid">
-            <div class="note-meta-item">
-                <span class="note-meta-label">Comisionario</span>
-                <strong>{{ comisionario.nombre_completo if comisionario else '—' }}</strong>
+        <div class="s-defs">
+            <div class="s-def">
+                <span class="s-def__label">Comisionario</span>
+                <span class="s-def__value">{{ comisionario.nombre_completo if comisionario else '—' }}</span>
             </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Sucursal</span>
-                <strong>{{ nota.sucursal.nombre if nota.sucursal else '—' }}</strong>
+            <div class="s-def">
+                <span class="s-def__label">Sucursal</span>
+                <span class="s-def__value">{{ nota.sucursal.nombre if nota.sucursal else '—' }}</span>
             </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Estado</span>
+            <div class="s-def">
+                <span class="s-def__label">Estado</span>
                 {% if nota.estado.value == 'BORRADOR' %}
                     {{ badge('Borrador', 'muted') }}
                 {% elif nota.estado.value == 'APROBADA' %}
@@ -56,9 +56,9 @@
                     {{ badge('Cancelada', 'bad') }}
                 {% endif %}
             </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Fecha</span>
-                <strong>{{ nota.created_at|datetime_local if nota.created_at else '—' }}</strong>
+            <div class="s-def">
+                <span class="s-def__label">Fecha</span>
+                <span class="s-def__value">{{ nota.created_at|datetime_local if nota.created_at else '—' }}</span>
             </div>
         </div>
         {% if nota.comentarios_admin %}

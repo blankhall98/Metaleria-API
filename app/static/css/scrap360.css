@@ -1875,6 +1875,21 @@ textarea.form-control {
 }
 .s-def__value:empty::before { content: "—"; color: var(--s-text-muted); }
 
+/* A second line qualifying the value: where a figure came from, what it is
+   internal to. Replaces .note-meta-sub. */
+.s-def__sub {
+    display: block;
+    font-size: var(--s-fs-xs);
+    color: var(--s-text-muted);
+    margin-top: 2px;
+}
+
+/* The grid item itself. The definition list replaced a grid of bordered
+   boxes: a box reads as a control the user can act on, and these are values
+   you can only look at. Borders here would also nest inside the card that
+   already draws one. */
+.s-def { min-width: 0; }
+
 /* ==========================================================================
    12. ALERTS & EMPTY STATES
    ========================================================================== */
@@ -2637,3 +2652,189 @@ textarea.form-control {
     .s-table-compact td .s-cell-key { display: block; }
     .s-table-compact td .s-cell-key + .badge { margin-top: 2px; }
 }
+
+/* ==========================================================================
+   19. CORTE DE CAJA
+   --------------------------------------------------------------------------
+   This screen used to carry its own <style> block: 130 lines, ~40 raw hex
+   values, a private sticky nav, its own section headers and a dark floating
+   bar. It was the main reason the app stopped feeling like one product. The
+   rules live here now, on the tokens, and the components that already existed
+   (.s-anchor-nav, .s-card-title, .badge) do the work they were built for.
+   ========================================================================== */
+
+/* --- Account colour coding ------------------------------------------------
+   A movement belongs to one account and the operator scans for "which of
+   these is mine". That is categorical, so it gets a categorical hue — but as
+   a 3px spine, the same device .s-stat uses, not a wash over the whole row.
+   The wash fought the zebra striping (it needed !important to win), flattened
+   hover, and left seven pastel bands where a ledger should be. */
+
+:root {
+    --s-cat-cash:     var(--s-ok);
+    --s-cat-1:        #0b6bcb;
+    --s-cat-2:        #b45309;
+    --s-cat-3:        #b42318;
+    --s-cat-4:        #5b53b8;
+    --s-cat-5:        #0e7490;
+    --s-cat-transfer: var(--s-n500);
+}
+
+.corte-row-cash      { --s-cat: var(--s-cat-cash); }
+.corte-row-account-1 { --s-cat: var(--s-cat-1); }
+.corte-row-account-2 { --s-cat: var(--s-cat-2); }
+.corte-row-account-3 { --s-cat: var(--s-cat-3); }
+.corte-row-account-4 { --s-cat: var(--s-cat-4); }
+.corte-row-account-5 { --s-cat: var(--s-cat-5); }
+.corte-row-transfer  { --s-cat: var(--s-cat-transfer); }
+
+.table tr[class*="corte-row-"] td:first-child {
+    box-shadow: inset 3px 0 0 var(--s-cat);
+}
+
+/* In card mode each row is already a card, so the spine is its left edge. */
+@media (max-width: 767.98px) {
+    .table.s-table-cards tr[class*="corte-row-"] td:first-child { box-shadow: none; }
+    .table.s-table-cards tr[class*="corte-row-"] { border-left: 3px solid var(--s-cat); }
+}
+
+/* --- Legend ---------------------------------------------------------------
+   Colour is never the only signal: the legend names every account. The hue
+   rides a dot so the label stays readable text instead of tinted-on-tinted. */
+
+.corte-color-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2) var(--s-4);
+    margin-bottom: var(--s-3);
+}
+
+.corte-legend-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+    font-size: var(--s-fs-xs);
+    font-weight: 500;
+    color: var(--s-text-soft);
+}
+.corte-legend-badge::before {
+    content: "";
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    background: var(--s-cat, var(--s-n400));
+    flex: 0 0 auto;
+}
+
+/* --- Payment state on a movement row -------------------------------------
+   Was a 999px pill in its own colours. It is a status, so it reads as one. */
+
+.corte-pago-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-1);
+    min-height: var(--s-control-h-sm);
+    padding: 0 var(--s-2);
+    border-radius: var(--s-r-sm);
+    border: 1px solid transparent;
+    font-size: var(--s-fs-xs);
+    font-weight: 500;
+    line-height: 1.4;
+    white-space: nowrap;
+    cursor: default;
+}
+button.corte-pago-pill { cursor: pointer; }
+button.corte-pago-pill:hover { filter: brightness(0.97); }
+.corte-pago-pill--pending {
+    background: var(--s-warn-tint);
+    border-color: var(--s-warn-line);
+    color: var(--s-warn);
+}
+.corte-pago-pill--ok {
+    background: var(--s-n50);
+    border-color: var(--s-n200);
+    color: var(--s-p700);
+}
+
+/* --- Section scaffolding --------------------------------------------------
+   The private sticky nav and section headers are gone: this screen uses
+   .s-anchor-nav and .s-card-title like every other one. The collapse stays,
+   because the sections really do fold. */
+
+.corte-section-anchor { scroll-margin-top: calc(var(--s-navbar-h) + var(--s-4)); }
+
+.corte-sdiv { margin-bottom: var(--s-2); }
+
+.corte-sdiv-trigger {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    width: 100%;
+    padding: var(--s-2) 0;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--s-line);
+    cursor: pointer;
+    text-align: left;
+    transition: border-color var(--s-dur) var(--s-ease);
+}
+.corte-sdiv-trigger:hover { border-bottom-color: var(--s-line-strong); }
+.corte-sdiv-body { padding: var(--s-4) 0 var(--s-2); }
+
+.corte-collapse-chevron {
+    margin-left: auto;
+    color: var(--s-text-muted);
+    transition: transform var(--s-dur) var(--s-ease);
+}
+.corte-sdiv-trigger[aria-expanded="true"] .corte-collapse-chevron { transform: rotate(180deg); }
+
+/* --- Running totals bar ---------------------------------------------------
+   A dark slab pinned over a light app read as a different product. It
+   summarises the screen you are on, so it is a surface with a top border —
+   and it still clears the phone dock. */
+
+.corte-floating-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--s-4);
+    padding: var(--s-2) var(--s-5);
+    background: var(--s-surface);
+    border-top: 1px solid var(--s-line-strong);
+    box-shadow: var(--s-e-2);
+    color: var(--s-text);
+    font-size: var(--s-fs-xs);
+    z-index: 150;
+}
+.app-has-mobile-dock .corte-floating-bar { bottom: 56px; }
+
+.corte-float-item { display: flex; flex-direction: column; }
+.corte-float-item span {
+    font-size: var(--s-fs-micro);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--s-text-muted);
+}
+.corte-float-item strong { font-size: var(--s-fs-base); font-weight: 600; }
+.float-positive { color: var(--s-ok); }
+.float-negative { color: var(--s-bad); }
+.corte-float-divider {
+    width: 1px;
+    align-self: stretch;
+    background: var(--s-line);
+    flex-shrink: 0;
+}
+.corte-float-action { margin-left: auto; }
+
+@media (max-width: 767.98px) {
+    .corte-floating-bar { gap: var(--s-3); padding: var(--s-2) var(--s-4); overflow-x: auto; }
+    .corte-float-divider { display: none; }
+}
+
+/* --- Denomination count input --------------------------------------------
+   Was style="max-width: 7rem" repeated on six table rows. */
+.s-input-qty { max-width: 7rem; }

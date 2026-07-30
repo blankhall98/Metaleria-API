@@ -43,51 +43,51 @@
     <div class="card-body">
         <h2 class="s-card-title">Datos de la cuenta</h2>
         <p class="s-card-sub mb-3">Identificación bancaria y vínculo con el titular.</p>
-        <div class="note-meta-grid">
-            <div class="note-meta-item">
-                <span class="note-meta-label">ID</span>
-                <strong>{{ cuenta.id }}</strong>
+        <div class="s-defs">
+            <div class="s-def">
+                <span class="s-def__label">ID</span>
+                <span class="s-def__value">{{ cuenta.id }}</span>
             </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Tipo</span>
-                <strong>{{ cuenta.tipo|capitalize if cuenta.tipo else '—' }}</strong>
+            <div class="s-def">
+                <span class="s-def__label">Tipo</span>
+                <span class="s-def__value">{{ cuenta.tipo|capitalize if cuenta.tipo else '—' }}</span>
             </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Banco</span>
-                <strong>{{ cuenta.banco or '—' }}</strong>
+            <div class="s-def">
+                <span class="s-def__label">Banco</span>
+                <span class="s-def__value">{{ cuenta.banco or '—' }}</span>
             </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Número</span>
+            <div class="s-def">
+                <span class="s-def__label">Número</span>
                 {% if cuenta.numero %}
                     {% set last4 = cuenta.numero[-4:] if cuenta.numero|length >= 4 else cuenta.numero %}
-                    <strong class="s-mono">****{{ last4 }}</strong>
+                    <span class="s-def__value s-mono">****{{ last4 }}</span>
                 {% else %}
-                    <strong>—</strong>
+                    <span class="s-def__value">—</span>
                 {% endif %}
             </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">CLABE</span>
+            <div class="s-def">
+                <span class="s-def__label">CLABE</span>
                 {% if cuenta.clabe %}
                     {% set last4 = cuenta.clabe[-4:] if cuenta.clabe|length >= 4 else cuenta.clabe %}
-                    <strong class="s-mono">****{{ last4 }}</strong>
+                    <span class="s-def__value s-mono">****{{ last4 }}</span>
                 {% else %}
-                    <strong>—</strong>
+                    <span class="s-def__value">—</span>
                 {% endif %}
             </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Titular</span>
-                <strong>{{ cuenta.titular or '—' }}</strong>
+            <div class="s-def">
+                <span class="s-def__label">Titular</span>
+                <span class="s-def__value">{{ cuenta.titular or '—' }}</span>
             </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Referencia</span>
-                <strong>{{ cuenta.referencia or '—' }}</strong>
+            <div class="s-def">
+                <span class="s-def__label">Referencia</span>
+                <span class="s-def__value">{{ cuenta.referencia or '—' }}</span>
             </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Vínculo</span>
-                <strong>{{ owner_label }}</strong>
+            <div class="s-def">
+                <span class="s-def__label">Vínculo</span>
+                <span class="s-def__value">{{ owner_label }}</span>
             </div>
-            <div class="note-meta-item">
-                <span class="note-meta-label">Estado</span>
+            <div class="s-def">
+                <span class="s-def__label">Estado</span>
                 {{ badge('Activa' if cuenta.activo else 'Inactiva', 'ok' if cuenta.activo else 'muted') }}
             </div>
         </div>

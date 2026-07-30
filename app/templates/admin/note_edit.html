@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, icon, stat, badge, money, kg, empty_row %}
 
 {% block title %}Editar nota {{ nota.id }}{% endblock %}
 
@@ -6,19 +7,14 @@
 {% set note_state = nota.estado.value %}
 {% set edit_step_copy = 'Corrige materiales, valida el impacto y deja comentario antes de guardar.' %}
 <div class="note-detail-page note-detail-page--edit">
-    <div class="page-header note-page-header">
-        <div>
-            <p class="text-uppercase text-muted small mb-1">Edición administrativa</p>
-            <h1 class="h4 text-dark mb-1">Editar nota {{ folio or ('#' ~ nota.id) }}</h1>
-            <p class="text-muted mb-0">{{ operation_label }} vinculada a {{ partner_label|lower }}: {{ partner_name }}</p>
-        </div>
-        <div class="d-flex gap-2 flex-wrap">
-            {% if note_state == 'APROBADA' %}
-                <a href="/web/admin/notas/{{ nota.id }}#note-manual-adjustments" class="btn btn-outline-primary btn-sm">Ajuste manual</a>
-            {% endif %}
-            <a href="/web/admin/notas/{{ nota.id }}" class="btn btn-outline-secondary btn-sm">Volver a la nota</a>
-        </div>
-    </div>
+    {% call page_header('Editar nota ' ~ (folio or ('#' ~ nota.id)),
+                        eyebrow='Edición administrativa',
+                        sub=operation_label ~ ' vinculada a ' ~ partner_label|lower ~ ': ' ~ partner_name) %}
+        {% if note_state == 'APROBADA' %}
+            <a href="/web/admin/notas/{{ nota.id }}#note-manual-adjustments" class="btn btn-outline-secondary">Ajuste manual</a>
+        {% endif %}
+        <a href="/web/admin/notas/{{ nota.id }}" class="btn btn-outline-secondary">Volver</a>
+    {% endcall %}
 
     {% if error %}
         <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
@@ -36,13 +32,11 @@
                 </div>
                 <a href="#note-edit-materials" class="btn btn-outline-primary btn-sm">Ir a materiales</a>
             </div>
-            <div class="ops-inline-toolbar mt-3">
-                <a href="#note-edit-materials" class="ops-inline-pill active">Materiales</a>
-                <a href="#note-edit-impact" class="ops-inline-pill">Impacto</a>
-                {% if note_state == 'APROBADA' %}
-                    <a href="/web/admin/notas/{{ nota.id }}#note-manual-adjustments" class="ops-inline-pill">Ajuste manual</a>
-                {% endif %}
-            </div>
+            {# Índice de saltos, no pestañas: ambas secciones se renderizan. #}
+            <nav class="s-anchor-nav" aria-label="Secciones de la nota">
+                <a href="#note-edit-materials" class="btn btn-sm btn-outline-secondary">Materiales</a>
+                <a href="#note-edit-impact" class="btn btn-sm btn-outline-secondary">Impacto</a>
+            </nav>
         </div>
     </div>
 
@@ -79,32 +73,19 @@
                 </div>
             </div>
 
-            <div class="note-kpi-grid note-kpi-grid-detail">
-                <div class="notes-kpi-card tone-blue">
-                    <span class="notes-kpi-label">Total nota</span>
-                    <strong id="note-total-value">${{ "{:,.2f}".format(nota.total_monto or 0) }}</strong>
-                    <div class="notes-kpi-sub">Subtotal: <span id="note-subtotal-value">${{ "{:,.2f}".format(subtotal_sin_iva or 0) }}</span></div>
-                </div>
-                <div class="notes-kpi-card tone-green">
-                    <span class="notes-kpi-label">Monto pagado</span>
-                    <strong>${{ "{:,.2f}".format(nota.monto_pagado or 0) }}</strong>
-                    <div class="notes-kpi-sub">Saldo pendiente: ${{ "{:,.2f}".format(saldo_pendiente or 0) }}</div>
-                </div>
-                <div class="notes-kpi-card tone-amber">
-                    <span class="notes-kpi-label">Kg neto</span>
-                    <strong>{{ "{:,.2f}".format(nota.total_kg_neto or 0) }} kg</strong>
-                    <div class="notes-kpi-sub">IVA: <span id="note-iva-value">${{ "{:,.2f}".format(iva_monto or 0) }}</span></div>
-                </div>
-                <div class="notes-kpi-card tone-blue">
-                    <span class="notes-kpi-label">Kg reales inventario</span>
-                    <strong>{{ "{:,.2f}".format(nota.total_kg_real or nota.total_kg_neto or 0) }} kg</strong>
-                    <div class="notes-kpi-sub">Interno. No aparece en la orden PDF.</div>
-                </div>
-                <div class="notes-kpi-card {{ 'tone-blue' if saldo_a_favor > 0 else 'tone-neutral' }}">
-                    <span class="notes-kpi-label">Saldo a favor</span>
-                    <strong>${{ "{:,.2f}".format(saldo_a_favor or 0) }}</strong>
-                    <div class="notes-kpi-sub">Se conserva si ya hubo sobrepago</div>
-                </div>
+            {# Los ids los actualiza el script de totales al editar materiales. #}
+            {% set v_total %}<span id="note-total-value">${{ "{:,.2f}".format(nota.total_monto or 0) }}</span>{% endset %}
+            {% set s_total %}Subtotal: <span id="note-subtotal-value">${{ "{:,.2f}".format(subtotal_sin_iva or 0) }}</span>{% endset %}
+            {% set s_iva %}IVA: <span id="note-iva-value">${{ "{:,.2f}".format(iva_monto or 0) }}</span>{% endset %}
+            <div class="s-stats">
+                {{ stat('Total nota', v_total, s_total) }}
+                {{ stat('Monto pagado', money(nota.monto_pagado, 'plain'),
+                        'Saldo pendiente: ' ~ "${:,.2f}".format(saldo_pendiente or 0)) }}
+                {{ stat('Kg neto', kg(nota.total_kg_neto), s_iva) }}
+                {{ stat('Kg reales inventario', kg(nota.total_kg_real or nota.total_kg_neto),
+                        'Interno. No aparece en la orden PDF.') }}
+                {{ stat('Saldo a favor', money(saldo_a_favor, 'plain'),
+                        'Se conserva si ya hubo sobrepago', 'info' if saldo_a_favor > 0 else '') }}
             </div>
         </div>
     </div>
@@ -237,15 +218,15 @@
                         </div>
                         <div class="note-edit-impact-grid mb-3">
                             <div class="note-adjust-preview-item">
-                                <span class="note-meta-label">Monto pagado</span>
-                                <strong>${{ "{:,.2f}".format(nota.monto_pagado or 0) }}</strong>
+                                <span class="s-def__label">Monto pagado</span>
+                                <span class="s-def__value">${{ "{:,.2f}".format(nota.monto_pagado or 0) }}</span>
                             </div>
                             <div class="note-adjust-preview-item">
-                                <span class="note-meta-label">Saldo pendiente</span>
+                                <span class="s-def__label">Saldo pendiente</span>
                                 <strong id="note-edit-balance-value">${{ "{:,.2f}".format(saldo_pendiente or 0) }}</strong>
                             </div>
                             <div class="note-adjust-preview-item">
-                                <span class="note-meta-label">Saldo a favor</span>
+                                <span class="s-def__label">Saldo a favor</span>
                                 <strong id="note-edit-favor-value">${{ "{:,.2f}".format(saldo_a_favor or 0) }}</strong>
                             </div>
                         </div>
