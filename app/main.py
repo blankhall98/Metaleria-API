@@ -210,7 +210,10 @@ def create_app() -> FastAPI:
         if not user_obj:
             # Sin esto, un acceso fallido es indistinguible de otro y no hay
             # forma de atender el reporte de "mi usuario y clave son correctos".
-            logger.info(
+            # Va como warning a propósito: uvicorn no instala un handler para
+            # este logger y el handler de último recurso descarta todo lo que
+            # esté por debajo de warning.
+            logger.warning(
                 "Acceso rechazado para %r: %s",
                 normalizar_username(username),
                 motivo.value if motivo else "desconocido",
