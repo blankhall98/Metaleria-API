@@ -1967,19 +1967,14 @@ body.modal-open {
     scrollbar-gutter: stable both-edges;
 }
 .notes-state-table {
-    min-width: 1360px;
 }
 .note-materials-table {
-    min-width: 1520px;
 }
 .note-return-table {
-    min-width: 1180px;
 }
 .note-payments-table {
-    min-width: 1260px;
 }
 .note-aux-table {
-    min-width: 980px;
 }
 .note-report-card .form-label {
     font-size: 0.72rem;
@@ -2212,7 +2207,6 @@ body.modal-open {
     font-size: 0.7rem;
 }
 .notes-state-table {
-    min-width: 1320px;
 }
 .notes-state-table th:first-child {
     position: sticky;

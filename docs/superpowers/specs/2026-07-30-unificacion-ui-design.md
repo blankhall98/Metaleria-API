@@ -1,6 +1,27 @@
 # Unificación de la interfaz — un solo vocabulario, pantalla por pantalla
 
-Fecha: 2026-07-30 · Estado: aprobado, en implementación
+Fecha: 2026-07-30 · Estado: fases 1 y 2 parciales desplegadas; 3 y 4 pendientes
+
+## Avance
+
+| | |
+|---|---:|
+| Usos de vocabulario bespoke | 454 → **275** |
+| Plantillas totalmente migradas | 4 de 11 |
+| Reglas mecánicas verificadas | 10 → **14** |
+| Vistas auditadas sin incumplimientos | **84** |
+
+**Hecho:** macros `card`/`subpanel`/`defs`/`def`/`anchor_nav`; `note-meta-*`
+(105 usos) → `.s-defs`; pestañas falsas → `.s-anchor-nav`; `notes-kpi-card` →
+`stat()`; el bloque `<style>` de corte de caja (136 líneas, ~40 hexadecimales)
+→ `scrap360.css` sobre tokens; coloreado de filas → guarda lateral; 10
+instrucciones de "arrastra con el mouse" borradas del marcado (estaban ocultas
+por CSS, no eliminadas); 6 anchos mínimos forzados de tabla retirados; 4 reglas
+nuevas en `check_ui.js`.
+
+**Pendiente:** `note_detail` (136), `corte_caja` (62), `note_edit` (39),
+`note_evidencias` (25), `worker/notes_form` (9); la pasada de columnas de la
+fase 3; y el retiro de las familias del legado en la fase 4.
 
 ## El problema
 

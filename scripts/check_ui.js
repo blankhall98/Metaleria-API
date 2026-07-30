@@ -107,6 +107,26 @@ const RULES = {
 
   /* Nothing hidden behind the fixed dock. */
   dockOverlap: (d) => (d.dockOverlap ? [`contenido bajo el dock (${d.dockOverlap}px)`] : []),
+
+  /* A visual decision belongs in scrap360.css, on the tokens. A style
+     attribute or a <style> block is a decision nobody else can inherit —
+     corte de caja carried 130 such lines with ~40 raw hex values.
+     Showing and hiding is behaviour, not styling, so a lone `display` set by
+     the page's own script does not count. */
+  inlineStyles: (d) => {
+    const out = [];
+    if (d.styleAttrs) out.push(`${d.styleAttrs} atributos style= en línea`);
+    if (d.styleBlocks) out.push(`${d.styleBlocks} bloques <style> en la página`);
+    return out;
+  },
+
+  /* A card never nests in a card: use .s-subpanel for a region inside one. */
+  nestedCards: (d) =>
+    d.nestedCards ? [`${d.nestedCards} tarjetas anidadas en otra tarjeta`] : [],
+
+  /* Every screen opens the same way. Without the page header the eyebrow,
+     title and actions land wherever each template decided. */
+  pageHeader: (d) => (d.pageHead ? [] : ['sin encabezado de página (.s-page-head)']),
 };
 
 /* Words whose unaccented form is always wrong in this app. */
@@ -194,7 +214,22 @@ async function audit(page) {
       }
     }
 
+    /* A card inside a card. .s-subpanel is the sunken region that belongs
+       there; a second border inside the first is what we are looking for. */
+    let nestedCards = 0;
+    document.querySelectorAll('.card, .s-card').forEach((el) => {
+      if (!visible(el)) return;
+      if (el.parentElement && el.parentElement.closest('.card, .s-card')) nestedCards += 1;
+    });
+
     return {
+      styleAttrs: [...document.querySelectorAll('main [style]')].filter((el) => {
+        const decls = el.getAttribute('style').split(';').map((s) => s.trim()).filter(Boolean);
+        return !decls.every((d) => /^display\s*:/i.test(d));
+      }).length,
+      styleBlocks: document.querySelectorAll('body style').length,
+      nestedCards,
+      pageHead: !!document.querySelector('.s-page-head, .page-header'),
       overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       h1: document.querySelectorAll('h1').length,
       primaryButtons,

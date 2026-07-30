@@ -57,7 +57,9 @@
                     {% endif %}
                 </div>
 
-                <div id="venta-partner-kind-wrap" {% if force_tipo_operacion == 'compra' %}style="display:none"{% endif %}>
+                {# Se oculta con la misma clase que usa el script para mostrarlo;
+                   un style en línea habría ganado y lo dejaba oculto para siempre. #}
+                <div id="venta-partner-kind-wrap" class="{% if force_tipo_operacion == 'compra' %}d-none{% endif %}">
                     <label class="form-label" for="venta_partner_kind">En venta, registrar como</label>
                     <select class="form-select" id="venta_partner_kind" name="venta_partner_kind" onchange="togglePartner(); updateSteps();">
                         <option value="cliente">Cliente</option>

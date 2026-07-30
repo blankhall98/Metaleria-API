@@ -1224,10 +1224,8 @@ table.table-hover > tbody > tr:hover > * { background-color: var(--s-p50) !impor
 .table-scroll-shell::before,
 .table-scroll-shell::after { content: none; }
 
-/* Verbose "drag the table sideways" instructions are replaced by affordances. */
-.table-scroll-hint,
-.note-table-assist,
-.note-table-assist--inline { display: none !important; }
+/* The "drag the table sideways" instructions are gone from the markup; the
+   table layer gives affordances instead of telling you how to scroll. */
 
 .floating-table-scrollbar { z-index: 1020; }
 .floating-table-scrollbar-track::-webkit-scrollbar-thumb {

@@ -381,7 +381,7 @@
                     <span class="badge bg-light text-dark border">{{ devoluciones_totales|length }} acciones</span>
                 </div>
                 <div class="table-scroll-shell">
-                    <div class="table-responsive scroll-x note-table-scroll">
+                    <div class="table-responsive">
                         <table class="table table-sm align-middle mb-0 note-payments-table">
                             <thead>
                             <tr>
@@ -417,7 +417,6 @@
                             </tbody>
                         </table>
                     </div>
-                    <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para revisar el historial completo de devoluciones totales.</div>
                 </div>
             </div>
         </div>
@@ -435,18 +434,8 @@
                                     <p class="text-muted small mb-0">Ajusta pesos, descuentos y precios antes de aprobar. Si necesitas que inventario reciba otra cantidad, usa <strong>Kg reales inventario</strong>; es interno y no cambia la orden PDF.</p>
                                 </div>
                             </div>
-                            <div class="note-table-assist mb-3">
-                                <div>
-                                    <div class="note-table-assist-title">Mesa de revisión</div>
-                                    <div class="note-table-assist-copy">La tabla de materiales prioriza lectura horizontal en escritorio. Puedes arrastrar la tabla o usar `Shift + rueda` para revisar sin perder contexto.</div>
-                                </div>
-                                <div class="note-table-assist-pills">
-                                    <span class="pill">Arrastrar</span>
-                                    <span class="pill">Shift + rueda</span>
-                                </div>
-                            </div>
                             <div class="table-scroll-shell">
-                                <div class="table-responsive scroll-x note-table-scroll">
+                                <div class="table-responsive">
                                     <table class="table table-hover table-sm align-middle mb-0 note-materials-table"
                                            data-tipo-operacion="{{ nota.tipo_operacion.value }}"
                                            data-precio-endpoint="/web/admin/notas/precio">
@@ -577,7 +566,6 @@
                                     </tbody>
                                     </table>
                                 </div>
-                                <div class="table-scroll-hint">Arrastra con el mouse, usa Shift + rueda o desliza lateralmente para revisar pesos, precios y subtotales.</div>
                             </div>
                         </div>
                     </div>
@@ -760,18 +748,8 @@
                         {% endif %}
                     </div>
                 </div>
-                <div class="note-table-assist mb-3">
-                    <div>
-                        <div class="note-table-assist-title">Lectura completa de materiales</div>
-                        <div class="note-table-assist-copy">Los datos se mantienen anchos para evitar montos o kilos recortados. El primer bloque queda fijo para facilitar la lectura al desplazarte.</div>
-                    </div>
-                    <div class="note-table-assist-pills">
-                        <span class="pill">Primer bloque fijo</span>
-                        <span class="pill">Arrastrar</span>
-                    </div>
-                </div>
                 <div class="table-scroll-shell">
-                    <div class="table-responsive scroll-x note-table-scroll">
+                    <div class="table-responsive">
                         <table class="table table-hover table-sm align-middle mb-0 note-materials-table">
                         <thead>
                         <tr>
@@ -824,7 +802,6 @@
                         </tbody>
                         </table>
                     </div>
-                    <div class="table-scroll-hint">Arrastra con el mouse, usa Shift + rueda o desliza lateralmente para revisar el detalle completo de materiales.</div>
                 </div>
             </div>
         </div>
@@ -844,7 +821,7 @@
                             </div>
                             <form method="post" action="/web/admin/notas/{{ nota.id }}/devolucion-parcial" class="note-return-form" data-current-total="{{ nota.total_monto or 0 }}" data-current-paid="{{ nota.monto_pagado or 0 }}" data-iva-factor="{{ (1 + ((iva_pct or 0) / 100)) if nota.iva_incluido else 1 }}">
                             <div class="table-scroll-shell">
-                                <div class="table-responsive scroll-x note-table-scroll">
+                                <div class="table-responsive">
                                     <table class="table table-hover table-sm align-middle mb-0 note-return-table">
                                     <thead>
                                     <tr>
@@ -881,7 +858,6 @@
                                     </tbody>
                                     </table>
                                 </div>
-                                <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para capturar kilos y precios de devolución.</div>
                             </div>
                             <div class="note-return-summary-grid mt-3">
                                 <div class="note-return-summary-item">
@@ -1055,7 +1031,7 @@
                         {% endif %}
 
                         <div class="table-scroll-shell mt-3">
-                            <div class="table-responsive scroll-x note-table-scroll">
+                            <div class="table-responsive">
                                 <table class="table table-sm align-middle mb-0 note-payments-table">
                                 <thead>
                                 <tr>
@@ -1102,7 +1078,6 @@
                                 </tbody>
                                 </table>
                             </div>
-                            <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para ver cuentas, comentarios y acciones del abono.</div>
                         </div>
                         {% if pagos|length == 0 %}
                             <p class="text-muted small mb-0 mt-3">Aún no hay pagos registrados para esta nota.</p>
@@ -1293,7 +1268,7 @@
 
                 {% if note_balance_adjustments %}
                     <div class="table-scroll-shell mt-3">
-                        <div class="table-responsive scroll-x note-table-scroll">
+                        <div class="table-responsive">
                             <table class="table table-sm align-middle mb-0 note-payments-table">
                                 <thead>
                                 <tr>
@@ -1341,7 +1316,6 @@
                                 </tbody>
                             </table>
                         </div>
-                        <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para revisar el impacto financiero y las reversiones del saldo.</div>
                     </div>
                 {% else %}
                     <div class="note-empty-state mt-3">
@@ -1448,7 +1422,7 @@
 
                 {% if note_adjustments %}
                     <div class="table-scroll-shell mt-3">
-                        <div class="table-responsive scroll-x note-table-scroll">
+                        <div class="table-responsive">
                             <table class="table table-sm align-middle mb-0 note-payments-table">
                                 <thead>
                                 <tr>
@@ -1508,7 +1482,6 @@
                                 </tbody>
                             </table>
                         </div>
-                        <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para revisar stock anterior, stock resultante y acciones del ajuste.</div>
                     </div>
                 {% else %}
                     <div class="note-empty-state mt-3">
@@ -1534,7 +1507,7 @@
                     <span class="badge bg-light text-dark border">{{ devoluciones_parciales|length }} acciones</span>
                 </div>
                 <div class="table-scroll-shell">
-                    <div class="table-responsive scroll-x note-table-scroll">
+                    <div class="table-responsive">
                         <table class="table table-sm align-middle mb-0 note-payments-table">
                             <thead>
                             <tr>
@@ -1592,7 +1565,6 @@
                             </tbody>
                         </table>
                     </div>
-                    <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para ver estado, comentario y accion de cada linea.</div>
                 </div>
             </div>
         </div>
@@ -1607,7 +1579,7 @@
                     </div>
                 </div>
                 <div class="table-scroll-shell">
-                    <div class="table-responsive scroll-x note-table-scroll">
+                    <div class="table-responsive">
                         <table class="table table-sm align-middle mb-0 note-aux-table">
                         <thead>
                         <tr>
@@ -1652,7 +1624,6 @@
                         </tbody>
                         </table>
                     </div>
-                    <div class="table-scroll-hint">Arrastra con el mouse o desliza lateralmente para revisar el historial completo de movimientos.</div>
                 </div>
             </div>
         </div>
