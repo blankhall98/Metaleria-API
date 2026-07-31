@@ -2882,3 +2882,251 @@ button.corte-pago-pill:hover { filter: brightness(0.97); }
 /* --- Denomination count input --------------------------------------------
    Was style="max-width: 7rem" repeated on six table rows. */
 .s-input-qty { max-width: 7rem; }
+
+/* ==========================================================================
+   20. MEDIA: EVIDENCE CARDS, THUMBNAILS AND THE PICKER SHEET
+   --------------------------------------------------------------------------
+   Photographic evidence of a weighing is the one place in this app where the
+   record is an image, so the grid of cards, the thumbnail strip and the
+   camera/gallery sheet are real components. They lived in style.css under
+   evidence-* names, which meant the worker's capture screen and the admin's
+   evidence screen each depended on the sheet that is being retired. They are
+   the same component, so they get one name and one set of tokens.
+   ========================================================================== */
+
+/* --- Chip list ------------------------------------------------------------
+   A wrapped row of small facts that belong to one record: the subpesajes of
+   a material, each with its own link to its evidence. Replaces
+   note-subpesajes / note-subpesaje-item / note-subpesaje-link. */
+
+.s-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2) var(--s-3);
+}
+
+.s-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+    font-size: var(--s-fs-xs);
+}
+
+.s-chip__link {
+    padding: 2px var(--s-2);
+    border: 1px solid var(--s-line);
+    border-radius: var(--s-r-sm);
+    color: var(--s-text-muted);
+    font-size: var(--s-fs-micro);
+    text-decoration: none;
+    white-space: nowrap;
+}
+.s-chip__link:hover { border-color: var(--s-line-strong); color: var(--s-text); }
+
+/* --- Record split: work area + rail --------------------------------------
+   A long record page where a form or a table is the work and a small panel
+   has to stay in reach: la nota y su control de aprobación. It was
+   note-workspace-grid in the retired sheet. The rail has a floor of 280px so
+   its labels do not break one character per line, and the whole thing stacks
+   below 1024px, where two columns leave neither one usable. */
+
+.s-split {
+    display: grid;
+    gap: var(--s-4);
+    grid-template-columns: minmax(0, 1fr) clamp(280px, 24vw, 380px);
+    align-items: start;
+}
+.s-split__main { min-width: 0; }
+.s-split__rail { min-width: 0; }
+
+@media (max-width: 1023.98px) {
+    .s-split { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* --- Grid of evidence cards ---------------------------------------------- */
+
+.s-media-grid {
+    display: grid;
+    gap: var(--s-3);
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    grid-auto-rows: 1fr;
+    align-items: stretch;
+    justify-content: start;
+}
+
+@media (min-width: 1200px) {
+    .s-media-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+.s-media-card {
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    gap: var(--s-3);
+    height: 100%;
+    min-height: 380px;
+    padding: var(--s-3);
+    background: var(--s-surface);
+    border: 1px solid var(--s-line);
+    border-radius: var(--s-r-md);
+}
+
+.s-media-card__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--s-2);
+    padding-bottom: var(--s-2);
+    border-bottom: 1px solid var(--s-line);
+}
+
+.s-media-card__thumb {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 180px;
+    overflow: hidden;
+    background: var(--s-sunken);
+    border: 1px solid var(--s-line);
+    border-radius: var(--s-r-sm);
+}
+.s-media-card__thumb img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.s-media-card__link { display: block; width: 100%; }
+
+.s-media-card__empty {
+    padding: var(--s-4);
+    text-align: center;
+    color: var(--s-text-muted);
+    font-size: var(--s-fs-sm);
+}
+
+.s-media-card__meta {
+    display: grid;
+    gap: var(--s-2);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding-top: var(--s-2);
+    border-top: 1px solid var(--s-line);
+}
+@media (max-width: 767.98px) {
+    .s-media-card__meta { grid-template-columns: 1fr; }
+}
+
+.s-media-upload {
+    display: grid;
+    gap: var(--s-2);
+    margin-top: var(--s-1);
+}
+
+/* The real <input type="file"> is replaced by a button that opens the sheet,
+   so it is removed from the layout and from the accessibility tree on
+   purpose: the button is what carries the label. */
+.s-file-input { display: none; }
+
+/* --- Thumbnail strip (extra evidence on a nota) --------------------------- */
+
+.s-thumb-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-3);
+}
+
+.s-thumb {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-1);
+    width: 140px;
+}
+
+.s-thumb__img {
+    width: 100%;
+    height: 96px;
+    object-fit: cover;
+    background: var(--s-sunken);
+    border: 1px solid var(--s-line);
+    border-radius: var(--s-r-sm);
+}
+
+.s-thumb__actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-2);
+}
+
+/* --- Picker sheet ---------------------------------------------------------
+   Centred dialog on a desktop; on a phone it rises from the bottom edge,
+   where the thumb already is. */
+
+.s-sheet {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1050;
+}
+.s-sheet.is-open { display: flex; }
+
+.s-sheet__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(19, 26, 36, 0.5);
+}
+
+.s-sheet__panel {
+    position: relative;
+    z-index: 1;
+    width: min(360px, 92vw);
+    padding: var(--s-4);
+    background: var(--s-surface);
+    border: 1px solid var(--s-line);
+    border-radius: var(--s-r-lg);
+    box-shadow: var(--s-e-3);
+}
+
+.s-sheet__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-2);
+    margin-bottom: var(--s-1);
+}
+.s-sheet__head h3 {
+    margin: 0;
+    font-size: var(--s-fs-lg);
+    font-weight: 600;
+}
+
+.s-sheet__close {
+    min-width: var(--s-control-h);
+    min-height: var(--s-control-h);
+    padding: 0;
+    background: none;
+    border: 0;
+    color: var(--s-text-muted);
+    font-size: var(--s-fs-xl);
+    line-height: 1;
+}
+.s-sheet__close:hover { color: var(--s-text); }
+
+.s-sheet__actions {
+    display: grid;
+    gap: var(--s-2);
+    margin-top: var(--s-3);
+}
+
+.s-sheet__hint { margin-top: var(--s-2); }
+
+@media (max-width: 767.98px) {
+    .s-sheet { align-items: flex-end; }
+    .s-sheet__panel {
+        width: 100%;
+        border-radius: var(--s-r-lg) var(--s-r-lg) 0 0;
+    }
+}

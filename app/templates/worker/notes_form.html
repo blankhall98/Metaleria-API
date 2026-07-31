@@ -234,7 +234,7 @@
                 </div>
                 <input class="d-none" type="file" id="extra_evidence_input" accept="image/*" multiple>
                 <input type="hidden" name="extra_evidencias" id="extra_evidencias" value="[]">
-                <div id="extra-evidence-list" class="extra-evidence-grid mt-3"></div>
+                <div id="extra-evidence-list" class="s-thumb-grid mt-3"></div>
                 <p class="form-text">Puedes seleccionar varias fotos desde tu galería. Máx. {{ max_mb }} MB por imagen.</p>
             </div>
         </div>
@@ -247,19 +247,19 @@
     </div>
 </form>
 
-<div class="evidence-picker-modal" id="workerEvidencePickerModal" aria-hidden="true">
-    <div class="evidence-picker-backdrop" data-evidence-close></div>
-    <div class="evidence-picker-card" role="dialog" aria-modal="true" aria-labelledby="workerEvidencePickerTitle">
-        <div class="evidence-picker-header">
+<div class="s-sheet" id="workerEvidencePickerModal" aria-hidden="true">
+    <div class="s-sheet__backdrop" data-evidence-close></div>
+    <div class="s-sheet__panel" role="dialog" aria-modal="true" aria-labelledby="workerEvidencePickerTitle">
+        <div class="s-sheet__head">
             <h3 id="workerEvidencePickerTitle">Agregar evidencia</h3>
-            <button type="button" class="evidence-picker-close" data-evidence-close aria-label="Cerrar">&times;</button>
+            <button type="button" class="s-sheet__close" data-evidence-close aria-label="Cerrar">&times;</button>
         </div>
         <p class="text-muted small mb-0">Elige cómo quieres subir la foto.</p>
-        <div class="evidence-picker-actions">
+        <div class="s-sheet__actions">
             <button type="button" class="btn btn-primary w-100" data-evidence-option="camera">Tomar foto</button>
             <button type="button" class="btn btn-outline-primary w-100" data-evidence-option="gallery">Elegir de la galería</button>
         </div>
-        <div class="evidence-picker-hint text-muted small">Formatos JPG/PNG. Máx. {{ max_mb }} MB.</div>
+        <div class="s-sheet__hint text-muted small">Formatos JPG/PNG. Máx. {{ max_mb }} MB.</div>
     </div>
 </div>
 
@@ -507,14 +507,14 @@
         }
         extraEvidenceUrls.forEach((url, index) => {
             const item = document.createElement('div');
-            item.className = 'extra-evidence-item';
+            item.className = 's-thumb';
             const img = document.createElement('img');
             img.src = url;
             img.alt = 'Evidencia extra';
             img.loading = 'lazy';
-            img.className = 'extra-evidence-thumb';
+            img.className = 's-thumb__img';
             const actions = document.createElement('div');
-            actions.className = 'extra-evidence-actions';
+            actions.className = 's-thumb__actions';
             const removeBtn = document.createElement('button');
             removeBtn.type = 'button';
             removeBtn.className = 'btn btn-outline-danger btn-sm';

@@ -59,29 +59,21 @@
     {% set next_step_button = 'Ir a devoluciones' %}
 {% endif %}
 <div>
-    <div class="page-header note-page-header">
-        <div>
-            <p class="text-uppercase text-muted small mb-1">Revisión y control</p>
-            <h1 class="h4 text-dark mb-1">Nota {{ folio or '-' }}</h1>
-            <p class="text-muted mb-0">{{ operation_label }} vinculada a {{ partner_label|lower }}: {{ partner_name }}</p>
-        </div>
-        <div class="d-flex gap-2 flex-wrap">
-            {% if can_edit_note %}
-                <a href="/web/admin/notas/{{ nota.id }}/editar" class="btn btn-outline-primary btn-sm">Editar</a>
-            {% endif %}
-            <a href="/web/admin/notas/{{ nota.id }}/evidencias" class="btn btn-primary btn-sm note-evidence-btn">Evidencias</a>
-            {% if (is_approved and can_manage_note) or note_balance_adjustments %}
-                <a href="#note-balance-adjustments" class="btn btn-outline-primary btn-sm">{{ 'Ajuste saldo' if can_manage_note else 'Saldo' }}</a>
-            {% endif %}
-            {% if (is_approved and can_manage_note) or note_adjustments %}
-                <a href="#note-manual-adjustments" class="btn btn-outline-primary btn-sm">{{ 'Ajuste manual' if can_manage_note else 'Ajustes' }}</a>
-            {% endif %}
-            {% if nota.estado.value == 'APROBADA' and nota.tipo_operacion.value in ['compra', 'venta'] %}
-                <a href="/web/admin/notas/{{ nota.id }}/factura" class="btn btn-outline-primary btn-sm">Orden PDF</a>
-            {% endif %}
-            <a href="/web/admin/notas" class="btn btn-outline-secondary btn-sm">Volver</a>
-        </div>
-    </div>
+    {# "Ajuste saldo" y "Ajuste manual" salían de aquí apuntando a anclas de
+       esta misma página, y el índice de secciones ya las ofrece. Una acción de
+       cabecera lleva a otro sitio; bajar en la página es del índice. #}
+    {% call page_header('Nota ' ~ (folio or '-'),
+                        eyebrow='Revisión y control',
+                        sub=operation_label ~ ' vinculada a ' ~ partner_label|lower ~ ': ' ~ partner_name) %}
+        {% if can_edit_note %}
+            <a href="/web/admin/notas/{{ nota.id }}/editar" class="btn btn-outline-secondary">Editar</a>
+        {% endif %}
+        {% if nota.estado.value == 'APROBADA' and nota.tipo_operacion.value in ['compra', 'venta'] %}
+            <a href="/web/admin/notas/{{ nota.id }}/factura" class="btn btn-outline-secondary">Orden PDF</a>
+        {% endif %}
+        <a href="/web/admin/notas" class="btn btn-outline-secondary">Volver</a>
+        <a href="/web/admin/notas/{{ nota.id }}/evidencias" class="btn btn-primary">Evidencias</a>
+    {% endcall %}
 
     {% if error %}
         <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
@@ -134,9 +126,9 @@
 
     <div class="card mb-3">
         <div class="card-body">
-            <div class="note-flow-card">
+            <div class="s-between">
                 <div>
-                    <div class="note-flow-title">{{ next_step_title }}</div>
+                    <div class="s-card-title">{{ next_step_title }}</div>
                     <div class="text-muted small">{{ next_step_copy }}</div>
                 </div>
                 <a href="{{ next_step_href }}" class="btn btn-outline-primary btn-sm">{{ next_step_button }}</a>
@@ -169,8 +161,8 @@
 
     <div class="card mb-3" id="note-summary">
         <div class="card-body">
-            <div class="note-hero-header">
-                <div class="note-hero-copy">
+            <div class="s-between">
+                <div class="s-grow">
                     <div class="d-flex flex-wrap gap-2 mb-2">
                         {# El tipo de operación no es un estado: la palabra lo dice sin color. #}
                         {{ badge(operation_label, 'muted') }}
@@ -203,9 +195,9 @@
                         {{ nota.created_at|datetime_local if nota.created_at else '-' }}
                     </p>
                 </div>
-                <div class="note-hero-side text-lg-end">
-                    <div class="note-hero-label">Folio</div>
-                    <div class="note-hero-folio">{{ folio or '-' }}</div>
+                <div class="text-lg-end">
+                    <div class="s-def__label">Folio</div>
+                    <div class="s-folio">{{ folio or '-' }}</div>
                     <div class="text-muted small">Nota #{{ nota.id }}</div>
                 </div>
             </div>
@@ -383,7 +375,7 @@
                 </div>
                 <div class="table-scroll-shell">
                     <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-0 note-payments-table">
+                        <table class="table table-sm align-middle mb-0">
                             <thead>
                             <tr>
                                 <th data-title-col>Fecha</th>
@@ -425,8 +417,8 @@
 
     {% if show_review_workspace %}
         <form method="post" action="/web/admin/notas/{{ nota.id }}/aprobar" id="approveForm">
-            <div class="note-workspace-grid">
-                <div class="note-main-column">
+            <div class="s-split">
+                <div class="s-split__main">
                     <div class="card mb-3" id="note-review-approval">
                         <div class="card-body">
                             <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
@@ -437,7 +429,7 @@
                             </div>
                             <div class="table-scroll-shell">
                                 <div class="table-responsive">
-                                    <table class="table table-hover table-sm align-middle mb-0 note-materials-table"
+                                    <table class="table table-hover table-sm align-middle mb-0"
                                            data-tipo-operacion="{{ nota.tipo_operacion.value }}"
                                            data-precio-endpoint="/web/admin/notas/precio">
                                     <thead>
@@ -546,15 +538,15 @@
                                         {% if m.subpesajes %}
                                             <tr class="note-subpesaje-row">
                                                 <td colspan="{{ 8 if user.rol == 'super_admin' else 7 }}">
-                                                    <div class="note-subpesajes">
-                                                        <span class="note-subpesajes-label">Subpesajes</span>
-                                                        <div class="note-subpesajes-list">
+                                                    <div class="s-chip-list">
+                                                        <span class="s-section-label">Subpesajes</span>
+                                                        <div class="s-chip-list">
                                                             {% for sp in m.subpesajes %}
-                                                                <div class="note-subpesaje-item">
+                                                                <div class="s-chip">
                                                                     <span class="pill">{{ "{:,.2f}".format(sp.peso_kg or 0) }} kg</span>
                                                                     <span class="text-muted small">Desc: {{ "{:,.2f}".format(sp.descuento_kg or 0) }} kg</span>
                                                                     {% if sp.foto_url %}
-                                                                        <a href="{{ sp.foto_url }}" target="_blank" rel="noopener" class="note-subpesaje-link">Ver evidencia</a>
+                                                                        <a href="{{ sp.foto_url }}" target="_blank" rel="noopener" class="s-chip__link">Ver evidencia</a>
                                                                     {% endif %}
                                                                 </div>
                                                             {% endfor %}
@@ -572,7 +564,7 @@
                     </div>
                 </div>
 
-                <div class="note-side-column">
+                <div class="s-split__rail">
                     <div class="card mb-3 s-sticky-rail">
                         <div class="card-body">
                             <div class="d-flex align-items-center gap-2 mb-3">
@@ -687,12 +679,12 @@
                                     <textarea class="form-control" name="comentarios_admin" rows="4" placeholder="Observaciones, condiciones de pago, notas administrativas." id="f_comentarios_admin">{{ comentarios_val }}</textarea>
                                 </div>
                             </div>
-                            <div class="note-actions mt-3">
-                                <div class="note-actions-title">Acciones de aprobación</div>
-                                <div class="note-actions-row">
+                            <div class="s-subpanel mt-3">
+                                <div class="s-section-label">Acciones de aprobación</div>
+                                <div class="s-badge-stack">
                                     <input type="hidden" name="auto_open_pdf" value="0">
                                     <input type="hidden" name="print_window" value="">
-                                    <button type="submit" id="approveNoteButton" class="btn btn-primary note-action-primary">Aprobar nota</button>
+                                    <button type="submit" id="approveNoteButton" class="btn btn-primary">Aprobar nota</button>
                                     <button type="submit"
                                             class="btn btn-outline-primary"
                                             formaction="/web/admin/notas/{{ nota.id }}/precios"
@@ -751,7 +743,7 @@
                 </div>
                 <div class="table-scroll-shell">
                     <div class="table-responsive">
-                        <table class="table table-hover table-sm align-middle mb-0 note-materials-table">
+                        <table class="table table-hover table-sm align-middle mb-0">
                         <thead>
                         <tr>
                             <th data-title-col>Material</th>
@@ -782,15 +774,15 @@
                             {% if m.subpesajes %}
                                 <tr class="note-subpesaje-row">
                                     <td colspan="7">
-                                        <div class="note-subpesajes">
-                                            <span class="note-subpesajes-label">Subpesajes</span>
-                                            <div class="note-subpesajes-list">
+                                        <div class="s-chip-list">
+                                            <span class="s-section-label">Subpesajes</span>
+                                            <div class="s-chip-list">
                                                 {% for sp in m.subpesajes %}
-                                                    <div class="note-subpesaje-item">
+                                                    <div class="s-chip">
                                                         <span class="pill">{{ "{:,.2f}".format(sp.peso_kg or 0) }} kg</span>
                                                         <span class="text-muted small">Desc: {{ "{:,.2f}".format(sp.descuento_kg or 0) }} kg</span>
                                                         {% if sp.foto_url %}
-                                                            <a href="{{ sp.foto_url }}" target="_blank" rel="noopener" class="note-subpesaje-link">Ver evidencia</a>
+                                                            <a href="{{ sp.foto_url }}" target="_blank" rel="noopener" class="s-chip__link">Ver evidencia</a>
                                                         {% endif %}
                                                     </div>
                                                 {% endfor %}
@@ -808,8 +800,8 @@
         </div>
     {% endif %}
     {% if is_approved %}
-        <div class="note-workspace-grid">
-            <div class="note-main-column">
+        <div class="s-split">
+            <div class="s-split__main">
                 {% if can_manage_note %}
                     <div class="card mb-3" id="note-returns">
                         <div class="card-body">
@@ -823,7 +815,7 @@
                             <form method="post" action="/web/admin/notas/{{ nota.id }}/devolucion-parcial" class="note-return-form" data-current-total="{{ nota.total_monto or 0 }}" data-current-paid="{{ nota.monto_pagado or 0 }}" data-iva-factor="{{ (1 + ((iva_pct or 0) / 100)) if nota.iva_incluido else 1 }}">
                             <div class="table-scroll-shell">
                                 <div class="table-responsive">
-                                    <table class="table table-hover table-sm align-middle mb-0 note-return-table">
+                                    <table class="table table-hover table-sm align-middle mb-0">
                                     <thead>
                                     <tr>
                                         <th data-title-col>Material</th>
@@ -847,31 +839,31 @@
                                             </td>
                                             <td class="text-end">{{ "{:,.3f}".format(nm.kg_neto or 0) }}</td>
                                             <td class="text-end">${{ "{:,.5f}".format(nm.precio_unitario or 0) }}</td>
-                                            <td class="text-end note-return-input-cell">
+                                            <td class="text-end">
                                                 <input class="form-control form-control-sm text-end note-return-kg-input" type="number" step="0.001" min="0" max="{{ nm.kg_neto or 0 }}" name="devol_kg_{{ nm.id }}" aria-label="Kilos a devolver de {{ nm.material.nombre if nm.material else ('material #' ~ nm.material_id) }}" value="{{ kg_input if kg_input is not none else '' }}">
                                             </td>
-                                            <td class="text-end note-return-input-cell">
+                                            <td class="text-end">
                                                 <input class="form-control form-control-sm text-end note-return-price-input" type="number" step="0.00001" min="0" name="devol_precio_{{ nm.id }}" aria-label="Precio de devolución de {{ nm.material.nombre if nm.material else ('material #' ~ nm.material_id) }}" value="{{ precio_input if precio_input is not none else (nm.precio_unitario or 0) }}">
                                             </td>
-                                            <td class="text-end note-return-preview">$0.00</td>
+                                            <td class="text-end fw-semibold">$0.00</td>
                                         </tr>
                                     {% endfor %}
                                     </tbody>
                                     </table>
                                 </div>
                             </div>
-                            <div class="note-return-summary-grid mt-3">
-                                <div class="note-return-summary-item">
+                            <div class="s-defs mt-3">
+                                <div class="s-def">
                                     <span class="s-def__label">Nuevo total estimado</span>
-                                    <strong id="return_new_total">${{ "{:,.2f}".format(nota.total_monto or 0) }}</strong>
+                                    <span class="s-def__value" id="return_new_total">${{ "{:,.2f}".format(nota.total_monto or 0) }}</span>
                                 </div>
-                                <div class="note-return-summary-item">
+                                <div class="s-def">
                                     <span class="s-def__label">Saldo estimado</span>
-                                    <strong id="return_new_balance">${{ "{:,.2f}".format(saldo_pendiente or 0) }}</strong>
+                                    <span class="s-def__value" id="return_new_balance">${{ "{:,.2f}".format(saldo_pendiente or 0) }}</span>
                                 </div>
-                                <div class="note-return-summary-item">
+                                <div class="s-def">
                                     <span class="s-def__label">Saldo a favor estimado</span>
-                                    <strong id="return_new_favor">${{ "{:,.2f}".format(saldo_a_favor or 0) }}</strong>
+                                    <span class="s-def__value" id="return_new_favor">${{ "{:,.2f}".format(saldo_a_favor or 0) }}</span>
                                 </div>
                             </div>
                             <div class="row g-3 align-items-end mt-1">
@@ -897,7 +889,7 @@
                                 <h2 class="h6 text-dark mb-1">Pagos y abonos</h2>
                                 <p class="text-muted small mb-0">Administra el pago inicial, registra abonos adicionales y deshaz movimientos cuando sea necesario.</p>
                             </div>
-                            <div class="note-payment-summary">
+                            <div class="s-between">
                                 <span>Total: <strong>${{ "{:,.2f}".format(nota.total_monto or 0) }}</strong></span>
                                 <span>Abonos activos: <strong>${{ "{:,.2f}".format(pagos_activos_total or 0) }}</strong></span>
                                 <span>Saldo: <strong class="{{ 'text-danger' if saldo_pendiente > 0 else 'text-success' }}">${{ "{:,.2f}".format(saldo_pendiente or 0) }}</strong></span>
@@ -905,9 +897,9 @@
                         </div>
 
                         {% if can_manage_note %}
-                            <div class="note-payment-panels">
-                                <form method="post" action="/web/admin/notas/{{ nota.id }}/pago-inicial" class="note-payment-form">
-                                <div class="note-form-card-title">Corregir pago inicial</div>
+                            <div class="s-form-grid">
+                                <form method="post" action="/web/admin/notas/{{ nota.id }}/pago-inicial" class="s-subpanel">
+                                <div class="s-card-title">Corregir pago inicial</div>
                                 <div class="row g-2 align-items-end">
                                     <div class="col-md-6">
                                         <label class="form-label" for="pago_inicial_monto">Pago inicial objetivo</label>
@@ -962,8 +954,8 @@
                                 </div>
                                 <div class="form-text text-muted mt-2">Útil cuando la nota se aprobó con un pago inicial incorrecto. Si eliges una Cuenta Scrap360, el descuento saldra de ahi; si fue una transferencia o cheque externo, puedes dejar las cuentas vacias.</div>
                                 </form>
-                                <form method="post" action="/web/admin/notas/{{ nota.id }}/pago" class="note-payment-form">
-                                <div class="note-form-card-title">Registrar nuevo abono</div>
+                                <form method="post" action="/web/admin/notas/{{ nota.id }}/pago" class="s-subpanel">
+                                <div class="s-card-title">Registrar nuevo abono</div>
                                 <div class="row g-2 align-items-end">
                                     <div class="col-md-6">
                                         <label class="form-label" for="f_monto_pagado">Monto</label>
@@ -1033,7 +1025,7 @@
 
                         <div class="table-scroll-shell mt-3">
                             <div class="table-responsive">
-                                <table class="table table-sm align-middle mb-0 note-payments-table">
+                                <table class="table table-sm align-middle mb-0">
                                 <thead>
                                 <tr>
                                     <th data-title-col>Fecha</th>
@@ -1088,7 +1080,7 @@
             </div>
 
             {% if can_manage_note %}
-                <div class="note-side-column">
+                <div class="s-split__rail">
                     <div class="card s-sticky-rail">
                         <div class="card-body">
                             <div class="d-flex align-items-center gap-2 mb-3">
@@ -1176,7 +1168,7 @@
                         <h2 class="h6 text-dark mb-1">Ajuste de saldo ligado a esta nota</h2>
                         <p class="text-muted small mb-0">Corrige el saldo financiero de esta nota sin tocar inventario, pesos ni totales originales. Se mantiene auditable y se puede revertir una sola vez.</p>
                     </div>
-                    <div class="note-adjust-badges">
+                    <div class="s-badge-stack">
                         <span class="badge bg-light text-dark border">{{ note_balance_adjustments|length }} registros</span>
                         <span class="badge bg-success">{{ note_balance_adjustment_active_count }} activos</span>
                         <span class="badge bg-secondary">{{ note_balance_adjustment_reversion_count }} reversiones</span>
@@ -1208,9 +1200,9 @@
                 </div>
 
                 {% if is_approved and can_manage_note %}
-                    <div class="note-adjust-layout">
-                        <form method="post" action="/web/admin/notas/{{ nota.id }}/ajuste-saldo" class="note-adjust-form">
-                            <div class="note-adjust-form-grid">
+                    <div class="s-form-grid">
+                        <form method="post" action="/web/admin/notas/{{ nota.id }}/ajuste-saldo">
+                            <div class="s-form-grid">
                                 <div>
                                     <label class="form-label" for="note_balance_adjust_type">Tipo de ajuste</label>
                                     <select class="form-select" name="ajuste_saldo_tipo" id="note_balance_adjust_type">
@@ -1222,34 +1214,34 @@
                                     <label class="form-label" for="note_balance_adjust_amount">Monto</label>
                                     <input class="form-control" type="number" step="0.01" min="0.01" name="ajuste_saldo_monto" id="note_balance_adjust_amount" value="{{ form_ajuste_saldo_monto or '' }}" placeholder="0.00" required>
                                 </div>
-                                <div class="note-adjust-field--comment">
+                                <div class="s-field--full">
                                     <label class="form-label" for="f_ajuste_saldo_comentario">Comentario</label>
                                     <input class="form-control" type="text" name="ajuste_saldo_comentario" value="{{ form_ajuste_saldo_comentario or '' }}" placeholder="Obligatorio. Ejemplo: nota cubierta por acuerdo comercial." required id="f_ajuste_saldo_comentario">
                                 </div>
                             </div>
-                            <div class="note-adjust-actions">
+                            <div class="s-form-actions">
                                 <button type="submit" class="btn btn-outline-primary">Registrar ajuste de saldo</button>
                             </div>
                         </form>
 
                         <div class="s-subpanel">
-                            <div class="note-adjust-preview-title">Impacto estimado</div>
-                            <div class="note-adjust-preview-copy">Esta acción solo modifica el saldo efectivo. No cambia kilos, inventario, pagos ya registrados ni el total original de la nota.</div>
-                            <div class="note-adjust-preview-grid">
-                                <div class="note-adjust-preview-item">
+                            <div class="s-section-label">Impacto estimado</div>
+                            <div>Esta acción solo modifica el saldo efectivo. No cambia kilos, inventario, pagos ya registrados ni el total original de la nota.</div>
+                            <div class="s-defs">
+                                <div class="s-def">
                                     <span class="s-def__label">Saldo actual</span>
-                                    <strong id="note_balance_adjust_preview_current">${{ "{:,.2f}".format((saldo_pendiente or 0) if saldo_pendiente > 0 else -(saldo_a_favor or 0)) }}</strong>
+                                    <span class="s-def__value" id="note_balance_adjust_preview_current">${{ "{:,.2f}".format((saldo_pendiente or 0) if saldo_pendiente > 0 else -(saldo_a_favor or 0)) }}</span>
                                 </div>
-                                <div class="note-adjust-preview-item">
+                                <div class="s-def">
                                     <span class="s-def__label">Ajuste</span>
-                                    <strong id="note_balance_adjust_preview_delta">$0.00</strong>
+                                    <span class="s-def__value" id="note_balance_adjust_preview_delta">$0.00</span>
                                 </div>
-                                <div class="note-adjust-preview-item">
+                                <div class="s-def">
                                     <span class="s-def__label">Saldo resultante</span>
-                                    <strong id="note_balance_adjust_preview_result">${{ "{:,.2f}".format((saldo_pendiente or 0) if saldo_pendiente > 0 else -(saldo_a_favor or 0)) }}</strong>
+                                    <span class="s-def__value" id="note_balance_adjust_preview_result">${{ "{:,.2f}".format((saldo_pendiente or 0) if saldo_pendiente > 0 else -(saldo_a_favor or 0)) }}</span>
                                 </div>
                             </div>
-                            <div class="note-adjust-preview-hint">Reducir saldo sirve para liquidar o bonificar esta nota sin tocar inventario. Aumentar saldo sirve para cargar diferencias o aclaraciones financieras específicas.</div>
+                            <div class="form-text">Reducir saldo sirve para liquidar o bonificar esta nota sin tocar inventario. Aumentar saldo sirve para cargar diferencias o aclaraciones financieras específicas.</div>
                         </div>
                     </div>
                 {% else %}
@@ -1270,7 +1262,7 @@
                 {% if note_balance_adjustments %}
                     <div class="table-scroll-shell mt-3">
                         <div class="table-responsive">
-                            <table class="table table-sm align-middle mb-0 note-payments-table">
+                            <table class="table table-sm align-middle mb-0">
                                 <thead>
                                 <tr>
                                     <th data-title-col>Fecha</th>
@@ -1335,7 +1327,7 @@
                         <h2 class="h6 text-dark mb-1">Ajuste manual ligado a esta nota</h2>
                         <p class="text-muted small mb-0">Corrige inventario operativo desde esta nota sin modificar totales, pagos o valuación. El ajuste queda auditado y se puede revertir una sola vez.</p>
                     </div>
-                    <div class="note-adjust-badges">
+                    <div class="s-badge-stack">
                         <span class="badge bg-light text-dark border">{{ note_adjustments|length }} registros</span>
                         <span class="badge bg-success">{{ note_adjustment_active_count }} activos</span>
                         <span class="badge bg-secondary">{{ note_adjustment_reversion_count }} reversiones</span>
@@ -1343,10 +1335,10 @@
                 </div>
 
                 {% if is_approved and can_manage_note %}
-                    <div class="note-adjust-layout">
-                        <form method="post" action="/web/admin/notas/{{ nota.id }}/ajuste-manual" class="note-adjust-form">
-                            <div class="note-adjust-form-grid">
-                                <div class="note-adjust-field--material">
+                    <div class="s-form-grid">
+                        <form method="post" action="/web/admin/notas/{{ nota.id }}/ajuste-manual">
+                            <div class="s-form-grid">
+                                <div class="s-field--full">
                                     <label class="form-label" for="note_adjust_material">Material de la nota</label>
                                     <select class="form-select" name="ajuste_nota_material_id" id="note_adjust_material" required>
                                         <option value="">Selecciona material</option>
@@ -1372,34 +1364,34 @@
                                     <label class="form-label" for="note_adjust_qty">Cantidad (kg)</label>
                                     <input class="form-control" type="number" step="0.001" min="0.001" name="ajuste_cantidad_kg" id="note_adjust_qty" value="{{ form_ajuste_cantidad or '' }}" placeholder="0.000" required>
                                 </div>
-                                <div class="note-adjust-field--comment">
+                                <div class="s-field--full">
                                     <label class="form-label" for="f_ajuste_comentario">Comentario</label>
                                     <input class="form-control" type="text" name="ajuste_comentario" value="{{ form_ajuste_comentario or '' }}" placeholder="Opcional. Ejemplo: diferencia detectada en patio." id="f_ajuste_comentario">
                                 </div>
                             </div>
-                            <div class="note-adjust-actions">
+                            <div class="s-form-actions">
                                 <button type="submit" class="btn btn-outline-primary">Registrar ajuste ligado a nota</button>
                             </div>
                         </form>
 
                         <div class="s-subpanel">
-                            <div class="note-adjust-preview-title">Impacto estimado</div>
-                            <div class="note-adjust-preview-copy">Usa este panel para validar que el ajuste afecta el material correcto antes de guardarlo. No modifica montos, solo inventario y trazabilidad.</div>
-                            <div class="note-adjust-preview-grid">
-                                <div class="note-adjust-preview-item">
+                            <div class="s-section-label">Impacto estimado</div>
+                            <div>Usa este panel para validar que el ajuste afecta el material correcto antes de guardarlo. No modifica montos, solo inventario y trazabilidad.</div>
+                            <div class="s-defs">
+                                <div class="s-def">
                                     <span class="s-def__label">Kg en nota</span>
-                                    <strong id="note_adjust_preview_kg">-</strong>
+                                    <span class="s-def__value" id="note_adjust_preview_kg">-</span>
                                 </div>
-                                <div class="note-adjust-preview-item">
+                                <div class="s-def">
                                     <span class="s-def__label">Stock actual</span>
-                                    <strong id="note_adjust_preview_stock">-</strong>
+                                    <span class="s-def__value" id="note_adjust_preview_stock">-</span>
                                 </div>
-                                <div class="note-adjust-preview-item">
+                                <div class="s-def">
                                     <span class="s-def__label">Stock estimado</span>
-                                    <strong id="note_adjust_preview_result">-</strong>
+                                    <span class="s-def__value" id="note_adjust_preview_result">-</span>
                                 </div>
                             </div>
-                            <div class="note-adjust-preview-hint">Puedes aumentar o disminuir stock. Si la disminución deja inventario negativo, el sistema la bloqueará.</div>
+                            <div class="form-text">Puedes aumentar o disminuir stock. Si la disminución deja inventario negativo, el sistema la bloqueará.</div>
                         </div>
                     </div>
                 {% else %}
@@ -1424,7 +1416,7 @@
                 {% if note_adjustments %}
                     <div class="table-scroll-shell mt-3">
                         <div class="table-responsive">
-                            <table class="table table-sm align-middle mb-0 note-payments-table">
+                            <table class="table table-sm align-middle mb-0">
                                 <thead>
                                 <tr>
                                     <th>Fecha</th>
@@ -1509,7 +1501,7 @@
                 </div>
                 <div class="table-scroll-shell">
                     <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-0 note-payments-table">
+                        <table class="table table-sm align-middle mb-0">
                             <thead>
                             <tr>
                                 <th>Fecha</th>
@@ -1581,7 +1573,7 @@
                 </div>
                 <div class="table-scroll-shell">
                     <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-0 note-aux-table">
+                        <table class="table table-sm align-middle mb-0">
                         <thead>
                         <tr>
                             <th>Sucursal</th>
@@ -1632,20 +1624,20 @@
 
     <div class="card">
         <div class="card-body">
-            <div class="note-comments-header">
+            <div class="s-between">
                 <h2 class="h6 text-dark mb-0">Comentarios y contexto</h2>
             </div>
-            <div class="row g-3 note-comments-grid">
+            <div class="row g-3">
                 <div class="col-md-6">
                     <div class="s-subpanel">
-                        <div class="note-comment-title">Trabajador</div>
-                        <div class="note-comment-body">{{ nota.comentarios_trabajador or '-' }}</div>
+                        <div class="s-section-label">Trabajador</div>
+                        <div class="s-subpanel">{{ nota.comentarios_trabajador or '-' }}</div>
                     </div>
                 </div>
                 <div class="col-md-6">
                     <div class="s-subpanel">
-                        <div class="note-comment-title">Admin</div>
-                        <div class="note-comment-body">{{ nota.comentarios_admin or '-' }}</div>
+                        <div class="s-section-label">Admin</div>
+                        <div class="s-subpanel">{{ nota.comentarios_admin or '-' }}</div>
                     </div>
                 </div>
             </div>
@@ -1900,7 +1892,7 @@
             togglePagoInicialCuenta();
         }
 
-        const noteTable = document.querySelector('.note-materials-table');
+        const noteTable = document.querySelector('.');
         const priceEndpoint = noteTable ? noteTable.dataset.precioEndpoint : '';
         const tipoOperacion = noteTable ? noteTable.dataset.tipoOperacion : '';
 
@@ -2133,7 +2125,7 @@
             returnForm.querySelectorAll('tbody tr').forEach((row) => {
                 const kgInput = row.querySelector('.note-return-kg-input');
                 const priceInput = row.querySelector('.note-return-price-input');
-                const preview = row.querySelector('.note-return-preview');
+                const preview = row.querySelector('.fw-semibold');
                 if (!kgInput || !priceInput || !preview) return;
                 const rowImpact = parseNumber(kgInput.value) * parseNumber(priceInput.value) * ivaFactor;
                 totalImpact += rowImpact;

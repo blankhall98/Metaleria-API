@@ -25,9 +25,9 @@
 
     <div class="card mb-3">
         <div class="card-body">
-            <div class="note-flow-card">
+            <div class="s-between">
                 <div>
-                    <div class="note-flow-title">Flujo de edición sugerido</div>
+                    <div class="s-card-title">Flujo de edición sugerido</div>
                     <div class="text-muted small">{{ edit_step_copy }}</div>
                 </div>
                 <a href="#note-edit-materials" class="btn btn-outline-primary btn-sm">Ir a materiales</a>
@@ -42,8 +42,8 @@
 
     <div class="card mb-3">
         <div class="card-body">
-            <div class="note-hero-header">
-                <div class="note-hero-copy">
+            <div class="s-between">
+                <div class="s-grow">
                     <div class="d-flex flex-wrap gap-2 mb-2">
                         {# El tipo de operación no es un estado: la palabra lo dice sin color. #}
                         {{ badge(operation_label, 'muted') }}
@@ -67,9 +67,9 @@
                         {{ trabajador.nombre_completo if trabajador else '-' }}
                     </p>
                 </div>
-                <div class="note-hero-side text-lg-end">
-                    <div class="note-hero-label">Folio</div>
-                    <div class="note-hero-folio">{{ folio or '-' }}</div>
+                <div class="text-lg-end">
+                    <div class="s-def__label">Folio</div>
+                    <div class="s-folio">{{ folio or '-' }}</div>
                     <div class="text-muted small">Solo superadmin</div>
                 </div>
             </div>
@@ -92,8 +92,8 @@
     </div>
 
     <form method="post" id="noteEditForm">
-        <div class="note-workspace-grid">
-            <div class="note-main-column">
+        <div class="s-split">
+            <div class="s-split__main">
                 <div class="card mb-3" id="note-edit-materials">
                     <div class="card-body">
                         <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
@@ -104,7 +104,7 @@
                         </div>
                         <div class="table-scroll-shell">
                             <div class="table-responsive">
-                                <table class="table table-hover table-sm align-middle mb-0 note-materials-table">
+                                <table class="table table-hover table-sm align-middle mb-0">
                                 <thead>
                                 <tr>
                                     <th data-title-col>Material</th>
@@ -129,7 +129,7 @@
                                         </td>
                                         <td>
                                             {% if m.subpesajes %}
-                                                <div class="d-grid gap-2 note-edit-subpesajes">
+                                                <div class="d-grid gap-2">
                                                     {% for sp in m.subpesajes %}
                                                         <div class="input-group input-group-sm">
                                                             <span class="input-group-text">Peso</span>
@@ -198,35 +198,35 @@
                 </div>
             </div>
 
-            <div class="note-side-column">
+            <div class="s-split__rail">
                 <div class="card s-sticky-rail" id="note-edit-impact">
                     <div class="card-body">
                         <div class="d-flex align-items-center gap-2 mb-3">
                             <span class="chip-strong">Guardar</span>
                             <span class="text-muted small">Impacto administrativo y contable</span>
                         </div>
-                        <div class="note-edit-impact-grid mb-3">
-                            <div class="note-adjust-preview-item">
+                        <div class="s-defs mb-3">
+                            <div class="s-def">
                                 <span class="s-def__label">Monto pagado</span>
                                 <span class="s-def__value">${{ "{:,.2f}".format(nota.monto_pagado or 0) }}</span>
                             </div>
-                            <div class="note-adjust-preview-item">
+                            <div class="s-def">
                                 <span class="s-def__label">Saldo pendiente</span>
-                                <strong id="note-edit-balance-value">${{ "{:,.2f}".format(saldo_pendiente or 0) }}</strong>
+                                <span class="s-def__value" id="note-edit-balance-value">${{ "{:,.2f}".format(saldo_pendiente or 0) }}</span>
                             </div>
-                            <div class="note-adjust-preview-item">
+                            <div class="s-def">
                                 <span class="s-def__label">Saldo a favor</span>
-                                <strong id="note-edit-favor-value">${{ "{:,.2f}".format(saldo_a_favor or 0) }}</strong>
+                                <span class="s-def__value" id="note-edit-favor-value">${{ "{:,.2f}".format(saldo_a_favor or 0) }}</span>
                             </div>
                         </div>
                         <label class="form-label" for="comentario_edicion">Comentario de edición</label>
                         <textarea class="form-control" id="comentario_edicion" name="comentario_edicion" rows="5" placeholder="Explica por qué se modifica la nota.">{{ comentario_edicion }}</textarea>
                         <div class="form-text text-muted">Si la nota ya estaba aprobada, los cambios ajustan inventario y log contable. Si el nuevo total queda por debajo de lo ya pagado, el excedente se conserva como saldo a favor.</div>
 
-                        <div class="note-actions mt-3">
-                            <div class="note-actions-title">Acciones</div>
-                            <div class="note-actions-row">
-                                <button type="submit" class="btn btn-primary note-action-primary">Guardar cambios</button>
+                        <div class="s-subpanel mt-3">
+                            <div class="s-section-label">Acciones</div>
+                            <div class="s-badge-stack">
+                                <button type="submit" class="btn btn-primary">Guardar cambios</button>
                                 <a href="/web/admin/notas/{{ nota.id }}" class="btn btn-outline-secondary">Cancelar</a>
                             </div>
                         </div>
@@ -334,7 +334,7 @@
         const totalEl = document.getElementById('note-total-value');
         if (!subtotalEl || !ivaEl || !totalEl) return;
         let baseTotal = 0;
-        document.querySelectorAll('.note-materials-table tbody tr').forEach((row) => {
+        document.querySelectorAll('. tbody tr').forEach((row) => {
             const subtotalInput = row.querySelector('.note-subtotal-input');
             if (!subtotalInput) return;
             baseTotal += parseNumber(subtotalInput.value);
@@ -460,7 +460,7 @@
         input.addEventListener('input', () => syncRowFromSubpesajes(input));
     });
 
-    document.querySelectorAll('.note-materials-table tbody tr').forEach((row) => {
+    document.querySelectorAll('. tbody tr').forEach((row) => {
         updateRowKgDisplay(row, getRowKgNeto(row));
     });
     updateTotals();

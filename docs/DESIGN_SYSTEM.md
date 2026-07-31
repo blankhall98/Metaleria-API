@@ -365,6 +365,22 @@ like interactive pills — use `.s-section-label`.
 `{{ empty('Sin movimientos', 'Amplía el rango de fechas…') }}` — icon, what
 happened, and how to recover. Never a bare sentence in a tall blank card.
 
+### Classes a script holds on to
+
+A handful of class names carry no style at all — they exist so the pricing and
+weighing scripts can find a field: `note-unit-input`, `note-subtotal`,
+`note-kg-mode`, `note-precio-mode`, `note-tipo-precio`, `note-return-kg-input`
+and a few more, 21 uses in `note_detail.html` and `note_edit.html`.
+
+**Leave them.** They are behaviour, not presentation: renaming one silently
+breaks the total a nota is approved with, and there is nothing to gain visually.
+If you touch them, move them to `data-` attributes and update the selectors in
+the same commit — do not rename them as if they were styling.
+
+Everything else that is not in this document is a leftover. The census in
+`scripts/check_ui.js` treats any other `note-*`, `notes-*`, `ops-*`,
+`corte-caja-*`, `evidence-*` or `record-*` class as a regression.
+
 ### Icons
 
 From the sprite only: `{{ icon('truck') }}`, `{{ icon('plus', 's-icon--sm') }}`.

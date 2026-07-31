@@ -127,10 +127,10 @@
                 </div>
 
                 {% if group.subpesajes|length > 0 %}
-                    <div class="evidence-grid mt-3">
+                    <div class="s-media-grid mt-3">
                         {% for sp in group.subpesajes %}
-                            <div class="evidence-item">
-                                <div class="evidence-item-head">
+                            <div class="s-media-card">
+                                <div class="s-media-card__head">
                                     <div>
                                         <div class="text-muted small">Pesaje {{ sp.order }}</div>
                                         <div class="small text-muted">Neto {{ "{:,.2f}".format(sp.neto_kg or 0) }} {{ group.unit }}</div>
@@ -141,19 +141,21 @@
                                         {{ badge('Pendiente', 'bad') }}
                                     {% endif %}
                                 </div>
-                                <div class="evidence-media">
+                                <div class="s-media-card__thumb">
                                     {% if sp.foto_url %}
-                                        <a href="{{ sp.foto_url }}" target="_blank" rel="noopener" class="evidence-link">
+                                        <a href="{{ sp.foto_url }}" target="_blank" rel="noopener" class="s-media-card__link">
                                             <img src="{{ sp.foto_url }}" alt="Evidencia" loading="lazy">
                                         </a>
                                 {% else %}
-                                    <div class="evidence-empty">
-                                        <div class="evidence-empty-line"></div>
+                                    {# El sistema dice qué es un estado vacío:
+                                       un icono y una frase, no una rayita. #}
+                                    <div class="s-media-card__empty">
+                                        {{ icon('image', 's-icon--lg') }}
                                         <div class="small">Sin evidencia</div>
                                     </div>
                                 {% endif %}
                                 </div>
-                                <div class="evidence-metrics">
+                                <div class="s-media-card__meta">
                                     <div>
                                         <span class="text-muted small">Bruto</span>
                                         <strong>{{ "{:,.2f}".format(sp.peso_kg or 0) }} {{ group.unit }}</strong>
@@ -170,13 +172,13 @@
                                     {% endif %}
                                 </div>
                                 {% if can_upload %}
-                                    <form method="post" enctype="multipart/form-data" action="{{ upload_action_base }}/{{ sp.id }}/evidencia" class="evidence-upload evidence-upload--picker" data-evidence-form>
-                                        <button class="btn btn-sm btn-outline-primary evidence-picker-btn" type="button" data-evidence-trigger>
+                                    <form method="post" enctype="multipart/form-data" action="{{ upload_action_base }}/{{ sp.id }}/evidencia" class="s-media-upload s-media-upload--picker" data-evidence-form>
+                                        <button class="btn btn-sm btn-outline-primary w-100" type="button" data-evidence-trigger>
                                             {{ icon('camera', 's-icon--sm') }} Agregar evidencia
                                         </button>
                                         <p class="form-text mb-0">Máx. {{ max_mb }} MB por imagen.</p>
-                                        <input class="evidence-file-input" type="file" name="file" accept="image/*" data-evidence-input="gallery">
-                                        <input class="evidence-file-input" type="file" name="file" accept="image/*" {% if capture_mode %}capture="{{ capture_mode }}"{% endif %} data-evidence-input="camera">
+                                        <input class="s-file-input" type="file" name="file" accept="image/*" data-evidence-input="gallery">
+                                        <input class="s-file-input" type="file" name="file" accept="image/*" {% if capture_mode %}capture="{{ capture_mode }}"{% endif %} data-evidence-input="camera">
                                     </form>
                                 {% endif %}
                             </div>
@@ -199,13 +201,13 @@
                 {{ badge('Total: ' ~ (extra_evidencias_total | default(0)), 'muted') }}
             </div>
             {% if extra_evidencias and extra_evidencias|length > 0 %}
-                <div class="extra-evidence-grid mt-3">
+                <div class="s-thumb-grid mt-3">
                     {% for ev in extra_evidencias %}
-                        <div class="extra-evidence-item">
+                        <div class="s-thumb">
                             <a href="{{ ev.url }}" target="_blank" rel="noopener">
-                                <img src="{{ ev.url }}" alt="Evidencia extra" loading="lazy" class="extra-evidence-thumb">
+                                <img src="{{ ev.url }}" alt="Evidencia extra" loading="lazy" class="s-thumb__img">
                             </a>
-                            <div class="extra-evidence-actions s-between">
+                            <div class="s-thumb__actions s-between">
                                 <span class="text-muted small">{{ ev.created_at|datetime_local if ev.created_at else "-" }}</span>
                                 <a href="{{ ev.url }}" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm">Ver</a>
                             </div>
@@ -219,19 +221,19 @@
     </div>
 </div>
 
-<div class="evidence-picker-modal" id="evidencePickerModal" aria-hidden="true">
-    <div class="evidence-picker-backdrop" data-evidence-close></div>
-    <div class="evidence-picker-card" role="dialog" aria-modal="true" aria-labelledby="evidencePickerTitle">
-        <div class="evidence-picker-header">
+<div class="s-sheet" id="evidencePickerModal" aria-hidden="true">
+    <div class="s-sheet__backdrop" data-evidence-close></div>
+    <div class="s-sheet__panel" role="dialog" aria-modal="true" aria-labelledby="evidencePickerTitle">
+        <div class="s-sheet__head">
             <h3 id="evidencePickerTitle">Agregar evidencia</h3>
-            <button type="button" class="evidence-picker-close" data-evidence-close aria-label="Cerrar">&times;</button>
+            <button type="button" class="s-sheet__close" data-evidence-close aria-label="Cerrar">&times;</button>
         </div>
         <p class="text-muted small mb-0">Elige cómo quieres subir la foto.</p>
-        <div class="evidence-picker-actions">
+        <div class="s-sheet__actions">
             <button type="button" class="btn btn-primary w-100" data-evidence-option="camera">Tomar foto</button>
             <button type="button" class="btn btn-outline-primary w-100" data-evidence-option="gallery">Elegir de la galería</button>
         </div>
-        <div class="evidence-picker-hint text-muted small">Formatos JPG/PNG. Máx. {{ max_mb }} MB.</div>
+        <div class="s-sheet__hint text-muted small">Formatos JPG/PNG. Máx. {{ max_mb }} MB.</div>
     </div>
 </div>
 <script>
@@ -275,7 +277,7 @@
                 if (targetInput) targetInput.click();
             });
         });
-        document.querySelectorAll('.evidence-file-input').forEach((input) => {
+        document.querySelectorAll('.s-file-input').forEach((input) => {
             input.addEventListener('change', () => {
                 if (!input.files || !input.files.length) return;
                 const formEl = input.closest('form');
