@@ -805,24 +805,24 @@
                 {% if can_manage_note %}
                     <div class="card mb-3" id="note-returns">
                         <div class="card-body">
-                            <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
+                            <div class="s-card-head">
                                 <div>
-                                    <h2 class="h6 text-dark mb-1">Devolución parcial</h2>
-                                    <p class="text-muted small mb-0">Edita cuantas unidades regresan por material y a que precio por kilo se valora la devolución.</p>
+                                    <h2 class="s-card-title">Devolución parcial</h2>
+                                    <p class="s-card-sub">Edita cuántas unidades regresan por material y a qué precio por kilo se valora la devolución.</p>
                                 </div>
-                                <span class="badge bg-light text-dark border">No genera reembolso automático</span>
+                                {{ badge('No genera reembolso automático', 'muted') }}
                             </div>
                             <form method="post" action="/web/admin/notas/{{ nota.id }}/devolucion-parcial" class="note-return-form" data-current-total="{{ nota.total_monto or 0 }}" data-current-paid="{{ nota.monto_pagado or 0 }}" data-iva-factor="{{ (1 + ((iva_pct or 0) / 100)) if nota.iva_incluido else 1 }}">
                             <div class="table-scroll-shell">
                                 <div class="table-responsive">
                                     <table class="table table-hover table-sm align-middle mb-0">
+                                    {# Los kilos y el precio de hoy son un solo dato:
+                                       de qué se parte. Separados no cabían. #}
                                     <thead>
                                     <tr>
                                         <th data-title-col>Material</th>
-                                        <th class="text-end">Kg neto actual</th>
-                                        <th class="text-end">Precio actual/kg</th>
-                                        <th class="text-end" data-mobile-primary>Kg a devolver</th>
-                                        <th class="text-end">Precio devolución/kg</th>
+                                        <th class="text-end">Actual</th>
+                                        <th class="text-end" data-mobile-primary>Devolución</th>
                                         <th class="text-end" data-mobile-primary>Impacto estimado</th>
                                     </tr>
                                     </thead>
@@ -837,13 +837,24 @@
                                                     <div class="text-muted small">La devolución descuenta neto desde subpesajes.</div>
                                                 {% endif %}
                                             </td>
-                                            <td class="text-end">{{ "{:,.3f}".format(nm.kg_neto or 0) }}</td>
-                                            <td class="text-end">${{ "{:,.5f}".format(nm.precio_unitario or 0) }}</td>
                                             <td class="text-end">
-                                                <input class="form-control form-control-sm text-end note-return-kg-input" type="number" step="0.001" min="0" max="{{ nm.kg_neto or 0 }}" name="devol_kg_{{ nm.id }}" aria-label="Kilos a devolver de {{ nm.material.nombre if nm.material else ('material #' ~ nm.material_id) }}" value="{{ kg_input if kg_input is not none else '' }}">
+                                                <span class="s-cell-key">{{ "{:,.3f}".format(nm.kg_neto or 0) }} kg</span>
+                                                <span class="s-cell-sub">${{ "{:,.5f}".format(nm.precio_unitario or 0) }} / kg</span>
                                             </td>
+                                            {# Los kilos y su precio son la misma
+                                               decisión, así que van juntos: en
+                                               columnas separadas no cabían. #}
                                             <td class="text-end">
-                                                <input class="form-control form-control-sm text-end note-return-price-input" type="number" step="0.00001" min="0" name="devol_precio_{{ nm.id }}" aria-label="Precio de devolución de {{ nm.material.nombre if nm.material else ('material #' ~ nm.material_id) }}" value="{{ precio_input if precio_input is not none else (nm.precio_unitario or 0) }}">
+                                                <span class="s-stack-tight">
+                                                    <span class="s-field-inline">
+                                                        <span class="s-def__label">Kg</span>
+                                                        <input class="form-control form-control-sm text-end s-input-qty note-return-kg-input" type="number" step="0.001" min="0" max="{{ nm.kg_neto or 0 }}" name="devol_kg_{{ nm.id }}" aria-label="Kilos a devolver de {{ nm.material.nombre if nm.material else ('material #' ~ nm.material_id) }}" value="{{ kg_input if kg_input is not none else '' }}">
+                                                    </span>
+                                                    <span class="s-field-inline">
+                                                        <span class="s-def__label">$/kg</span>
+                                                        <input class="form-control form-control-sm text-end s-input-qty note-return-price-input" type="number" step="0.00001" min="0" name="devol_precio_{{ nm.id }}" aria-label="Precio de devolución de {{ nm.material.nombre if nm.material else ('material #' ~ nm.material_id) }}" value="{{ precio_input if precio_input is not none else (nm.precio_unitario or 0) }}">
+                                                    </span>
+                                                </span>
                                             </td>
                                             <td class="text-end fw-semibold">$0.00</td>
                                         </tr>
@@ -1026,55 +1037,61 @@
                         <div class="table-scroll-shell mt-3">
                             <div class="table-responsive">
                                 <table class="table table-sm align-middle mb-0">
+                                {# Diez columnas no caben en esta maqueta. Se fusiona
+                                   lo que cuenta una sola historia: la fecha con su
+                                   estado, el método con la cuenta por la que salió
+                                   el dinero, y el comentario con quien lo escribió. #}
                                 <thead>
                                 <tr>
-                                    <th data-title-col>Fecha</th>
-                                    <th data-mobile-primary>Estado</th>
+                                    <th data-title-col data-mobile-primary>Fecha</th>
                                     <th class="text-end" data-mobile-primary>Monto</th>
-                                    <th>Método</th>
-                                    <th>Caja</th>
-                                    <th>Cuenta</th>
-                                    <th>Cuenta Scrap360</th>
-                                    <th>Usuario</th>
-                                    <th>Comentario</th>
-                                    <th class="text-end">Acciones</th>
+                                    <th data-mobile-primary>Pago</th>
+                                    <th class="s-cell-wrap">Comentario</th>
+                                    <th class="s-col-fit"><span class="s-visually-hidden">Acciones</span></th>
                                 </tr>
                                 </thead>
                                 <tbody>
                                 {% for pago in pagos %}
                                     {% set pago_activo = (pago.monto or 0) > 0 %}
+                                    {% set caja = pago.caja_sucursal.nombre if pago.caja_sucursal else (sucursal.nombre if pago.metodo_pago == 'efectivo' and sucursal else '') %}
+                                    {% set cuenta = pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or '') %}
+                                    {% set destino = [cuenta, pago.cuenta_scrap360.nombre if pago.cuenta_scrap360 else '', caja]|select|join(' · ') %}
                                     <tr class="{{ 'is-reverted' if not pago_activo else '' }}">
-                                        <td>{{ pago.created_at|datetime_local if pago.created_at else '-' }}</td>
-                                        <td>{% if pago_activo %}<span class="badge bg-success">Activo</span>{% else %}<span class="badge bg-light text-dark border">Deshecho</span>{% endif %}</td>
-                                        <td class="text-end fw-semibold">{% if pago_activo %}${{ "{:,.2f}".format(pago.monto or 0) }}{% else %}<span class="text-muted">$0.00</span>{% endif %}</td>
-                                        <td>{{ pago.metodo_pago|capitalize if pago.metodo_pago else '-' }}</td>
-                                        <td>{{ pago.caja_sucursal.nombre if pago.caja_sucursal else (sucursal.nombre if pago.metodo_pago == 'efectivo' and sucursal else '-') }}</td>
-                                        <td>{{ pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or '-') }}</td>
-                                        <td>{{ pago.cuenta_scrap360.nombre if pago.cuenta_scrap360 else '-' }}</td>
-                                        <td>{{ pago.usuario.username if pago.usuario else (pago.usuario_id or '-') }}</td>
-                                        <td>{{ pago.comentario or '-' }}</td>
-                                        <td class="text-end">
-                                            {% if pago_activo %}
-                                                {% if can_manage_note %}
-                                                    <form method="post" action="/web/admin/notas/{{ nota.id }}/pago/{{ pago.id }}/deshacer" class="d-inline" onsubmit="return confirm('Revertir este abono restaurara saldo, log contable y movimiento de Cuenta Scrap360 asociado. Deseas continuar?');">
-                                                        <button type="submit" class="btn btn-sm btn-outline-danger">Revertir pago</button>
-                                                    </form>
-                                                {% else %}
-                                                    <span class="text-muted small">Solo consulta</span>
-                                                {% endif %}
+                                        <td>
+                                            <span class="s-cell-key">{{ pago.created_at|datetime_local if pago.created_at else '—' }}</span>
+                                            {% if pago_activo %}{{ badge('Activo', 'ok') }}{% else %}{{ badge('Deshecho', 'muted') }}{% endif %}
+                                        </td>
+                                        <td class="text-end fw-semibold">
+                                            {% if pago_activo %}{{ money(pago.monto, 'plain') }}{% else %}{{ money(0) }}{% endif %}
+                                        </td>
+                                        <td>
+                                            <span class="s-cell-key">{{ pago.metodo_pago|capitalize if pago.metodo_pago else '—' }}</span>
+                                            {% if destino %}<span class="s-cell-sub">{{ destino }}</span>{% endif %}
+                                        </td>
+                                        <td class="s-cell-wrap">
+                                            {{ pago.comentario or '—' }}
+                                            <span class="s-cell-sub">{{ pago.usuario.username if pago.usuario else (pago.usuario_id or '—') }}</span>
+                                        </td>
+                                        <td class="s-col-fit text-end">
+                                            {% if pago_activo and can_manage_note %}
+                                                <form method="post" action="/web/admin/notas/{{ nota.id }}/pago/{{ pago.id }}/deshacer" class="d-inline">
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                            data-confirm="Revertir este abono restaurará el saldo, la contabilidad y el movimiento de Cuenta Scrap360 asociado. ¿Deseas continuar?">Revertir pago</button>
+                                                </form>
+                                            {% elif pago_activo %}
+                                                <span class="text-muted small">Solo consulta</span>
                                             {% else %}
                                                 <span class="text-muted small">Solo auditoría</span>
                                             {% endif %}
                                         </td>
                                     </tr>
+                                {% else %}
+                                    {{ empty_row(5, 'Aún no hay pagos registrados para esta nota.') }}
                                 {% endfor %}
                                 </tbody>
                                 </table>
                             </div>
                         </div>
-                        {% if pagos|length == 0 %}
-                            <p class="text-muted small mb-0 mt-3">Aún no hay pagos registrados para esta nota.</p>
-                        {% endif %}
                     </div>
                 </div>
             </div>

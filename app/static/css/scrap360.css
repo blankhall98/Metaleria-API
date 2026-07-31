@@ -2894,6 +2894,25 @@ button.corte-pago-pill:hover { filter: brightness(0.97); }
    the same component, so they get one name and one set of tokens.
    ========================================================================== */
 
+/* --- Two fields that are one decision -------------------------------------
+   Kilos and their price per kilo belong together: in separate columns the
+   returns table did not fit its column. The label rides beside the control
+   instead of above it, so the pair stays one row tall. */
+
+.s-stack-tight {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-1);
+    align-items: flex-end;
+}
+
+.s-field-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+}
+.s-field-inline .s-def__label { margin-bottom: 0; }
+
 /* --- Chip list ------------------------------------------------------------
    A wrapped row of small facts that belong to one record: the subpesajes of
    a material, each with its own link to its evidence. Replaces
