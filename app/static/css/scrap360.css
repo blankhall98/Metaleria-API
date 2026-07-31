@@ -2635,6 +2635,17 @@ textarea.form-control {
     white-space: nowrap;
 }
 
+/* A free-text column — a description, a comment — must be allowed to wrap,
+   including inside a long unbroken string. This replaces .corte-caja-text-cell,
+   which shipped alongside min-width forcers that stopped the table fitting. */
+.table td.s-cell-wrap,
+.table th.s-cell-wrap {
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    line-height: 1.4;
+}
+
 /* Numeric columns never wrap, but they are not fit-to-content: making every
    column request the same tiny width makes the browser share the slack out
    between them, which is how the action column ended up 180px wide. */
@@ -2808,6 +2819,17 @@ button.corte-pago-pill:hover { filter: brightness(0.97); }
     z-index: 150;
 }
 .app-has-mobile-dock .corte-floating-bar { bottom: 56px; }
+
+/* The bar is fixed to the viewport, so left: 0 put its first figure under the
+   pinned sidebar — "Sobrante" read as "brante". It starts where the content
+   starts, like everything else on the page. */
+@media (min-width: 1200px) {
+    body.role-super_admin .corte-floating-bar,
+    body.role-admin .corte-floating-bar,
+    body.role-visor .corte-floating-bar {
+        left: var(--s-sidebar-w);
+    }
+}
 
 .corte-float-item { display: flex; flex-direction: column; }
 .corte-float-item span {

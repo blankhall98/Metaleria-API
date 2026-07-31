@@ -5,7 +5,7 @@
 
 {% block content %}
 {% set owner_key = 'cliente:' ~ partner.id if partner_base == 'clientes' else 'proveedor:' ~ partner.id %}
-<div class="record-page">
+<div>
 
 {% call page_header(partner_label ~ ' · ' ~ partner.nombre_completo, eyebrow='Relaciones',
                     sub='ID ' ~ partner.id ~ ' · ' ~ (record_scope_label if unified_enabled else tipo_operacion_label)) %}

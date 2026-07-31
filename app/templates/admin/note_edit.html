@@ -6,7 +6,7 @@
 {% block content %}
 {% set note_state = nota.estado.value %}
 {% set edit_step_copy = 'Corrige materiales, valida el impacto y deja comentario antes de guardar.' %}
-<div class="note-detail-page note-detail-page--edit">
+<div>
     {% call page_header('Editar nota ' ~ (folio or ('#' ~ nota.id)),
                         eyebrow='Edición administrativa',
                         sub=operation_label ~ ' vinculada a ' ~ partner_label|lower ~ ': ' ~ partner_name) %}
@@ -23,7 +23,7 @@
         <div class="alert alert-success py-2 small mb-3">Edición guardada correctamente.</div>
     {% endif %}
 
-    <div class="card hover-lift mb-3">
+    <div class="card mb-3">
         <div class="card-body">
             <div class="note-flow-card">
                 <div>
@@ -40,7 +40,7 @@
         </div>
     </div>
 
-    <div class="card hover-lift mb-3 note-hero-card">
+    <div class="card mb-3">
         <div class="card-body">
             <div class="note-hero-header">
                 <div class="note-hero-copy">
@@ -90,10 +90,10 @@
         </div>
     </div>
 
-    <form method="post" id="noteEditForm" class="note-edit-form">
+    <form method="post" id="noteEditForm">
         <div class="note-workspace-grid">
             <div class="note-main-column">
-                <div class="card hover-lift mb-3 note-report-card note-editor-card" id="note-edit-materials">
+                <div class="card mb-3" id="note-edit-materials">
                     <div class="card-body">
                         <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
                             <div>
@@ -198,7 +198,7 @@
             </div>
 
             <div class="note-side-column">
-                <div class="card hover-lift note-side-card note-side-card--edit" id="note-edit-impact">
+                <div class="card s-sticky-rail" id="note-edit-impact">
                     <div class="card-body">
                         <div class="d-flex align-items-center gap-2 mb-3">
                             <span class="chip-strong">Guardar</span>
@@ -231,7 +231,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="card hover-lift note-side-card note-side-card--edit mt-3">
+                <div class="card s-sticky-rail mt-3">
                     <div class="card-body">
                         <div class="d-flex align-items-center gap-2 mb-3">
                             <span class="chip-strong">Inventario</span>
