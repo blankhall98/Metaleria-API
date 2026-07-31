@@ -1303,6 +1303,14 @@ table.table-hover > tbody > tr:hover > * { background-color: var(--s-p50) !impor
         font-size: var(--s-fs-sm);
         min-height: 0;
     }
+
+    /* --s-row-h is the height of a row in a grid. Here a cell is a stacked
+       field, so it takes the height of what it holds. Left at 40px, the
+       "Ver N campos más" toggle overflowed its cell and landed on top of the
+       next field. The selector has to out-specify `.table > tbody > tr > td`,
+       which is where the fixed height comes from. */
+    .s-table-cards .table > tbody > tr > td,
+    .s-table-cards .table > tbody > tr > th { height: auto; }
     .s-table-cards tbody td:last-child { border-bottom: 0; }
 
     .s-table-cards tbody td::before {

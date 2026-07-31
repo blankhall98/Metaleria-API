@@ -45,7 +45,8 @@
             <div class="note-hero-header">
                 <div class="note-hero-copy">
                     <div class="d-flex flex-wrap gap-2 mb-2">
-                        <span class="notes-op-chip {{ 'buy' if nota.tipo_operacion.value == 'compra' else 'sale' }}">{{ operation_label }}</span>
+                        {# El tipo de operación no es un estado: la palabra lo dice sin color. #}
+                        {{ badge(operation_label, 'muted') }}
                         {% if note_state == 'BORRADOR' %}
                             <span class="badge bg-secondary">Borrador</span>
                         {% elif note_state == 'EN_REVISION' %}
@@ -106,15 +107,15 @@
                                 <table class="table table-hover table-sm align-middle mb-0 note-materials-table">
                                 <thead>
                                 <tr>
-                                    <th>Material</th>
+                                    <th data-title-col>Material</th>
                                     <th>Subpesajes</th>
                                     <th>Tipo precio</th>
                                     <th class="text-end">Kg bruto</th>
                                     <th class="text-end">Kg desc</th>
-                                    <th class="text-end">Kg neto</th>
+                                    <th class="text-end" data-mobile-primary>Kg neto</th>
                                     <th class="text-end">Kg reales inventario</th>
                                     <th class="text-end">Precio unitario</th>
-                                    <th class="text-end">Subtotal</th>
+                                    <th class="text-end" data-mobile-primary>Subtotal</th>
                                 </tr>
                                 </thead>
                                 <tbody>

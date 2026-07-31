@@ -118,7 +118,7 @@
                 <table class="table table-hover align-middle">
                     <thead>
                     <tr>
-                        <th data-title-col>Mes</th>
+                        <th data-title-col data-mobile-primary>Mes</th>
                         <th class="text-end">Movimientos</th>
                         <th class="text-end">{{ 'Pagos' if is_partner else 'Ingresos' }}</th>
                         <th class="text-end">{{ 'Reversos' if is_partner else 'Egresos' }}</th>
@@ -165,12 +165,12 @@
                 <table class="table table-hover align-middle">
                     <thead>
                     <tr>
-                        <th data-title-col>Partner</th>
-                        <th>Tipo</th>
+                        <th data-title-col data-mobile-primary>Partner</th>
+                        <th data-mobile-primary>Tipo</th>
                         <th class="text-end">Notas</th>
                         <th class="text-end">Esperado</th>
                         <th class="text-end">Pagado</th>
-                        <th class="text-end">Pendiente</th>
+                        <th class="text-end" data-mobile-primary>Pendiente</th>
                         <th class="text-end">Pagos</th>
                     </tr>
                     </thead>
@@ -213,8 +213,8 @@
                         <table class="table table-hover align-middle">
                             <thead>
                             <tr>
-                                <th data-title-col>Fecha</th>
-                                <th class="text-end">Monto</th>
+                                <th data-title-col data-mobile-primary>Fecha</th>
+                                <th class="text-end" data-mobile-primary>Monto</th>
                                 <th>Método</th>
                                 <th>Comentario</th>
                             </tr>
@@ -239,10 +239,10 @@
                         <table class="table table-hover align-middle">
                             <thead>
                             <tr>
-                                <th>Fecha</th>
-                                <th data-title-col>Nota</th>
-                                <th>Partner</th>
-                                <th class="text-end">Monto</th>
+                                <th data-mobile-primary>Fecha</th>
+                                <th data-title-col data-mobile-primary>Nota</th>
+                                <th data-mobile-primary>Partner</th>
+                                <th class="text-end" data-mobile-primary>Monto</th>
                                 <th>Cuenta de la nota</th>
                             </tr>
                             </thead>
@@ -282,10 +282,10 @@
                         <table class="table table-hover align-middle">
                             <thead>
                             <tr>
-                                <th>Fecha</th>
-                                <th data-title-col>Nota</th>
-                                <th>Estado</th>
-                                <th class="text-end">Monto</th>
+                                <th data-mobile-primary>Fecha</th>
+                                <th data-title-col data-mobile-primary>Nota</th>
+                                <th data-mobile-primary>Estado</th>
+                                <th class="text-end" data-mobile-primary>Monto</th>
                             </tr>
                             </thead>
                             <tbody>
@@ -343,13 +343,13 @@
                         <thead>
                         <tr>
                             <th>ID</th>
-                            <th data-title-col>Tipo</th>
+                            <th data-title-col data-mobile-primary>Tipo</th>
                             <th>Naturaleza</th>
-                            <th class="text-end">Monto</th>
-                            <th>Nota</th>
+                            <th class="text-end" data-mobile-primary>Monto</th>
+                            <th data-mobile-primary>Nota</th>
                             <th>Sucursal</th>
                             <th>Usuario</th>
-                            <th>Fecha</th>
+                            <th data-mobile-primary>Fecha</th>
                             <th>Comentario</th>
                         </tr>
                         </thead>
@@ -394,9 +394,9 @@
                 <table class="table table-hover align-middle">
                     <thead>
                     <tr>
-                        <th>Fecha</th>
-                        <th data-title-col>Nota</th>
-                        <th class="text-end">Monto</th>
+                        <th data-mobile-primary>Fecha</th>
+                        <th data-title-col data-mobile-primary>Nota</th>
+                        <th class="text-end" data-mobile-primary>Monto</th>
                         <th>Método</th>
                         <th>Usuario</th>
                         <th>Comentario</th>
@@ -448,14 +448,14 @@
                 <table class="table table-hover align-middle">
                     <thead>
                     <tr>
-                        <th data-title-col>Folio</th>
+                        <th data-title-col data-mobile-primary>Folio</th>
                         <th>Operación</th>
-                        <th>Partner</th>
-                        <th>Estado</th>
+                        <th data-mobile-primary>Partner</th>
+                        <th data-mobile-primary>Estado</th>
                         <th>Sucursal</th>
                         <th class="text-end">Total</th>
                         <th class="text-end">Pagado</th>
-                        <th class="text-end">Saldo</th>
+                        <th class="text-end" data-mobile-primary>Saldo</th>
                         <th><span class="s-visually-hidden">Acciones</span></th>
                     </tr>
                     </thead>

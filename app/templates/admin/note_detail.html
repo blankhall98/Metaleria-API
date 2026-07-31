@@ -172,7 +172,8 @@
             <div class="note-hero-header">
                 <div class="note-hero-copy">
                     <div class="d-flex flex-wrap gap-2 mb-2">
-                        <span class="notes-op-chip {{ 'buy' if nota.tipo_operacion.value == 'compra' else 'sale' }}">{{ operation_label }}</span>
+                        {# El tipo de operación no es un estado: la palabra lo dice sin color. #}
+                        {{ badge(operation_label, 'muted') }}
                         {% if note_state == 'BORRADOR' %}
                             <span class="badge bg-secondary">Borrador</span>
                         {% elif note_state == 'EN_REVISION' %}
@@ -385,8 +386,8 @@
                         <table class="table table-sm align-middle mb-0 note-payments-table">
                             <thead>
                             <tr>
-                                <th>Fecha</th>
-                                <th>Estado</th>
+                                <th data-title-col>Fecha</th>
+                                <th data-mobile-primary>Estado</th>
                                 <th>Usuario</th>
                                 <th>Comentario</th>
                                 <th>Reversión</th>
@@ -441,16 +442,16 @@
                                            data-precio-endpoint="/web/admin/notas/precio">
                                     <thead>
                                     <tr>
-                                        <th>Material</th>
+                                        <th data-title-col>Material</th>
                                         <th class="text-end">Kg bruto</th>
                                         <th class="text-end">Kg desc</th>
-                                        <th class="text-end">Kg neto</th>
+                                        <th class="text-end" data-mobile-primary>Kg neto</th>
                                         {% if user.rol == 'super_admin' %}
                                         <th class="text-end">Kg reales inventario</th>
                                         {% endif %}
                                         <th>Tipo precio</th>
                                         <th class="text-end">Precio unitario</th>
-                                        <th class="text-end">Subtotal</th>
+                                        <th class="text-end" data-mobile-primary>Subtotal</th>
                                     </tr>
                                     </thead>
                                     <tbody>
@@ -753,13 +754,13 @@
                         <table class="table table-hover table-sm align-middle mb-0 note-materials-table">
                         <thead>
                         <tr>
-                            <th>Material</th>
+                            <th data-title-col>Material</th>
                             <th class="text-end">Kg bruto</th>
                             <th class="text-end">Kg desc</th>
-                            <th class="text-end">Kg neto</th>
+                            <th class="text-end" data-mobile-primary>Kg neto</th>
                             <th>Tipo precio</th>
                             <th class="text-end">Precio unitario</th>
-                            <th class="text-end">Subtotal</th>
+                            <th class="text-end" data-mobile-primary>Subtotal</th>
                         </tr>
                         </thead>
                         <tbody>
@@ -825,12 +826,12 @@
                                     <table class="table table-hover table-sm align-middle mb-0 note-return-table">
                                     <thead>
                                     <tr>
-                                        <th>Material</th>
+                                        <th data-title-col>Material</th>
                                         <th class="text-end">Kg neto actual</th>
                                         <th class="text-end">Precio actual/kg</th>
-                                        <th class="text-end">Kg a devolver</th>
+                                        <th class="text-end" data-mobile-primary>Kg a devolver</th>
                                         <th class="text-end">Precio devolución/kg</th>
-                                        <th class="text-end">Impacto estimado</th>
+                                        <th class="text-end" data-mobile-primary>Impacto estimado</th>
                                     </tr>
                                     </thead>
                                     <tbody>
@@ -1035,9 +1036,9 @@
                                 <table class="table table-sm align-middle mb-0 note-payments-table">
                                 <thead>
                                 <tr>
-                                    <th>Fecha</th>
-                                    <th>Estado</th>
-                                    <th class="text-end">Monto</th>
+                                    <th data-title-col>Fecha</th>
+                                    <th data-mobile-primary>Estado</th>
+                                    <th class="text-end" data-mobile-primary>Monto</th>
                                     <th>Método</th>
                                     <th>Caja</th>
                                     <th>Cuenta</th>
@@ -1272,11 +1273,11 @@
                             <table class="table table-sm align-middle mb-0 note-payments-table">
                                 <thead>
                                 <tr>
-                                    <th>Fecha</th>
+                                    <th data-title-col>Fecha</th>
                                     <th>Estado</th>
-                                    <th class="text-end">Ajuste</th>
+                                    <th class="text-end" data-mobile-primary>Ajuste</th>
                                     <th class="text-end">Saldo anterior</th>
-                                    <th class="text-end">Saldo resultante</th>
+                                    <th class="text-end" data-mobile-primary>Saldo resultante</th>
                                     <th>Comentario</th>
                                     <th class="text-end">Acciones</th>
                                 </tr>
@@ -1427,9 +1428,9 @@
                                 <thead>
                                 <tr>
                                     <th>Fecha</th>
-                                    <th>Material</th>
-                                    <th>Estado</th>
-                                    <th class="text-end">Movimiento</th>
+                                    <th data-title-col>Material</th>
+                                    <th data-mobile-primary>Estado</th>
+                                    <th class="text-end" data-mobile-primary>Movimiento</th>
                                     <th class="text-end">Stock anterior</th>
                                     <th class="text-end">Stock resultante</th>
                                     <th>Comentario</th>
@@ -1512,11 +1513,11 @@
                             <thead>
                             <tr>
                                 <th>Fecha</th>
-                                <th>Material</th>
+                                <th data-title-col>Material</th>
                                 <th class="text-end">Kg</th>
                                 <th class="text-end">Precio/kg</th>
-                                <th class="text-end">Monto</th>
-                                <th>Estado</th>
+                                <th class="text-end" data-mobile-primary>Monto</th>
+                                <th data-mobile-primary>Estado</th>
                                 <th>Usuario</th>
                                 <th>Comentario</th>
                                 <th class="text-end">Accion</th>
@@ -1584,10 +1585,10 @@
                         <thead>
                         <tr>
                             <th>Sucursal</th>
-                            <th>Material</th>
+                            <th data-title-col>Material</th>
                             <th>Tipo</th>
-                            <th class="text-end">Cantidad</th>
-                            <th class="text-end">Saldo</th>
+                            <th class="text-end" data-mobile-primary>Cantidad</th>
+                            <th class="text-end" data-mobile-primary>Saldo</th>
                             <th>Fecha</th>
                             <th class="text-end">Detalle</th>
                         </tr>

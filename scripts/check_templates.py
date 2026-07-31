@@ -15,6 +15,10 @@ Hace dos cosas que ninguna otra herramienta del repo hacía:
    compila igual y el daño pasa desapercibido. Así se perdió una vez
    `{% elif (diferencia_provisional or 0) < 0 %}`, que quedó como `{% elif < %}`.
 
+La comparación es **contra HEAD**, así que un cambio deliberado a una de esas
+expresiones aparece listado hasta que lo commiteas. Eso es a propósito: el
+punto es que ninguna se altere sin que alguien lo mire y diga que sí.
+
 Sale distinto de cero si algo falla, para poder frenar un cambio.
 """
 

@@ -373,9 +373,9 @@
                     <thead>
                         <tr>
                             <th data-title-col>Cuenta Scrap360</th>
-                            <th class="text-end">Compras (egreso)</th>
+                            <th class="text-end" data-mobile-primary>Compras (egreso)</th>
                             <th class="text-end">Notas de compra</th>
-                            <th class="text-end">Ventas (ingreso)</th>
+                            <th class="text-end" data-mobile-primary>Ventas (ingreso)</th>
                             <th class="text-end">Notas de venta</th>
                         </tr>
                     </thead>
@@ -423,8 +423,8 @@
                                 <th class="text-end">Kg</th>
                                 <th class="text-end">Precio</th>
                                 <th class="text-end">Total de la línea</th>
-                                <th class="text-end">Total de la orden</th>
-                                <th>Método</th>
+                                <th class="text-end" data-mobile-primary>Total de la orden</th>
+                                <th data-mobile-primary>Método</th>
                                 <th>Cuenta Scrap360</th>
                                 <th>Número de cheque</th>
                             </tr>
@@ -488,8 +488,8 @@
                                 <th class="text-end">Kg</th>
                                 <th class="text-end">Precio</th>
                                 <th class="text-end">Total de la línea</th>
-                                <th class="text-end">Total de la orden</th>
-                                <th>Método</th>
+                                <th class="text-end" data-mobile-primary>Total de la orden</th>
+                                <th data-mobile-primary>Método</th>
                                 <th>Cuenta Scrap360</th>
                                 <th>Número de cheque</th>
                             </tr>
@@ -612,7 +612,7 @@
                         <p class="s-card-sub">Cobros recibidos en efectivo por {{ "${:,.2f}".format(ventas_efectivo_total or 0) }}.</p>
                         <div class="table-responsive">
                             <table class="table table-hover align-middle">
-                                <thead><tr><th>Fecha</th><th>Orden</th><th data-title-col>Cliente</th><th class="text-end">Cobro</th><th>Caja</th></tr></thead>
+                                <thead><tr><th>Fecha</th><th>Orden</th><th data-title-col>Cliente</th><th class="text-end" data-mobile-primary>Cobro</th><th>Caja</th></tr></thead>
                                 <tbody>
                                     {% for row in ventas_efectivo_rows %}
                                         <tr><td>{{ row.fecha|datetime_local if row.fecha else '—' }}</td><td>{{ row.folio }}</td><td class="s-cell-wrap">{{ row.partner }}</td><td class="text-end">{{ money(row.monto_abs) }}</td><td>{{ row.caja_sucursal }}</td></tr>
@@ -628,7 +628,7 @@
                         <p class="s-card-sub">Pagos entregados en efectivo por {{ "${:,.2f}".format(compras_efectivo_total or 0) }}.</p>
                         <div class="table-responsive">
                             <table class="table table-hover align-middle">
-                                <thead><tr><th>Fecha</th><th>Orden</th><th data-title-col>Proveedor</th><th class="text-end">Pago</th><th>Caja</th></tr></thead>
+                                <thead><tr><th>Fecha</th><th>Orden</th><th data-title-col>Proveedor</th><th class="text-end" data-mobile-primary>Pago</th><th>Caja</th></tr></thead>
                                 <tbody>
                                     {% for row in compras_efectivo_rows %}
                                         <tr><td>{{ row.fecha|datetime_local if row.fecha else '—' }}</td><td>{{ row.folio }}</td><td class="s-cell-wrap">{{ row.partner }}</td><td class="text-end">{{ money(row.monto_abs) }}</td><td>{{ row.caja_sucursal }}</td></tr>
@@ -700,7 +700,7 @@
                         <p class="s-card-sub">Gastos de caja chica capturados durante la jornada.</p>
                         <div class="table-responsive">
                             <table class="table table-hover align-middle">
-                                <thead><tr><th>Fecha</th><th data-title-col>Descripción</th><th>Categoría</th><th>Usuario</th><th class="text-end">Monto</th></tr></thead>
+                                <thead><tr><th>Fecha</th><th data-title-col>Descripción</th><th>Categoría</th><th>Usuario</th><th class="text-end" data-mobile-primary>Monto</th></tr></thead>
                                 <tbody>
                                     {% for gasto in gastos %}
                                         <tr>
@@ -750,7 +750,7 @@
                 </div>
                 <div class="table-responsive">
                     <table class="table table-hover align-middle">
-                        <thead><tr><th>Fecha</th><th>Tipo</th><th>Orden</th><th data-title-col>Proveedor o cliente</th><th>Caja</th><th class="text-end">Monto</th><th>Comentario</th></tr></thead>
+                        <thead><tr><th>Fecha</th><th data-mobile-primary>Tipo</th><th>Orden</th><th data-title-col>Proveedor o cliente</th><th>Caja</th><th class="text-end" data-mobile-primary>Monto</th><th>Comentario</th></tr></thead>
                         <tbody>
                             {% for row in cash_movs %}
                             {% set tipo_meta = MOV_TIPO.get(row.tipo) %}
@@ -987,11 +987,11 @@
                 <thead>
                     <tr>
                         <th data-title-col>Fecha</th>
-                        <th>Estado</th>
+                        <th data-mobile-primary>Estado</th>
                         <th class="text-end">Saldo inicial</th>
                         <th class="text-end">Saldo esperado</th>
                         <th class="text-end">Saldo de cierre</th>
-                        <th class="text-end">Diferencia</th>
+                        <th class="text-end" data-mobile-primary>Diferencia</th>
                     </tr>
                 </thead>
                 <tbody>

@@ -234,7 +234,7 @@
                         <table class="table table-hover align-middle">
                             <thead>
                             <tr>
-                                <th data-title-col>Fecha</th>
+                                <th data-title-col data-mobile-primary>Fecha</th>
                                 <th>Sucursal(es)</th>
                                 <th class="text-end">Notas del día</th>
                                 <th>Folios considerados</th>
@@ -288,14 +288,14 @@
                     <table class="table table-hover align-middle">
                         <thead>
                         <tr>
-                            <th>Fecha</th>
-                            <th data-title-col>Movimiento</th>
-                            <th>Nota</th>
+                            <th data-mobile-primary>Fecha</th>
+                            <th data-title-col data-mobile-primary>Movimiento</th>
+                            <th data-mobile-primary>Nota</th>
                             <th>Método</th>
                             <th>Cuenta</th>
                             <th class="text-end">Cargo</th>
                             <th class="text-end">Abono</th>
-                            <th class="text-end">Saldo</th>
+                            <th class="text-end" data-mobile-primary>Saldo</th>
                             <th>Comentario</th>
                         </tr>
                         </thead>
@@ -422,14 +422,14 @@
                     <table class="table table-hover align-middle">
                         <thead>
                         <tr>
-                            <th data-title-col>Folio</th>
+                            <th data-title-col data-mobile-primary>Folio</th>
                             {% if unified_enabled %}<th>Operación</th>{% endif %}
-                            <th>Estado</th>
-                            <th>Fecha</th>
+                            <th data-mobile-primary>Estado</th>
+                            <th data-mobile-primary>Fecha</th>
                             <th>Sucursal</th>
                             <th class="text-end">Total</th>
                             <th class="text-end">Pagado</th>
-                            <th class="text-end">Saldo pendiente</th>
+                            <th class="text-end" data-mobile-primary>Saldo pendiente</th>
                             <th class="text-end">Saldo a favor</th>
                             <th><span class="s-visually-hidden">Acciones</span></th>
                         </tr>
@@ -529,10 +529,10 @@
                     <table class="table table-hover align-middle">
                         <thead>
                         <tr>
-                            <th>Fecha</th>
-                            <th data-title-col>Nota</th>
+                            <th data-mobile-primary>Fecha</th>
+                            <th data-title-col data-mobile-primary>Nota</th>
                             {% if unified_enabled %}<th>Operación</th>{% endif %}
-                            <th class="text-end">Monto</th>
+                            <th class="text-end" data-mobile-primary>Monto</th>
                             <th>Método</th>
                             <th>Cuenta</th>
                             <th>Usuario</th>

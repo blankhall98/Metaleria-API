@@ -226,14 +226,14 @@
                 <table class="table table-hover align-middle">
                     <thead>
                     <tr>
-                        <th data-title-col>Folio</th>
+                        <th data-title-col data-mobile-primary>Folio</th>
                         <th>Operación</th>
-                        <th>Estado</th>
+                        <th data-mobile-primary>Estado</th>
                         <th>Fecha</th>
                         <th>Sucursal</th>
-                        <th class="text-end">Total</th>
+                        <th class="text-end" data-mobile-primary>Total</th>
                         <th class="text-end">Pagado</th>
-                        <th class="text-end">Saldo pendiente</th>
+                        <th class="text-end" data-mobile-primary>Saldo pendiente</th>
                         <th class="text-end">Saldo a favor</th>
                         <th><span class="s-visually-hidden">Acciones</span></th>
                     </tr>
@@ -248,9 +248,9 @@
                                 <div class="text-muted small">#{{ nota.id }}</div>
                             </td>
                             <td>
-                                <span class="notes-op-chip {{ 'buy' if nota.tipo_operacion.value == 'compra' else 'sale' }}">
-                                    {{ nota.tipo_operacion.value|capitalize }}
-                                </span>
+                                {# El tipo de operación no es un estado: la palabra
+                                   lo dice, así que no necesita color. #}
+                                {{ badge(nota.tipo_operacion.value|capitalize, 'muted') }}
                             </td>
                             <td>
                                 {% if nota.estado.value == 'BORRADOR' %}
@@ -293,8 +293,8 @@
                     <thead>
                     <tr>
                         <th>Fecha</th>
-                        <th data-title-col>Nota</th>
-                        <th class="text-end">Monto</th>
+                        <th data-title-col data-mobile-primary>Nota</th>
+                        <th class="text-end" data-mobile-primary>Monto</th>
                         <th>Método</th>
                         <th>Cuenta</th>
                         <th>Usuario</th>
@@ -423,10 +423,10 @@
                 <thead>
                 <tr>
                     <th>ID</th>
-                    <th data-title-col>Tipo</th>
+                    <th data-title-col data-mobile-primary>Tipo</th>
                     <th>Naturaleza</th>
-                    <th class="text-end">Monto</th>
-                    <th>Nota</th>
+                    <th class="text-end" data-mobile-primary>Monto</th>
+                    <th data-mobile-primary>Nota</th>
                     <th>Cuenta</th>
                     <th>Sucursal</th>
                     <th>Usuario</th>
