@@ -2863,6 +2863,22 @@ button.corte-pago-pill:hover { filter: brightness(0.97); }
     .corte-float-divider { display: none; }
 }
 
+/* --- Sticky side rail ----------------------------------------------------
+   The panel that has to stay in reach while you scroll a long record: the
+   approval controls of a nota, the payment reference. Replaces
+   .note-side-card, whose offset was a hard-coded 88px. It only sticks where
+   there is room to scroll past it. */
+.s-sticky-rail {
+    position: sticky;
+    top: calc(var(--s-navbar-h) + var(--s-3));
+}
+
+@media (max-width: 1023.98px) {
+    /* On a narrow screen the rail is stacked under the content it belongs to,
+       so sticking it would park it over the next section. */
+    .s-sticky-rail { position: static; }
+}
+
 /* --- Denomination count input --------------------------------------------
    Was style="max-width: 7rem" repeated on six table rows. */
 .s-input-qty { max-width: 7rem; }
