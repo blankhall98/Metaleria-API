@@ -372,7 +372,8 @@ button.user-chip[aria-expanded="true"] .user-menu__chevron { transform: rotate(1
 .user-avatar,
 .user-table-avatar,
 .entity-avatar,
-.entity-avatar-lg {
+.entity-avatar-lg,
+.s-avatar-lg {
     background: var(--s-p600);
     background-image: none;
     color: var(--s-n0);
@@ -386,6 +387,36 @@ button.user-chip[aria-expanded="true"] .user-menu__chevron { transform: rotate(1
     box-shadow: none;
 }
 .user-avatar { width: 26px; height: 26px; font-size: 0.75rem; }
+
+.user-table-avatar { width: 32px; height: 32px; font-size: 0.8rem; flex: none; }
+
+.s-avatar-lg {
+    width: 72px;
+    height: 72px;
+    font-size: 1.5rem;
+    flex: none;
+}
+
+/* Avatar con foto de perfil: la imagen llena el círculo sin deformarse. */
+.user-avatar,
+.user-table-avatar,
+.s-avatar-lg {
+    overflow: hidden;
+}
+
+.user-avatar > img,
+.user-table-avatar > img,
+.s-avatar-lg > img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* El bloque de usuario del cajón navega al perfil propio: hereda el color
+   del texto para no leerse como un enlace azul. */
+a.nav-drawer-user { color: var(--s-text); }
+a.nav-drawer-user:hover { color: var(--s-p600); }
 
 .menu-trigger {
     min-height: 40px;

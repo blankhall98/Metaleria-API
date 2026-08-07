@@ -53,18 +53,22 @@
             <div class="s-rowmenu user-menu d-none d-sm-inline-flex">
                 <button type="button" id="userMenuToggle" class="user-chip user-menu__toggle"
                         aria-haspopup="menu" aria-expanded="false" aria-controls="userMenu">
-                    <span class="user-avatar">{{ user.username[0]|upper }}</span>
+                    <span class="user-avatar">
+                        {%- if user.foto_url -%}
+                            <img src="{{ user.foto_url }}" alt="">
+                        {%- else -%}
+                            {{ user.username[0]|upper }}
+                        {%- endif -%}
+                    </span>
                     <span class="d-none d-md-inline">{{ user.username }}</span>
                     <span class="text-muted d-none d-md-inline">&middot; {{ user.rol|replace('_', ' ')|title }}</span>
                     {{ icon('chevron-down', 's-icon--sm user-menu__chevron') }}
                 </button>
                 <div class="s-rowmenu__menu" id="userMenu" hidden role="menu" aria-label="Men&uacute; de usuario">
-                    {% if user.rol == 'super_admin' %}
-                        <a class="s-rowmenu__item d-flex align-items-center gap-2" role="menuitem"
-                           href="/web/admin/users/{{ user.id }}/editar">
-                            {{ icon('edit', 's-icon--sm') }} Editar perfil
-                        </a>
-                    {% endif %}
+                    <a class="s-rowmenu__item d-flex align-items-center gap-2" role="menuitem"
+                       href="/web/perfil">
+                        {{ icon('edit', 's-icon--sm') }} Editar perfil
+                    </a>
                     <a class="s-rowmenu__item s-rowmenu__item--danger d-flex align-items-center gap-2" role="menuitem"
                        href="/web/logout">
                         {{ icon('logout', 's-icon--sm') }} Cerrar sesi&oacute;n
@@ -173,13 +177,20 @@
         {% endif %}
 
         <div class="s-divider"></div>
-        <div class="nav-drawer-user d-flex align-items-center gap-2 px-2 pb-2" title="{{ user.username }} · {{ user.rol|replace('_', ' ')|title }}">
-            <span class="user-avatar">{{ user.username[0]|upper }}</span>
+        <a class="nav-drawer-user d-flex align-items-center gap-2 px-2 pb-2 text-decoration-none"
+           href="/web/perfil" title="Editar perfil de {{ user.username }}">
+            <span class="user-avatar">
+                {%- if user.foto_url -%}
+                    <img src="{{ user.foto_url }}" alt="">
+                {%- else -%}
+                    {{ user.username[0]|upper }}
+                {%- endif -%}
+            </span>
             <div class="small s-grow nav-drawer-user__text">
                 <div class="fw-semibold">{{ user.username }}</div>
                 <div class="text-muted">{{ user.rol|replace('_', ' ')|title }}</div>
             </div>
-        </div>
+        </a>
         <a class="btn btn-outline-secondary btn-sm nav-drawer-logout" href="/web/logout" title="Cerrar sesión">
             {{ icon('logout', 's-icon--sm') }} <span class="nav-drawer-logout__label">Cerrar sesi&oacute;n</span>
         </a>

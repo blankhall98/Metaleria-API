@@ -20,6 +20,22 @@
         <form method="post" action="/web/admin/users/{{ edit_user.id }}/editar" id="user-edit-form">
             <fieldset class="s-fieldset">
                 <legend>Identidad</legend>
+                <div class="d-flex align-items-center gap-3 mb-3">
+                    <span class="s-avatar-lg" aria-hidden="true">
+                        {%- if edit_user.foto_url -%}
+                            <img src="{{ edit_user.foto_url }}" alt="">
+                        {%- else -%}
+                            {{ edit_user.username[0]|upper }}
+                        {%- endif -%}
+                    </span>
+                    <p class="text-muted small mb-0">
+                        {% if edit_user.foto_url %}
+                            Foto de perfil que la persona subió desde su cuenta.
+                        {% else %}
+                            Sin foto de perfil; cada persona la sube desde su propia cuenta.
+                        {% endif %}
+                    </p>
+                </div>
                 <div class="s-form-grid">
                     <div>
                         <label class="form-label" for="username">Usuario <span class="s-req" aria-hidden="true">*</span></label>

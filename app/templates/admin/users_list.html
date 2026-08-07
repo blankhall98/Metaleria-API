@@ -73,8 +73,19 @@
                         {% set access_labels = user_access_map.get(u.id, []) %}
                         <tr>
                             <td>
-                                <div class="fw-semibold">{{ u.nombre_completo }}</div>
-                                <div class="text-muted small">@{{ u.username }} &middot; ID {{ u.id }}</div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="user-table-avatar" aria-hidden="true">
+                                        {%- if u.foto_url -%}
+                                            <img src="{{ u.foto_url }}" alt="">
+                                        {%- else -%}
+                                            {{ u.username[0]|upper }}
+                                        {%- endif -%}
+                                    </span>
+                                    <div>
+                                        <div class="fw-semibold">{{ u.nombre_completo }}</div>
+                                        <div class="text-muted small">@{{ u.username }} &middot; ID {{ u.id }}</div>
+                                    </div>
+                                </div>
                             </td>
                             <td>
                                 <div class="d-flex flex-wrap gap-1">

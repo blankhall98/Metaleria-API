@@ -34,6 +34,7 @@ class User(Base):
     username = Column(String(50), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
     nombre_completo = Column(String(200), nullable=False)
+    foto_url = Column(String(500), nullable=True)
 
     rol = Column(
         Enum(UserRole, name="user_role"),

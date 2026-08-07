@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_header, icon, defs, def %}
+
+{% block title %}Mi perfil{% endblock %}
+
+{% block content %}
+{% call page_header('Mi perfil', eyebrow='Cuenta',
+                    sub='Actualiza tu nombre, tu foto y tu contraseña de acceso.') %}
+{% endcall %}
+
+{% if ok %}
+    <div class="alert alert-success py-2 small mb-3">Perfil actualizado correctamente.</div>
+{% endif %}
+{% if error %}
+    <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
+{% endif %}
+
+{% set role_labels = {'super_admin': 'Super admin', 'admin': 'Admin', 'visor': 'Visor (solo lectura)', 'trabajador': 'Trabajador'} %}
+
+<div class="card s-narrow">
+    <div class="card-body">
+        <form method="post" action="/web/perfil" enctype="multipart/form-data"
+              data-submit-once="1" data-loading-text="Guardando…">
+            <fieldset class="s-fieldset">
+                <legend>Identidad</legend>
+                {% call defs() %}
+                    {{ def('Usuario', '@' ~ perfil.username, 'Con este nombre inicias sesión; solo un administrador puede cambiarlo.') }}
+                    {{ def('Rol', role_labels.get(perfil.rol.value, perfil.rol.value)) }}
+                {% endcall %}
+                <div class="s-form-grid mt-3">
+                    <div>
+                        <label class="form-label" for="nombre_completo">Nombre completo <span class="s-req" aria-hidden="true">*</span></label>
+                        <input class="form-control" type="text" id="nombre_completo" name="nombre_completo"
+                               value="{{ perfil.nombre_completo }}" required>
+                        <p class="form-text">Aparece en el historial de notas y movimientos.</p>
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset class="s-fieldset">
+                <legend>Foto de perfil</legend>
+                <div class="d-flex align-items-center gap-3 mb-3">
+                    <span class="s-avatar-lg" aria-hidden="true">
+                        {% if perfil.foto_url %}
+                            <img src="{{ perfil.foto_url }}" alt="">
+                        {% else %}
+                            {{ perfil.username[0]|upper }}
+                        {% endif %}
+                    </span>
+                    <div>
+                        {% if perfil.foto_url %}
+                            <p class="mb-1">Foto actual de tu perfil.</p>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="quitar_foto" name="quitar_foto" value="1">
+                                <label class="form-check-label" for="quitar_foto">Quitar la foto actual</label>
+                            </div>
+                        {% else %}
+                            <p class="text-muted mb-0">Aún no tienes foto; se muestra la inicial de tu usuario.</p>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="s-form-grid">
+                    <div>
+                        <label class="form-label" for="foto">Nueva foto</label>
+                        <input class="form-control" type="file" id="foto" name="foto" accept="image/*">
+                        <p class="form-text">JPG, PNG o WebP. Los administradores la ven en el directorio de usuarios.</p>
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset class="s-fieldset">
+                <legend>Contraseña</legend>
+                <div class="s-form-grid">
+                    <div>
+                        <label class="form-label" for="password_actual">Contraseña actual</label>
+                        <div class="s-password">
+                            <input class="form-control" type="password" id="password_actual" name="password_actual"
+                                   autocomplete="current-password">
+                            <button type="button" class="s-password__toggle" data-password-toggle="password_actual"
+                                    aria-label="Mostrar contraseña">{{ icon('eye', 's-icon--sm') }}</button>
+                        </div>
+                        <p class="form-text">Solo si quieres cambiarla; deja las tres vacías para conservarla.</p>
+                    </div>
+                    <div>
+                        <label class="form-label" for="password_nueva">Nueva contraseña</label>
+                        <div class="s-password">
+                            <input class="form-control" type="password" id="password_nueva" name="password_nueva"
+                                   autocomplete="new-password">
+                            <button type="button" class="s-password__toggle" data-password-toggle="password_nueva"
+                                    aria-label="Mostrar contraseña">{{ icon('eye', 's-icon--sm') }}</button>
+                        </div>
+                        <p class="form-text">Elige una que no uses en otro sistema.</p>
+                    </div>
+                    <div>
+                        <label class="form-label" for="password_confirmar">Confirmar nueva contraseña</label>
+                        <div class="s-password">
+                            <input class="form-control" type="password" id="password_confirmar" name="password_confirmar"
+                                   autocomplete="new-password">
+                            <button type="button" class="s-password__toggle" data-password-toggle="password_confirmar"
+                                    aria-label="Mostrar contraseña">{{ icon('eye', 's-icon--sm') }}</button>
+                        </div>
+                        <p class="form-text">Debe coincidir con la nueva contraseña.</p>
+                    </div>
+                </div>
+            </fieldset>
+
+            <div class="s-form-actions">
+                <a href="/web" class="btn btn-outline-secondary">Cancelar</a>
+                <button type="submit" class="btn btn-primary">Guardar cambios</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

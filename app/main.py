@@ -13,6 +13,7 @@ from app.api.router import api_router
 from app.web.admin import router as admin_web_router
 from app.web.worker import router as worker_web_router
 from app.web.files import router as files_web_router
+from app.web.perfil import router as perfil_web_router
 
 from app.core.config import get_settings
 from app.db.deps import get_db
@@ -141,6 +142,8 @@ def create_app() -> FastAPI:
     app.include_router(worker_web_router)
     # Web Files (uploads)
     app.include_router(files_web_router)
+    # Web Perfil (cuenta propia)
+    app.include_router(perfil_web_router)
 
     # Root JSON
     @app.get("/")
@@ -230,6 +233,7 @@ def create_app() -> FastAPI:
             "username": user_obj.username,
             "rol": user_obj.rol.value if hasattr(user_obj.rol, "value") else str(user_obj.rol),
             "sucursal_id": user_obj.sucursal_id,
+            "foto_url": user_obj.foto_url,
         }
 
         return RedirectResponse(url="/web", status_code=303)
