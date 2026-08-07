@@ -122,7 +122,12 @@
                     </tr>
                     </thead>
                     <tbody>
-                    {% for row in kpi_months %}
+                    {# Solo los meses con movimiento: doce filas de ceros no son
+                       un historial, son un desierto. Los meses quietos se
+                       resumen en una sola línea. #}
+                    {% set meses_activos = kpi_months | selectattr('movs') | list %}
+                    {% set meses_quietos = kpi_months | length - meses_activos | length %}
+                    {% for row in meses_activos %}
                         <tr>
                             <td>{{ row.label }}</td>
                             <td class="text-end">{{ row.movs }}</td>
@@ -133,6 +138,13 @@
                     {% else %}
                         {{ empty_row(5, 'Sin actividad mensual todavía.') }}
                     {% endfor %}
+                    {% if meses_activos and meses_quietos %}
+                        <tr>
+                            <td colspan="5" class="text-muted small">
+                                {{ meses_quietos }} mes{{ 'es' if meses_quietos != 1 }} sin actividad en el período.
+                            </td>
+                        </tr>
+                    {% endif %}
                     </tbody>
                 </table>
             </div>

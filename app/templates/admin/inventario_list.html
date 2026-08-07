@@ -83,7 +83,12 @@
                         <td>{{ inv.sucursal.nombre if inv.sucursal else inv.sucursal_id }}</td>
                         <td>{{ inv.material.nombre if inv.material else inv.material_id }}</td>
                         <td class="text-end">
-                            <span class="{% if (inv.stock_actual or 0) < 0 %}text-danger fw-semibold{% endif %}">{{ kg(inv.stock_actual) }}</span>
+                            {# Cada cifra puede explicarse: el saldo enlaza al kardex
+                               de ese material en esa sucursal. Un saldo en cero va
+                               atenuado — no es un dato caliente. #}
+                            <a class="s-drill" href="/web/admin/inventario/movimientos?sucursal_id={{ inv.sucursal_id }}&material_id={{ inv.material_id }}">
+                                <span class="{% if (inv.stock_actual or 0) < 0 %}text-danger fw-semibold{% elif not inv.stock_actual %}s-zero{% endif %}">{{ kg(inv.stock_actual) }}</span>
+                            </a>
                             {% if (inv.stock_actual or 0) < 0 %}
                                 <div class="small text-danger">Saldo en contra</div>
                             {% endif %}

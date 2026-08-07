@@ -318,7 +318,10 @@
                                 <span class="s-cell-sub">{{ 'A proveedor' if n.proveedor_id else 'A cliente' }}</span>
                             {% endif %}
                         </td>
-                        <td><span class="s-cell-key">{{ partner_name }}</span></td>
+                        {# El socio espejo de una transferencia se llama
+                           "Sucursal <sede>"; sin recorte se leía duplicado
+                           ("Sucursal Sucursal Centro"). #}
+                        <td><span class="s-cell-key">{{ partner_name|replace('Sucursal Sucursal ', 'Sucursal ') }}</span></td>
                         <td>
                             {{ sucursal_name }}
                             {% if n.tipo_operacion.value == 'compra' and n.inventario_sucursal_id and n.inventario_sucursal_id != n.sucursal_id %}

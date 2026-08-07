@@ -1389,6 +1389,12 @@ body.drawer-open { overflow: hidden; }
 .s-stat-link:hover .s-stat { background: var(--s-n25); }
 .s-stat-link:hover .s-stat__label { color: var(--s-p600); }
 
+/* Una cifra que enlaza a su desglose: tinta normal en reposo para no pintar
+   la tabla de azul, y el subrayado punteado solo al pasar el cursor. */
+.s-drill { color: inherit; text-decoration: none; }
+.s-drill:hover { color: var(--s-p600); }
+.s-drill:hover .s-zero { color: var(--s-p600); }
+
 /* El directorio de módulos del inicio duplica la barra lateral fija: solo se
    muestra donde la navegación vive en un cajón (móvil y tableta). */
 @media (min-width: 1200px) {

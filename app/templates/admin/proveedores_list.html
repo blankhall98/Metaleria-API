@@ -93,7 +93,7 @@
                     {% set p = row.proveedor %}
                     <tr>
                         <td>
-                            <div class="fw-semibold">{{ p.nombre_completo }}</div>
+                            <div class="fw-semibold">{{ p.nombre_completo|replace('Sucursal Sucursal ', 'Sucursal ') }}</div>
                             <div class="d-flex flex-wrap gap-1 mt-1">
                                 {% if row.direct_enabled %}
                                     {{ badge('Compra y venta', 'info') }}
@@ -141,7 +141,7 @@
                         <td>
                             <span class="s-actions">
                                 <a href="/web/admin/proveedores/{{ p.id }}/record" class="btn btn-sm btn-outline-secondary">
-                                    Historial
+                                    Ver
                                 </a>
                                 {% if user.rol in ['super_admin', 'admin'] %}
                                     <a href="/web/admin/cuentas?owner_key=proveedor:{{ p.id }}" class="btn btn-sm btn-outline-secondary">

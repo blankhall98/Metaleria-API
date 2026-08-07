@@ -156,6 +156,18 @@
                  'No hay sucursales dentro de tu alcance para calcular el valor del inventario.',
                  'branch') }}
     {% else %}
+        {# El total general primero: "¿cuánto vale todo mi inventario?" es la
+           pregunta que trae a esta pantalla. #}
+        {% set gran_total_valor = sucursal_summary | map(attribute='total_valor') | select | sum %}
+        {% set gran_total_kg = sucursal_summary | map(attribute='total_kg') | select | sum %}
+        {% set sin_ref_total = sucursal_summary | map(attribute='sin_precio_count') | select | sum %}
+        <div class="s-stats">
+            {{ stat('Valor total', money(gran_total_valor, 'plain'), 'Todas las sucursales a precios de valuación') }}
+            {{ stat('Kg totales', kg(gran_total_kg), 'Existencias acumuladas') }}
+            {{ stat('Sin referencia', sin_ref_total, 'Materiales sin precio fuente',
+                    'warn' if sin_ref_total else '') }}
+        </div>
+
         <div class="card">
             <div class="card-body">
                 <h2 class="s-card-title">Valor por sucursal</h2>
@@ -179,7 +191,7 @@
                                 <td class="text-end">{{ kg(row.total_kg) }}</td>
                                 <td class="text-end">{{ money(row.total_valor) }}</td>
                                 <td class="text-end">{{ row.materiales_con_stock }} / {{ row.materiales_total }}</td>
-                                <td class="text-end">{{ row.sin_precio_count }}</td>
+                                <td class="text-end">{{ row.sin_precio_count if row.sin_precio_count else '—' }}</td>
                                 <td class="text-end">
                                     <span class="s-actions">
                                         <a class="btn btn-sm btn-outline-primary" href="/web/admin/inventario/valor?sucursal_id={{ row.sucursal.id }}">Ver</a>
@@ -190,6 +202,14 @@
                             {{ empty_row(6, 'Sin sucursales con existencias.') }}
                         {% endfor %}
                         </tbody>
+                        <tfoot>
+                        <tr>
+                            <th>Total</th>
+                            <th class="text-end">{{ kg(gran_total_kg) }}</th>
+                            <th class="text-end">{{ money(gran_total_valor) }}</th>
+                            <th colspan="3"></th>
+                        </tr>
+                        </tfoot>
                     </table>
                 </div>
             </div>

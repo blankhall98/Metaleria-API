@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_header, icon, stat, badge, money, kg, empty_row %}
+{% from "_macros.html" import page_header, icon, stat, badge, money, kg, empty_row, anchor_nav %}
 
 {% block title %}Movimientos de inventario{% endblock %}
 
@@ -100,7 +100,12 @@
     {{ stat('Notas de compra', compra_total_notas, compra_total_movimientos ~ ' movimientos de compra considerados') }}
 </div>
 
-<div class="card mb-3">
+{{ anchor_nav([('#inv-resumen', 'Resumen'),
+               ('#inv-notas', 'Notas'),
+               ('#inv-ajustes', 'Ajustes'),
+               ('#inv-kardex', 'Kardex')]) }}
+
+<div class="card mb-3" id="inv-resumen">
     <div class="card-body">
         <h2 class="s-card-title">Precio promedio de compra por material</h2>
         <p class="s-card-sub">Promedio ponderado por kilos dentro del rango seleccionado.</p>
@@ -135,7 +140,7 @@
     </div>
 </div>
 
-<div class="card mb-3">
+<div class="card mb-3" id="inv-notas">
     <div class="card-body">
         <h2 class="s-card-title">Notas de compra del rango</h2>
         <p class="s-card-sub">
@@ -181,7 +186,7 @@
     </div>
 </div>
 
-<div class="card mb-3">
+<div class="card mb-3" id="inv-ajustes">
     <div class="card-body">
         <h2 class="s-card-title">Ajustes manuales del rango</h2>
         <p class="s-card-sub">
@@ -231,7 +236,7 @@
     </div>
 </div>
 
-<div class="card">
+<div class="card" id="inv-kardex">
     <div class="card-body">
         <h2 class="s-card-title">Movimientos del rango</h2>
         <p class="s-card-sub">

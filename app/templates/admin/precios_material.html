@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_header, icon, badge, empty_row %}
+{% from "_macros.html" import page_header, icon, badge, empty_row, stat %}
 
 {% block title %}Precios &middot; {{ material.nombre }}{% endblock %}
 
@@ -18,6 +18,24 @@
 
 {% set op_labels = {'compra': 'Compra', 'venta': 'Venta', 'comision': 'Comisión'} %}
 {% set cliente_labels = {'regular': 'Regular', 'mayorista': 'Mayorista', 'menudeo': 'Menudeo'} %}
+
+{# La lectura que importa antes que el historial: a cuánto se compra y a
+   cuánto se vende hoy (tarifa regular), y el margen entre ambas. #}
+{% set compra_vigente = precios | selectattr('activo') | selectattr('tipo_operacion.value', 'equalto', 'compra') | selectattr('tipo_cliente.value', 'equalto', 'regular') | first %}
+{% set venta_vigente = precios | selectattr('activo') | selectattr('tipo_operacion.value', 'equalto', 'venta') | selectattr('tipo_cliente.value', 'equalto', 'regular') | first %}
+{% if compra_vigente or venta_vigente %}
+    <div class="s-stats">
+        {{ stat('Compra vigente', compra_vigente.precio_por_unidad|precio if compra_vigente else '—',
+                'Tarifa regular por ' ~ material.unidad_medida) }}
+        {{ stat('Venta vigente', venta_vigente.precio_por_unidad|precio if venta_vigente else '—',
+                'Tarifa regular por ' ~ material.unidad_medida) }}
+        {% if compra_vigente and venta_vigente %}
+            {% set margen = (venta_vigente.precio_por_unidad or 0) - (compra_vigente.precio_por_unidad or 0) %}
+            {{ stat('Margen', margen|precio, 'Venta menos compra por ' ~ material.unidad_medida,
+                    'ok' if margen > 0 else ('bad' if margen < 0 else '')) }}
+        {% endif %}
+    </div>
+{% endif %}
 
 <div class="card">
     <div class="card-body">
