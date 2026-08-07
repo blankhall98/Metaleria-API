@@ -28,7 +28,7 @@ Confirmed findings from the July 2026 full-codebase audit. Ordered by severity. 
 
 10. ~~Local git repo has a corrupted `main` ref~~ — **FIXED 2026-07-28**: `.git/refs/heads/main` held blanks instead of a SHA, breaking `git log`/`fetch`/`status`. Repaired by deleting the ref, fetching `origin`, pointing `main` at `f2b73a2` and resetting the index. No history was lost — the working tree was untouched and both remotes still held the real history. If it recurs, the same sequence works.
 
-11. **No tests, no test tooling.** `tests/` is empty; pytest isn't in requirements. ~24k lines of business logic are unverified. If adding tests, start with `note_service` state transitions and the balance formula. The UI does have guards now — `scripts/check_ui.js` and `scripts/fix_accents.py --check` — but they cover presentation only.
+11. **Sparse tests.** First automated tests landed 2026-08-07: `tests/test_neteo.py` covers the netting engine (`note_service.build_effective_note_balance_map`), including the linked-pair cases. pytest is venv-only (NOT in requirements.txt — keep it out of the prod dyno). Everything else (~24k lines) is still unverified; next candidates: `note_service` state transitions and `pay_comisionario_fifo`. UI guards: `scripts/check_ui.js`, `check_templates`, `fix_accents --check`.
 
 11. ~~Bootstrap JS blocked on every page~~ — **FIXED 2026-07-28**: `base.html` carried a stale `integrity` hash for `bootstrap.bundle.min.js`, so the browser refused the script and every `data-bs-toggle` silently did nothing. Corrected against the published sha384 (cross-checked against the CSS hash, which was already correct).
 

@@ -22,6 +22,24 @@
     </a>
 {% endcall %}
 
+{% set archivar_error = request.query_params.get('archivar_error') %}
+{% set archivada = request.query_params.get('archivada') %}
+{% set reactivada = request.query_params.get('reactivada') %}
+{% if archivar_error %}
+    <div class="alert alert-danger py-2 small mb-3">{{ archivar_error }}</div>
+{% endif %}
+{% if archivada %}
+    <div class="alert alert-success py-2 small mb-3">
+        La sucursal <strong>{{ archivada }}</strong> quedó archivada: desaparece de los formularios de captura,
+        pero todo su historial (notas, cortes, inventario y reportes) sigue disponible. Puedes reactivarla cuando quieras.
+    </div>
+{% endif %}
+{% if reactivada %}
+    <div class="alert alert-success py-2 small mb-3">
+        La sucursal <strong>{{ reactivada }}</strong> está activa de nuevo y vuelve a aparecer en los formularios de captura.
+    </div>
+{% endif %}
+
 <div class="s-stats">
     {{ stat('Total', total_sucursales, 'Sedes registradas') }}
     {{ stat('Activas', activas, 'Operando actualmente', 'ok') }}
@@ -83,12 +101,22 @@
                                 {% if s.estado.value == 'activa' %}
                                     {{ badge('Activa', 'ok') }}
                                 {% else %}
-                                    {{ badge(s.estado.value|capitalize, 'muted') }}
+                                    {{ badge('Archivada', 'muted') }}
                                 {% endif %}
                             </td>
                             <td>
                                 <span class="s-actions">
                                     <a class="btn btn-outline-secondary btn-sm" href="/web/admin/sucursales/{{ s.id }}/editar">Administrar</a>
+                                    {% if s.estado.value == 'activa' %}
+                                        <form method="post" action="/web/admin/sucursales/{{ s.id }}/archivar" class="d-inline"
+                                              data-confirm="Se archivará la sucursal {{ s.nombre }}: dejará de aparecer al capturar notas, transferencias y cortes, pero conservará todo su historial. ¿Deseas continuar?">
+                                            <button type="submit" class="btn btn-outline-danger btn-sm">Archivar</button>
+                                        </form>
+                                    {% else %}
+                                        <form method="post" action="/web/admin/sucursales/{{ s.id }}/reactivar" class="d-inline">
+                                            <button type="submit" class="btn btn-outline-secondary btn-sm">Reactivar</button>
+                                        </form>
+                                    {% endif %}
                                 </span>
                             </td>
                         </tr>

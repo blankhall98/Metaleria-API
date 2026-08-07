@@ -1,11 +1,12 @@
 # app/services/note_service.py
+from collections import defaultdict
 from datetime import date, datetime
 import json
 from decimal import Decimal
 from typing import Iterable, Sequence
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 
 from app.models import (
     Nota,
@@ -36,6 +37,7 @@ from app.models import (
     NotaDevolucionParcialAplicacion,
     NotaDevolucionTotal,
     InventarioAjusteManual,
+    AjusteSaldoPartner,
 )
 from app.core.datetime_utils import format_datetime_local
 
@@ -355,6 +357,267 @@ def _get_note_balance_adjustment_totals_map(
     for nota_id, total in rows:
         totals[int(nota_id)] = Decimal(str(total or 0))
     return totals
+
+
+# ---------------------------------------------------------------------------
+# Motor de neteo (punto 7, fase 2)
+# ---------------------------------------------------------------------------
+# Movido aquí desde app/web/admin.py: ARCHITECTURE.md pide que los helpers de
+# consulta compartidos vivan en note_service, y este motor lo consumen la web,
+# el reporte de contabilidad y el resumen del home. admin.py conserva alias con
+# los nombres antiguos para sus call sites.
+
+
+def partner_note_sign(partner_type: str | None, nota: Nota) -> Decimal:
+    if partner_type == "proveedor":
+        return Decimal("-1") if nota.tipo_operacion == TipoOperacion.venta else Decimal("1")
+    if partner_type == "cliente":
+        return Decimal("1") if nota.tipo_operacion == TipoOperacion.venta else Decimal("-1")
+    return Decimal("1")
+
+
+def signed_partner_amounts(
+    nota: Nota,
+    partner_type: str | None,
+) -> tuple[Decimal, Decimal]:
+    total = Decimal(str(nota.total_monto or 0))
+    pagado = Decimal(str(nota.monto_pagado or 0))
+    sign = partner_note_sign(partner_type, nota)
+    return total * sign, pagado * sign
+
+
+def raw_note_payment_balance(
+    nota: Nota,
+    *,
+    note_adjustment_delta: Decimal | None = None,
+) -> dict[str, Decimal]:
+    total = Decimal(str(nota.total_monto or 0))
+    pagado = Decimal(str(nota.monto_pagado or 0))
+    ajuste_delta = Decimal(str(note_adjustment_delta or 0))
+    saldo = total - pagado + ajuste_delta
+    saldo_pendiente = saldo if saldo > Decimal("0") else Decimal("0")
+    saldo_favor = -saldo if saldo < Decimal("0") else Decimal("0")
+    return {
+        "total": total,
+        "pagado": pagado,
+        "ajuste_saldo_nota": ajuste_delta,
+        "total_efectivo": total + ajuste_delta,
+        "saldo": saldo,
+        "saldo_pendiente": saldo_pendiente,
+        "saldo_favor": saldo_favor,
+    }
+
+
+def get_partner_adjustment_totals_map(
+    db: Session,
+    partner_keys: set[tuple[str, int]],
+    *,
+    allowed_suc_ids: list[int] | None = None,
+    sucursal_id: int | None = None,
+) -> dict[tuple[str, int], Decimal]:
+    totals: dict[tuple[str, int], Decimal] = {}
+    if not partner_keys:
+        return totals
+
+    ids_by_type: dict[str, set[int]] = defaultdict(set)
+    for partner_type, partner_id in partner_keys:
+        if partner_type and partner_id:
+            ids_by_type[partner_type].add(partner_id)
+            totals[(partner_type, partner_id)] = Decimal("0")
+
+    conditions = [
+        and_(
+            AjusteSaldoPartner.partner_type == partner_type,
+            AjusteSaldoPartner.partner_id.in_(sorted(partner_ids)),
+        )
+        for partner_type, partner_ids in ids_by_type.items()
+        if partner_ids
+    ]
+    if not conditions:
+        return totals
+
+    query = db.query(
+        AjusteSaldoPartner.partner_type,
+        AjusteSaldoPartner.partner_id,
+        AjusteSaldoPartner.monto,
+    ).filter(or_(*conditions))
+    if allowed_suc_ids is not None:
+        if sucursal_id:
+            query = query.filter(AjusteSaldoPartner.sucursal_id == sucursal_id)
+        else:
+            query = query.filter(AjusteSaldoPartner.sucursal_id.in_(allowed_suc_ids))
+    elif sucursal_id:
+        query = query.filter(AjusteSaldoPartner.sucursal_id == sucursal_id)
+
+    for partner_type, partner_id, monto in query.all():
+        key = (partner_type, int(partner_id))
+        totals[key] = totals.get(key, Decimal("0")) + Decimal(str(monto or 0))
+    return totals
+
+
+def _linked_partner_maps(
+    db: Session,
+    partner_keys: set[tuple[str, int]],
+) -> tuple[dict[int, int], dict[int, int]]:
+    """Vínculos proveedor↔cliente de las identidades involucradas."""
+    prov_ids = {pid for (ptype, pid) in partner_keys if ptype == "proveedor"}
+    cli_ids = {cid for (ptype, cid) in partner_keys if ptype == "cliente"}
+    link_by_prov: dict[int, int] = {}
+    link_by_cli: dict[int, int] = {}
+    if prov_ids:
+        rows = (
+            db.query(Proveedor.id, Proveedor.linked_cliente_id)
+            .filter(Proveedor.id.in_(sorted(prov_ids)), Proveedor.linked_cliente_id.isnot(None))
+            .all()
+        )
+        for pid, cid in rows:
+            link_by_prov[int(pid)] = int(cid)
+            link_by_cli[int(cid)] = int(pid)
+    if cli_ids:
+        rows = (
+            db.query(Cliente.id, Cliente.linked_proveedor_id)
+            .filter(Cliente.id.in_(sorted(cli_ids)), Cliente.linked_proveedor_id.isnot(None))
+            .all()
+        )
+        for cid, pid in rows:
+            link_by_cli[int(cid)] = int(pid)
+            link_by_prov[int(pid)] = int(cid)
+    return link_by_prov, link_by_cli
+
+
+def build_effective_note_balance_map(
+    db: Session,
+    notas: list[Nota],
+    *,
+    allowed_suc_ids: list[int] | None = None,
+    sucursal_id: int | None = None,
+) -> dict[int, dict[str, Decimal | bool]]:
+    """Saldo efectivo por nota: fórmula canónica + crédito FIFO de AjusteSaldoPartner.
+
+    Un par proveedor↔cliente vinculado se netea como un solo grupo (el defecto
+    del punto 7: antes cada identidad se neteaba por separado y el crédito de
+    una nunca alcanzaba las notas de la otra). Dentro de un par todo se lleva a
+    la vista proveedor (positivo = por pagar al socio): las notas usan el signo
+    de proveedor y el delta del cliente entra negado.
+    """
+    balances: dict[int, dict[str, Decimal | bool]] = {}
+    approved_notes: list[Nota] = []
+    partner_keys: set[tuple[str, int]] = set()
+    note_adjustment_totals = _get_note_balance_adjustment_totals_map(
+        db,
+        [nota.id for nota in notas if nota.id],
+    )
+
+    for nota in notas:
+        raw_without_adjustment = raw_note_payment_balance(nota)
+        raw = raw_note_payment_balance(
+            nota,
+            note_adjustment_delta=note_adjustment_totals.get(nota.id, Decimal("0")),
+        )
+        balances[nota.id] = {
+            **raw,
+            "saldo_original": raw_without_adjustment["saldo"],
+            "saldo_pendiente_original": raw_without_adjustment["saldo_pendiente"],
+            "saldo_favor_original": raw_without_adjustment["saldo_favor"],
+            "ajuste_aplicado": Decimal("0"),
+            "saldo_cubierto_por_ajuste": False,
+            "saldo_parcialmente_cubierto": False,
+        }
+        if nota.estado != NotaEstado.aprobada:
+            continue
+        partner_type, partner_id = _nota_partner_key(nota)
+        if not partner_type or not partner_id:
+            continue
+        approved_notes.append(nota)
+        partner_keys.add((partner_type, partner_id))
+
+    link_by_prov, link_by_cli = _linked_partner_maps(db, partner_keys)
+
+    # El crédito puede vivir en la identidad hermana del par, aunque esa
+    # identidad no tenga notas en la vista: inclúyela al buscar ajustes.
+    extended_keys = set(partner_keys)
+    for ptype, pid in partner_keys:
+        if ptype == "proveedor" and pid in link_by_prov:
+            extended_keys.add(("cliente", link_by_prov[pid]))
+        elif ptype == "cliente" and pid in link_by_cli:
+            extended_keys.add(("proveedor", link_by_cli[pid]))
+
+    adjustment_totals = get_partner_adjustment_totals_map(
+        db,
+        extended_keys,
+        allowed_suc_ids=allowed_suc_ids,
+        sucursal_id=sucursal_id,
+    )
+
+    def canonical_group(partner_type: str, partner_id: int) -> tuple:
+        if partner_type == "proveedor" and partner_id in link_by_prov:
+            return ("par", partner_id, link_by_prov[partner_id])
+        if partner_type == "cliente" and partner_id in link_by_cli:
+            return ("par", link_by_cli[partner_id], partner_id)
+        return (partner_type, partner_id)
+
+    grouped_notes: dict[tuple, list[Nota]] = defaultdict(list)
+    for nota in approved_notes:
+        partner_type, partner_id = _nota_partner_key(nota)
+        if partner_type and partner_id:
+            grouped_notes[canonical_group(partner_type, partner_id)].append(nota)
+
+    for group_key, partner_notes in grouped_notes.items():
+        if group_key[0] == "par":
+            _, prov_id, cli_id = group_key
+            # Vista proveedor: el delta del cliente entra negado (un cargo al
+            # cliente compensa lo que se le debe al proveedor del par).
+            delta = (
+                (adjustment_totals.get(("proveedor", prov_id)) or Decimal("0"))
+                - (adjustment_totals.get(("cliente", cli_id)) or Decimal("0"))
+            )
+            sign_view = "proveedor"
+        else:
+            delta = adjustment_totals.get(group_key) or Decimal("0")
+            sign_view = group_key[0]
+        credito_contra_saldo_positivo = -delta if delta < Decimal("0") else Decimal("0")
+        credito_contra_saldo_negativo = delta if delta > Decimal("0") else Decimal("0")
+        if (
+            credito_contra_saldo_positivo <= Decimal("0")
+            and credito_contra_saldo_negativo <= Decimal("0")
+        ):
+            continue
+        for nota in sorted(partner_notes, key=lambda item: (item.created_at or datetime.min, item.id)):
+            balance = balances.get(nota.id)
+            if not balance:
+                continue
+            saldo_pendiente = Decimal(str(balance["saldo_pendiente"]))
+            if saldo_pendiente <= Decimal("0"):
+                continue
+            signed_total, signed_pagado = signed_partner_amounts(nota, sign_view)
+            signed_saldo = signed_total - signed_pagado
+            if signed_saldo > Decimal("0"):
+                aplicado = min(saldo_pendiente, credito_contra_saldo_positivo)
+            elif signed_saldo < Decimal("0"):
+                aplicado = min(saldo_pendiente, credito_contra_saldo_negativo)
+            else:
+                aplicado = Decimal("0")
+            if aplicado <= Decimal("0"):
+                continue
+            balance["ajuste_aplicado"] = aplicado
+            balance["saldo"] = Decimal(str(balance["saldo"])) - aplicado
+            balance["saldo_pendiente"] = saldo_pendiente - aplicado
+            balance["saldo_cubierto_por_ajuste"] = balance["saldo_pendiente"] <= Decimal("0")
+            balance["saldo_parcialmente_cubierto"] = (
+                aplicado > Decimal("0")
+                and balance["saldo_pendiente"] > Decimal("0")
+            )
+            if signed_saldo > Decimal("0"):
+                credito_contra_saldo_positivo -= aplicado
+            else:
+                credito_contra_saldo_negativo -= aplicado
+            if (
+                credito_contra_saldo_positivo <= Decimal("0")
+                and credito_contra_saldo_negativo <= Decimal("0")
+            ):
+                break
+
+    return balances
 
 
 def _effective_note_balance_snapshot(

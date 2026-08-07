@@ -165,6 +165,121 @@ def create_comisionario_nota(
     return nota
 
 
+def pay_comisionario_fifo(
+    db: Session,
+    *,
+    comisionario_id: int,
+    monto: Decimal,
+    usuario_id: int | None,
+    metodo_pago: str | None,
+    cuenta_financiera: str | None,
+    cuenta_scrap360_id: int | None,
+    comentario: str | None,
+) -> list[ComisionarioPago]:
+    """Aplica un pago del comisionista a sus notas más antiguas (punto 6, fase 2).
+
+    El monto se consume nota por nota en orden (created_at, id) ascendente hasta
+    agotarse, generando un ComisionarioPago por nota consumida — así cada abono
+    conserva su rastro por nota, igual que el pago individual. Todo ocurre en
+    UNA transacción: o se aplican todos los pagos o ninguno.
+    """
+    comisionario = db.get(Comisionario, comisionario_id)
+    if not comisionario:
+        raise ValueError("Comisionario no encontrado.")
+
+    monto_val = _safe_decimal(monto)
+    if monto_val <= Decimal("0"):
+        raise ValueError("El monto del pago debe ser mayor a 0.")
+
+    metodo = (metodo_pago or "").strip().lower() or None
+    if not metodo:
+        raise ValueError("Selecciona un método de pago.")
+
+    cuenta_id = None
+    cuenta_label = None
+    if metodo in ("transferencia", "cheque"):
+        if not cuenta_financiera:
+            raise ValueError("Debes indicar la cuenta para transferencia o cheque.")
+        try:
+            cuenta_id = int(str(cuenta_financiera).strip())
+        except (TypeError, ValueError):
+            raise ValueError("Selecciona una cuenta válida.")
+        cuenta = _validate_cuenta_comisionario(db, comisionario_id, cuenta_id)
+        cuenta_label = cuenta.display_label
+
+    notas_pendientes = (
+        db.query(ComisionarioNota)
+        .filter(
+            ComisionarioNota.comisionario_id == comisionario_id,
+            ComisionarioNota.estado == ComisionarioNotaEstado.aprobada,
+        )
+        .order_by(ComisionarioNota.created_at.asc(), ComisionarioNota.id.asc())
+        .all()
+    )
+    notas_con_saldo = [
+        nota
+        for nota in notas_pendientes
+        if _safe_decimal(nota.total_monto) - _safe_decimal(nota.monto_pagado) > Decimal("0")
+    ]
+    saldo_total = sum(
+        (_safe_decimal(n.total_monto) - _safe_decimal(n.monto_pagado) for n in notas_con_saldo),
+        Decimal("0"),
+    )
+    if not notas_con_saldo:
+        raise ValueError("El comisionista no tiene notas con saldo pendiente.")
+    if monto_val > saldo_total:
+        raise ValueError(
+            f"El pago (${monto_val:,.2f}) excede el saldo total pendiente (${saldo_total:,.2f})."
+        )
+
+    restante = monto_val
+    pagos: list[ComisionarioPago] = []
+    for nota in notas_con_saldo:
+        if restante <= Decimal("0"):
+            break
+        saldo_nota = _safe_decimal(nota.total_monto) - _safe_decimal(nota.monto_pagado)
+        aplica = saldo_nota if saldo_nota < restante else restante
+
+        pago = ComisionarioPago(
+            nota_id=nota.id,
+            usuario_id=usuario_id,
+            cuenta_id=cuenta_id,
+            cuenta_scrap360_id=cuenta_scrap360_id,
+            monto=aplica,
+            metodo_pago=metodo,
+            cuenta_financiera=cuenta_label or None,
+            comentario=comentario or None,
+        )
+        nota.monto_pagado = _safe_decimal(nota.monto_pagado) + aplica
+        nota.updated_at = datetime.utcnow()
+        db.add(pago)
+        db.add(nota)
+        db.flush()
+
+        if cuenta_scrap360_id:
+            cuenta_scrap = _validate_cuenta_scrap360(
+                db,
+                cuenta_id=cuenta_scrap360_id,
+                sucursal_id=nota.sucursal_id,
+                metodo_pago=metodo,
+            )
+            _registrar_movimiento_scrap360(
+                db,
+                cuenta=cuenta_scrap,
+                usuario_id=usuario_id,
+                monto=aplica,
+                comentario=comentario or f"Pago comisión (más antigua primero) nota #{nota.id}",
+            )
+
+        restante -= aplica
+        pagos.append(pago)
+
+    db.commit()
+    for pago in pagos:
+        db.refresh(pago)
+    return pagos
+
+
 def add_comisionario_pago(
     db: Session,
     *,

@@ -59,42 +59,37 @@ def _home_resumen(db: Session, notas_revision_count: int) -> dict:
     from app.models.pricing import TipoOperacion
 
     try:
-        saldo = Nota.total_monto - Nota.monto_pagado
-        aprobadas = Nota.estado == NotaEstado.aprobada
-
-        def _sum_saldo(tipo: TipoOperacion) -> Decimal:
-            value = (
-                db.query(func.coalesce(func.sum(saldo), 0))
-                .filter(aprobadas, Nota.tipo_operacion == tipo, saldo > 0)
-                .scalar()
-            )
-            return Decimal(str(value or 0))
+        # Punto 7 (fase 2): el resumen usa el saldo EFECTIVO de cada nota
+        # (fórmula canónica + ajustes de saldo + neteo por socio vinculado),
+        # igual que la lista de notas. Antes solo restaba total − pagado y las
+        # notas ya neteadas inflaban "por pagar" y aparecían como vencidas.
+        from app.services import note_service
 
         hoy = date.today()
         inicio_dia = datetime(hoy.year, hoy.month, hoy.day)
+        limite_alerta = hoy + timedelta(days=5)
 
-        vencidas = (
-            db.query(Nota)
-            .filter(
-                aprobadas,
-                saldo > 0,
-                Nota.fecha_caducidad_pago.isnot(None),
-                Nota.fecha_caducidad_pago < hoy,
-            )
-            .count()
-        )
+        notas_aprobadas = db.query(Nota).filter(Nota.estado == NotaEstado.aprobada).all()
+        balances = note_service.build_effective_note_balance_map(db, notas_aprobadas)
 
-        por_vencer = (
-            db.query(Nota)
-            .filter(
-                aprobadas,
-                saldo > 0,
-                Nota.fecha_caducidad_pago.isnot(None),
-                Nota.fecha_caducidad_pago >= hoy,
-                Nota.fecha_caducidad_pago <= hoy + timedelta(days=5),
-            )
-            .count()
-        )
+        por_pagar = Decimal("0")
+        por_cobrar = Decimal("0")
+        vencidas = 0
+        por_vencer = 0
+        for nota in notas_aprobadas:
+            balance = balances.get(nota.id) or {}
+            pendiente = Decimal(str(balance.get("saldo_pendiente") or 0))
+            if pendiente <= Decimal("0"):
+                continue
+            if nota.tipo_operacion == TipoOperacion.compra:
+                por_pagar += pendiente
+            elif nota.tipo_operacion == TipoOperacion.venta:
+                por_cobrar += pendiente
+            if nota.fecha_caducidad_pago is not None:
+                if nota.fecha_caducidad_pago < hoy:
+                    vencidas += 1
+                elif nota.fecha_caducidad_pago <= limite_alerta:
+                    por_vencer += 1
 
         notas_hoy = db.query(Nota).filter(Nota.created_at >= inicio_dia).count()
 
@@ -103,8 +98,8 @@ def _home_resumen(db: Session, notas_revision_count: int) -> dict:
         return {
             "en_revision": notas_revision_count,
             "notas_hoy": notas_hoy,
-            "por_pagar": _sum_saldo(TipoOperacion.compra),
-            "por_cobrar": _sum_saldo(TipoOperacion.venta),
+            "por_pagar": por_pagar,
+            "por_cobrar": por_cobrar,
             "vencidas": vencidas,
             "por_vencer": por_vencer,
             "inventario_kg": Decimal(str(inventario_kg or 0)),

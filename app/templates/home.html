@@ -187,8 +187,8 @@
                 {{ module('/web/admin/capital', 'Capital real',
                           'Activos, pasivos y capital actual.', 'chart') }}
                 {% if not solo_lectura %}
-                    {{ module('/web/admin/cuentas', 'Cuentas bancarias',
-                              'Chequeras y v&iacute;nculos para notas y pagos.'|safe, 'bank') }}
+                    {# Punto 13 (fase 2): el mosaico de "Cuentas bancarias" se oculta;
+                       la función queda accesible desde socios y comisionistas. #}
                     {{ module('/web/admin/cuentas-scrap360', 'Cuentas Scrap360',
                               'Caja interna, saldos y movimientos.', 'wallet') }}
                 {% endif %}

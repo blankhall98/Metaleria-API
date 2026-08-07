@@ -130,7 +130,10 @@
             <p class="nav-drawer-group-label">Finanzas</p>
             {{ nav_link('/web/admin/contabilidad', 'Contabilidad', 'ledger') }}
             {{ nav_link('/web/admin/capital', 'Capital real', 'chart') }}
-            {{ nav_link('/web/admin/cuentas', 'Cuentas bancarias', 'bank', True) }}
+            {# Punto 13 (fase 2): "Cuentas bancarias" se oculta del menú a petición
+               del cliente. Las rutas /web/admin/cuentas siguen vivas — se llega por
+               los accesos contextuales (?owner_key=) desde socios y comisionistas,
+               y los pagos por transferencia/cheque siguen requiriendo una Cuenta. #}
             {{ nav_link('/web/admin/cuentas-scrap360', 'Cuentas Scrap360', 'wallet') }}
 
             <p class="nav-drawer-group-label">Reportes</p>

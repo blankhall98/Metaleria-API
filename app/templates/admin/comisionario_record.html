@@ -17,10 +17,23 @@
     <a href="/web/admin/comisionarios/{{ comisionario.id }}/editar" class="btn btn-outline-primary btn-sm">
         {{ icon('edit', 's-icon--sm') }} Editar
     </a>
-    <a href="/web/admin/comisionarios/notas/nueva?comisionario_id={{ comisionario.id }}" class="btn btn-primary btn-sm">
+    <a href="/web/admin/comisionarios/notas/nueva?comisionario_id={{ comisionario.id }}"
+       class="btn {{ 'btn-outline-primary' if summary.saldo_pendiente > 0 else 'btn-primary' }} btn-sm">
         {{ icon('plus', 's-icon--sm') }} Crear nota
     </a>
 {% endcall %}
+
+{% set pago_error = request.query_params.get('pago_error') %}
+{% set pago_fifo = request.query_params.get('pago_fifo') %}
+{% if pago_error %}
+    <div class="alert alert-danger py-2 small mb-3">{{ pago_error }}</div>
+{% endif %}
+{% if pago_fifo %}
+    <div class="alert alert-success py-2 small mb-3">
+        Pago de <strong>${{ request.query_params.get('pago_monto') }}</strong> registrado y aplicado a
+        {{ pago_fifo }} nota{{ 's' if pago_fifo != '1' }} empezando por la más antigua.
+    </div>
+{% endif %}
 
     {{ anchor_nav([('#comisionario-perfil', 'Perfil'),
                    ('#comisionario-ledger', 'Estado de cuenta'),
@@ -208,6 +221,85 @@
             {% endif %}
         </div>
     </div>
+
+    {% if summary.saldo_pendiente > 0 %}
+    <div class="card mb-3" id="comisionario-registrar-pago">
+        <div class="card-body">
+            <h2 class="s-card-title">Registrar pago</h2>
+            <p class="s-card-sub mb-3">
+                El pago se aplica automáticamente a las notas más antiguas hasta agotarse.
+                Saldo pendiente actual: <strong>{{ money(summary.saldo_pendiente) }}</strong>.
+            </p>
+            <form method="post" action="/web/admin/comisionarios/{{ comisionario.id }}/pago"
+                  data-submit-once="1" data-loading-text="Aplicando pago…">
+                <div class="s-form-grid">
+                    <div>
+                        <label class="form-label" for="fifo_monto">Monto pagado <span class="s-req">*</span></label>
+                        <input class="form-control" id="fifo_monto" name="monto" type="number" step="0.01" min="0.01"
+                               max="{{ summary.saldo_pendiente }}" inputmode="decimal" required>
+                        <p class="form-text">Hasta {{ money(summary.saldo_pendiente) }}, el saldo total pendiente.</p>
+                    </div>
+                    <div>
+                        <label class="form-label" for="fifo_metodo">Método de pago <span class="s-req">*</span></label>
+                        <select class="form-select" id="fifo_metodo" name="metodo_pago" required>
+                            <option value="" selected>Selecciona método</option>
+                            <option value="efectivo">Efectivo</option>
+                            <option value="transferencia">Transferencia</option>
+                            <option value="cheque">Cheque</option>
+                        </select>
+                        <p class="form-text">&nbsp;</p>
+                    </div>
+                    <div>
+                        <label class="form-label" for="fifo_cuenta">Cuenta del comisionista</label>
+                        <select class="form-select" id="fifo_cuenta" name="cuenta_financiera" disabled>
+                            <option value="" selected>Selecciona cuenta</option>
+                            {% for cuenta in cuentas %}
+                                <option value="{{ cuenta.id }}">{{ cuenta.display_label }}</option>
+                            {% endfor %}
+                        </select>
+                        {% if cuentas|length == 0 %}
+                            <p class="form-text">Este comisionista no tiene cuentas registradas; solo podrás pagar en efectivo.</p>
+                        {% else %}
+                            <p class="form-text">Obligatoria para transferencia o cheque.</p>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <label class="form-label" for="fifo_cuenta_scrap360">Cuenta Scrap360</label>
+                        <select class="form-select" id="fifo_cuenta_scrap360" name="cuenta_scrap360_id">
+                            <option value="" selected>Sin registrar en tesorería</option>
+                            {% for c in cuentas_scrap360 %}
+                                <option value="{{ c.id }}">{{ c.nombre }} &middot; {{ c.tipo|capitalize }}</option>
+                            {% endfor %}
+                        </select>
+                        <p class="form-text">Opcional. Registra la salida en la caja interna.</p>
+                    </div>
+                    <div class="s-field--full">
+                        <label class="form-label" for="fifo_comentario">Comentario</label>
+                        <input class="form-control" id="fifo_comentario" name="comentario" placeholder="Referencia o detalle del pago">
+                    </div>
+                </div>
+                <div class="s-form-actions">
+                    <button type="submit" class="btn btn-primary">Registrar pago</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <script>
+        (function () {
+            var metodo = document.getElementById('fifo_metodo');
+            var cuenta = document.getElementById('fifo_cuenta');
+            if (!metodo || !cuenta) return;
+            var sync = function () {
+                var necesita = metodo.value === 'transferencia' || metodo.value === 'cheque';
+                cuenta.disabled = !necesita;
+                cuenta.required = necesita;
+                if (!necesita) cuenta.value = '';
+            };
+            metodo.addEventListener('change', sync);
+            sync();
+        })();
+    </script>
+    {% endif %}
 
     <div class="card" id="comisionario-pagos">
         <div class="card-body">

@@ -24,6 +24,7 @@
         {% elif sucursales | length == 1 %}
             <input type="hidden" name="sucursal_id" value="{{ sucursales[0].id }}">
         {% endif %}
+        {% if orden_saldos == 'alfabetico' %}<input type="hidden" name="orden" value="alfabetico">{% endif %}
         <div class="s-filters__actions">
             <button type="submit" class="btn btn-primary">Filtrar</button>
         </div>
@@ -36,10 +37,20 @@
     {{ stat('Saldo neto global', money(global_neto), 'A tu favor' if global_neto >= 0 else 'En contra') }}
 </div>
 
-<p class="s-card-sub mb-4">
-    Saldo neto = total a cobrar &minus; total a pagar. Un resultado positivo significa que te deben
-    más de lo que debes. Solo incluye partners con saldo activo (&gt; $0.01).
-</p>
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-4">
+    <p class="s-card-sub mb-0">
+        Saldo neto = total a cobrar &minus; total a pagar. Un resultado positivo significa que te deben
+        más de lo que debes. Solo incluye socios con saldo activo (&gt; $0.01).
+    </p>
+    <nav class="s-segmented" aria-label="Orden de los saldos">
+        <a href="{{ orden_saldos_links.cantidad }}" class="s-segmented__item {{ 'active' if orden_saldos == 'cantidad' }}">
+            Por cantidad
+        </a>
+        <a href="{{ orden_saldos_links.alfabetico }}" class="s-segmented__item {{ 'active' if orden_saldos == 'alfabetico' }}">
+            Alfabético
+        </a>
+    </nav>
+</div>
 
 {% if proveedores_rows %}
     <div class="card mb-3">
@@ -57,7 +68,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for row in proveedores_rows | sort(attribute='a_pagar', reverse=True) %}
+                        {% for row in proveedores_rows %}
                         <tr>
                             <td>
                                 <a href="{{ row.partner_url }}" class="fw-semibold">{{ row.nombre }}</a>
@@ -108,7 +119,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for row in clientes_rows | sort(attribute='a_cobrar', reverse=True) %}
+                        {% for row in clientes_rows %}
                         <tr>
                             <td>
                                 <a href="{{ row.partner_url }}" class="fw-semibold">{{ row.nombre }}</a>

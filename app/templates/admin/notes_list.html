@@ -75,6 +75,7 @@
 <details class="s-filters-collapse" open>
     <summary>Filtros{% if filtros_activos %} <span class="badge s-badge--info">Activos</span>{% endif %}</summary>
     <form method="get" class="s-filters">
+        {% if orden_notas == 'antiguas' %}<input type="hidden" name="orden" value="antiguas">{% endif %}
         <div class="s-filters__field">
             <label class="form-label" for="f-folio">Folio</label>
             <input class="form-control" id="f-folio" name="folio" placeholder="01_C_1" value="{{ folio_query or '' }}">
@@ -226,6 +227,14 @@
                     Pago: {{ pago_label }} &middot; Seguimiento: {{ seguimiento_label }}
                 </p>
             </div>
+            <nav class="s-segmented" aria-label="Orden de las notas">
+                <a href="{{ orden_links.recientes }}" class="s-segmented__item {{ 'active' if orden_notas == 'recientes' }}">
+                    Recientes primero
+                </a>
+                <a href="{{ orden_links.antiguas }}" class="s-segmented__item {{ 'active' if orden_notas == 'antiguas' }}">
+                    Antiguas primero
+                </a>
+            </nav>
         </div>
 
         <nav class="s-segmented s-rail mb-3" aria-label="Filtrar por estado">

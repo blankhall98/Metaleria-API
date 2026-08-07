@@ -502,6 +502,17 @@ def build_report_data(
     partner_group_balances: dict[tuple[str, int], Decimal] = {}
     notas_pendientes: list[dict] = []
 
+    # Punto 7 (fase 2): la lista de notas pendientes usa el saldo EFECTIVO
+    # (fórmula canónica + crédito de AjusteSaldoPartner aplicado FIFO, con el
+    # par vinculado neteado como un solo grupo). Antes solo restaba pagos y
+    # ajustes de nota, y las notas ya neteadas reaparecían como pendientes.
+    effective_balances = note_service.build_effective_note_balance_map(
+        db,
+        notas,
+        allowed_suc_ids=allowed_suc_ids,
+        sucursal_id=sucursal_id,
+    )
+
     for nota in notas:
         total = _safe_decimal(nota.total_monto)
         pagado = _safe_decimal(nota.monto_pagado)
@@ -535,7 +546,9 @@ def build_report_data(
                 partner = cli_map.get(partner_id)
             if group_key:
                 partner_group_balances[group_key] = partner_group_balances.get(group_key, Decimal("0")) - saldo
-        if saldo > Decimal("0"):
+        balance_efectivo = effective_balances.get(nota.id) or {}
+        saldo_efectivo_pendiente = _safe_decimal(balance_efectivo.get("saldo_pendiente", saldo))
+        if saldo_efectivo_pendiente > Decimal("0"):
             folio = note_service.format_folio(
                 sucursal_id=nota.sucursal_id,
                 tipo_operacion=nota.tipo_operacion,
@@ -550,7 +563,7 @@ def build_report_data(
                     "total": total,
                     "pagado": pagado,
                     "ajuste_nota": ajuste_nota,
-                    "saldo": saldo,
+                    "saldo": saldo_efectivo_pendiente,
                     "fecha": nota.created_at,
                     "sucursal": sucursal_map.get(nota.sucursal_id, "-"),
                 }

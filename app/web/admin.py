@@ -4,6 +4,7 @@ import io
 import json
 import logging
 import re
+import unicodedata
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Form, UploadFile, File
 from fastapi.responses import RedirectResponse, StreamingResponse, JSONResponse
@@ -516,47 +517,15 @@ def _classify_partner_group_balances(
     return totals
 
 
-def _partner_note_sign(partner_type: str | None, nota: Nota) -> Decimal:
-    if partner_type == "proveedor":
-        return Decimal("-1") if nota.tipo_operacion == TipoOperacion.venta else Decimal("1")
-    if partner_type == "cliente":
-        return Decimal("1") if nota.tipo_operacion == TipoOperacion.venta else Decimal("-1")
-    return Decimal("1")
-
-
-def _signed_partner_amounts(
-    nota: Nota,
-    partner_type: str | None,
-) -> tuple[Decimal, Decimal]:
-    total = Decimal(str(nota.total_monto or 0))
-    pagado = Decimal(str(nota.monto_pagado or 0))
-    sign = _partner_note_sign(partner_type, nota)
-    return total * sign, pagado * sign
-
-
-def _raw_note_payment_balance(
-    nota: Nota,
-    *,
-    note_adjustment_delta: Decimal | None = None,
-) -> dict[str, Decimal]:
-    total = Decimal(str(nota.total_monto or 0))
-    pagado = Decimal(str(nota.monto_pagado or 0))
-    ajuste_delta = Decimal(str(note_adjustment_delta or 0))
-    saldo = total - pagado + ajuste_delta
-    saldo_pendiente = saldo if saldo > Decimal("0") else Decimal("0")
-    saldo_favor = -saldo if saldo < Decimal("0") else Decimal("0")
-    return {
-        "total": total,
-        "pagado": pagado,
-        "ajuste_saldo_nota": ajuste_delta,
-        "total_efectivo": total + ajuste_delta,
-        "saldo": saldo,
-        "saldo_pendiente": saldo_pendiente,
-        "saldo_favor": saldo_favor,
-    }
-
-
+# Punto 7 (fase 2): el motor de neteo vive ahora en note_service, consciente
+# del par proveedor-cliente vinculado. Estos alias conservan los nombres que
+# usan los call sites de este módulo.
+_partner_note_sign = note_service.partner_note_sign
+_signed_partner_amounts = note_service.signed_partner_amounts
+_raw_note_payment_balance = note_service.raw_note_payment_balance
 _get_note_balance_adjustment_totals_map = note_service._get_note_balance_adjustment_totals_map
+_get_partner_adjustment_totals_map = note_service.get_partner_adjustment_totals_map
+_build_effective_note_balance_map = note_service.build_effective_note_balance_map
 
 
 def _note_balance_adjustment_signed(
@@ -568,152 +537,6 @@ def _note_balance_adjustment_signed(
     delta = Decimal(str(note_delta or 0))
     sign = _partner_note_sign(partner_type, nota)
     return delta * sign
-
-
-def _get_partner_adjustment_totals_map(
-    db: Session,
-    partner_keys: set[tuple[str, int]],
-    *,
-    allowed_suc_ids: list[int] | None = None,
-    sucursal_id: int | None = None,
-) -> dict[tuple[str, int], Decimal]:
-    totals: dict[tuple[str, int], Decimal] = {}
-    if not partner_keys:
-        return totals
-
-    ids_by_type: dict[str, set[int]] = defaultdict(set)
-    for partner_type, partner_id in partner_keys:
-        if partner_type and partner_id:
-            ids_by_type[partner_type].add(partner_id)
-            totals[(partner_type, partner_id)] = Decimal("0")
-
-    conditions = [
-        and_(
-            AjusteSaldoPartner.partner_type == partner_type,
-            AjusteSaldoPartner.partner_id.in_(sorted(partner_ids)),
-        )
-        for partner_type, partner_ids in ids_by_type.items()
-        if partner_ids
-    ]
-    if not conditions:
-        return totals
-
-    query = db.query(
-        AjusteSaldoPartner.partner_type,
-        AjusteSaldoPartner.partner_id,
-        AjusteSaldoPartner.monto,
-    ).filter(or_(*conditions))
-    if allowed_suc_ids is not None:
-        if sucursal_id:
-            query = query.filter(AjusteSaldoPartner.sucursal_id == sucursal_id)
-        else:
-            query = query.filter(AjusteSaldoPartner.sucursal_id.in_(allowed_suc_ids))
-    elif sucursal_id:
-        query = query.filter(AjusteSaldoPartner.sucursal_id == sucursal_id)
-
-    for partner_type, partner_id, monto in query.all():
-        key = (partner_type, int(partner_id))
-        totals[key] = totals.get(key, Decimal("0")) + Decimal(str(monto or 0))
-    return totals
-
-
-def _build_effective_note_balance_map(
-    db: Session,
-    notas: list[Nota],
-    *,
-    allowed_suc_ids: list[int] | None = None,
-    sucursal_id: int | None = None,
-) -> dict[int, dict[str, Decimal | bool]]:
-    balances: dict[int, dict[str, Decimal | bool]] = {}
-    approved_notes: list[Nota] = []
-    partner_keys: set[tuple[str, int]] = set()
-    note_adjustment_totals = _get_note_balance_adjustment_totals_map(
-        db,
-        [nota.id for nota in notas if nota.id],
-    )
-
-    for nota in notas:
-        raw_without_adjustment = _raw_note_payment_balance(nota)
-        raw = _raw_note_payment_balance(
-            nota,
-            note_adjustment_delta=note_adjustment_totals.get(nota.id, Decimal("0")),
-        )
-        balances[nota.id] = {
-            **raw,
-            "saldo_original": raw_without_adjustment["saldo"],
-            "saldo_pendiente_original": raw_without_adjustment["saldo_pendiente"],
-            "saldo_favor_original": raw_without_adjustment["saldo_favor"],
-            "ajuste_aplicado": Decimal("0"),
-            "saldo_cubierto_por_ajuste": False,
-            "saldo_parcialmente_cubierto": False,
-        }
-        if nota.estado != NotaEstado.aprobada:
-            continue
-        partner_type, partner_id = _nota_partner_key(nota)
-        if not partner_type or not partner_id:
-            continue
-        approved_notes.append(nota)
-        partner_keys.add((partner_type, partner_id))
-
-    adjustment_totals = _get_partner_adjustment_totals_map(
-        db,
-        partner_keys,
-        allowed_suc_ids=allowed_suc_ids,
-        sucursal_id=sucursal_id,
-    )
-
-    grouped_notes: dict[tuple[str, int], list[Nota]] = defaultdict(list)
-    for nota in approved_notes:
-        partner_type, partner_id = _nota_partner_key(nota)
-        if partner_type and partner_id:
-            grouped_notes[(partner_type, partner_id)].append(nota)
-
-    for partner_key, partner_notes in grouped_notes.items():
-        delta = adjustment_totals.get(partner_key) or Decimal("0")
-        credito_contra_saldo_positivo = -delta if delta < Decimal("0") else Decimal("0")
-        credito_contra_saldo_negativo = delta if delta > Decimal("0") else Decimal("0")
-        if (
-            credito_contra_saldo_positivo <= Decimal("0")
-            and credito_contra_saldo_negativo <= Decimal("0")
-        ):
-            continue
-        for nota in sorted(partner_notes, key=lambda item: (item.created_at or datetime.min, item.id)):
-            balance = balances.get(nota.id)
-            if not balance:
-                continue
-            saldo_pendiente = Decimal(str(balance["saldo_pendiente"]))
-            if saldo_pendiente <= Decimal("0"):
-                continue
-            partner_type, _ = partner_key
-            signed_total, signed_pagado = _signed_partner_amounts(nota, partner_type)
-            signed_saldo = signed_total - signed_pagado
-            if signed_saldo > Decimal("0"):
-                aplicado = min(saldo_pendiente, credito_contra_saldo_positivo)
-            elif signed_saldo < Decimal("0"):
-                aplicado = min(saldo_pendiente, credito_contra_saldo_negativo)
-            else:
-                aplicado = Decimal("0")
-            if aplicado <= Decimal("0"):
-                continue
-            balance["ajuste_aplicado"] = aplicado
-            balance["saldo"] = Decimal(str(balance["saldo"])) - aplicado
-            balance["saldo_pendiente"] = saldo_pendiente - aplicado
-            balance["saldo_cubierto_por_ajuste"] = balance["saldo_pendiente"] <= Decimal("0")
-            balance["saldo_parcialmente_cubierto"] = (
-                aplicado > Decimal("0")
-                and balance["saldo_pendiente"] > Decimal("0")
-            )
-            if signed_saldo > Decimal("0"):
-                credito_contra_saldo_positivo -= aplicado
-            else:
-                credito_contra_saldo_negativo -= aplicado
-            if (
-                credito_contra_saldo_positivo <= Decimal("0")
-                and credito_contra_saldo_negativo <= Decimal("0")
-            ):
-                break
-
-    return balances
 
 
 def _movimiento_display_partner(
@@ -2135,6 +1958,7 @@ def _build_notas_estado_links(
     proveedor_id: int | None = None,
     vencimiento_from: str | None = None,
     vencimiento_to: str | None = None,
+    orden: str | None = None,
 ) -> dict[str, str]:
     def build(estado: str | None) -> str:
         params: dict[str, str] = {}
@@ -2150,6 +1974,8 @@ def _build_notas_estado_links(
             params["vence_hasta"] = vencimiento_to
         if pago_filter and pago_filter != "TODAS":
             params["pago"] = pago_filter
+        if orden and orden != "recientes":
+            params["orden"] = orden
         if estado:
             params["estado"] = estado
         qs = urlencode(params)
@@ -2171,6 +1997,7 @@ def _build_notas_pago_links(
     proveedor_id: int | None = None,
     vencimiento_from: str | None = None,
     vencimiento_to: str | None = None,
+    orden: str | None = None,
 ) -> dict[str, str]:
     def build(pago: str | None) -> str:
         params: dict[str, str] = {}
@@ -2186,6 +2013,8 @@ def _build_notas_pago_links(
             params["vence_hasta"] = vencimiento_to
         if estado_filter and estado_filter != "TODAS":
             params["estado"] = estado_filter
+        if orden and orden != "recientes":
+            params["orden"] = orden
         if pago and pago != "TODAS":
             params["pago"] = pago
         qs = urlencode(params)
@@ -2207,6 +2036,7 @@ def _build_notas_sucursal_links(
     proveedor_id: int | None = None,
     vencimiento_from: str | None = None,
     vencimiento_to: str | None = None,
+    orden: str | None = None,
 ) -> dict[str, str]:
     def build(target_sucursal_id: int | None) -> str:
         params: dict[str, str] = {}
@@ -2222,6 +2052,8 @@ def _build_notas_sucursal_links(
             params["vence_desde"] = vencimiento_from
         if vencimiento_to:
             params["vence_hasta"] = vencimiento_to
+        if orden and orden != "recientes":
+            params["orden"] = orden
         if target_sucursal_id:
             params["sucursal_id"] = str(target_sucursal_id)
         qs = urlencode(params)
@@ -2242,6 +2074,7 @@ def _build_notas_seguimiento_links(
     proveedor_id: int | None = None,
     vencimiento_from: str | None = None,
     vencimiento_to: str | None = None,
+    orden: str | None = None,
 ) -> dict[str, str]:
     def build(seguimiento: str | None) -> str:
         params: dict[str, str] = {}
@@ -2259,6 +2092,8 @@ def _build_notas_seguimiento_links(
             params["vence_desde"] = vencimiento_from
         if vencimiento_to:
             params["vence_hasta"] = vencimiento_to
+        if orden and orden != "recientes":
+            params["orden"] = orden
         if seguimiento and seguimiento != "TODOS":
             params["seguimiento"] = seguimiento
         qs = urlencode(params)
@@ -2634,7 +2469,7 @@ def _render_cuenta_form(
     error: str | None,
     form_data: dict | None = None,
 ):
-    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _active_sucursales(db)
     clientes = db.query(Cliente).order_by(Cliente.nombre_completo).all()
     proveedores = db.query(Proveedor).order_by(Proveedor.nombre_completo).all()
     comisionarios = _get_accessible_comisionarios(db, current_user)
@@ -3614,13 +3449,35 @@ def _build_partner_record_context(
             pagos_query = pagos_query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
         pagos = pagos_query.order_by(NotaPago.created_at.desc()).all()
 
+    # Punto 10 (fase 2): opción de ver el estado de cuenta con lo más reciente
+    # arriba. El saldo acumulado se calcula SIEMPRE en orden cronológico (arriba);
+    # aquí solo se invierte la presentación, y ledger_final ya quedó capturado.
+    orden_historial_raw = (request.query_params.get("orden_historial") or "").strip().lower()
+    orden_historial = "recientes" if orden_historial_raw == "recientes" else "cronologico"
+    if orden_historial == "recientes":
+        ledger_rows = list(reversed(ledger_rows))
+    orden_historial_params = {
+        key: value
+        for key, value in request.query_params.items()
+        if key != "orden_historial" and value
+    }
+    orden_historial_links = {
+        "cronologico": _append_query_params(request.url.path, **orden_historial_params),
+        "recientes": _append_query_params(
+            request.url.path, **orden_historial_params, orden_historial="recientes"
+        ),
+    }
+
     folio_map = _build_folio_map(record_notes)
     note_adjustment_totals = _get_note_balance_adjustment_totals_map(
         db,
         [nota.id for nota in record_notes if nota.id],
     )
+    # Punto 7 (fase 2): el neteo también aplica en la vista unificada del par
+    # vinculado — antes este mapa se saltaba cuando unified_summary existía y
+    # las notas ya neteadas seguían apareciendo como pendientes.
     effective_note_balances: dict[int, dict[str, Decimal | bool]] = {}
-    if not unified_summary and record_partner_type in {"cliente", "proveedor"}:
+    if record_notes:
         effective_note_balances = _build_effective_note_balance_map(
             db,
             record_notes,
@@ -3756,6 +3613,8 @@ def _build_partner_record_context(
         "ledger_final": ledger_final,
         "ledger_saldo_label": ledger_saldo_label,
         "ledger_saldo_help": ledger_saldo_help,
+        "orden_historial": orden_historial,
+        "orden_historial_links": orden_historial_links,
         "total_facturado_label": total_facturado_label,
         "total_pagado_label": total_pagado_label,
         "saldo_pendiente_label": saldo_pendiente_label,
@@ -4371,6 +4230,117 @@ async def sucursal_edit_post(
     return RedirectResponse(url="/web/admin/sucursales", status_code=303)
 
 
+def _active_sucursales(db: Session) -> list[Sucursal]:
+    """Sucursales elegibles en formularios de captura.
+
+    Punto 5 (fase 2): una sucursal archivada deja de aparecer en los selectores
+    de operaciones nuevas, pero las listas, filtros y reportes siguen mostrando
+    todas para que su historial no desaparezca.
+    """
+    return (
+        db.query(Sucursal)
+        .filter(Sucursal.estado == SucursalStatus.activa)
+        .order_by(Sucursal.nombre)
+        .all()
+    )
+
+
+def _sucursal_archive_blockers(db: Session, sucursal: Sucursal) -> list[str]:
+    """Razones que impiden archivar una sucursal, con su ruta de salida."""
+    razones: list[str] = []
+    corte_abierto = (
+        db.query(CorteCaja)
+        .filter(CorteCaja.sucursal_id == sucursal.id, CorteCaja.estado == CorteCajaEstado.abierto)
+        .first()
+    )
+    if corte_abierto:
+        razones.append("tiene un corte de caja abierto (ciérralo primero)")
+    notas_abiertas = (
+        db.query(Nota)
+        .filter(
+            Nota.sucursal_id == sucursal.id,
+            Nota.estado.in_([NotaEstado.borrador, NotaEstado.en_revision]),
+        )
+        .count()
+    )
+    if notas_abiertas:
+        plural = "s" if notas_abiertas != 1 else ""
+        razones.append(f"tiene {notas_abiertas} nota{plural} sin aprobar (apruébalas o cancélalas)")
+    usuarios_activos = (
+        db.query(User)
+        .filter(
+            User.sucursal_id == sucursal.id,
+            User.estado == UserStatus.activo,
+            User.rol != UserRole.super_admin,
+        )
+        .count()
+    )
+    if usuarios_activos:
+        plural = "s" if usuarios_activos != 1 else ""
+        razones.append(
+            f"tiene {usuarios_activos} usuario{plural} activo{plural} asignado{plural} (reasígnalos o desactívalos)"
+        )
+    stock_total = (
+        db.query(func.coalesce(func.sum(Inventario.stock_actual), 0))
+        .filter(Inventario.sucursal_id == sucursal.id)
+        .scalar()
+    )
+    if Decimal(str(stock_total or 0)) > Decimal("0.005"):
+        razones.append(
+            f"conserva {Decimal(str(stock_total)):,.2f} kg en inventario (transfiérelos a otra sucursal)"
+        )
+    return razones
+
+
+@router.post("/sucursales/{sucursal_id}/archivar")
+async def sucursal_archivar(
+    sucursal_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    sucursal = db.query(Sucursal).get(sucursal_id)
+    if not sucursal:
+        raise HTTPException(status_code=404, detail="Sucursal no encontrada.")
+    if sucursal.estado == SucursalStatus.inactiva:
+        return RedirectResponse(url="/web/admin/sucursales", status_code=303)
+    razones = _sucursal_archive_blockers(db, sucursal)
+    if razones:
+        detalle = f"No se puede archivar {sucursal.nombre}: " + "; ".join(razones) + "."
+        return RedirectResponse(
+            url=_append_query_params("/web/admin/sucursales", archivar_error=detalle),
+            status_code=303,
+        )
+    sucursal.estado = SucursalStatus.inactiva
+    db.add(sucursal)
+    db.commit()
+    return RedirectResponse(
+        url=_append_query_params("/web/admin/sucursales", archivada=sucursal.nombre),
+        status_code=303,
+    )
+
+
+@router.post("/sucursales/{sucursal_id}/reactivar")
+async def sucursal_reactivar(
+    sucursal_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_superadmin),
+):
+    sucursal = db.query(Sucursal).get(sucursal_id)
+    if not sucursal:
+        raise HTTPException(status_code=404, detail="Sucursal no encontrada.")
+    if sucursal.estado == SucursalStatus.activa:
+        return RedirectResponse(url="/web/admin/sucursales", status_code=303)
+    sucursal.estado = SucursalStatus.activa
+    db.add(sucursal)
+    db.commit()
+    return RedirectResponse(
+        url=_append_query_params("/web/admin/sucursales", reactivada=sucursal.nombre),
+        status_code=303,
+    )
+
+
 # ---------- USUARIOS ----------
 
 
@@ -4480,7 +4450,7 @@ async def user_new_get(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_superadmin),
 ):
-    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _active_sucursales(db)
     return templates.TemplateResponse(
         "admin/user_form.html",
         {
@@ -4510,7 +4480,7 @@ async def user_new_post(
     nombre_completo = nombre_completo.strip()
     password = normalizar_password(password)
 
-    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _active_sucursales(db)
     form_data = _build_user_form_data(
         username=username,
         nombre_completo=nombre_completo,
@@ -4655,7 +4625,7 @@ async def user_edit_get(
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
-    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _active_sucursales(db)
     admin_sucursal_ids = []
     if user.rol == UserRole.admin:
         admin_sucursal_ids = [s.id for s in user.sucursales_admin]
@@ -4707,7 +4677,7 @@ async def user_edit_post(
     nombre_completo = nombre_completo.strip()
     password = normalizar_password(password)
 
-    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _active_sucursales(db)
     selected_admin_suc_ids = [int(sid) for sid in admin_sucursal_ids if sid]
 
     def render_error(msg: str):
@@ -5204,7 +5174,7 @@ def _partner_form_sucursales(
     current_user: dict,
 ) -> tuple[list[int] | None, list[Sucursal]]:
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
-    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _active_sucursales(db)
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     return allowed_suc_ids, sucursales
 
@@ -7093,7 +7063,7 @@ def _render_comisionario_form(
     form_data: dict | None = None,
 ):
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
-    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _active_sucursales(db)
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     form_data = form_data or {}
     if "sucursal_id" not in form_data:
@@ -7361,6 +7331,20 @@ async def comisionario_record(
         suc_query = suc_query.filter(Sucursal.id.in_(allowed_suc_ids))
     sucursales = {s.id: s for s in suc_query.all()}
 
+    # Punto 6 (fase 2): formulario de pago que se aplica a las notas más antiguas.
+    cuentas_comisionario = (
+        db.query(Cuenta)
+        .filter(Cuenta.activo.is_(True), Cuenta.comisionario_id == comisionario.id)
+        .order_by(Cuenta.nombre)
+        .all()
+    )
+    cuentas_scrap360 = db.query(CuentaScrap360).filter(CuentaScrap360.activo.is_(True)).all()
+    if comisionario.sucursal_id:
+        cuentas_scrap360 = [
+            c for c in cuentas_scrap360
+            if not c.sucursales or comisionario.sucursal_id in {s.id for s in c.sucursales}
+        ]
+
     return templates.TemplateResponse(
         "admin/comisionario_record.html",
         {
@@ -7376,8 +7360,75 @@ async def comisionario_record(
             "ledger_final": ledger_final,
             "pagos": pagos,
             "sucursales": sucursales,
+            "cuentas": cuentas_comisionario,
+            "cuentas_scrap360": cuentas_scrap360,
             "q": q or "",
         },
+    )
+
+
+@router.post("/comisionarios/{comisionario_id}/pago")
+async def comisionario_pago_fifo(
+    comisionario_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    """Punto 6 (fase 2): un solo pago que se aplica a las notas más antiguas."""
+    comisionario = db.get(Comisionario, comisionario_id)
+    if not comisionario:
+        raise HTTPException(status_code=404, detail="Comisionario no encontrado.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    if allowed_suc_ids is not None and comisionario.sucursal_id not in allowed_suc_ids:
+        raise HTTPException(status_code=403, detail="Sucursal no autorizada.")
+
+    form = await request.form()
+    record_url = f"/web/admin/comisionarios/{comisionario_id}/record"
+
+    def _error(msg: str):
+        return RedirectResponse(
+            url=_append_query_params(record_url, pago_error=msg) + "#comisionario-registrar-pago",
+            status_code=303,
+        )
+
+    monto_raw = (form.get("monto") or "").strip()
+    if not monto_raw:
+        return _error("Debes indicar el monto pagado.")
+    try:
+        monto_val = Decimal(str(monto_raw))
+    except (InvalidOperation, TypeError):
+        return _error("El monto pagado es inválido.")
+
+    cuenta_scrap360_raw = (form.get("cuenta_scrap360_id") or "").strip()
+    cuenta_scrap360_id = None
+    if cuenta_scrap360_raw:
+        try:
+            cuenta_scrap360_id = int(cuenta_scrap360_raw)
+        except (TypeError, ValueError):
+            return _error("La cuenta Scrap360 es inválida.")
+
+    try:
+        pagos = comision_service.pay_comisionario_fifo(
+            db,
+            comisionario_id=comisionario_id,
+            monto=monto_val,
+            usuario_id=current_user.get("id"),
+            metodo_pago=(form.get("metodo_pago") or "").strip().lower() or None,
+            cuenta_financiera=(form.get("cuenta_financiera") or "").strip() or None,
+            cuenta_scrap360_id=cuenta_scrap360_id,
+            comentario=(form.get("comentario") or "").strip() or None,
+        )
+    except ValueError as exc:
+        return _error(str(exc))
+
+    return RedirectResponse(
+        url=_append_query_params(
+            record_url,
+            pago_fifo=str(len(pagos)),
+            pago_monto=f"{monto_val:,.2f}",
+        )
+        + "#comisionario-pagos",
+        status_code=303,
     )
 
 
@@ -7477,7 +7528,7 @@ async def comisionario_nota_new_get(
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
-    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _active_sucursales(db)
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     comisionarios = _get_accessible_comisionarios(db, current_user, activos_solamente=True)
     materiales = db.query(Material).order_by(Material.orden_display, Material.nombre).all()
@@ -7518,7 +7569,7 @@ async def comisionario_nota_new_post(
     comentario = (form.get("comentario") or "").strip()
 
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
-    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _active_sucursales(db)
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     comisionarios = _get_accessible_comisionarios(db, current_user, activos_solamente=True)
     materiales = db.query(Material).order_by(Material.orden_display, Material.nombre).all()
@@ -8791,7 +8842,7 @@ async def cuentas_scrap360_new_get(
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
-    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _active_sucursales(db)
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     return templates.TemplateResponse(
         "admin/cuenta_scrap360_form.html",
@@ -8819,7 +8870,7 @@ async def cuentas_scrap360_new_post(
     current_user: dict = Depends(require_admin_or_superadmin),
 ):
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
-    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _active_sucursales(db)
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     form = await request.form()
     nombre = (form.get("nombre") or "").strip()
@@ -8942,7 +8993,7 @@ async def cuenta_scrap360_edit_get(
         raise HTTPException(status_code=404, detail="Cuenta Scrap360 no encontrada.")
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     _ensure_scrap360_access(cuenta, allowed_suc_ids)
-    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _active_sucursales(db)
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     selected_ids = [s.id for s in cuenta.sucursales]
     return templates.TemplateResponse(
@@ -8976,7 +9027,7 @@ async def cuenta_scrap360_edit_post(
         raise HTTPException(status_code=404, detail="Cuenta Scrap360 no encontrada.")
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     _ensure_scrap360_access(cuenta, allowed_suc_ids)
-    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _active_sucursales(db)
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     form = await request.form()
     nombre = (form.get("nombre") or "").strip()
@@ -9266,7 +9317,7 @@ def _render_admin_purchase_note_form(
     proveedores = proveedores_query.order_by(Proveedor.nombre_completo).all()
     proveedores_venta = [p for p in proveedores if bool(getattr(p, "permite_ventas", False))]
     clientes = clientes_query.order_by(Cliente.nombre_completo).all()
-    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _active_sucursales(db)
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     return templates.TemplateResponse(
         "worker/notes_form.html",
@@ -9750,6 +9801,14 @@ async def notas_list(
         notas_estado = [nota for nota in notas_estado if is_overdue(nota)]
     elif seguimiento_current == "POR_VENCER":
         notas_estado = [nota for nota in notas_estado if is_upcoming(nota)]
+    # Punto 9 (fase 2): el explorador puede ordenarse de la más antigua a la más
+    # reciente. El resto de la página (recientes, revisión, vencidas) conserva su
+    # orden propio. El corte a 200 se aplica DESPUÉS de ordenar, para que "antiguas"
+    # muestre efectivamente las primeras notas y no las últimas.
+    orden_notas_raw = (request.query_params.get("orden") or "").strip().lower()
+    orden_notas = "antiguas" if orden_notas_raw == "antiguas" else "recientes"
+    if orden_notas == "antiguas":
+        notas_estado.sort(key=lambda item: (item.created_at or datetime.min, item.id))
     notas_estado = notas_estado[:200]
 
     saldo_vivo_total = Decimal("0")
@@ -9834,6 +9893,7 @@ async def notas_list(
         proveedor_filter_id,
         vencimiento_from_raw,
         vencimiento_to_raw,
+        orden_notas,
     )
     pago_links = _build_notas_pago_links(
         folio_query,
@@ -9842,6 +9902,7 @@ async def notas_list(
         proveedor_filter_id,
         vencimiento_from_raw,
         vencimiento_to_raw,
+        orden_notas,
     )
     sucursal_links = _build_notas_sucursal_links(
         sucursales_list,
@@ -9851,6 +9912,7 @@ async def notas_list(
         proveedor_id=proveedor_filter_id,
         vencimiento_from=vencimiento_from_raw,
         vencimiento_to=vencimiento_to_raw,
+        orden=orden_notas,
     )
     seguimiento_links = _build_notas_seguimiento_links(
         folio_query=folio_query,
@@ -9860,7 +9922,17 @@ async def notas_list(
         proveedor_id=proveedor_filter_id,
         vencimiento_from=vencimiento_from_raw,
         vencimiento_to=vencimiento_to_raw,
+        orden=orden_notas,
     )
+    orden_base_params = {
+        key: value
+        for key, value in request.query_params.items()
+        if key != "orden" and value
+    }
+    orden_links = {
+        "recientes": _append_query_params("/web/admin/notas", **orden_base_params),
+        "antiguas": _append_query_params("/web/admin/notas", **orden_base_params, orden="antiguas"),
+    }
     sucursal_label = "Todas las sucursales"
     if sucursal_id:
         sucursal = sucursales.get(sucursal_id)
@@ -9925,6 +9997,8 @@ async def notas_list(
             "seguimiento_label": seguimiento_label,
             "seguimiento_counts": seguimiento_counts,
             "seguimiento_links": seguimiento_links,
+            "orden_notas": orden_notas,
+            "orden_links": orden_links,
         },
     )
 
@@ -9937,7 +10011,7 @@ async def transferencias_get(
 ):
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.orden_display, Material.nombre).all()
-    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _active_sucursales(db)
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     origin_locked = (
         current_user.get("rol") == UserRole.admin.value
@@ -10012,7 +10086,7 @@ async def transferencias_post(
 ):
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.orden_display, Material.nombre).all()
-    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _active_sucursales(db)
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     origin_locked = (
         current_user.get("rol") == UserRole.admin.value
@@ -10455,7 +10529,7 @@ def _render_nota_detail(
     cuentas_scrap360 = _get_scrap360_cuentas_for_nota(db, nota)
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     cash_sucursales = _filter_sucursales_for_admin(
-        db.query(Sucursal).order_by(Sucursal.nombre).all(),
+        _active_sucursales(db),
         allowed_suc_ids,
     )
     note_material_options: list[dict] = []
@@ -12691,7 +12765,7 @@ async def inventario_ajuste_get(
 ):
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.orden_display, Material.nombre).all()
-    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _active_sucursales(db)
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     suc_ids = [s.id for s in sucursales]
     inv_rows = db.query(Inventario).filter(Inventario.sucursal_id.in_(suc_ids)).all() if suc_ids else []
@@ -12722,7 +12796,7 @@ def _render_inventario_aumentar(
 ):
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.orden_display, Material.nombre).all()
-    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _active_sucursales(db)
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
     suc_ids = [s.id for s in sucursales]
     inv_rows = db.query(Inventario).filter(Inventario.sucursal_id.in_(suc_ids)).all() if suc_ids else []
@@ -12855,7 +12929,7 @@ async def inventario_ajuste_post(
 ):
     allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.orden_display, Material.nombre).all()
-    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _active_sucursales(db)
     sucursales = _filter_sucursales_for_admin(sucursales, allowed_suc_ids)
 
     suc_ids = [s.id for s in sucursales]
@@ -12946,7 +13020,7 @@ def _render_conversiones_materiales(
     ok: bool = False,
     form_data: dict | None = None,
 ):
-    sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
+    sucursales = _active_sucursales(db)
     materiales = db.query(Material).filter(Material.activo.is_(True)).order_by(Material.orden_display, Material.nombre).all()
     conversions = (
         db.query(ConversionMaterial)
@@ -14944,6 +15018,18 @@ async def corte_caja_abrir(
         )
     if allowed_suc_ids is not None and sucursal_id not in allowed_suc_ids:
         raise HTTPException(status_code=403, detail="No tienes acceso a esta sucursal.")
+    sucursal_obj = db.query(Sucursal).get(sucursal_id)
+    if sucursal_obj and sucursal_obj.estado == SucursalStatus.inactiva:
+        return _render_corte_caja(
+            request,
+            db,
+            current_user,
+            sucursal_id=sucursal_id,
+            fecha=fecha,
+            allowed_suc_ids=allowed_suc_ids,
+            error="Esta sucursal está archivada: puedes consultar sus cortes históricos, pero no abrir uno nuevo.",
+            form_data={"saldo_inicial": saldo_raw},
+        )
 
     if not saldo_raw:
         previous_closed_corte = _get_previous_closed_corte(db, sucursal_id=sucursal_id, fecha=fecha)
@@ -16299,6 +16385,33 @@ async def reporte_saldos(
     global_a_cobrar = prov_total_a_cobrar + cli_total_a_cobrar
     global_neto = global_a_cobrar - global_a_pagar  # positive = we collect more than we owe
 
+    # Punto 11 (fase 2): además del orden por cantidad, orden alfabético para
+    # localizar a un socio por nombre. El sort vive aquí (no en Jinja) y los
+    # acentos no alteran el orden (Álvarez junto a Alvarez).
+    def _sort_alfabetico(row: dict) -> str:
+        nombre = row.get("nombre") or ""
+        return unicodedata.normalize("NFKD", nombre).encode("ascii", "ignore").decode().lower()
+
+    orden_saldos_raw = (request.query_params.get("orden") or "").strip().lower()
+    orden_saldos = "alfabetico" if orden_saldos_raw == "alfabetico" else "cantidad"
+    if orden_saldos == "alfabetico":
+        proveedores_rows.sort(key=_sort_alfabetico)
+        clientes_rows.sort(key=_sort_alfabetico)
+    else:
+        proveedores_rows.sort(key=lambda r: r["a_pagar"], reverse=True)
+        clientes_rows.sort(key=lambda r: r["a_cobrar"], reverse=True)
+    orden_saldos_params = {
+        key: value
+        for key, value in request.query_params.items()
+        if key != "orden" and value
+    }
+    orden_saldos_links = {
+        "cantidad": _append_query_params("/web/admin/reporte-saldos", **orden_saldos_params),
+        "alfabetico": _append_query_params(
+            "/web/admin/reporte-saldos", **orden_saldos_params, orden="alfabetico"
+        ),
+    }
+
     return templates.TemplateResponse(
         "admin/reporte_saldos.html",
         {
@@ -16309,6 +16422,8 @@ async def reporte_saldos(
             "sucursal_id": sucursal_id,
             "proveedores_rows": proveedores_rows,
             "clientes_rows": clientes_rows,
+            "orden_saldos": orden_saldos,
+            "orden_saldos_links": orden_saldos_links,
             "prov_total_a_pagar": prov_total_a_pagar,
             "prov_total_a_cobrar": prov_total_a_cobrar,
             "cli_total_a_cobrar": cli_total_a_cobrar,
