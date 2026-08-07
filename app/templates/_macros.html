@@ -19,6 +19,28 @@
 <svg class="s-icon {{ cls }}" aria-hidden="true" focusable="false"><use href="#i-{{ name }}"></use></svg>
 {%- endmacro %}
 
+{# --- Marca Scrap360 -------------------------------------------------------
+   Carátula de báscula: arco de instrumento con aguja de latón, que además
+   dibuja el "360". Un solo trazo para navbar, cajón, footer y login; el
+   tamaño y los colores los pone la hoja (brand-mark, brand-mark--lg).
+#}
+{% macro brand_mark(cls="") -%}
+<svg class="brand-mark {{ cls }}" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+    <circle class="brand-mark__dial" cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.4"
+            stroke-linecap="round" stroke-dasharray="42.4 14.2" transform="rotate(135 12 12)"/>
+    <path class="brand-mark__needle" d="M12 12 16.9 7.1" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+    <circle class="brand-mark__hub" cx="12" cy="12" r="2.1" fill="currentColor"/>
+</svg>
+{%- endmacro %}
+
+{# --- Wordmark Scrap360 ----------------------------------------------------
+   "Scrap" en grafito, "360" en latón. Úsalo dentro de un contenedor que ya
+   define familia y peso (navbar-brand, footer-wordmark, s-auth__wordmark).
+#}
+{% macro brand_word() -%}
+Scrap<span class="brand-word__accent">360</span>
+{%- endmacro %}
+
 {# --- Page header ---------------------------------------------------------
    Every screen opens the same way: section eyebrow, title, one line of
    purpose, actions on the right.

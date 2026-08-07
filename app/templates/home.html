@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon, stat, money, kg %}
+{% from "_macros.html" import icon, stat, money, kg, brand_mark, brand_word %}
 
 {% block title %}Inicio{% endblock %}
 
@@ -221,8 +221,8 @@
     <div class="s-auth">
         <div class="s-auth__card text-center">
             <div class="s-auth__brand justify-content-center">
-                <span class="brand-mark"></span>
-                <span class="s-auth__wordmark">Scrap360</span>
+                {{ brand_mark() }}
+                <span class="s-auth__wordmark">{{ brand_word() }}</span>
             </div>
             <p class="text-muted mb-4">Control de inventario, compras y ventas.</p>
             <a href="/web/login" class="btn btn-primary btn-lg w-100">Entrar al panel</a>

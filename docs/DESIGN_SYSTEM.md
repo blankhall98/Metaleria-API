@@ -389,6 +389,38 @@ From the sprite only: `{{ icon('truck') }}`, `{{ icon('plus', 's-icon--sm') }}`.
 **Emoji are never icons.** Add new glyphs to `_icons.html` as 24×24 stroke
 symbols drawn with `currentColor`.
 
+### Brand
+
+The mark is a **scale dial**: a graphite instrument arc with a brass needle,
+which also reads as "360°". One drawing for every context:
+
+```jinja
+{{ brand_mark() }}                                  {# navbar, footer, cajón #}
+{{ brand_mark('brand-mark--lg brand-mark--invert') }}  {# fondos oscuros #}
+```
+
+The wordmark is two-tone — `Scrap` inherits the container's colour, `360` is
+always brass — via `{{ brand_word() }}`. Never write "Scrap360" as plain text
+next to the mark, and never rebuild the mark as a box, an image or an emoji.
+The mark does not change colour on hover: it is identity, not an action.
+
+### Login (panel dividido)
+
+`/web/login` is the product's front door: a split panel (`.s-auth__panel`) with
+the form first in the DOM (`.s-auth__main`, focus and screen readers) and a
+graphite brand canvas (`.s-auth__aside`) that only renders ≥992px — eyebrow,
+one headline, one line of support, the dial as a cropped technical drawing,
+and a mono version line. Phones get the form alone. `home.html` logged-out
+keeps the simple `.s-auth__card`.
+
+### Footer
+
+Brand block left (mark + two-tone wordmark + one-line descriptor); meta right:
+environment chip (`.footer-chip--env`, amber, only outside prod), version chip
+(`.footer-chip`, mono), a hairline separator and a `Soporte` mailto link, then
+the credit line. On phones the footer clears the mobile dock — its last line
+is never buried under the fixed bar.
+
 ---
 
 ## 5. Spanish copy

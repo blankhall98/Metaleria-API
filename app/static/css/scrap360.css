@@ -319,18 +319,31 @@ input[type="number"] {
     color: var(--s-n900);
     text-transform: none;
 }
-.navbar-brand:hover { color: var(--s-p600); text-decoration: none; }
+/* La marca no cambia de color al pasar el cursor: es identidad, no acción. */
+.navbar-brand:hover { color: var(--s-n900); text-decoration: none; }
 
+/* La marca es la carátula de una báscula: arco grafito, aguja de latón.
+   El SVG lo emite la macro brand_mark(); aquí solo viven tamaño y color. */
 .brand-mark {
-    width: 10px;
-    height: 18px;
-    border-radius: 2px;
-    background: var(--s-brass300);
-    background-image: none;
-    box-shadow: none;
+    width: 22px;
+    height: 22px;
     margin-right: var(--s-2);
     flex: 0 0 auto;
+    display: inline-block;
+    vertical-align: middle;
 }
+.brand-mark--lg { width: 30px; height: 30px; }
+.brand-mark__dial { color: var(--s-n800); }
+.brand-mark__needle,
+.brand-mark__hub { color: var(--s-brass500); }
+
+/* Sobre fondos oscuros (aside del login) el dial aclara y el latón sube. */
+.brand-mark--invert .brand-mark__dial { color: var(--s-n300); }
+.brand-mark--invert .brand-mark__needle,
+.brand-mark--invert .brand-mark__hub { color: var(--s-brass300); }
+
+/* "Scrap" hereda el color del contenedor; "360" siempre es latón. */
+.brand-word__accent { color: var(--s-brass500); }
 
 .user-chip {
     display: inline-flex;
@@ -441,6 +454,14 @@ a.nav-drawer-user:hover { color: var(--s-p600); }
 
 body.app-has-mobile-dock .page-shell {
     padding-bottom: calc(var(--s-dock-h) + env(safe-area-inset-bottom) + var(--s-8));
+}
+
+/* El footer también debe librar el dock: sin esto, la última línea de la
+   página (versión, soporte) queda sepultada bajo la barra fija. */
+@media (max-width: 767.98px) {
+    body.app-has-mobile-dock footer.footer {
+        padding-bottom: calc(var(--s-dock-h) + env(safe-area-inset-bottom));
+    }
 }
 
 @media (min-width: 768px) {
@@ -601,11 +622,27 @@ body.drawer-open { overflow: hidden; }
     text-align: center;
 }
 .footer-brand small { display: block; color: var(--s-text-muted); letter-spacing: 0.2px; }
+
+.footer-identity { justify-content: center; text-align: left; }
+.footer-wordmark {
+    font-family: var(--s-font-display);
+    font-weight: 600;
+    font-size: var(--s-fs-base);
+    letter-spacing: -0.01em;
+    color: var(--s-text);
+    line-height: 1.25;
+}
+.footer-descriptor {
+    display: block;
+    color: var(--s-text-muted);
+    letter-spacing: 0.01em;
+}
+
 .footer-meta {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--s-1);
+    gap: var(--s-2);
     text-align: center;
     line-height: 1.5;
 }
@@ -616,13 +653,44 @@ body.drawer-open { overflow: hidden; }
     flex-wrap: wrap;
     justify-content: center;
 }
-.footer-credit { opacity: 0.7; }
-.footer-heart { color: var(--s-bad); margin: 0 0.15rem; }
+
+/* La versión y el entorno son lecturas de instrumento: mono, en chip. */
+.footer-chip {
+    font-family: var(--s-font-mono);
+    font-size: var(--s-fs-micro);
+    line-height: 1;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--s-line);
+    border-radius: var(--s-r-sm);
+    background: var(--s-surface-alt);
+    color: var(--s-text-soft);
+    letter-spacing: 0.02em;
+}
+.footer-chip--env {
+    border-color: var(--s-warn-line);
+    background: var(--s-warn-tint);
+    color: var(--s-warn);
+    text-transform: uppercase;
+}
+.footer-sep {
+    width: 1px;
+    height: 14px;
+    background: var(--s-line);
+}
+.footer-link {
+    color: var(--s-text-soft);
+    text-decoration: none;
+    border-bottom: 1px solid var(--s-line-strong);
+    transition: color var(--s-dur) var(--s-ease), border-color var(--s-dur) var(--s-ease);
+}
+.footer-link:hover { color: var(--s-p500); border-bottom-color: var(--s-p500); }
+
+.footer-credit { opacity: 0.75; }
 .footer-credit a { color: inherit; text-decoration: none; border-bottom: 1px solid var(--s-line-strong); }
 .footer-credit a:hover { color: var(--s-p500); border-bottom-color: var(--s-p500); }
 
 @media (min-width: 992px) {
-    .footer-brand { justify-content: flex-start; text-align: left; }
+    .footer-identity { justify-content: flex-start; }
     .footer-meta { align-items: flex-end; text-align: right; }
     .footer-meta-line { justify-content: flex-end; }
 }
@@ -2437,6 +2505,122 @@ textarea.form-control {
     letter-spacing: -0.02em;
 }
 
+/* --- Login: panel dividido ---------------------------------------------
+   El formulario va primero en el DOM (lectores de pantalla y foco); el
+   lienzo de marca se dibuja a la izquierda solo cuando hay ancho para él. */
+.s-auth__panel {
+    width: min(920px, 100%);
+    display: grid;
+    grid-template-columns: 1fr;
+    background: var(--s-surface);
+    border: 1px solid var(--s-line);
+    border-radius: var(--s-r-lg);
+    box-shadow: var(--s-e-3);
+    overflow: hidden;
+}
+.s-auth__main {
+    padding: var(--s-10) var(--s-8);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+.s-auth__aside { display: none; }
+
+@media (min-width: 992px) {
+    .s-auth__panel { grid-template-columns: 11fr 9fr; min-height: 560px; }
+    .s-auth__main { padding: var(--s-12) var(--s-10); }
+    /* En pantalla dividida la marca ya vive en el lienzo izquierdo. */
+    .s-auth__main .s-auth__brand { display: none; }
+    .s-auth__aside {
+        order: -1;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        overflow: hidden;
+        background: var(--s-n900);
+        background-image: repeating-linear-gradient(
+            135deg,
+            transparent 0 12px,
+            color-mix(in srgb, var(--s-n0) 2%, transparent) 12px 13px
+        );
+        color: var(--s-n0);
+        padding: var(--s-8) var(--s-10) var(--s-8);
+    }
+}
+
+.s-auth__aside-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    position: relative;
+    z-index: 1;
+}
+.s-auth__aside-brand .s-auth__wordmark { color: var(--s-n0); }
+.s-auth__aside-brand .brand-word__accent { color: var(--s-brass300); }
+
+.s-auth__aside-body {
+    position: relative;
+    z-index: 1;
+    margin-top: auto;
+    padding-top: var(--s-12);
+}
+.s-auth__eyebrow {
+    font-size: var(--s-fs-micro);
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--s-brass300);
+    margin: 0 0 var(--s-3);
+}
+.s-auth__headline {
+    font-family: var(--s-font-display);
+    font-size: 1.625rem;
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    color: var(--s-n0);
+    margin: 0 0 var(--s-3);
+    max-width: 21ch;
+}
+.s-auth__lede {
+    font-size: var(--s-fs-base);
+    line-height: 1.6;
+    color: var(--s-n400);
+    margin: 0;
+    max-width: 36ch;
+}
+.s-auth__aside-meta {
+    position: relative;
+    z-index: 1;
+    margin: var(--s-8) 0 0;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-fs-micro);
+    letter-spacing: 0.04em;
+    color: var(--s-n500);
+}
+
+/* Dibujo técnico de la carátula: decorativo, recortado en la esquina. */
+.s-auth__gauge {
+    position: absolute;
+    top: -72px;
+    right: -72px;
+    width: 300px;
+    height: 300px;
+    color: var(--s-n700);
+    opacity: 0.9;
+}
+.s-auth__gauge-brass { color: var(--s-brass300); }
+
+@media (prefers-reduced-motion: no-preference) {
+    .s-auth__panel {
+        animation: s-auth-in var(--s-dur-lg) var(--s-ease) both;
+    }
+    @keyframes s-auth-in {
+        from { opacity: 0; transform: translateY(8px); }
+        to   { opacity: 1; transform: none; }
+    }
+}
+
 /* Password field with a reveal control that keeps a 44px hit area. */
 .s-password { position: relative; }
 .s-password .form-control { padding-right: 2.875rem; }
@@ -2461,6 +2645,8 @@ textarea.form-control {
 @media (max-width: 575.98px) {
     .s-auth { align-items: flex-start; padding-top: var(--s-8); }
     .s-auth__card { padding: var(--s-6) var(--s-5); border-radius: var(--s-r-md); }
+    .s-auth__main { padding: var(--s-6) var(--s-5); }
+    .s-auth__panel { border-radius: var(--s-r-md); }
 }
 
 /* ==========================================================================
@@ -2552,7 +2738,8 @@ textarea.form-control {
 @media (max-width: 575.98px) {
     .s-page-title { font-size: 1.375rem; }
     .card-body { padding: var(--s-4); }
-    .s-auth__card { box-shadow: none; }
+    .s-auth__card,
+    .s-auth__panel { box-shadow: none; }
 }
 
 /* ==========================================================================

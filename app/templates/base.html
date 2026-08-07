@@ -37,15 +37,15 @@
 </script>
 
 {% include "_icons.html" %}
-{% from "_macros.html" import icon %}
+{% from "_macros.html" import icon, brand_mark, brand_word %}
 
 <a class="s-skip-link" href="#contenido">Ir al contenido</a>
 
 <nav class="navbar">
     <div class="container-fluid">
         <a class="navbar-brand d-flex align-items-center" href="/web">
-            <span class="brand-mark"></span>
-            Scrap360
+            {{ brand_mark() }}
+            <span>{{ brand_word() }}</span>
         </a>
 
         {% if user %}
@@ -103,8 +103,8 @@
 <div id="navDrawer" class="nav-drawer" role="dialog" aria-label="Men&uacute; de navegaci&oacute;n" aria-hidden="true">
     <div class="nav-drawer-header">
         <div class="d-flex align-items-center gap-2 footer-brand">
-            <span class="brand-mark"></span>
-            <strong>Scrap360</strong>
+            {{ brand_mark() }}
+            <strong>{{ brand_word() }}</strong>
         </div>
         <button class="btn btn-outline-secondary btn-sm btn-icon" type="button"
                 aria-label="Cerrar men&uacute;" onclick="toggleDrawer(false)">{{ icon('close', 's-icon--sm') }}</button>
@@ -247,23 +247,24 @@
 
 <footer class="footer">
     <div class="container py-4 d-flex flex-column flex-lg-row align-items-center justify-content-between gap-3">
-        <div class="d-flex align-items-center gap-2">
-            <span class="brand-mark"></span>
+        <div class="d-flex align-items-center gap-2 footer-identity">
+            {{ brand_mark() }}
             <div>
-                <div class="fw-semibold">Scrap360</div>
-                <small class="text-muted">Control de inventario, compras y ventas</small>
+                <div class="footer-wordmark">{{ brand_word() }}</div>
+                <small class="footer-descriptor">B&aacute;scula, inventario y caja de tu chatarrera</small>
             </div>
         </div>
         <div class="text-muted small footer-meta">
             {% if user %}
             <div class="footer-meta-line">
-                {% if env and env != 'prod' %}<span>Entorno: {{ env }}</span>{% endif %}
-                <span>Versi&oacute;n 0.1.0</span>
+                {% if env and env != 'prod' %}<span class="footer-chip footer-chip--env">{{ env }}</span>{% endif %}
+                <span class="footer-chip">v0.1.0</span>
+                <span class="footer-sep" aria-hidden="true"></span>
+                <a class="footer-link" href="mailto:xblankhallx@gmail.com">Soporte</a>
             </div>
-            <div class="footer-meta-line">Soporte: xblankhallx@gmail.com</div>
             {% endif %}
             <div class="footer-meta-line footer-credit">
-                Programado con <span class="footer-heart">&#10084;</span> por
+                Desarrollado por
                 <a href="https://www.zero2hero.lat" target="_blank" rel="noopener">zero2hero</a>
             </div>
         </div>
