@@ -70,10 +70,13 @@
         <div class="table-responsive">
             <table class="table table-hover align-middle">
                 <thead>
+                {# Existencias a la izquierda a pedido de la clienta (junta
+                   07-ago): con la columna Actualizado al lado, el número
+                   pegado a la derecha le quedaba lejos del material. #}
                 <tr>
                     <th>Sucursal</th>
                     <th data-title-col data-mobile-primary>Material</th>
-                    <th class="text-end" data-mobile-primary>Existencias actuales</th>
+                    <th data-mobile-primary>Existencias actuales</th>
                     <th>Actualizado</th>
                 </tr>
                 </thead>
@@ -82,7 +85,7 @@
                     <tr>
                         <td>{{ inv.sucursal.nombre if inv.sucursal else inv.sucursal_id }}</td>
                         <td>{{ inv.material.nombre if inv.material else inv.material_id }}</td>
-                        <td class="text-end">
+                        <td>
                             {# Cada cifra puede explicarse: el saldo enlaza al kardex
                                de ese material en esa sucursal. Un saldo en cero va
                                atenuado — no es un dato caliente. #}

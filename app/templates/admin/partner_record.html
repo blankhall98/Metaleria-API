@@ -55,11 +55,12 @@
         </div>
     {% endif %}
 
-    {# El índice sigue el orden real de la página: el estado de cuenta es el
-       corazón del expediente y va antes que las asistencias. #}
-    {% set _secciones = [('#partner-summary', 'Resumen'), ('#partner-ledger', 'Estado de cuenta')]
-        + ([('#partner-attendance', 'Asistencias')] if attendance_enabled else [])
-        + [('#partner-notes', 'Notas'), ('#partner-payments', 'Pagos')] %}
+    {# Orden pedido por la clienta (junta 07-ago): ajuste manual arriba,
+       después el estado de cuenta, y las asistencias hasta el final. #}
+    {% set _secciones = [('#partner-summary', 'Resumen')]
+        + ([('#partner-ajuste', 'Ajuste manual')] if can_manage_partner else [])
+        + [('#partner-ledger', 'Estado de cuenta'), ('#partner-notes', 'Notas'), ('#partner-payments', 'Pagos')]
+        + ([('#partner-attendance', 'Asistencias')] if attendance_enabled else []) %}
     {{ anchor_nav(_secciones) }}
 
     <div class="s-stats">
@@ -165,6 +166,46 @@
         </div>
     </div>
 
+    {% if can_manage_partner %}
+        <div class="card mb-3" id="partner-ajuste">
+            <div class="card-body">
+                <h2 class="s-card-title">Ajuste manual de saldo</h2>
+                <p class="s-card-sub mb-3">Registra un saldo inicial o corrige el balance del partner.</p>
+                {% if ajuste_ok %}
+                    <div class="alert alert-success py-2 small">Ajuste registrado correctamente.</div>
+                {% endif %}
+                {% if ajuste_error %}
+                    <div class="alert alert-danger py-2 small">{{ ajuste_error }}</div>
+                {% endif %}
+                <form method="post" action="/web/admin/{{ partner_base }}/{{ partner.id }}/ajuste-saldo">
+                    <div class="s-form-grid">
+                        <div>
+                            <label class="form-label" for="ajuste_direccion">Tipo de ajuste <span class="s-req">*</span></label>
+                            {% set ajuste_dir = form_ajuste_direccion if form_ajuste_direccion is not none else "" %}
+                            <select class="form-select" id="ajuste_direccion" name="ajuste_direccion" required>
+                                <option value="favor" {% if ajuste_dir == 'favor' %}selected{% endif %}>{{ ajuste_favor_label }}</option>
+                                <option value="contra" {% if ajuste_dir == 'contra' %}selected{% endif %}>{{ ajuste_contra_label }}</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label" for="ajuste_monto">Monto <span class="s-req">*</span></label>
+                            {% set ajuste_monto_val = form_ajuste_monto if form_ajuste_monto is not none else "" %}
+                            <input class="form-control" id="ajuste_monto" type="number" step="0.01" min="0.01" name="ajuste_monto" value="{{ ajuste_monto_val }}" required>
+                        </div>
+                        <div>
+                            <label class="form-label" for="ajuste_comentario">Comentario <span class="s-req">*</span></label>
+                            {% set ajuste_comment_val = form_ajuste_comentario if form_ajuste_comentario is not none else "" %}
+                            <input class="form-control" id="ajuste_comentario" name="ajuste_comentario" placeholder="Motivo del ajuste" value="{{ ajuste_comment_val }}" required>
+                        </div>
+                    </div>
+                    <div class="s-form-actions">
+                        <button class="btn btn-outline-primary">Aplicar ajuste</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    {% endif %}
+
     <div class="card mb-3" id="partner-ledger">
         <div class="card-body">
             <div class="s-card-head">
@@ -243,144 +284,6 @@
             {% endif %}
         </div>
     </div>
-
-    {% if attendance_enabled %}
-        <div class="card mb-3" id="partner-attendance">
-            <div class="card-body">
-                <div class="s-card-head">
-                    <div>
-                        <h2 class="s-card-title">Asistencias del proveedor</h2>
-                        <p class="s-card-sub">
-                            Se calculan automáticamente a partir de las notas del proveedor.
-                            Varias notas del mismo día cuentan como una sola asistencia.
-                        </p>
-                    </div>
-                    <div class="s-actions">
-                        <a href="/web/admin/proveedores/{{ partner.id }}/asistencias?format=pdf{% if attendance_from %}&attendance_from={{ attendance_from }}{% endif %}{% if attendance_to %}&attendance_to={{ attendance_to }}{% endif %}" class="btn btn-outline-secondary btn-sm">
-                            {{ icon('print', 's-icon--sm') }} Asistencias PDF
-                        </a>
-                        <a href="/web/admin/proveedores/{{ partner.id }}/asistencias?format=excel{% if attendance_from %}&attendance_from={{ attendance_from }}{% endif %}{% if attendance_to %}&attendance_to={{ attendance_to }}{% endif %}" class="btn btn-outline-secondary btn-sm">
-                            {{ icon('download', 's-icon--sm') }} Asistencias Excel
-                        </a>
-                    </div>
-                </div>
-
-                <details class="s-filters-collapse" open>
-                    <summary>Filtros</summary>
-                    <form class="s-filters" method="get">
-                        {% if q %}
-                            <input type="hidden" name="q" value="{{ q }}">
-                        {% endif %}
-                        <div class="s-filters__field">
-                            <label class="form-label" for="attendance_from">Desde</label>
-                            <input type="date" class="form-control" id="attendance_from" name="attendance_from" value="{{ attendance_from }}">
-                        </div>
-                        <div class="s-filters__field">
-                            <label class="form-label" for="attendance_to">Hasta</label>
-                            <input type="date" class="form-control" id="attendance_to" name="attendance_to" value="{{ attendance_to }}">
-                        </div>
-                        <div class="s-filters__actions">
-                            <button class="btn btn-outline-primary" type="submit">Filtrar</button>
-                            {% if attendance_from or attendance_to %}
-                                <a href="/web/admin/proveedores/{{ partner.id }}/record{% if q %}?q={{ q }}{% endif %}" class="btn btn-outline-secondary">Limpiar</a>
-                            {% endif %}
-                        </div>
-                    </form>
-                </details>
-
-                {% if attendance_error %}
-                    <div class="alert alert-danger py-2 small mb-3">{{ attendance_error }}</div>
-                {% endif %}
-
-                {% call defs() %}
-                    {{ def('Asistencias históricas', attendance_total_historico, '1 asistencia por día con nota registrada') }}
-                    {{ def('Asistencias en rango', attendance_total_filtrado) }}
-                    {{ def('Rango actual', attendance_range_label) }}
-                {% endcall %}
-
-                {% if attendance_rows|length == 0 %}
-                    {{ empty('Sin asistencias en el rango',
-                             'Amplía el rango de fechas o limpia el filtro para ver el histórico completo.',
-                             'calendar') }}
-                {% else %}
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle">
-                            <thead>
-                            <tr>
-                                <th data-title-col data-mobile-primary>Fecha</th>
-                                <th>Sucursal(es)</th>
-                                <th class="text-end">Notas del día</th>
-                                <th>Folios considerados</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            {% for row in attendance_rows %}
-                                <tr>
-                                    <td><div class="fw-semibold">{{ row.fecha_label }}</div></td>
-                                    <td>{{ row.sucursales_label }}</td>
-                                    <td class="text-end">{{ row.notes_count }}</td>
-                                    <td>
-                                        {% if row.folios %}
-                                            <div class="d-flex flex-wrap gap-1">
-                                                {% for folio in row.folios %}
-                                                    {{ badge(folio, 'muted') }}
-                                                {% endfor %}
-                                            </div>
-                                        {% else %}
-                                            <span class="text-muted">—</span>
-                                        {% endif %}
-                                    </td>
-                                </tr>
-                            {% else %}
-                                {{ empty_row(4, 'Sin asistencias en el período.') }}
-                            {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                {% endif %}
-            </div>
-        </div>
-    {% endif %}
-
-    {% if can_manage_partner %}
-        <div class="card mb-3" id="partner-ajuste">
-            <div class="card-body">
-                <h2 class="s-card-title">Ajuste manual de saldo</h2>
-                <p class="s-card-sub mb-3">Registra un saldo inicial o corrige el balance del partner.</p>
-                {% if ajuste_ok %}
-                    <div class="alert alert-success py-2 small">Ajuste registrado correctamente.</div>
-                {% endif %}
-                {% if ajuste_error %}
-                    <div class="alert alert-danger py-2 small">{{ ajuste_error }}</div>
-                {% endif %}
-                <form method="post" action="/web/admin/{{ partner_base }}/{{ partner.id }}/ajuste-saldo">
-                    <div class="s-form-grid">
-                        <div>
-                            <label class="form-label" for="ajuste_direccion">Tipo de ajuste <span class="s-req">*</span></label>
-                            {% set ajuste_dir = form_ajuste_direccion if form_ajuste_direccion is not none else "" %}
-                            <select class="form-select" id="ajuste_direccion" name="ajuste_direccion" required>
-                                <option value="favor" {% if ajuste_dir == 'favor' %}selected{% endif %}>{{ ajuste_favor_label }}</option>
-                                <option value="contra" {% if ajuste_dir == 'contra' %}selected{% endif %}>{{ ajuste_contra_label }}</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="form-label" for="ajuste_monto">Monto <span class="s-req">*</span></label>
-                            {% set ajuste_monto_val = form_ajuste_monto if form_ajuste_monto is not none else "" %}
-                            <input class="form-control" id="ajuste_monto" type="number" step="0.01" min="0.01" name="ajuste_monto" value="{{ ajuste_monto_val }}" required>
-                        </div>
-                        <div>
-                            <label class="form-label" for="ajuste_comentario">Comentario <span class="s-req">*</span></label>
-                            {% set ajuste_comment_val = form_ajuste_comentario if form_ajuste_comentario is not none else "" %}
-                            <input class="form-control" id="ajuste_comentario" name="ajuste_comentario" placeholder="Motivo del ajuste" value="{{ ajuste_comment_val }}" required>
-                        </div>
-                    </div>
-                    <div class="s-form-actions">
-                        <button class="btn btn-outline-primary">Aplicar ajuste</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    {% endif %}
 
     <div class="card mb-3" id="partner-notes">
         <div class="card-body">
@@ -615,5 +518,103 @@
             {% endif %}
         </div>
     </div>
+
+    {% if attendance_enabled %}
+        <div class="card mb-3" id="partner-attendance">
+            <div class="card-body">
+                <div class="s-card-head">
+                    <div>
+                        <h2 class="s-card-title">Asistencias del proveedor</h2>
+                        <p class="s-card-sub">
+                            Se calculan automáticamente a partir de las notas del proveedor.
+                            Varias notas del mismo día cuentan como una sola asistencia.
+                        </p>
+                    </div>
+                    <div class="s-actions">
+                        <a href="/web/admin/proveedores/{{ partner.id }}/asistencias?format=pdf{% if attendance_from %}&attendance_from={{ attendance_from }}{% endif %}{% if attendance_to %}&attendance_to={{ attendance_to }}{% endif %}" class="btn btn-outline-secondary btn-sm">
+                            {{ icon('print', 's-icon--sm') }} Asistencias PDF
+                        </a>
+                        <a href="/web/admin/proveedores/{{ partner.id }}/asistencias?format=excel{% if attendance_from %}&attendance_from={{ attendance_from }}{% endif %}{% if attendance_to %}&attendance_to={{ attendance_to }}{% endif %}" class="btn btn-outline-secondary btn-sm">
+                            {{ icon('download', 's-icon--sm') }} Asistencias Excel
+                        </a>
+                    </div>
+                </div>
+
+                <details class="s-filters-collapse" open>
+                    <summary>Filtros</summary>
+                    <form class="s-filters" method="get">
+                        {% if q %}
+                            <input type="hidden" name="q" value="{{ q }}">
+                        {% endif %}
+                        <div class="s-filters__field">
+                            <label class="form-label" for="attendance_from">Desde</label>
+                            <input type="date" class="form-control" id="attendance_from" name="attendance_from" value="{{ attendance_from }}">
+                        </div>
+                        <div class="s-filters__field">
+                            <label class="form-label" for="attendance_to">Hasta</label>
+                            <input type="date" class="form-control" id="attendance_to" name="attendance_to" value="{{ attendance_to }}">
+                        </div>
+                        <div class="s-filters__actions">
+                            <button class="btn btn-outline-primary" type="submit">Filtrar</button>
+                            {% if attendance_from or attendance_to %}
+                                <a href="/web/admin/proveedores/{{ partner.id }}/record{% if q %}?q={{ q }}{% endif %}" class="btn btn-outline-secondary">Limpiar</a>
+                            {% endif %}
+                        </div>
+                    </form>
+                </details>
+
+                {% if attendance_error %}
+                    <div class="alert alert-danger py-2 small mb-3">{{ attendance_error }}</div>
+                {% endif %}
+
+                {% call defs() %}
+                    {{ def('Asistencias históricas', attendance_total_historico, '1 asistencia por día con nota registrada') }}
+                    {{ def('Asistencias en rango', attendance_total_filtrado) }}
+                    {{ def('Rango actual', attendance_range_label) }}
+                {% endcall %}
+
+                {% if attendance_rows|length == 0 %}
+                    {{ empty('Sin asistencias en el rango',
+                             'Amplía el rango de fechas o limpia el filtro para ver el histórico completo.',
+                             'calendar') }}
+                {% else %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead>
+                            <tr>
+                                <th data-title-col data-mobile-primary>Fecha</th>
+                                <th>Sucursal(es)</th>
+                                <th class="text-end">Notas del día</th>
+                                <th>Folios considerados</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for row in attendance_rows %}
+                                <tr>
+                                    <td><div class="fw-semibold">{{ row.fecha_label }}</div></td>
+                                    <td>{{ row.sucursales_label }}</td>
+                                    <td class="text-end">{{ row.notes_count }}</td>
+                                    <td>
+                                        {% if row.folios %}
+                                            <div class="d-flex flex-wrap gap-1">
+                                                {% for folio in row.folios %}
+                                                    {{ badge(folio, 'muted') }}
+                                                {% endfor %}
+                                            </div>
+                                        {% else %}
+                                            <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% else %}
+                                {{ empty_row(4, 'Sin asistencias en el período.') }}
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
 </div>
 {% endblock %}

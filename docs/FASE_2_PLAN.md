@@ -205,8 +205,8 @@ pantalla sobre producción. Qué respondió, qué agregó y qué cambió:
 | 11 (saldos alfabético) | ✅ En prod | Toggle "Por cantidad/Alfabético" en el visor de saldos |
 | 13 (ocultar Cuentas) | ✅ En prod | Menú y mosaico sin la entrada; rutas vivas |
 | 12 (deshacer) | 🟡 Parcial | Pagos de nota, ajustes de nota, devoluciones y conversiones ya tienen reversa; faltan `AjusteSaldoPartner`, `ComisionarioPago`, ajustes de CuentaScrap360 y gastos/movimientos del corte |
-| 6 (FIFO comisionista) | 🟡 Verificar | El formulario del récord ya anuncia FIFO; confirmar que `comision_service` lo ejecuta de verdad |
-| 1, orden del récord | 🔜 Ronda A | Cosmético, inmediato |
+| 6 (FIFO comisionista) | ✅ En prod | `pay_comisionario_fifo` implementado y cableado a `POST /comisionarios/{id}/pago`; verificado 07-ago |
+| 1, orden del récord | ✅ En prod (07-ago, Ronda A) | Existencias alineadas a la izquierda ("stock inicial" ya no existía en ninguna vista); récord en el orden pedido: Resumen → Ajuste manual → Estado de cuenta → Notas → Pagos → Asistencias |
 | 7, 8 (neteo y vinculados) | 🔴 Pendiente | El mapeo de §4 sigue vigente; es el dolor #1 visible en prod (232 "vencidas" infladas) |
 | 5 (archivar sucursales) | 🔴 Pendiente | Mapeado en §4 |
 | 2, 3, 4 (módulos) | 🔓 Desbloqueados | Los 4 Excel ya están en `docs/excel_ejemplos/` — el reloj de entrega corre |
