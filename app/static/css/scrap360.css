@@ -345,6 +345,30 @@ input[type="number"] {
     font-weight: 500;
 }
 
+/* El chip es ahora el disparador del menú de usuario. */
+.user-menu { position: relative; }
+button.user-chip {
+    font: inherit;
+    font-size: var(--s-fs-xs);
+    font-weight: 500;
+    cursor: pointer;
+    transition: background var(--s-dur) var(--s-ease), border-color var(--s-dur) var(--s-ease);
+}
+button.user-chip:hover,
+button.user-chip[aria-expanded="true"] {
+    background: var(--s-n100);
+    border-color: var(--s-line-strong);
+    color: var(--s-text);
+}
+.user-menu__chevron {
+    width: 14px;
+    height: 14px;
+    color: var(--s-text-muted);
+    transition: transform var(--s-dur) var(--s-ease);
+}
+button.user-chip[aria-expanded="true"] .user-menu__chevron { transform: rotate(180deg); }
+.user-menu .s-rowmenu__menu { min-width: 12.5rem; }
+
 .user-avatar,
 .user-table-avatar,
 .entity-avatar,

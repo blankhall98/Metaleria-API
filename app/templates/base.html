@@ -50,11 +50,27 @@
 
         {% if user %}
         <div class="d-flex align-items-center gap-2 ms-auto">
-            <span class="user-chip d-none d-sm-inline-flex">
-                <span class="user-avatar">{{ user.username[0]|upper }}</span>
-                <span class="d-none d-md-inline">{{ user.username }}</span>
-                <span class="text-muted d-none d-md-inline">&middot; {{ user.rol|replace('_', ' ')|title }}</span>
-            </span>
+            <div class="s-rowmenu user-menu d-none d-sm-inline-flex">
+                <button type="button" id="userMenuToggle" class="user-chip user-menu__toggle"
+                        aria-haspopup="menu" aria-expanded="false" aria-controls="userMenu">
+                    <span class="user-avatar">{{ user.username[0]|upper }}</span>
+                    <span class="d-none d-md-inline">{{ user.username }}</span>
+                    <span class="text-muted d-none d-md-inline">&middot; {{ user.rol|replace('_', ' ')|title }}</span>
+                    {{ icon('chevron-down', 's-icon--sm user-menu__chevron') }}
+                </button>
+                <div class="s-rowmenu__menu" id="userMenu" hidden role="menu" aria-label="Men&uacute; de usuario">
+                    {% if user.rol == 'super_admin' %}
+                        <a class="s-rowmenu__item d-flex align-items-center gap-2" role="menuitem"
+                           href="/web/admin/users/{{ user.id }}/editar">
+                            {{ icon('edit', 's-icon--sm') }} Editar perfil
+                        </a>
+                    {% endif %}
+                    <a class="s-rowmenu__item s-rowmenu__item--danger d-flex align-items-center gap-2" role="menuitem"
+                       href="/web/logout">
+                        {{ icon('logout', 's-icon--sm') }} Cerrar sesi&oacute;n
+                    </a>
+                </div>
+            </div>
             <button class="btn btn-outline-secondary btn-sm menu-trigger" type="button"
                     aria-label="Abrir menú" aria-expanded="false" aria-controls="navDrawer"
                     onclick="toggleDrawer(true)">

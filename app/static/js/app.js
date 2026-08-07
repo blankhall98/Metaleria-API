@@ -362,8 +362,28 @@
 
     function closeAllRowMenus() {
         document.querySelectorAll('.s-rowmenu__menu').forEach(function (m) { m.hidden = true; });
-        document.querySelectorAll('.s-rowmenu__toggle').forEach(function (t) {
+        document.querySelectorAll('.s-rowmenu__toggle, .user-menu__toggle').forEach(function (t) {
             t.setAttribute('aria-expanded', 'false');
+        });
+    }
+
+    /* Menú del usuario en la barra superior: Editar perfil / Cerrar sesión.
+       Reusa el componente s-rowmenu, así que el clic fuera y Escape ya lo
+       cierran desde los manejadores globales. */
+    function initUserMenu() {
+        var toggle = document.getElementById('userMenuToggle');
+        var menu = document.getElementById('userMenu');
+        if (!toggle || !menu) return;
+
+        toggle.addEventListener('click', function (event) {
+            event.stopPropagation();
+            var wasClosed = menu.hidden;
+            closeAllRowMenus();
+            if (!wasClosed) return;
+            menu.hidden = false;
+            toggle.setAttribute('aria-expanded', 'true');
+            var first = menu.querySelector('a, button');
+            if (first) first.focus({ preventScroll: true });
         });
     }
 
@@ -465,6 +485,7 @@
 
     function init() {
         initSidebarToggle();
+        initUserMenu();
         ensureTableShells();
         annotateTables();
         collapseRowActions();
