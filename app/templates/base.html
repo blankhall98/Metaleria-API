@@ -87,6 +87,18 @@
 </nav>
 
 {% if user %}
+{% macro nav_group(key, label) %}
+    <div class="nav-group" data-nav-group="{{ key }}">
+        <button type="button" class="nav-drawer-group-label nav-group__toggle" aria-expanded="true">
+            <span class="s-grow">{{ label }}</span>
+            {{ icon('chevron-down', 'nav-group__chevron') }}
+        </button>
+        <div class="nav-group__items"><div class="nav-group__inner">
+            {{ caller() }}
+        </div></div>
+    </div>
+{% endmacro %}
+
 {% macro nav_link(href, label, icon_name, exact=False) %}
     {% set is_active = (current_path == href) if exact else (current_path.startswith(href)) %}
     <a class="nav-drawer-link d-flex align-items-center gap-2 {% if is_active %}active{% endif %}"
@@ -118,61 +130,71 @@
             {{ nav_link('/web/worker/notes/nueva', 'Nueva nota', 'plus') }}
 
         {% elif user.rol == 'visor' %}
-            <p class="nav-drawer-group-label">Operaci&oacute;n</p>
-            {{ nav_link('/web', 'Inicio', 'home', True) }}
-            {{ nav_link('/web/admin/notas', 'Notas', 'notes') }}
+            {% call nav_group('operacion', 'Operación') %}
+                {{ nav_link('/web', 'Inicio', 'home', True) }}
+                {{ nav_link('/web/admin/notas', 'Notas', 'notes') }}
+            {% endcall %}
 
-            <p class="nav-drawer-group-label">Cat&aacute;logos</p>
-            {{ nav_link('/web/admin/proveedores', 'Proveedores', 'truck') }}
-            {{ nav_link('/web/admin/clientes', 'Clientes', 'users') }}
+            {% call nav_group('catalogos', 'Catálogos') %}
+                {{ nav_link('/web/admin/proveedores', 'Proveedores', 'truck') }}
+                {{ nav_link('/web/admin/clientes', 'Clientes', 'users') }}
+            {% endcall %}
 
-            <p class="nav-drawer-group-label">Inventario</p>
-            {{ nav_link('/web/admin/inventario', 'Inventario', 'box', True) }}
-            {{ nav_link('/web/admin/inventario/movimientos', 'Movimientos', 'transfer') }}
+            {% call nav_group('inventario', 'Inventario') %}
+                {{ nav_link('/web/admin/inventario', 'Inventario', 'box', True) }}
+                {{ nav_link('/web/admin/inventario/movimientos', 'Movimientos', 'transfer') }}
+            {% endcall %}
 
-            <p class="nav-drawer-group-label">Finanzas</p>
-            {{ nav_link('/web/admin/contabilidad', 'Contabilidad', 'ledger') }}
-            {{ nav_link('/web/admin/capital', 'Capital', 'chart') }}
+            {% call nav_group('finanzas', 'Finanzas') %}
+                {{ nav_link('/web/admin/contabilidad', 'Contabilidad', 'ledger') }}
+                {{ nav_link('/web/admin/capital', 'Capital', 'chart') }}
+            {% endcall %}
 
         {% else %}
-            <p class="nav-drawer-group-label">Operaci&oacute;n</p>
-            {{ nav_link('/web', 'Inicio', 'home', True) }}
-            {{ nav_link('/web/admin/notas', 'Notas', 'notes') }}
-            {{ nav_link('/web/admin/corte-caja', 'Corte de caja', 'cash') }}
+            {% call nav_group('operacion', 'Operación') %}
+                {{ nav_link('/web', 'Inicio', 'home', True) }}
+                {{ nav_link('/web/admin/notas', 'Notas', 'notes') }}
+                {{ nav_link('/web/admin/corte-caja', 'Corte de caja', 'cash') }}
+            {% endcall %}
 
-            <p class="nav-drawer-group-label">Cat&aacute;logos</p>
+            {% call nav_group('catalogos', 'Catálogos') %}
+                {% if user.rol == 'super_admin' %}
+                    {{ nav_link('/web/admin/materiales', 'Materiales', 'tag') }}
+                {% endif %}
+                {{ nav_link('/web/admin/proveedores', 'Proveedores', 'truck') }}
+                {{ nav_link('/web/admin/clientes', 'Clientes', 'users') }}
+                {{ nav_link('/web/admin/comisionarios', 'Comisiones', 'percent') }}
+            {% endcall %}
+
+            {% call nav_group('inventario', 'Inventario') %}
+                {{ nav_link('/web/admin/inventario', 'Inventario', 'box', True) }}
+                {{ nav_link('/web/admin/inventario/aumentar', 'Aumentar materiales', 'plus') }}
+                {% if user.rol == 'super_admin' %}
+                    {{ nav_link('/web/admin/conversiones-materiales', 'Conversi&oacute;n de materiales'|safe, 'refresh') }}
+                {% endif %}
+                {{ nav_link('/web/admin/transferencias', 'Transferencias', 'transfer') }}
+            {% endcall %}
+
+            {% call nav_group('finanzas', 'Finanzas') %}
+                {{ nav_link('/web/admin/contabilidad', 'Contabilidad', 'ledger') }}
+                {{ nav_link('/web/admin/capital', 'Capital real', 'chart') }}
+                {# Punto 13 (fase 2): "Cuentas bancarias" se oculta del menú a petición
+                   del cliente. Las rutas /web/admin/cuentas siguen vivas — se llega por
+                   los accesos contextuales (?owner_key=) desde socios y comisionistas,
+                   y los pagos por transferencia/cheque siguen requiriendo una Cuenta. #}
+                {{ nav_link('/web/admin/cuentas-scrap360', 'Cuentas Scrap360', 'wallet') }}
+            {% endcall %}
+
+            {% call nav_group('reportes', 'Reportes') %}
+                {{ nav_link('/web/admin/reporte-asistencias', 'Asistencias', 'calendar') }}
+                {{ nav_link('/web/admin/reporte-saldos', 'Saldos', 'coins') }}
+            {% endcall %}
+
             {% if user.rol == 'super_admin' %}
-                {{ nav_link('/web/admin/materiales', 'Materiales', 'tag') }}
-            {% endif %}
-            {{ nav_link('/web/admin/proveedores', 'Proveedores', 'truck') }}
-            {{ nav_link('/web/admin/clientes', 'Clientes', 'users') }}
-            {{ nav_link('/web/admin/comisionarios', 'Comisiones', 'percent') }}
-
-            <p class="nav-drawer-group-label">Inventario</p>
-            {{ nav_link('/web/admin/inventario', 'Inventario', 'box', True) }}
-            {{ nav_link('/web/admin/inventario/aumentar', 'Aumentar materiales', 'plus') }}
-            {% if user.rol == 'super_admin' %}
-                {{ nav_link('/web/admin/conversiones-materiales', 'Conversi&oacute;n de materiales'|safe, 'refresh') }}
-            {% endif %}
-            {{ nav_link('/web/admin/transferencias', 'Transferencias', 'transfer') }}
-
-            <p class="nav-drawer-group-label">Finanzas</p>
-            {{ nav_link('/web/admin/contabilidad', 'Contabilidad', 'ledger') }}
-            {{ nav_link('/web/admin/capital', 'Capital real', 'chart') }}
-            {# Punto 13 (fase 2): "Cuentas bancarias" se oculta del menú a petición
-               del cliente. Las rutas /web/admin/cuentas siguen vivas — se llega por
-               los accesos contextuales (?owner_key=) desde socios y comisionistas,
-               y los pagos por transferencia/cheque siguen requiriendo una Cuenta. #}
-            {{ nav_link('/web/admin/cuentas-scrap360', 'Cuentas Scrap360', 'wallet') }}
-
-            <p class="nav-drawer-group-label">Reportes</p>
-            {{ nav_link('/web/admin/reporte-asistencias', 'Asistencias', 'calendar') }}
-            {{ nav_link('/web/admin/reporte-saldos', 'Saldos', 'coins') }}
-
-            {% if user.rol == 'super_admin' %}
-                <p class="nav-drawer-group-label">Administraci&oacute;n</p>
-                {{ nav_link('/web/admin/users', 'Usuarios', 'user') }}
-                {{ nav_link('/web/admin/sucursales', 'Sucursales', 'branch') }}
+                {% call nav_group('administracion', 'Administración') %}
+                    {{ nav_link('/web/admin/users', 'Usuarios', 'user') }}
+                    {{ nav_link('/web/admin/sucursales', 'Sucursales', 'branch') }}
+                {% endcall %}
             {% endif %}
         {% endif %}
 

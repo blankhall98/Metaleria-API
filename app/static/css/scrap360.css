@@ -231,6 +231,8 @@ h6, .h6 {
     letter-spacing: 0.01em;
 }
 
+/* Los enlaces se distinguen por color y peso, nunca por subrayado: el filo
+   azul basta en una interfaz densa y el hover responde oscureciendo. */
 a {
     color: var(--s-p600);
     text-decoration: none;
@@ -238,8 +240,7 @@ a {
 }
 a:hover {
     color: var(--s-p700);
-    text-decoration: underline;
-    text-underline-offset: 2px;
+    text-decoration: none;
 }
 
 small, .small { font-size: var(--s-fs-xs); line-height: 1.45; }
@@ -545,6 +546,45 @@ body.drawer-open { overflow: hidden; }
 }
 .nav-drawer-group-label:first-child { padding-top: var(--s-1); }
 
+/* --- Grupos colapsables ------------------------------------------------
+   La etiqueta de grupo es un botón: pliega y despliega su sección. El
+   estado persiste en localStorage (s360.navGroups) y el grupo que contiene
+   la página activa se abre siempre. En modo mini no hay nada que plegar. */
+.nav-group:first-child .nav-group__toggle { padding-top: var(--s-1); }
+.nav-group__toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    width: 100%;
+    margin: 0;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    text-align: left;
+    transition: color var(--s-dur) var(--s-ease);
+}
+.nav-group__toggle:hover { color: var(--s-text-soft); }
+.nav-group__chevron {
+    width: 12px;
+    height: 12px;
+    margin-left: auto;
+    flex: 0 0 auto;
+    opacity: 0;
+    transition: transform var(--s-dur) var(--s-ease), opacity var(--s-dur) var(--s-ease);
+}
+.nav-group:hover .nav-group__chevron,
+.nav-group__toggle:focus-visible .nav-group__chevron,
+.nav-group--closed .nav-group__chevron { opacity: 1; }
+.nav-group--closed .nav-group__chevron { transform: rotate(-90deg); }
+
+.nav-group__items {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows var(--s-dur-lg) var(--s-ease);
+}
+.nav-group__inner { overflow: hidden; min-height: 0; }
+.nav-group--closed .nav-group__items { grid-template-rows: 0fr; }
+
 .nav-overlay {
     position: fixed;
     inset: 0;
@@ -680,14 +720,14 @@ body.drawer-open { overflow: hidden; }
 .footer-link {
     color: var(--s-text-soft);
     text-decoration: none;
-    border-bottom: 1px solid var(--s-line-strong);
-    transition: color var(--s-dur) var(--s-ease), border-color var(--s-dur) var(--s-ease);
+    font-weight: 500;
+    transition: color var(--s-dur) var(--s-ease);
 }
-.footer-link:hover { color: var(--s-p500); border-bottom-color: var(--s-p500); }
+.footer-link:hover { color: var(--s-p600); }
 
 .footer-credit { opacity: 0.75; }
-.footer-credit a { color: inherit; text-decoration: none; border-bottom: 1px solid var(--s-line-strong); }
-.footer-credit a:hover { color: var(--s-p500); border-bottom-color: var(--s-p500); }
+.footer-credit a { color: inherit; text-decoration: none; font-weight: 500; }
+.footer-credit a:hover { color: var(--s-p600); }
 
 @media (min-width: 992px) {
     .footer-identity { justify-content: flex-start; }
@@ -816,10 +856,15 @@ body.drawer-open { overflow: hidden; }
         margin: var(--s-2) var(--s-3);
         border-top: 1px solid var(--s-line);
     }
-    body.s-sidebar-mini .nav-drawer-group-label:first-child {
+    body.s-sidebar-mini .nav-drawer-group-label:first-child,
+    body.s-sidebar-mini .nav-group:first-child .nav-group__toggle {
         border-top: 0;
         margin: 0;
     }
+    /* En mini los grupos son solo separadores: sin chevron, sin plegado. */
+    body.s-sidebar-mini .nav-group__toggle { pointer-events: none; min-height: 0; }
+    body.s-sidebar-mini .nav-group__chevron { display: none; }
+    body.s-sidebar-mini .nav-group--closed .nav-group__items { grid-template-rows: 1fr; }
     body.s-sidebar-mini .nav-drawer-user { justify-content: center; padding-inline: 0; }
     body.s-sidebar-mini .nav-drawer-user__text { display: none; }
     body.s-sidebar-mini .nav-drawer-logout {
@@ -1078,7 +1123,7 @@ body.drawer-open { overflow: hidden; }
     min-height: 0;
     padding-inline: 0;
 }
-.btn-link:hover { color: var(--s-p700); text-decoration: underline; }
+.btn-link:hover { color: var(--s-p700); text-decoration: none; }
 
 .btn:disabled,
 .btn.disabled { opacity: 0.45; cursor: not-allowed; }
@@ -1253,39 +1298,48 @@ body.drawer-open { overflow: hidden; }
    7. STAT TILES (one implementation, replacing eight)
    ========================================================================== */
 
+/* Los indicadores son una banda de lecturas, no tarjetas sueltas: una sola
+   superficie con divisores de un pixel, como el tablero de un instrumento.
+   El tono es un punto junto a la etiqueta más el color de la cifra. */
 .s-stats {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
-    gap: var(--s-3);
+    gap: 0;
+    background: var(--s-surface);
+    border: 1px solid var(--s-line);
+    border-radius: var(--s-r-md);
+    overflow: hidden;
     margin-bottom: var(--s-5);
 }
 .s-stats--4 { grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); }
 
 .s-stat {
     background: var(--s-surface);
-    border: 1px solid var(--s-line);
-    border-left: 3px solid var(--s-n300);
-    border-radius: var(--s-r-sm);
-    padding: var(--s-3) var(--s-4);
+    padding: var(--s-4) var(--s-5);
     min-width: 0;
+    /* Divisores: cada celda pinta su filo izquierdo y superior; los del
+       borde exterior caen sobre el marco del contenedor y desaparecen. */
+    box-shadow: -1px 0 0 0 var(--s-line), 0 -1px 0 0 var(--s-line);
 }
 
 .s-stat__label {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
     font-size: var(--s-fs-micro);
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--s-text-muted);
-    margin-bottom: var(--s-1);
+    margin-bottom: var(--s-2);
 }
 
 .s-stat__value {
     display: block;
     font-family: var(--s-font-display);
-    font-size: var(--s-fs-xl);
-    font-weight: 700;
-    line-height: 1.15;
+    font-size: var(--s-fs-2xl);
+    font-weight: 600;
+    line-height: 1.1;
     letter-spacing: -0.02em;
     color: var(--s-n900);
     font-variant-numeric: tabular-nums;
@@ -1295,24 +1349,35 @@ body.drawer-open { overflow: hidden; }
     display: block;
     font-size: var(--s-fs-xs);
     color: var(--s-text-muted);
-    margin-top: 2px;
+    margin-top: var(--s-1);
 }
 
-/* Tone = a 3px spine + a value colour. No gradient fills. */
-.s-stat--ok    { border-left-color: var(--s-ok); }
-.s-stat--ok .s-stat__value { color: var(--s-ok); }
-.s-stat--warn  { border-left-color: var(--s-warn); }
-.s-stat--warn .s-stat__value { color: var(--s-warn); }
-.s-stat--bad   { border-left-color: var(--s-bad); }
-.s-stat--bad .s-stat__value { color: var(--s-bad); }
-.s-stat--info  { border-left-color: var(--s-p500); }
-.s-stat--info .s-stat__value { color: var(--s-p600); }
-.s-stat--brass { border-left-color: var(--s-brass300); }
+/* Tono: punto de 6px en la etiqueta + color de la cifra. Sin rellenos. */
+.s-stat--ok .s-stat__label::before,
+.s-stat--warn .s-stat__label::before,
+.s-stat--bad .s-stat__label::before,
+.s-stat--info .s-stat__label::before,
+.s-stat--brass .s-stat__label::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: var(--s-r-pill);
+    flex: 0 0 auto;
+}
+.s-stat--ok .s-stat__label::before    { background: var(--s-ok); }
+.s-stat--ok .s-stat__value            { color: var(--s-ok); }
+.s-stat--warn .s-stat__label::before  { background: var(--s-warn); }
+.s-stat--warn .s-stat__value          { color: var(--s-warn); }
+.s-stat--bad .s-stat__label::before   { background: var(--s-bad); }
+.s-stat--bad .s-stat__value           { color: var(--s-bad); }
+.s-stat--info .s-stat__label::before  { background: var(--s-p500); }
+.s-stat--info .s-stat__value          { color: var(--s-p600); }
+.s-stat--brass .s-stat__label::before { background: var(--s-brass300); }
 
 @media (max-width: 575.98px) {
-    .s-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-2); }
-    .s-stat { padding: var(--s-2) var(--s-3); }
-    .s-stat__value { font-size: var(--s-fs-lg); }
+    .s-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .s-stat { padding: var(--s-3) var(--s-4); }
+    .s-stat__value { font-size: var(--s-fs-xl); }
 }
 
 /* ==========================================================================
@@ -1673,7 +1738,7 @@ table.table-hover > tbody > tr:hover > * { background-color: var(--s-p50) !impor
         min-height: 32px;
         text-align: left;
     }
-    .s-card-more:hover { text-decoration: underline; }
+    .s-card-more:hover { color: var(--s-p700); }
 
     /* Action cells go full width at the bottom of the card. */
     .s-table-cards tbody td.s-cell-actions {

@@ -69,6 +69,9 @@ Neutrals run `--s-n0` (white) → `--s-n900` (near-black) on a cool graphite cas
 - Red = a problem needing action: overdue, cancelled, destructive.
 - Amber = needs attention but is not yet a failure: pending review, due soon.
 - Blue = navigation and neutral action.
+- **Links never underline** — at rest or on hover. A link is blue and medium
+  weight; hover darkens it. Underlines and border-bottom "underline effects"
+  read as web-page, not product.
 - **A zero is not an error.** `$0.00` renders muted (`.s-zero`), never red and
   never green. Use the `money()` macro and it happens for you.
 - Liabilities are not errors. "Por pagar" is a neutral figure.
@@ -228,7 +231,7 @@ value renders an em dash by itself.
 This replaces `note-meta-grid` / `note-meta-item` / `note-meta-label`, which had
 leaked from the notes screens into proveedores, comisionarios and cuentas.
 
-### Stat tiles — one implementation
+### Stat band — one implementation
 
 ```jinja
 {% from "_macros.html" import stat, money %}
@@ -238,9 +241,12 @@ leaked from the notes screens into proveedores, comisionarios and cuentas.
 </div>
 ```
 
-Tone (`ok` `warn` `bad` `info` `brass`) colours a 3px left spine and the value —
-never a filled background. Two per row on phones. **Never repeat a figure that
-is already visible elsewhere on the same page.**
+Indicators are **one reading band**, not a grid of loose cards: a single
+bordered surface where cells are separated by 1px hairlines, like the panel of
+an instrument. Tone (`ok` `warn` `bad` `info` `brass`) is a 6px dot beside the
+label plus the value colour — never a filled background, never a spine. Two per
+row on phones. **Never repeat a figure that is already visible elsewhere on the
+same page.**
 
 ### Tables
 

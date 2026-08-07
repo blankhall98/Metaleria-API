@@ -34,6 +34,23 @@
     }
     window.toggleDrawer = toggleDrawer;
 
+    /* En >=1200px el cajón es una barra fija siempre visible: no puede quedar
+       aria-hidden="true" (su valor de arranque para el modo superpuesto),
+       porque esconde la navegación a los lectores de pantalla. */
+    var PINNED_QUERY = '(min-width: 1200px)';
+
+    function syncDrawerAria() {
+        var drawer = document.getElementById('navDrawer');
+        if (!drawer) return;
+        var pinned = window.matchMedia(PINNED_QUERY).matches &&
+            /(^|\s)role-(super_admin|admin|visor)(\s|$)/.test(document.body.className);
+        if (pinned) {
+            drawer.setAttribute('aria-hidden', 'false');
+        } else if (!drawer.classList.contains('open')) {
+            drawer.setAttribute('aria-hidden', 'true');
+        }
+    }
+
     /* Sidebar colapsable (modo mini, solo barra fija >=1200px). El estado se
        aplica antes del primer render desde base.html; aquí solo se conmuta. */
     var SIDEBAR_MINI_KEY = 's360.sidebarMini';
@@ -58,6 +75,39 @@
             var mini = !document.body.classList.contains('s-sidebar-mini');
             try { localStorage.setItem(SIDEBAR_MINI_KEY, mini ? '1' : '0'); } catch (e) { /* sin almacenamiento */ }
             applyMini(mini);
+        });
+    }
+
+    /* Grupos colapsables de la barra lateral. El estado vive en localStorage;
+       el grupo que contiene la página activa se abre siempre, aunque el
+       usuario lo haya plegado en otra visita. */
+    var NAV_GROUPS_KEY = 's360.navGroups';
+
+    function initNavGroups() {
+        var groups = document.querySelectorAll('[data-nav-group]');
+        if (!groups.length) return;
+
+        var saved = {};
+        try { saved = JSON.parse(localStorage.getItem(NAV_GROUPS_KEY) || '{}') || {}; } catch (e) { /* sin almacenamiento */ }
+
+        function apply(group, toggle, closed) {
+            group.classList.toggle('nav-group--closed', closed);
+            toggle.setAttribute('aria-expanded', closed ? 'false' : 'true');
+        }
+
+        groups.forEach(function (group) {
+            var toggle = group.querySelector('.nav-group__toggle');
+            if (!toggle) return;
+            var key = group.getAttribute('data-nav-group');
+            var hasActive = !!group.querySelector('.nav-drawer-link.active');
+            apply(group, toggle, saved[key] === true && !hasActive);
+
+            toggle.addEventListener('click', function () {
+                var closed = !group.classList.contains('nav-group--closed');
+                apply(group, toggle, closed);
+                saved[key] = closed;
+                try { localStorage.setItem(NAV_GROUPS_KEY, JSON.stringify(saved)); } catch (e) { /* sin almacenamiento */ }
+            });
         });
     }
 
@@ -484,7 +534,12 @@
        ---------------------------------------------------------------------- */
 
     function init() {
+        syncDrawerAria();
+        try {
+            window.matchMedia(PINNED_QUERY).addEventListener('change', syncDrawerAria);
+        } catch (e) { /* navegadores sin addEventListener en MediaQueryList */ }
         initSidebarToggle();
+        initNavGroups();
         initUserMenu();
         ensureTableShells();
         annotateTables();
