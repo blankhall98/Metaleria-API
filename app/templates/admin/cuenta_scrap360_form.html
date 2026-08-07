@@ -35,6 +35,14 @@
                         </select>
                         <p class="form-text">Determina cómo se clasifica el dinero que entra y sale.</p>
                     </div>
+                    <div>
+                        <label class="form-label" for="moneda">Moneda <span class="s-req" aria-hidden="true">*</span></label>
+                        <select class="form-select" id="moneda" name="moneda" required>
+                            <option value="MXN" {% if (form_moneda or 'MXN') == 'MXN' %}selected{% endif %}>MXN — pesos</option>
+                            <option value="USD" {% if form_moneda == 'USD' %}selected{% endif %}>USD — dólares</option>
+                        </select>
+                        <p class="form-text">Las cuentas en USD entran al capital con el tipo de cambio manual.</p>
+                    </div>
                 </div>
 
                 <div class="form-check mt-3">

@@ -75,6 +75,8 @@ from app.models import (
     TratoVentaContenedor,
     TratoVentaEstado,
     TratoVentaNota,
+    CapitalAjusteManual,
+    CapitalSnapshot,
 )
 
 from app.services.pricing_service import create_price_version
@@ -3056,6 +3058,7 @@ def _build_capital_real_context(
     *,
     allowed_suc_ids: list[int] | None = None,
     valuation_mode: str = "manual",
+    tc_usd: Decimal | None = None,
 ) -> dict:
     valuation_mode = _normalize_inventory_valuation_mode(valuation_mode)
     sucursales_query = db.query(Sucursal).order_by(Sucursal.nombre.asc())
@@ -3188,22 +3191,75 @@ def _build_capital_real_context(
         cuentas_query = cuentas_query.join(CuentaScrap360.sucursales).filter(Sucursal.id.in_(allowed_suc_ids))
     cuentas_scrap360 = cuentas_query.distinct().order_by(CuentaScrap360.nombre.asc()).all()
 
-    saldo_bancos_chequeras = Decimal("0")
+    # Punto 4 (fase 2): el efectivo del capital sale del último corte de caja
+    # CERRADO de cada sucursal (lo que se contó de verdad), no del saldo de una
+    # cuenta. Las cuentas tipo efectivo se muestran pero ya no suman.
     saldo_efectivo = Decimal("0")
+    efectivo_rows: list[dict] = []
+    for sucursal in sucursales:
+        corte = (
+            db.query(CorteCaja)
+            .filter(
+                CorteCaja.sucursal_id == sucursal.id,
+                CorteCaja.estado == CorteCajaEstado.cerrado,
+            )
+            .order_by(CorteCaja.fecha.desc())
+            .first()
+        )
+        saldo = Decimal(str(corte.saldo_cierre or 0)) if corte else Decimal("0")
+        saldo_efectivo += saldo
+        efectivo_rows.append({"sucursal": sucursal, "corte": corte, "saldo": saldo})
+
+    # Chequeras: las cuentas en USD se convierten con el TC manual capturado;
+    # sin TC no entran a la suma y la pantalla lo advierte.
+    saldo_bancos_chequeras = Decimal("0")
+    usd_sin_tc = False
     cuentas_rows: list[dict] = []
     for cuenta in cuentas_scrap360:
         saldo_actual = Decimal(str(cuenta.saldo_actual or 0))
-        if cuenta.tipo == "efectivo":
-            saldo_efectivo += saldo_actual
+        moneda = (getattr(cuenta, "moneda", None) or "MXN").upper()
+        es_efectivo = cuenta.tipo == "efectivo"
+        valor_mxn: Decimal | None
+        if es_efectivo:
+            valor_mxn = None
+        elif moneda == "USD":
+            if tc_usd is not None and tc_usd > 0:
+                valor_mxn = saldo_actual * tc_usd
+                saldo_bancos_chequeras += valor_mxn
+            else:
+                valor_mxn = None
+                usd_sin_tc = True
         else:
+            valor_mxn = saldo_actual
             saldo_bancos_chequeras += saldo_actual
         cuentas_rows.append(
             {
                 "cuenta": cuenta,
                 "saldo_actual": saldo_actual,
+                "moneda": moneda,
+                "es_efectivo": es_efectivo,
+                "valor_mxn": valor_mxn,
                 "sucursales_label": ", ".join(s.nombre for s in cuenta.sucursales) if cuenta.sucursales else "-",
             }
         )
+
+    # Comodín manual: lo que el sistema no conoce (dinero en proceso, préstamos,
+    # capital de socios…). Positivo suma, negativo resta; los deshechos ya se
+    # netean solos porque la reversa es un registro compensatorio.
+    comodin_query = db.query(CapitalAjusteManual)
+    if allowed_suc_ids is not None:
+        comodin_query = comodin_query.filter(
+            or_(
+                CapitalAjusteManual.sucursal_id.in_(allowed_suc_ids),
+                CapitalAjusteManual.sucursal_id.is_(None),
+            )
+        )
+    comodin_rows = comodin_query.order_by(
+        CapitalAjusteManual.created_at.desc(), CapitalAjusteManual.id.desc()
+    ).all()
+    comodin_neto = sum(
+        (Decimal(str(row.monto or 0)) for row in comodin_rows), Decimal("0")
+    )
 
     inventario_summary = _build_inventario_valor_summary(
         db,
@@ -3216,17 +3272,21 @@ def _build_capital_real_context(
     inventario_automatic_count = sum((int(row.get("automatic_count") or 0) for row in inventario_summary), 0)
     inventario_sin_precio_count = sum((int(row.get("sin_precio_count") or 0) for row in inventario_summary), 0)
 
+    comodin_favor = comodin_neto if comodin_neto > 0 else Decimal("0")
+    comodin_contra = -comodin_neto if comodin_neto < 0 else Decimal("0")
     activos_totales = (
         total_por_cobrar_clientes
         - saldo_favor_clientes
         + saldo_bancos_chequeras
         + saldo_efectivo
         + valor_inventario
+        + comodin_favor
     )
     pasivos_totales = (
         total_por_pagar_proveedores
         - saldo_favor_empresa
         + comisionarios_pendientes
+        + comodin_contra
     )
     capital_real = activos_totales - pasivos_totales
 
@@ -3239,12 +3299,16 @@ def _build_capital_real_context(
         {
             "label": "Saldos de chequeras / transferencias",
             "amount": saldo_bancos_chequeras,
-            "detail": "Cuentas Scrap360 tipo transferencia y cheques.",
+            "detail": (
+                "Cuentas Scrap360 tipo transferencia y cheques; las cuentas en USD entran al TC capturado."
+                if tc_usd
+                else "Cuentas Scrap360 tipo transferencia y cheques."
+            ),
         },
         {
             "label": "Saldo en efectivo",
             "amount": saldo_efectivo,
-            "detail": "Cuentas Scrap360 tipo efectivo.",
+            "detail": "Saldo de cierre del último corte de caja cerrado de cada sucursal.",
         },
         {
             "label": "Valor inventario",
@@ -3268,6 +3332,22 @@ def _build_capital_real_context(
             "detail": "Comisiones aprobadas pendientes por pagar.",
         },
     ]
+    if comodin_favor > 0:
+        asset_rows.append(
+            {
+                "label": "Comodín manual",
+                "amount": comodin_favor,
+                "detail": "Ajustes manuales netos a favor (dinero en proceso, préstamos, etc.).",
+            }
+        )
+    if comodin_contra > 0:
+        liability_rows.append(
+            {
+                "label": "Comodín manual",
+                "amount": comodin_contra,
+                "detail": "Ajustes manuales netos en contra (deudas externas al sistema).",
+            }
+        )
 
     return {
         "scope_label": "Capital global autorizado",
@@ -3289,6 +3369,11 @@ def _build_capital_real_context(
         "inventario_manual_count": inventario_manual_count,
         "inventario_automatic_count": inventario_automatic_count,
         "inventario_sin_precio_count": inventario_sin_precio_count,
+        "efectivo_rows": efectivo_rows,
+        "comodin_rows": comodin_rows[:50],
+        "comodin_neto": comodin_neto,
+        "usd_sin_tc": usd_sin_tc,
+        "tc_usd": tc_usd,
         "valuation_mode": valuation_mode,
         "valuation_mode_label": "Promedio de compra" if valuation_mode == "promedio" else "Configuración manual",
         "valuation_mode_help": (
@@ -9011,6 +9096,7 @@ async def cuentas_scrap360_new_get(
             "error": None,
             "form_nombre": "",
             "form_tipo": "",
+            "form_moneda": "MXN",
             "form_saldo": "",
             "form_activo": True,
         },
@@ -9029,6 +9115,7 @@ async def cuentas_scrap360_new_post(
     form = await request.form()
     nombre = (form.get("nombre") or "").strip()
     tipo = (form.get("tipo") or "").strip().lower()
+    moneda = (form.get("moneda") or "MXN").strip().upper()
     saldo_raw = (form.get("saldo_inicial") or "").strip()
     activo = bool(form.get("activo"))
     sucursal_ids_raw = form.getlist("sucursal_ids")
@@ -9055,6 +9142,7 @@ async def cuentas_scrap360_new_post(
                 "error": msg,
                 "form_nombre": nombre,
                 "form_tipo": tipo,
+                "form_moneda": moneda,
                 "form_saldo": saldo_raw,
                 "form_activo": activo,
             },
@@ -9065,6 +9153,8 @@ async def cuentas_scrap360_new_post(
         return render_error("El nombre es obligatorio.")
     if tipo not in _SCRAP360_TIPOS:
         return render_error("Tipo de cuenta invalido.")
+    if moneda not in ("MXN", "USD"):
+        return render_error("Moneda invalida.")
     if not selected_ids:
         return render_error("Selecciona al menos una sucursal.")
     if allowed_suc_ids:
@@ -9085,6 +9175,7 @@ async def cuentas_scrap360_new_post(
     cuenta = CuentaScrap360(
         nombre=nombre,
         tipo=tipo,
+        moneda=moneda,
         saldo_inicial=saldo_inicial,
         saldo_actual=Decimal("0"),
         activo=activo,
@@ -9163,6 +9254,7 @@ async def cuenta_scrap360_edit_get(
             "error": None,
             "form_nombre": cuenta.nombre,
             "form_tipo": cuenta.tipo,
+            "form_moneda": (cuenta.moneda or "MXN").upper(),
             "form_saldo": str(cuenta.saldo_inicial or ""),
             "form_activo": cuenta.activo,
         },
@@ -9186,6 +9278,7 @@ async def cuenta_scrap360_edit_post(
     form = await request.form()
     nombre = (form.get("nombre") or "").strip()
     tipo = (form.get("tipo") or "").strip().lower()
+    moneda = (form.get("moneda") or "MXN").strip().upper()
     activo = bool(form.get("activo"))
     sucursal_ids_raw = form.getlist("sucursal_ids")
     selected_ids: list[int] = []
@@ -9210,6 +9303,7 @@ async def cuenta_scrap360_edit_post(
                 "error": msg,
                 "form_nombre": nombre,
                 "form_tipo": tipo,
+                "form_moneda": moneda,
                 "form_saldo": str(cuenta.saldo_inicial or ""),
                 "form_activo": activo,
             },
@@ -9220,6 +9314,8 @@ async def cuenta_scrap360_edit_post(
         return render_error("El nombre es obligatorio.")
     if tipo not in _SCRAP360_TIPOS:
         return render_error("Tipo de cuenta invalido.")
+    if moneda not in ("MXN", "USD"):
+        return render_error("Moneda invalida.")
     if not selected_ids:
         return render_error("Selecciona al menos una sucursal.")
     if allowed_suc_ids:
@@ -9233,6 +9329,7 @@ async def cuenta_scrap360_edit_post(
 
     cuenta.nombre = nombre
     cuenta.tipo = tipo
+    cuenta.moneda = moneda
     cuenta.activo = activo
     cuenta.sucursales = sucursales_sel
     cuenta.updated_at = datetime.utcnow()
@@ -13640,19 +13737,115 @@ async def inventario_valor_post(
     return RedirectResponse(url=f"/web/admin/inventario/valor?sucursal_id={sucursal_id}&saved=1", status_code=303)
 
 
+def _capital_scope(request: Request, db: Session, current_user: dict):
+    """Alcance del capital: global, o sucursales fusionadas vía ?suc=1&suc=3.
+
+    Devuelve (scope_ids, scope_key, scope_label, seleccion). scope_key
+    identifica la vista para las fotos de capital.
+    """
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    seleccion: list[int] = []
+    for raw in request.query_params.getlist("suc"):
+        try:
+            suc_id = int(raw)
+        except ValueError:
+            continue
+        if allowed_suc_ids and suc_id not in allowed_suc_ids:
+            continue
+        if suc_id not in seleccion:
+            seleccion.append(suc_id)
+
+    if seleccion:
+        scope_ids = sorted(seleccion)
+        nombres = [
+            s.nombre
+            for s in db.query(Sucursal).filter(Sucursal.id.in_(scope_ids)).order_by(Sucursal.nombre).all()
+        ]
+        scope_key = "suc:" + "-".join(str(i) for i in scope_ids)
+        scope_label = " + ".join(nombres) if nombres else "Sucursales seleccionadas"
+    elif allowed_suc_ids:
+        scope_ids = sorted(allowed_suc_ids)
+        scope_key = "suc:" + "-".join(str(i) for i in scope_ids)
+        scope_label = "Sucursales autorizadas"
+    else:
+        scope_ids = None
+        scope_key = "global"
+        scope_label = "Capital global autorizado"
+    return scope_ids, scope_key, scope_label, seleccion
+
+
+def _parse_tc_usd(raw: str | None) -> Decimal | None:
+    texto = (raw or "").strip().replace(",", "")
+    if not texto:
+        return None
+    try:
+        valor = Decimal(texto)
+    except InvalidOperation:
+        return None
+    return valor if valor > 0 else None
+
+
 @router.get("/capital")
 async def capital_real_view(
     request: Request,
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_viewer_or_admin_or_superadmin),
 ):
-    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
     valuation_mode = _normalize_inventory_valuation_mode(request.query_params.get("inventario_base"))
+    scope_ids, scope_key, scope_label, seleccion = _capital_scope(request, db, current_user)
+
+    tc_usd = _parse_tc_usd(request.query_params.get("tc_usd"))
+    if tc_usd is None:
+        ultima_foto_tc = (
+            db.query(CapitalSnapshot)
+            .filter(CapitalSnapshot.scope_key == scope_key, CapitalSnapshot.tc_usd.isnot(None))
+            .order_by(CapitalSnapshot.fecha.desc())
+            .first()
+        )
+        if ultima_foto_tc and not request.query_params.get("tc_usd"):
+            tc_usd = Decimal(str(ultima_foto_tc.tc_usd))
+
     capital_context = _build_capital_real_context(
         db,
-        allowed_suc_ids=allowed_suc_ids,
+        allowed_suc_ids=scope_ids,
         valuation_mode=valuation_mode,
+        tc_usd=tc_usd,
     )
+    capital_context["scope_label"] = scope_label
+
+    hoy = datetime.now(get_app_timezone()).date()
+    fotos = (
+        db.query(CapitalSnapshot)
+        .filter(CapitalSnapshot.scope_key == scope_key)
+        .order_by(CapitalSnapshot.fecha.desc())
+        .limit(15)
+        .all()
+    )
+    foto_anterior = next((f for f in fotos if f.fecha < hoy), None)
+    utilidad = (
+        Decimal(str(capital_context["capital_real"])) - Decimal(str(foto_anterior.capital))
+        if foto_anterior
+        else None
+    )
+    fotos_rows = []
+    for idx, foto in enumerate(fotos):
+        previa = fotos[idx + 1] if idx + 1 < len(fotos) else None
+        fotos_rows.append(
+            {
+                "foto": foto,
+                "delta": (
+                    Decimal(str(foto.capital)) - Decimal(str(previa.capital))
+                    if previa
+                    else None
+                ),
+            }
+        )
+
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    sucursales_opciones = _filter_sucursales_for_admin(
+        db.query(Sucursal).order_by(Sucursal.nombre).all(), allowed_suc_ids
+    )
+
     return templates.TemplateResponse(
         "admin/capital_real.html",
         {
@@ -13660,7 +13853,167 @@ async def capital_real_view(
             "env": settings.ENV,
             "user": current_user,
             **capital_context,
+            "hoy": hoy,
+            "scope_key": scope_key,
+            "seleccion": seleccion,
+            "sucursales_opciones": sucursales_opciones,
+            "foto_anterior": foto_anterior,
+            "utilidad": utilidad,
+            "fotos_rows": fotos_rows,
+            "foto_guardada": request.query_params.get("foto") == "1",
+            "ajuste_ok": request.query_params.get("ajuste") == "1",
+            "ajuste_deshecho": request.query_params.get("ajuste_deshecho") == "1",
+            "capital_error": request.query_params.get("error") or None,
+            "can_manage_capital": current_user.get("rol") in ("admin", "super_admin"),
         },
+    )
+
+
+def _capital_view_url(request: Request, **extra) -> str:
+    """Conserva el alcance (suc, tc_usd, inventario_base) al redirigir."""
+    form_params: list[tuple[str, str]] = []
+    for suc in request.query_params.getlist("suc"):
+        form_params.append(("suc", suc))
+    for campo in ("tc_usd", "inventario_base"):
+        valor = request.query_params.get(campo)
+        if valor:
+            form_params.append((campo, valor))
+    for clave, valor in extra.items():
+        form_params.append((clave, valor))
+    return "/web/admin/capital" + ("?" + urlencode(form_params) if form_params else "")
+
+
+@router.post("/capital/guardar")
+async def capital_guardar_foto(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    # Los formularios del capital conservan el alcance en la query string
+    # (suc, tc_usd, inventario_base), así la foto retrata lo que se está viendo.
+    scope_ids, scope_key, scope_label, _seleccion = _capital_scope(request, db, current_user)
+    valuation_mode = _normalize_inventory_valuation_mode(request.query_params.get("inventario_base"))
+    tc_usd = _parse_tc_usd(request.query_params.get("tc_usd"))
+    contexto = _build_capital_real_context(
+        db,
+        allowed_suc_ids=scope_ids,
+        valuation_mode=valuation_mode,
+        tc_usd=tc_usd,
+    )
+    hoy = datetime.now(get_app_timezone()).date()
+    detalle = json.dumps(
+        {
+            "asset_rows": [
+                {"label": r["label"], "amount": str(r["amount"])} for r in contexto["asset_rows"]
+            ],
+            "liability_rows": [
+                {"label": r["label"], "amount": str(r["amount"])} for r in contexto["liability_rows"]
+            ],
+            "valuation_mode": valuation_mode,
+        }
+    )
+    foto = (
+        db.query(CapitalSnapshot)
+        .filter(CapitalSnapshot.fecha == hoy, CapitalSnapshot.scope_key == scope_key)
+        .first()
+    )
+    if not foto:
+        foto = CapitalSnapshot(fecha=hoy, scope_key=scope_key)
+        db.add(foto)
+    foto.scope_label = scope_label
+    foto.activos = contexto["activos_totales"]
+    foto.pasivos = contexto["pasivos_totales"]
+    foto.capital = contexto["capital_real"]
+    foto.tc_usd = tc_usd
+    foto.detalle = detalle
+    foto.usuario_id = current_user.get("id")
+    db.commit()
+    return RedirectResponse(url=_capital_view_url(request, foto="1"), status_code=303)
+
+
+@router.post("/capital/ajustes")
+async def capital_ajuste_create(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    form = await request.form()
+
+    def _volver(mensaje: str):
+        return RedirectResponse(
+            url=_capital_view_url(request, error=mensaje), status_code=303
+        )
+
+    concepto = (form.get("concepto") or "").strip()
+    if not concepto:
+        return _volver("Escribe el concepto del ajuste (qué representa).")
+    try:
+        monto = Decimal((form.get("monto") or "").strip().replace(",", ""))
+    except InvalidOperation:
+        return _volver("El monto del ajuste debe ser un número.")
+    if monto <= 0:
+        return _volver("El monto del ajuste debe ser mayor a cero.")
+    if (form.get("direccion") or "") == "contra":
+        monto = -monto
+
+    sucursal_id = None
+    sucursal_raw = (form.get("sucursal_id") or "").strip()
+    if sucursal_raw:
+        try:
+            sucursal_id = int(sucursal_raw)
+        except ValueError:
+            sucursal_id = None
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    if sucursal_id and allowed_suc_ids and sucursal_id not in allowed_suc_ids:
+        raise HTTPException(status_code=403, detail="Sin acceso a esa sucursal.")
+
+    db.add(
+        CapitalAjusteManual(
+            sucursal_id=sucursal_id,
+            usuario_id=current_user.get("id"),
+            monto=monto,
+            concepto=concepto,
+            comentario=(form.get("comentario") or "").strip() or None,
+        )
+    )
+    db.commit()
+    return RedirectResponse(url=_capital_view_url(request, ajuste="1"), status_code=303)
+
+
+@router.post("/capital/ajustes/{ajuste_id}/deshacer")
+async def capital_ajuste_deshacer(
+    ajuste_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    ajuste = db.get(CapitalAjusteManual, ajuste_id)
+    if not ajuste:
+        raise HTTPException(status_code=404, detail="Ajuste no encontrado.")
+    if ajuste.reversal_of_id:
+        return RedirectResponse(
+            url=_capital_view_url(request, error="Una reversa no se puede deshacer."),
+            status_code=303,
+        )
+    if ajuste.reverted_at:
+        return RedirectResponse(
+            url=_capital_view_url(request, error="Ese ajuste ya fue deshecho."),
+            status_code=303,
+        )
+    reversa = CapitalAjusteManual(
+        sucursal_id=ajuste.sucursal_id,
+        usuario_id=current_user.get("id"),
+        monto=-Decimal(str(ajuste.monto or 0)),
+        concepto=f"Reversa de: {ajuste.concepto}"[:200],
+        comentario=None,
+        reversal_of_id=ajuste.id,
+    )
+    ajuste.reverted_at = datetime.utcnow()
+    ajuste.reverted_by_user_id = current_user.get("id")
+    db.add_all([reversa, ajuste])
+    db.commit()
+    return RedirectResponse(
+        url=_capital_view_url(request, ajuste_deshecho="1"), status_code=303
     )
 
 

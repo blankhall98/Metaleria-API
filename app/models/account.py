@@ -58,6 +58,9 @@ class CuentaScrap360(Base):
     id = Column(Integer, primary_key=True, index=True)
     nombre = Column(String(120), nullable=False)
     tipo = Column(String(20), nullable=False)
+    # Punto 4 (fase 2): la chequera puede vivir en USD; el capital la convierte
+    # con un tipo de cambio manual. El saldo siempre está en su moneda.
+    moneda = Column(String(3), nullable=False, default="MXN", server_default="MXN")
     saldo_inicial = Column(Numeric(12, 2), nullable=False, default=0)
     saldo_actual = Column(Numeric(12, 2), nullable=False, default=0)
     activo = Column(Boolean, nullable=False, default=True)

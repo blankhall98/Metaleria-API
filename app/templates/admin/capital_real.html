@@ -1,43 +1,92 @@
 {% extends "base.html" %}
-{% from "_macros.html" import empty_row, page_header, icon, stat, money, kg, empty, defs, def %}
+{% from "_macros.html" import empty_row, page_header, icon, stat, badge, money, kg, empty, defs, def %}
 
 {% block title %}Capital real{% endblock %}
 
 {% block content %}
 
 {% call page_header('Capital real', eyebrow='Finanzas', sub=scope_label) %}
-    <a href="/web" class="btn btn-outline-secondary btn-sm">
-        {{ icon('arrow-left', 's-icon--sm') }} Volver
-    </a>
+    {% if can_manage_capital %}
+        <form method="post" action="/web/admin/capital/guardar{{ '?' ~ request.url.query if request.url.query }}" class="d-inline">
+            <button type="submit" class="btn btn-outline-primary btn-sm"
+                    data-confirm="Se guardará la foto del capital de hoy para este alcance (si ya existe una de hoy, se actualiza). ¿Deseas continuar?">
+                {{ icon('camera', 's-icon--sm') }} Guardar foto de hoy
+            </button>
+        </form>
+    {% endif %}
 {% endcall %}
 
-<div class="s-stats">
+{% if foto_guardada %}
+    <div class="alert alert-success py-2 small mb-3">Foto del capital guardada. La utilidad se calculará contra ella en las próximas fotos.</div>
+{% endif %}
+{% if ajuste_ok %}
+    <div class="alert alert-success py-2 small mb-3">Ajuste manual registrado.</div>
+{% endif %}
+{% if ajuste_deshecho %}
+    <div class="alert alert-success py-2 small mb-3">El ajuste se deshizo con un registro compensatorio.</div>
+{% endif %}
+{% if capital_error %}
+    <div class="alert alert-danger py-2 small mb-3">{{ capital_error }}</div>
+{% endif %}
+{% if usd_sin_tc %}
+    <div class="alert alert-warning py-2 small mb-3">
+        Hay cuentas en USD sin tipo de cambio capturado: no están sumando al capital. Captura el TC en el filtro de abajo.
+    </div>
+{% endif %}
+
+<div class="s-stats s-stats--fixed-4">
     {{ stat('Capital real', money(capital_real), 'Activos totales menos pasivos totales.') }}
-    {{ stat('Activos', money(activos_totales), 'Clientes, cuentas, efectivo e inventario.') }}
-    {{ stat('Pasivos', money(pasivos_totales), 'Proveedores y comisionistas pendientes.') }}
+    {{ stat('Activos', money(activos_totales), 'Clientes, cuentas, efectivo, inventario y comodín.') }}
+    {{ stat('Pasivos', money(pasivos_totales), 'Proveedores, comisionistas y comodín en contra.') }}
+    {% if utilidad is not none %}
+        {{ stat('Utilidad del período', money(utilidad),
+                'Contra la foto del ' ~ foto_anterior.fecha|date_local ~ '.',
+                tone=('ok' if utilidad > 0 else ('bad' if utilidad < 0 else ''))) }}
+    {% else %}
+        {{ stat('Utilidad del período', '—', 'Guarda una foto para comparar días.') }}
+    {% endif %}
 </div>
 
 <div class="card mb-3">
     <div class="card-body">
-        <h2 class="s-card-title">Base de valuación del inventario</h2>
+        <h2 class="s-card-title mb-1">Alcance del reporte</h2>
         <p class="s-card-sub mb-3">
-            Activos = clientes + cuentas Scrap360 + efectivo + valor del inventario.
-            Pasivos = proveedores + comisionistas. La base del valor del inventario se puede cambiar
-            aquí sin alterar existencias, compras ni precios operativos.
+            Fusiona sucursales para verlas como una sola (ej. Centro + Sur), captura el tipo de cambio
+            de las chequeras en USD y elige la base de valuación del inventario.
         </p>
-        <div class="s-segmented">
-            <a href="/web/admin/capital?inventario_base=manual"
-               class="s-segmented__item {% if valuation_mode == 'manual' %}active{% endif %}">
-                Configuración manual
-            </a>
-            <a href="/web/admin/capital?inventario_base=promedio"
-               class="s-segmented__item {% if valuation_mode == 'promedio' %}active{% endif %}">
-                Promedio de compra
-            </a>
-        </div>
-        <p class="s-card-sub mt-3 mb-0">
-            Base actual: <strong>{{ valuation_mode_label }}</strong>. {{ valuation_mode_help }}
-        </p>
+        <form method="get" action="/web/admin/capital">
+            <div class="s-form-grid">
+                <div class="s-field--full">
+                    <span class="form-label d-block">Sucursales (vacío = todas las autorizadas)</span>
+                    <div class="d-flex flex-wrap gap-3">
+                        {% for s in sucursales_opciones %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="suc" value="{{ s.id }}"
+                                       id="capSuc{{ s.id }}" {% if s.id in seleccion %}checked{% endif %}>
+                                <label class="form-check-label" for="capSuc{{ s.id }}">{{ s.nombre }}</label>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div>
+                    <label class="form-label" for="tcUsd">Tipo de cambio USD</label>
+                    <input class="form-control" id="tcUsd" name="tc_usd" type="number" step="0.0001" min="0"
+                           value="{{ tc_usd or '' }}" placeholder="Ej. 17.50">
+                    <p class="form-text">Solo aplica a cuentas en USD; se recuerda en la foto.</p>
+                </div>
+                <div>
+                    <label class="form-label" for="inventarioBase">Base del inventario</label>
+                    <select class="form-select" id="inventarioBase" name="inventario_base">
+                        <option value="manual" {% if valuation_mode == 'manual' %}selected{% endif %}>Configuración manual</option>
+                        <option value="promedio" {% if valuation_mode == 'promedio' %}selected{% endif %}>Promedio de compra</option>
+                    </select>
+                    <p class="form-text">{{ valuation_mode_help }}</p>
+                </div>
+            </div>
+            <div class="s-form-actions">
+                <button class="btn btn-outline-secondary">{{ icon('filter', 's-icon--sm') }} Aplicar alcance</button>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -82,14 +131,14 @@
     </div>
 </div>
 
-<div class="row g-3">
+<div class="row g-3 mb-3">
     <div class="col-xl-7">
         <div class="card h-100">
             <div class="card-body">
                 <div class="s-card-head">
                     <div>
                         <h2 class="s-card-title">Cuentas Scrap360</h2>
-                        <p class="s-card-sub">Saldos incluidos en el cálculo del capital.</p>
+                        <p class="s-card-sub">Chequeras y transferencias; las USD entran al TC capturado.</p>
                     </div>
                     <a href="/web/admin/cuentas-scrap360" class="btn btn-outline-primary btn-sm">Ver cuentas</a>
                 </div>
@@ -104,25 +153,59 @@
                                 <tr>
                                     <th data-title-col data-mobile-primary>Cuenta</th>
                                     <th>Tipo</th>
-                                    <th>Sucursales</th>
-                                    <th class="text-end" data-mobile-primary>Saldo actual</th>
+                                    <th>Moneda</th>
+                                    <th class="text-end">Saldo</th>
+                                    <th class="text-end" data-mobile-primary>Suma al capital</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for row in cuentas_rows %}
                                     <tr>
-                                        <td class="fw-semibold">{{ row.cuenta.nombre }}</td>
+                                        <td>
+                                            <span class="fw-semibold">{{ row.cuenta.nombre }}</span>
+                                            <div class="text-muted small">{{ row.sucursales_label }}</div>
+                                        </td>
                                         <td>{{ row.cuenta.tipo|capitalize }}</td>
-                                        <td>{{ row.sucursales_label }}</td>
-                                        <td class="text-end">{{ money(row.saldo_actual) }}</td>
+                                        <td>{{ row.moneda }}</td>
+                                        <td class="text-end">
+                                            {% if row.moneda == 'USD' %}
+                                                <span class="s-num">{{ "{:,.2f}".format(row.saldo_actual) }} USD</span>
+                                            {% else %}
+                                                {{ money(row.saldo_actual) }}
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-end">
+                                            {% if row.es_efectivo %}
+                                                <span class="text-muted small">No suma (el efectivo vive en el corte)</span>
+                                            {% elif row.valor_mxn is not none %}
+                                                {{ money(row.valor_mxn) }}
+                                            {% else %}
+                                                <span class="text-muted small">Captura el TC</span>
+                                            {% endif %}
+                                        </td>
                                     </tr>
                                 {% else %}
-                                    {{ empty_row(4, 'Sin cuentas con saldo en el alcance seleccionado.') }}
+                                    {{ empty_row(5, 'Sin cuentas con saldo en el alcance seleccionado.') }}
                                 {% endfor %}
                             </tbody>
                         </table>
                     </div>
                 {% endif %}
+
+                <p class="s-section-label mt-4">Efectivo por sucursal</p>
+                <div class="d-grid gap-2">
+                    {% for row in efectivo_rows %}
+                        <div class="d-flex justify-content-between gap-3">
+                            <div>
+                                <span class="fw-semibold">{{ row.sucursal.nombre }}</span>
+                                <span class="text-muted small">
+                                    {% if row.corte %}· corte del {{ row.corte.fecha|date_local }}{% else %}· sin cortes cerrados{% endif %}
+                                </span>
+                            </div>
+                            <div class="fw-semibold">{{ money(row.saldo) }}</div>
+                        </div>
+                    {% endfor %}
+                </div>
             </div>
         </div>
     </div>
@@ -170,6 +253,173 @@
                 {% endif %}
             </div>
         </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        {% if can_manage_capital %}
+        <button type="button" class="s-collapse__trigger" data-bs-toggle="collapse"
+                data-bs-target="#comodinFormBody" aria-expanded="false">
+            <div>
+                <h2 class="s-card-title mb-1">Comodín manual</h2>
+                <p class="s-card-sub mb-0">
+                    Lo que el sistema no conoce: dinero en proceso, préstamos, capital de socios, deudas externas.
+                    Neto actual: {{ money(comodin_neto) }}.
+                </p>
+            </div>
+            {{ icon('chevron-down', 's-collapse__chevron') }}
+        </button>
+        <div id="comodinFormBody" class="collapse s-collapse__body">
+            <form method="post" action="/web/admin/capital/ajustes{{ '?' ~ request.url.query if request.url.query }}">
+                <div class="s-form-grid">
+                    <div>
+                        <label class="form-label" for="comodinDireccion">Dirección <span class="s-req" aria-hidden="true">*</span></label>
+                        <select class="form-select" id="comodinDireccion" name="direccion" required>
+                            <option value="favor">Suma al capital (a favor)</option>
+                            <option value="contra">Resta al capital (en contra)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label" for="comodinMonto">Monto <span class="s-req" aria-hidden="true">*</span></label>
+                        <input class="form-control" id="comodinMonto" name="monto" type="number" step="0.01" min="0.01" required placeholder="0.00">
+                    </div>
+                    <div>
+                        <label class="form-label" for="comodinSucursal">Sucursal</label>
+                        <select class="form-select" id="comodinSucursal" name="sucursal_id">
+                            <option value="">Toda la empresa</option>
+                            {% for s in sucursales_opciones %}
+                                <option value="{{ s.id }}">{{ s.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label" for="comodinConcepto">Concepto <span class="s-req" aria-hidden="true">*</span></label>
+                        <input class="form-control" id="comodinConcepto" name="concepto" maxlength="200" required
+                               placeholder="Ej. dinero en proceso, préstamo a negocio">
+                    </div>
+                    <div class="s-field--full">
+                        <label class="form-label" for="comodinComentario">Comentario</label>
+                        <input class="form-control" id="comodinComentario" name="comentario" maxlength="255" placeholder="Detalle opcional">
+                    </div>
+                </div>
+                <div class="s-form-actions">
+                    <button class="btn btn-outline-primary">Registrar ajuste</button>
+                </div>
+            </form>
+        </div>
+        {% else %}
+        <h2 class="s-card-title mb-1">Comodín manual</h2>
+        <p class="s-card-sub mb-0">Ajustes manuales del capital. Neto actual: {{ money(comodin_neto) }}.</p>
+        {% endif %}
+
+        {% if comodin_rows|length > 0 %}
+            <div class="table-responsive mt-3">
+                <table class="table table-hover align-middle">
+                    <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th data-title-col data-mobile-primary>Concepto</th>
+                        <th>Sucursal</th>
+                        <th class="text-end" data-mobile-primary>Monto</th>
+                        <th>Usuario</th>
+                        <th class="text-end"><span class="s-visually-hidden">Acciones</span></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for ajuste in comodin_rows %}
+                        <tr>
+                            <td>{{ ajuste.created_at|date_local if ajuste.created_at else "—" }}</td>
+                            <td>
+                                <span class="fw-semibold">{{ ajuste.concepto }}</span>
+                                {% if ajuste.comentario %}<div class="text-muted small">{{ ajuste.comentario }}</div>{% endif %}
+                            </td>
+                            <td>{{ ajuste.sucursal.nombre if ajuste.sucursal else "Toda la empresa" }}</td>
+                            <td class="text-end">{{ money(ajuste.monto, 'plain') }}</td>
+                            <td>
+                                {% if ajuste.usuario %}
+                                    <span class="small">{{ ajuste.usuario.nombre_completo or ajuste.usuario.username }}</span>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if ajuste.reversal_of_id %}
+                                    {{ badge('Reversa', 'muted') }}
+                                {% elif ajuste.reverted_at %}
+                                    {{ badge('Deshecho', 'muted') }}
+                                {% elif can_manage_capital %}
+                                    <form method="post" action="/web/admin/capital/ajustes/{{ ajuste.id }}/deshacer{{ '?' ~ request.url.query if request.url.query }}" class="d-inline">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                data-confirm="Se registrará un ajuste compensatorio por el efecto contrario. ¿Deseas continuar?">Deshacer</button>
+                                    </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <h2 class="s-card-title">Fotos del capital</h2>
+        <p class="s-card-sub mb-3">
+            Una foto por día para este alcance, como las hojas de capital por fecha. La utilidad del
+            período es la resta entre dos fotos consecutivas.
+        </p>
+        {% if fotos_rows|length == 0 %}
+            {{ empty('Sin fotos guardadas',
+                     'Guarda la foto de hoy para empezar a medir la utilidad entre fechas.',
+                     'chart') }}
+        {% else %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                    <tr>
+                        <th data-title-col data-mobile-primary>Fecha</th>
+                        <th class="text-end">Activos</th>
+                        <th class="text-end">Pasivos</th>
+                        <th class="text-end" data-mobile-primary>Capital</th>
+                        <th class="text-end" data-mobile-primary>Utilidad vs anterior</th>
+                        <th class="text-end">TC USD</th>
+                        <th>Usuario</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for row in fotos_rows %}
+                        {% set foto = row.foto %}
+                        <tr>
+                            <td class="fw-semibold">{{ foto.fecha|date_local }}</td>
+                            <td class="text-end">{{ money(foto.activos) }}</td>
+                            <td class="text-end">{{ money(foto.pasivos) }}</td>
+                            <td class="text-end">{{ money(foto.capital) }}</td>
+                            <td class="text-end">
+                                {% if row.delta is not none %}
+                                    {{ money(row.delta, 'plain') }}
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if foto.tc_usd %}<span class="s-num">{{ foto.tc_usd }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td>
+                                {% if foto.usuario %}
+                                    <span class="small">{{ foto.usuario.nombre_completo or foto.usuario.username }}</span>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

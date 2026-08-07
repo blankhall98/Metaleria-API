@@ -24,6 +24,7 @@ from .trato import (
     TratoVentaEstado,
     TratoVentaNota,
 )
+from .capital import CapitalAjusteManual, CapitalSnapshot
 from .cash import (
     CorteCaja,
     CorteCajaEstado,
@@ -88,6 +89,8 @@ __all__ = [
     "TratoVentaContenedor",
     "TratoVentaEstado",
     "TratoVentaNota",
+    "CapitalAjusteManual",
+    "CapitalSnapshot",
     "CorteCaja",
     "CorteCajaEstado",
     "CorteCajaGasto",
