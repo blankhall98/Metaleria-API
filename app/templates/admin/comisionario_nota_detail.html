@@ -51,7 +51,7 @@
                 {% if nota.estado.value == 'BORRADOR' %}
                     {{ badge('Borrador', 'muted') }}
                 {% elif nota.estado.value == 'APROBADA' %}
-                    {{ badge('Aprobada', 'info') }}
+                    {{ badge('Aprobada', 'ok') }}
                 {% else %}
                     {{ badge('Cancelada', 'bad') }}
                 {% endif %}
@@ -91,7 +91,7 @@
                         <tr>
                             <td>{{ nm.material.nombre if nm.material else nm.material_id }}</td>
                             <td class="text-end">{{ kg(nm.kg_neto) }}</td>
-                            <td class="text-end"><span class="s-num">{{ "{:,.5f}".format(nm.precio_por_kg or 0) }}</span></td>
+                            <td class="text-end"><span class="s-money">{{ (nm.precio_por_kg or 0)|precio }}</span></td>
                             <td class="text-end">{{ money(nm.subtotal) }}</td>
                         </tr>
                     {% else %}

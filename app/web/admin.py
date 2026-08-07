@@ -17,7 +17,7 @@ from datetime import datetime, date, time, timedelta, timezone
 from typing import Iterable, List
 
 from app.core.config import get_settings
-from app.core.datetime_utils import format_date_local, format_datetime_local, get_app_timezone, to_local_datetime
+from app.core.datetime_utils import format_date_iso, format_date_local, format_datetime_local, get_app_timezone, to_local_datetime
 from app.core.security import hash_password
 from app.services.auth import normalizar_password, normalizar_username
 from app.db.deps import get_db
@@ -337,6 +337,7 @@ def _movimiento_sucursal_id(mov: MovimientoContable) -> int | None:
 def _movimiento_display(
     mov: MovimientoContable,
     sucursales_map: dict[int, Sucursal] | None = None,
+    users_map: dict[int, str] | None = None,
 ) -> dict:
     tipo_raw = (mov.tipo or "").lower()
     tipo_op = _movimiento_tipo_operacion(mov)
@@ -370,7 +371,7 @@ def _movimiento_display(
         "monto_firmado": monto_firmado,
         "nota_id": mov.nota_id,
         "sucursal": sucursal_label,
-        "usuario_id": mov.usuario_id or "-",
+        "usuario_id": (users_map or {}).get(mov.usuario_id) or ("-" if not mov.usuario_id else f"Usuario {mov.usuario_id}"),
         "metodo_pago": mov.metodo_pago or "",
         "cuenta_financiera": cuenta_label,
         "comentario": (mov.comentario or "").replace("\n", " "),
@@ -819,7 +820,7 @@ def _build_partner_ledger(
                 {
                     "fecha": mov.created_at,
                     "orden": 3,
-                    "tipo": "Reverso pago",
+                    "tipo": "Reverso de pago",
                     "nota_id": mov.nota_id,
                     "folio": folio_map.get(mov.nota_id) or f"#{mov.nota_id}",
                     "cargo": cargo,
@@ -837,7 +838,7 @@ def _build_partner_ledger(
                 {
                     "fecha": mov.created_at,
                     "orden": 2,
-                    "tipo": "Restauracion devolucion",
+                    "tipo": "Restauración de devolución",
                     "nota_id": mov.nota_id,
                     "folio": folio_map.get(mov.nota_id) or f"#{mov.nota_id}",
                     "cargo": cargo,
@@ -855,7 +856,7 @@ def _build_partner_ledger(
                 {
                     "fecha": mov.created_at,
                     "orden": 3,
-                    "tipo": "Restauracion pago",
+                    "tipo": "Restauración de pago",
                     "nota_id": mov.nota_id,
                     "folio": folio_map.get(mov.nota_id) or f"#{mov.nota_id}",
                     "cargo": cargo,
@@ -1102,7 +1103,7 @@ def _build_unified_partner_ledger(
             delta = monto * sign
             cargo = delta if delta >= 0 else Decimal("0")
             abono = Decimal("0") if delta >= 0 else -delta
-            tipo_label = f"Reverso pago {tipo_base}"
+            tipo_label = f"Reverso de pago {tipo_base}"
             events.append(
                 {
                     "fecha": mov.created_at,
@@ -1121,7 +1122,7 @@ def _build_unified_partner_ledger(
             delta = monto * sign
             cargo = delta if delta >= 0 else Decimal("0")
             abono = Decimal("0") if delta >= 0 else -delta
-            tipo_label = f"Restauracion devolucion {tipo_base}"
+            tipo_label = f"Restauración de devolución {tipo_base}"
             events.append(
                 {
                     "fecha": mov.created_at,
@@ -1140,7 +1141,7 @@ def _build_unified_partner_ledger(
             delta = monto * (-sign)
             cargo = delta if delta >= 0 else Decimal("0")
             abono = Decimal("0") if delta >= 0 else -delta
-            tipo_label = f"Restauracion pago {tipo_base}"
+            tipo_label = f"Restauración de pago {tipo_base}"
             events.append(
                 {
                     "fecha": mov.created_at,
@@ -13919,7 +13920,8 @@ async def contabilidad_list(
     if cuenta_id:
         query = query.filter(MovimientoContable.cuenta_id == cuenta_id)
     movimientos = query.order_by(MovimientoContable.created_at.desc()).limit(200).all()
-    movimientos_view = [_movimiento_display(m, sucursales_map) for m in movimientos]
+    users_map = {u.id: u.nombre_completo for u in db.query(User).all()}
+    movimientos_view = [_movimiento_display(m, sucursales_map, users_map) for m in movimientos]
     total_filtrado = sum((m["monto_firmado"] for m in movimientos_view), Decimal("0"))
     return templates.TemplateResponse(
         "admin/contabilidad_list.html",
@@ -14013,7 +14015,8 @@ async def contabilidad_export(
 
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
     sucursales_map = {s.id: s for s in sucursales}
-    movimientos_view = [_movimiento_display(m, sucursales_map) for m in movimientos]
+    users_map = {u.id: u.nombre_completo for u in db.query(User).all()}
+    movimientos_view = [_movimiento_display(m, sucursales_map, users_map) for m in movimientos]
 
     if fmt == "csv":
         import csv
@@ -15864,8 +15867,8 @@ async def inventario_movimientos(
             "sucursal_id": sucursal_id,
             "material_id": material_id,
             "tipo": tipo or "",
-            "date_from": format_date_local(date_from) if date_from else "",
-            "date_to": format_date_local(date_to) if date_to else "",
+            "date_from": format_date_iso(date_from) if date_from else "",
+            "date_to": format_date_iso(date_to) if date_to else "",
             "date_error": date_error,
             "selected_material": selected_material,
             "date_scope_label": date_scope_label,

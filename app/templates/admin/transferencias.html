@@ -156,7 +156,7 @@
                                     </select>
                                 </td>
                                 <td class="text-end">
-                                    <input class="form-control form-control-sm text-end" type="number" name="precio_unitario" aria-label="Precio unitario" step="0.00001" min="0" placeholder="0.00000" required>
+                                    <input class="form-control form-control-sm text-end" type="number" name="precio_unitario" aria-label="Precio unitario" step="0.00001" min="0" placeholder="0.00" required>
                                 </td>
                                 <td class="text-end">
                                     <input class="form-control form-control-sm text-end" type="number" name="kg_neto" aria-label="Kg neto" step="0.001" min="0.001" placeholder="0.000" required>
@@ -211,7 +211,7 @@
             </select>
         </td>
         <td class="text-end">
-            <input class="form-control form-control-sm text-end" type="number" name="precio_unitario" aria-label="Precio unitario" step="0.00001" min="0" placeholder="0.00000" required>
+            <input class="form-control form-control-sm text-end" type="number" name="precio_unitario" aria-label="Precio unitario" step="0.00001" min="0" placeholder="0.00" required>
         </td>
         <td class="text-end">
             <input class="form-control form-control-sm text-end" type="number" name="kg_neto" aria-label="Kg neto" step="0.001" min="0.001" placeholder="0.000" required>
@@ -230,7 +230,7 @@
 <script>
     function formatNumber(value, decimals) {
         const safe = Number(value || 0);
-        return safe.toLocaleString('en-US', {
+        return safe.toLocaleString('es-MX', {
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals,
         });

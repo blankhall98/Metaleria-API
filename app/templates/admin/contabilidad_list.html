@@ -133,10 +133,10 @@
                                 {{ badge('Compra y venta', 'info') }}
                             {% endif %}
                         </div>
-                        <div class="text-muted small">ID {{ partner_context.partner.id }} &middot; {{ partner_context.tipo_operacion_label }}</div>
+                        <div class="text-muted small">{{ partner_context.tipo_operacion_label }}</div>
                         {% if partner_context.unified_enabled and partner_context.linked_partner %}
                             <div class="text-muted small">
-                                Unificado con {{ partner_context.linked_partner_label }}: {{ partner_context.linked_partner.nombre_completo }} (ID {{ partner_context.linked_partner.id }})
+                                Unificado con {{ partner_context.linked_partner_label }}: {{ partner_context.linked_partner.nombre_completo }}
                             </div>
                         {% elif partner_context.partner_label == 'Proveedor' and partner_context.provider_direct_sales_enabled %}
                             <div class="text-muted small">
@@ -245,7 +245,6 @@
                         <tr>
                             <td>
                                 <div class="fw-semibold">{{ row.folio }}</div>
-                                <div class="text-muted small">#{{ nota.id }}</div>
                             </td>
                             <td>
                                 {# El tipo de operación no es un estado: la palabra
@@ -310,7 +309,6 @@
                             <td>
                                 {% if nota %}
                                     <div class="fw-semibold">{{ partner_context.folio_map.get(nota.id, '—') }}</div>
-                                    <div class="text-muted small">#{{ nota.id }}</div>
                                 {% else %}
                                     <span class="text-muted">—</span>
                                 {% endif %}
@@ -422,7 +420,6 @@
             <table class="table table-hover align-middle">
                 <thead>
                 <tr>
-                    <th>ID</th>
                     <th data-title-col data-mobile-primary>Tipo</th>
                     <th>Naturaleza</th>
                     <th class="text-end" data-mobile-primary>Monto</th>
@@ -437,7 +434,6 @@
                 {% for m in movimientos %}
                     {% set tipo_meta = MOV_TIPO.get(m.tipo) %}
                     <tr>
-                        <td>{{ m.id }}</td>
                         <td>
                             {% if tipo_meta %}
                                 {{ badge(tipo_meta[0], tipo_meta[1]) }}
@@ -450,7 +446,7 @@
                                 {{ badge('Ingreso', 'ok') }}
                             {% elif m.naturaleza == 'EGRESO' %}
                                 {{ badge('Egreso', 'muted') }}
-                            {% elif m.naturaleza %}
+                            {% elif m.naturaleza and m.naturaleza != '-' %}
                                 {{ badge(m.naturaleza|lower|capitalize, 'muted') }}
                             {% else %}
                                 <span class="text-muted">—</span>
@@ -473,7 +469,7 @@
                         <td>{{ m.created_at|datetime_local if m.created_at else "—" }}</td>
                     </tr>
                 {% else %}
-                    {{ empty_row(9, 'Aún no hay movimientos para los filtros aplicados.') }}
+                    {{ empty_row(8, 'Aún no hay movimientos para los filtros aplicados.') }}
                 {% endfor %}
                 </tbody>
             </table>

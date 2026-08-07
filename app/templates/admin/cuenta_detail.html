@@ -45,10 +45,6 @@
         <p class="s-card-sub mb-3">Identificación bancaria y vínculo con el titular.</p>
         <div class="s-defs">
             <div class="s-def">
-                <span class="s-def__label">ID</span>
-                <span class="s-def__value">{{ cuenta.id }}</span>
-            </div>
-            <div class="s-def">
                 <span class="s-def__label">Tipo</span>
                 <span class="s-def__value">{{ cuenta.tipo|capitalize if cuenta.tipo else '—' }}</span>
             </div>
@@ -267,7 +263,6 @@
                                     <td>
                                         {% if nota %}
                                             <div class="fw-semibold">{{ folio_map.get(nota.id, '—') }}</div>
-                                            <div class="text-muted small">#{{ nota.id }}</div>
                                         {% else %}
                                             <span class="text-muted">—</span>
                                         {% endif %}
@@ -304,7 +299,6 @@
                                     <td>
                                         {% if nota %}
                                             <div class="fw-semibold">{{ folio_map.get(nota.id, '—') }}</div>
-                                            <div class="text-muted small">#{{ nota.id }}</div>
                                         {% else %}
                                             <span class="text-muted">—</span>
                                         {% endif %}
@@ -316,7 +310,7 @@
                                             {% elif nota.estado.value == 'EN_REVISION' %}
                                                 {{ badge('En revisión', 'warn') }}
                                             {% elif nota.estado.value == 'APROBADA' %}
-                                                {{ badge('Aprobada', 'info') }}
+                                                {{ badge('Aprobada', 'ok') }}
                                             {% else %}
                                                 {{ badge('Cancelada', 'bad') }}
                                             {% endif %}
@@ -422,7 +416,6 @@
                             <td>
                                 {% if nota %}
                                     <div class="fw-semibold">{{ folio_map.get(nota.id, '—') }}</div>
-                                    <div class="text-muted small">#{{ nota.id }}</div>
                                 {% else %}
                                     <span class="text-muted">—</span>
                                 {% endif %}
@@ -487,7 +480,6 @@
                         <tr>
                             <td>
                                 <div class="fw-semibold">{{ row.folio }}</div>
-                                <div class="text-muted small">#{{ nota.id }}</div>
                             </td>
                             <td>{{ nota.tipo_operacion.value|capitalize }}</td>
                             <td>{{ partner.nombre_completo if partner else '—' }}</td>
@@ -497,7 +489,7 @@
                                 {% elif nota.estado.value == 'EN_REVISION' %}
                                     {{ badge('En revisión', 'warn') }}
                                 {% elif nota.estado.value == 'APROBADA' %}
-                                    {{ badge('Aprobada', 'info') }}
+                                    {{ badge('Aprobada', 'ok') }}
                                 {% else %}
                                     {{ badge('Cancelada', 'bad') }}
                                 {% endif %}

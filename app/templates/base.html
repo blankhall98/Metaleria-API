@@ -240,7 +240,7 @@
     <nav class="mobile-dock mobile-dock--admin" aria-label="Navegaci&oacute;n principal">
         {{ dock_link('/web', 'Inicio', 'home', current_path == '/web') }}
         {{ dock_link('/web/admin/notas', 'Notas', 'notes', current_path.startswith('/web/admin/notas')) }}
-        {{ dock_link('/web/admin/proveedores', 'Partners', 'users',
+        {{ dock_link('/web/admin/proveedores', 'Socios', 'users',
                      current_path.startswith('/web/admin/proveedores') or current_path.startswith('/web/admin/clientes')) }}
         {{ dock_link('/web/admin/inventario', 'Inventario', 'box', current_path.startswith('/web/admin/inventario')) }}
         <button class="mobile-dock-link mobile-dock-link--menu" type="button"

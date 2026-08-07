@@ -92,13 +92,9 @@
             <table class="table table-hover align-middle">
                 <thead>
                 <tr>
-                    <th>ID</th>
                     <th data-title-col data-mobile-primary>Nombre</th>
-                    <th data-mobile-primary>Tipo</th>
-                    <th>Banco</th>
-                    <th>Número</th>
                     <th>Titular</th>
-                    <th>Vínculo</th>
+                    <th data-mobile-primary>Vínculo</th>
                     <th data-mobile-primary>Estado</th>
                     <th><span class="s-visually-hidden">Acciones</span></th>
                 </tr>
@@ -107,29 +103,24 @@
                 {% for row in cuentas %}
                     {% set cuenta = row.cuenta %}
                     <tr>
-                        <td>{{ cuenta.id }}</td>
                         <td>
                             <div class="fw-semibold">{{ cuenta.nombre }}</div>
-                            <div class="text-muted small">{{ cuenta.display_label }}</div>
+                            <div class="text-muted small">
+                                {{ cuenta.banco or 'Sin banco' }}
+                                {%- if cuenta.numero %}
+                                    {% set last4 = cuenta.numero[-4:] if cuenta.numero|length >= 4 else cuenta.numero %}
+                                    &middot; <span class="s-mono">****{{ last4 }}</span>
+                                {%- endif %}
+                            </div>
                         </td>
-                        <td>{{ cuenta.tipo|capitalize if cuenta.tipo else "-" }}</td>
-                        <td>{{ cuenta.banco or "-" }}</td>
-                        <td>
-                            {% if cuenta.numero %}
-                                {% set last4 = cuenta.numero[-4:] if cuenta.numero|length >= 4 else cuenta.numero %}
-                                <span class="s-mono">****{{ last4 }}</span>
-                            {% else %}
-                                -
-                            {% endif %}
-                        </td>
-                        <td>{{ cuenta.titular or "-" }}</td>
+                        <td>{{ cuenta.titular or "—" }}</td>
                         <td>{{ row.owner_label }}</td>
                         <td>
                             {{ badge('Activa', 'ok') if cuenta.activo else badge('Inactiva', 'muted') }}
                         </td>
                         <td>
                             <span class="s-actions">
-                                <a href="/web/admin/cuentas/{{ cuenta.id }}" class="btn btn-sm btn-outline-secondary">Auditar</a>
+                                <a href="/web/admin/cuentas/{{ cuenta.id }}" class="btn btn-sm btn-outline-secondary">Ver</a>
                                 <a href="/web/admin/cuentas/{{ cuenta.id }}/editar" class="btn btn-sm btn-outline-secondary">Editar</a>
                                 {% if user.rol == 'super_admin' %}
                                     <form method="post" action="/web/admin/cuentas/{{ cuenta.id }}/eliminar">
@@ -141,7 +132,7 @@
                         </td>
                     </tr>
                 {% else %}
-                    {{ empty_row(9, 'No hay cuentas con estos filtros.') }}
+                    {{ empty_row(5, 'No hay cuentas con estos filtros.') }}
                 {% endfor %}
                 </tbody>
             </table>

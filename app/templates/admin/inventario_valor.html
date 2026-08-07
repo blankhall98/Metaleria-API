@@ -108,7 +108,7 @@
                                             </label>
                                             <input class="form-control text-end" id="precio_{{ row.material_id }}" type="number" step="0.00001" min="0" name="precio_{{ row.material_id }}" value="{{ "{:.5f}".format(row.precio_referencia or 0) if row.precio_referencia is not none else '' }}">
                                         {% else %}
-                                            <span class="s-money">${{ "{:,.5f}".format(row.precio_referencia or 0) }}</span>
+                                            <span class="s-money">{{ (row.precio_referencia or 0)|precio }}</span>
                                         {% endif %}
                                     </td>
                                     <td class="text-end">{{ money(row.valor_total) }}</td>

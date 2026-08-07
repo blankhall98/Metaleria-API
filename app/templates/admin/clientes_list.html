@@ -61,7 +61,6 @@
             <table class="table table-hover align-middle">
                 <thead>
                 <tr>
-                    <th>ID</th>
                     <th data-title-col data-mobile-primary>Nombre</th>
                     <th>Sucursal</th>
                     <th>Teléfono</th>
@@ -76,7 +75,6 @@
                 {% for row in clientes %}
                     {% set c = row.cliente %}
                     <tr>
-                        <td>{{ c.id }}</td>
                         <td>
                             <div class="fw-semibold">{{ c.nombre_completo }}</div>
                             {% if row.linked_proveedor %}
@@ -85,17 +83,17 @@
                                     {{ badge('Proveedor vinculado', 'muted') }}
                                 </div>
                                 <div class="text-muted small mt-1">
-                                    Vinculado con el proveedor {{ row.linked_proveedor.id }}
+                                    Vinculado con el proveedor {{ row.linked_proveedor.nombre_completo }}
                                 </div>
                             {% endif %}
                         </td>
                         <td>{{ c.sucursal.nombre if c.sucursal else "-" }}</td>
-                        <td>{{ c.telefono or "-" }}</td>
-                        <td>{{ c.correo_electronico or "-" }}</td>
+                        <td>{{ c.telefono or "—" }}</td>
+                        <td>{{ c.correo_electronico or "—" }}</td>
                         <td>
                             {% set lista = c.placas_rel if c.placas_rel else [] %}
                             {% if lista|length == 0 %}
-                                <span class="text-muted small">{{ c.placas or '-' }}</span>
+                                <span class="text-muted small">{{ c.placas or '—' }}</span>
                             {% else %}
                                 {% for pl in lista %}
                                     {{ badge(pl.placa, 'muted') }}
@@ -134,7 +132,7 @@
                         </td>
                     </tr>
                 {% else %}
-                    {{ empty_row(9) }}
+                    {{ empty_row(8) }}
                 {% endfor %}
                 </tbody>
             </table>

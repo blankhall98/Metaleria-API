@@ -2,7 +2,7 @@
 
 {% from "_macros.html" import page_header, icon, stat, badge, money, kg, empty, empty_row %}
 
-{% block title %}Nota {{ folio or '-' }}{% endblock %}
+{% block title %}Nota {{ folio or '—' }}{% endblock %}
 
 {% block content %}
 {% set can_manage_note = can_manage_note if can_manage_note is defined else true %}
@@ -197,7 +197,7 @@
                 </div>
                 <div class="text-lg-end">
                     <div class="s-def__label">Folio</div>
-                    <div class="s-folio">{{ folio or '-' }}</div>
+                    <div class="s-folio">{{ folio or '—' }}</div>
                     <div class="text-muted small">Nota #{{ nota.id }}</div>
                 </div>
             </div>
@@ -397,7 +397,7 @@
                                         {% endif %}
                                     </td>
                                     <td>{{ devolucion.usuario.username if devolucion.usuario else (devolucion.usuario_id or '-') }}</td>
-                                    <td class="small text-muted">{{ devolucion.comentario or '-' }}</td>
+                                    <td class="small text-muted">{{ devolucion.comentario or '—' }}</td>
                                     <td class="small text-muted">
                                         {% if devolucion.reverted_at %}
                                             {{ devolucion.reverted_at|datetime_local }}
@@ -520,7 +520,7 @@
                                                            min="0"
                                                            name="precio_unitario_{{ m.id }}"
                                                            value="{{ unit_override if unit_override is not none else ('%.5f'|format(m.precio_unitario) if m.precio_unitario is not none else '') }}"
-                                                           placeholder="0.00000">
+                                                           placeholder="0.00">
                                                     <input type="hidden" name="precio_mode_{{ m.id }}" class="note-precio-mode" value="{{ mode_override if mode_override else 'unit' }}">
                                                 </td>
                                                 <td class="text-end">
@@ -533,7 +533,7 @@
                                                            placeholder="0.00">
                                                 </td>
                                             {% else %}
-                                                <td class="text-end note-unit-price">${{ "{:,.5f}".format(m.precio_unitario or 0) }}</td>
+                                                <td class="text-end note-unit-price">{{ (m.precio_unitario or 0)|precio }}</td>
                                                 <td class="text-end note-subtotal">${{ "{:,.2f}".format(m.subtotal or 0) }}</td>
                                             {% endif %}
                                         </tr>
@@ -578,7 +578,7 @@
                             <div class="row g-3">
                                 <div class="col-12">
                                     <label class="form-label" for="f_fecha_caducidad_pago">Fecha de caducidad de pago</label>
-                                    {% set fecha_val = form_fecha if form_fecha is not none else (nota.fecha_caducidad_pago|date_local if nota.fecha_caducidad_pago else "") %}
+                                    {% set fecha_val = form_fecha if form_fecha is not none else (nota.fecha_caducidad_pago|date_iso if nota.fecha_caducidad_pago else "") %}
                                     <input class="form-control" type="date" name="fecha_caducidad_pago" value="{{ fecha_val }}" id="f_fecha_caducidad_pago">
                                 </div>
                                 <div class="col-12">
@@ -772,7 +772,7 @@
                                 <td class="text-end">{{ "{:,.2f}".format(m.kg_descuento or 0) }}</td>
                                 <td class="text-end">{{ "{:,.2f}".format(m.kg_neto or 0) }}</td>
                                 <td>{{ m.tipo_cliente.value|capitalize if m.tipo_cliente else 'Regular' }}</td>
-                                <td class="text-end note-unit-price">${{ "{:,.5f}".format(m.precio_unitario or 0) }}</td>
+                                <td class="text-end note-unit-price">{{ (m.precio_unitario or 0)|precio }}</td>
                                 <td class="text-end note-subtotal">${{ "{:,.2f}".format(m.subtotal or 0) }}</td>
                             </tr>
                             {% if m.subpesajes %}
@@ -845,7 +845,7 @@
                                             </td>
                                             <td class="text-end">
                                                 <span class="s-cell-key">{{ "{:,.3f}".format(nm.kg_neto or 0) }} kg</span>
-                                                <span class="s-cell-sub">${{ "{:,.5f}".format(nm.precio_unitario or 0) }} / kg</span>
+                                                <span class="s-cell-sub">{{ (nm.precio_unitario or 0)|precio }} / kg</span>
                                             </td>
                                             {# Los kilos y su precio son la misma
                                                decisión, así que van juntos: en
@@ -1317,7 +1317,7 @@
                                         </td>
                                         <td class="text-end">{{ "{:,.2f}".format(ajuste.saldo_anterior or 0) }}</td>
                                         <td class="text-end">{{ "{:,.2f}".format(ajuste.saldo_resultante or 0) }}</td>
-                                        <td class="small text-muted">{{ ajuste.comentario or '-' }}</td>
+                                        <td class="small text-muted">{{ ajuste.comentario or '—' }}</td>
                                         <td class="text-end">
                                             <div class="d-inline-flex flex-wrap justify-content-end gap-2">
                                                 {% if can_manage_note and not ajuste.reversal_of_id and not ajuste.reverted_at %}
@@ -1484,7 +1484,7 @@
                                         </td>
                                         <td class="text-end">{{ "{:,.3f}".format(ajuste.stock_anterior or 0) }} kg</td>
                                         <td class="text-end">{{ "{:,.3f}".format(ajuste.stock_resultante or 0) }} kg</td>
-                                        <td class="small text-muted">{{ ajuste.comentario or '-' }}</td>
+                                        <td class="small text-muted">{{ ajuste.comentario or '—' }}</td>
                                         <td class="text-end">
                                             <div class="d-inline-flex flex-wrap justify-content-end gap-2">
                                                 <a class="btn btn-sm btn-outline-secondary" href="/web/admin/inventario/ajustes/{{ ajuste.id }}">Detalle</a>
@@ -1554,7 +1554,7 @@
                                             <div class="text-muted small">Acción #{{ devolucion.id }} &middot; Línea #{{ linea.id }}</div>
                                         </td>
                                         <td class="text-end">{{ "{:,.3f}".format(linea.kg_devolucion or 0) }} kg</td>
-                                        <td class="text-end">${{ "{:,.5f}".format(linea.precio_unitario_devolucion or 0) }}</td>
+                                        <td class="text-end">{{ (linea.precio_unitario_devolucion or 0)|precio }}</td>
                                         <td class="text-end fw-semibold">${{ "{:,.2f}".format(linea.monto_devolucion or 0) }}</td>
                                         <td>
                                             {% if linea.reverted_at %}
@@ -1565,7 +1565,7 @@
                                         </td>
                                         <td>{{ devolucion.usuario.username if devolucion.usuario else (devolucion.usuario_id or '-') }}</td>
                                         <td class="small text-muted">
-                                            {{ devolucion.comentario or '-' }}
+                                            {{ devolucion.comentario or '—' }}
                                             {% if linea.reverted_at %}
                                                 <div>Revertida: {{ linea.reverted_at|datetime_local }}</div>
                                             {% endif %}
@@ -1664,13 +1664,13 @@
                 <div class="col-md-6">
                     <div class="s-subpanel">
                         <div class="s-section-label">Trabajador</div>
-                        <div class="s-subpanel">{{ nota.comentarios_trabajador or '-' }}</div>
+                        <div class="s-subpanel">{{ nota.comentarios_trabajador or '—' }}</div>
                     </div>
                 </div>
                 <div class="col-md-6">
                     <div class="s-subpanel">
                         <div class="s-section-label">Admin</div>
-                        <div class="s-subpanel">{{ nota.comentarios_admin or '-' }}</div>
+                        <div class="s-subpanel">{{ nota.comentarios_admin or '—' }}</div>
                     </div>
                 </div>
             </div>
@@ -1722,9 +1722,9 @@
             const qty = parseFloat(noteAdjustQty && noteAdjustQty.value ? noteAdjustQty.value : '0') || 0;
             const operation = noteAdjustOperation && noteAdjustOperation.value === 'disminuir' ? -1 : 1;
             const result = stockActual + (qty * operation);
-            noteAdjustPreviewKg.textContent = `${kgNeto.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} kg`;
-            noteAdjustPreviewStock.textContent = `${stockActual.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} kg`;
-            noteAdjustPreviewResult.textContent = `${result.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} kg`;
+            noteAdjustPreviewKg.textContent = `${kgNeto.toLocaleString('es-MX', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} kg`;
+            noteAdjustPreviewStock.textContent = `${stockActual.toLocaleString('es-MX', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} kg`;
+            noteAdjustPreviewResult.textContent = `${result.toLocaleString('es-MX', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} kg`;
             noteAdjustPreviewResult.classList.toggle('text-danger', result < 0);
             noteAdjustPreviewResult.classList.toggle('text-success', result >= 0);
         }
@@ -1931,7 +1931,7 @@
 
         function formatNumber(value, decimals) {
             const safe = Number(value || 0);
-            return safe.toLocaleString('en-US', {
+            return safe.toLocaleString('es-MX', {
                 minimumFractionDigits: decimals,
                 maximumFractionDigits: decimals,
             });
@@ -1942,7 +1942,11 @@
         }
 
         function formatUnit(value) {
-            return `$${formatNumber(value, 5)}`;
+            /* Igual que el filtro `precio` del servidor: 2 decimales salvo
+               que el precio tenga precisión real más fina. */
+            const rounded = Math.round(value * 100) / 100;
+            if (Math.abs(rounded - value) < 1e-9) return `$${formatNumber(rounded, 2)}`;
+            return `$${formatNumber(value, 5).replace(/0+$/, '')}`;
         }
 
         function parseNumber(value) {

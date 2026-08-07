@@ -527,6 +527,11 @@
             var active = document.activeElement;
             if (active && active.type === 'number') active.blur();
         }, { passive: true });
+
+        /* Todo campo numérico abre el teclado decimal en el teléfono. */
+        document.querySelectorAll('input[type="number"]:not([inputmode])').forEach(function (input) {
+            input.setAttribute('inputmode', 'decimal');
+        });
     }
 
     /* ----------------------------------------------------------------------

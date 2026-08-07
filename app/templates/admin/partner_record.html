@@ -8,7 +8,7 @@
 <div>
 
 {% call page_header(partner_label ~ ' · ' ~ partner.nombre_completo, eyebrow='Relaciones',
-                    sub='ID ' ~ partner.id ~ ' · ' ~ (record_scope_label if unified_enabled else tipo_operacion_label)) %}
+                    sub=(record_scope_label if unified_enabled else tipo_operacion_label)) %}
     <a href="/web/admin/{{ partner_base }}" class="btn btn-outline-secondary btn-sm">
         {{ icon('arrow-left', 's-icon--sm') }} Volver
     </a>
@@ -92,7 +92,7 @@
         {% if unified_enabled %}
             Saldos calculados con compras, ventas y ajustes manuales unificados.
             {% if linked_partner %}
-                Partner vinculado: {{ linked_partner.nombre_completo }} (ID {{ linked_partner.id }}).
+                Socio vinculado: {{ linked_partner.nombre_completo }}.
             {% elif partner_base == 'proveedores' and provider_direct_sales_enabled %}
                 Las ventas se registran directamente contra este proveedor, sin crear un cliente adicional.
             {% endif %}
@@ -106,10 +106,6 @@
             <h2 class="s-card-title">Perfil</h2>
             <p class="s-card-sub mb-3">Datos de contacto y vínculos de este {{ partner_label|lower }}.</p>
             <div class="s-defs">
-                <div class="s-def">
-                    <span class="s-def__label">ID</span>
-                    <span class="s-def__value">{{ partner.id }}</span>
-                </div>
                 <div class="s-def">
                     <span class="s-def__label">Nombre</span>
                     <span class="s-def__value">{{ partner.nombre_completo }}</span>
@@ -154,7 +150,7 @@
                     <span class="s-def__label">Relación vinculada</span>
                     <span class="s-def__value">
                         {% if linked_partner %}
-                            {{ linked_partner.nombre_completo }} (ID {{ linked_partner.id }})
+                            {{ linked_partner.nombre_completo }}
                         {% elif partner_base == 'proveedores' and provider_direct_sales_enabled %}
                             Opera compras y ventas en el mismo perfil
                         {% else %}
@@ -321,13 +317,12 @@
                                 <td>{{ row.tipo }}</td>
                                 <td>
                                     {% if row.nota_id %}
-                                        <div class="fw-semibold">{{ row.folio }}</div>
-                                        <div class="text-muted small">#{{ row.nota_id }}</div>
+                                        <span class="fw-semibold">{{ row.folio }}</span>
                                     {% else %}
                                         <span class="text-muted">—</span>
                                     {% endif %}
                                 </td>
-                                <td>{{ row.metodo or "—" }}</td>
+                                <td>{{ row.metodo|capitalize if row.metodo and row.metodo != '-' else '—' }}</td>
                                 <td>{{ row.cuenta or "—" }}</td>
                                 <td class="text-end">{{ money(row.cargo) }}</td>
                                 <td class="text-end">{{ money(row.abono) }}</td>
@@ -458,7 +453,6 @@
                             <tr>
                                 <td>
                                     <div class="fw-semibold">{{ row.folio }}</div>
-                                    <div class="text-muted small">#{{ nota.id }}</div>
                                 </td>
                                 {% if unified_enabled %}
                                     <td>
@@ -566,7 +560,6 @@
                                 <td>
                                     {% if nota %}
                                         <div class="fw-semibold">{{ folio_map.get(nota.id, '—') }}</div>
-                                        <div class="text-muted small">#{{ nota.id }}</div>
                                         {% if nota.estado %}
                                             <div class="small mt-1">
                                                 {% if nota.estado.value == 'BORRADOR' %}

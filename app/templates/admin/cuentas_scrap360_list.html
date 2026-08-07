@@ -73,9 +73,7 @@
             <table class="table table-hover align-middle">
                 <thead>
                 <tr>
-                    <th>ID</th>
                     <th data-title-col data-mobile-primary>Nombre</th>
-                    <th>Tipo</th>
                     <th>Sucursales</th>
                     <th class="text-end">Saldo inicial</th>
                     <th class="text-end" data-mobile-primary>Saldo actual</th>
@@ -87,9 +85,10 @@
                 {% for row in cuentas %}
                     {% set cuenta = row.cuenta %}
                     <tr>
-                        <td>{{ cuenta.id }}</td>
-                        <td class="fw-semibold">{{ cuenta.nombre }}</td>
-                        <td>{{ cuenta.tipo|capitalize }}</td>
+                        <td>
+                            <div class="fw-semibold">{{ cuenta.nombre }}</div>
+                            <div class="text-muted small">{{ cuenta.tipo|capitalize }}</div>
+                        </td>
                         <td>{{ row.sucursales_label }}</td>
                         <td class="text-end">{{ money(cuenta.saldo_inicial or 0) }}</td>
                         <td class="text-end">{{ money(cuenta.saldo_actual or 0) }}</td>
@@ -110,7 +109,7 @@
                         </td>
                     </tr>
                 {% else %}
-                    {{ empty_row(8, 'No hay cuentas con estos filtros.') }}
+                    {{ empty_row(6, 'No hay cuentas con estos filtros.') }}
                 {% endfor %}
                 </tbody>
             </table>

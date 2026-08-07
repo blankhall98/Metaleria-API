@@ -329,6 +329,23 @@ correct.
 Two different states must never share a tone (`Aprobada` and `Pagada` were both
 green — they are not the same thing).
 
+**Canonical tone table** — one tone per state, the same in every module:
+
+| Concept | Tone |
+|---|---|
+| Borrador / Pagada / Restauración / Salida normal de dinero | `muted` |
+| En revisión / Ajuste / vencimiento próximo | `warn` |
+| Aprobada / Activa / Entrada / Pago registrado / Vigente | `ok` |
+| Cancelada / Reverso / vencida / descuadre | `bad` |
+| Compra / Venta / Comisión / Saldo a favor / dirección neutral | `info` |
+
+Rules that fall out of it: an egress is `muted`, never red (money leaving
+normally is not a problem); `Aprobada` is green in **every** module (notas,
+comisiones, cuentas); `Pagada` is muted — settled, nothing left to do — so it
+never competes with `Aprobada`'s green. The `money()` macro renders negatives
+in normal ink; red money is opted into (`tone="danger"`) only for amounts that
+demand action.
+
 ### Forms
 
 ```jinja

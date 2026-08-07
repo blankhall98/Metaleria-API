@@ -56,10 +56,6 @@
             <p class="s-card-sub mb-3">Datos de contacto y sucursal asignada.</p>
             <div class="s-defs">
                 <div class="s-def">
-                    <span class="s-def__label">ID</span>
-                    <span class="s-def__value">{{ comisionario.id }}</span>
-                </div>
-                <div class="s-def">
                     <span class="s-def__label">Nombre</span>
                     <span class="s-def__value">{{ comisionario.nombre_completo }}</span>
                 </div>
@@ -196,7 +192,7 @@
                                     {% if nota.estado.value == 'BORRADOR' %}
                                         {{ badge('Borrador', 'muted') }}
                                     {% elif nota.estado.value == 'APROBADA' %}
-                                        {{ badge('Aprobada', 'info') }}
+                                        {{ badge('Aprobada', 'ok') }}
                                     {% else %}
                                         {{ badge('Cancelada', 'bad') }}
                                     {% endif %}
@@ -337,7 +333,7 @@
                                                 {% if nota.estado.value == 'BORRADOR' %}
                                                     {{ badge('Borrador', 'muted') }}
                                                 {% elif nota.estado.value == 'APROBADA' %}
-                                                    {{ badge('Aprobada', 'info') }}
+                                                    {{ badge('Aprobada', 'ok') }}
                                                 {% else %}
                                                     {{ badge('Cancelada', 'bad') }}
                                                 {% endif %}

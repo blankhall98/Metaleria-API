@@ -114,10 +114,12 @@
                         <tr>
                             <td>{{ mov.created_at|datetime_local if mov.created_at else "—" }}</td>
                             <td>
+                                {# Una salida normal de dinero no es un problema: el rojo
+                                   queda reservado a reversos y descuadres. #}
                                 {% if mov.tipo == 'ingreso' %}
                                     {{ badge('Entrada', 'ok') }}
                                 {% elif mov.tipo == 'egreso' %}
-                                    {{ badge('Salida', 'bad') }}
+                                    {{ badge('Salida', 'muted') }}
                                 {% elif monto >= 0 %}
                                     {{ badge('Ajuste a favor', 'info') }}
                                 {% else %}

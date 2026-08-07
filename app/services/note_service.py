@@ -1232,7 +1232,7 @@ def _registrar_movimiento_inventario(
         tipo=tipo_mov,
         cantidad_kg=abs(delta),
         saldo_resultante=nuevo_saldo,
-        comentario=f"Auto ({tipo_mov}) nota #{nota.id}",
+        comentario=f"Generado al aprobar la nota #{nota.id}",
         usuario_id=usuario_id,
     )
     db.add(inv)
@@ -1522,7 +1522,7 @@ def adjust_initial_payment(
             db,
             nota=nota,
             usuario_id=usuario_id,
-            comentario=comentario or "Reverso pago inicial",
+            comentario=comentario or "Reverso de pago inicial",
             metodo_pago=pago.metodo_pago or nota.metodo_pago,
             cuenta_label=pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or None),
             cuenta_id=pago.cuenta_id,
@@ -1542,7 +1542,7 @@ def adjust_initial_payment(
                     usuario_id=usuario_id,
                     tipo=tipo_mov,
                     monto=revertir,
-                    comentario=comentario or "Reverso pago inicial",
+                    comentario=comentario or "Reverso de pago inicial",
                 )
 
     nota.monto_pagado = Decimal(str(nota.monto_pagado or 0)) + delta
@@ -2052,7 +2052,7 @@ def cancel_approved_note(
             tipo=base_tipo,
         )
 
-    comment_base = comentarios_admin or f"Cancelacion nota #{nota.id}"
+    comment_base = comentarios_admin or f"Cancelación de la nota #{nota.id}"
     devolucion_total = NotaDevolucionTotal(
         nota_id=nota.id,
         usuario_id=admin_id,
@@ -2103,7 +2103,7 @@ def cancel_approved_note(
             db,
             nota=nota,
             usuario_id=admin_id,
-            comentario=f"Reverso pago nota #{nota.id}",
+            comentario=f"Reverso de pago de la nota #{nota.id}",
             metodo_pago=pago.metodo_pago or nota.metodo_pago,
             cuenta_label=pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or None),
             cuenta_id=pago.cuenta_id,
@@ -2122,7 +2122,7 @@ def cancel_approved_note(
                     usuario_id=admin_id,
                     tipo=tipo_mov,
                     monto=monto_pago,
-                    comentario=f"Reverso pago nota #{nota.id}",
+                    comentario=f"Reverso de pago de la nota #{nota.id}",
                 )
 
     nota.estado = NotaEstado.cancelada
@@ -2200,7 +2200,7 @@ def reverse_total_return(
             db,
             nota=nota,
             usuario_id=admin_id,
-            comentario=f"Restauracion pago nota #{nota.id}",
+            comentario=f"Restauración de pago de la nota #{nota.id}",
             metodo_pago=pago.metodo_pago or nota.metodo_pago,
             cuenta_label=pago.cuenta.display_label if pago.cuenta else (pago.cuenta_financiera or None),
             cuenta_id=pago.cuenta_id,
@@ -2219,7 +2219,7 @@ def reverse_total_return(
                     usuario_id=admin_id,
                     tipo=tipo_mov,
                     monto=monto_pago,
-                    comentario=f"Restauracion pago nota #{nota.id}",
+                    comentario=f"Restauración de pago de la nota #{nota.id}",
                 )
 
     nota.estado = NotaEstado.aprobada

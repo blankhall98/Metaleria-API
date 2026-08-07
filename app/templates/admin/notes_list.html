@@ -310,7 +310,7 @@
                     <tr>
                         <td>
                             <span class="s-cell-key s-folio">{{ folio_map.get(n.id, '—') }}</span>
-                            <span class="s-cell-sub">#{{ n.id }} &middot; {{ n.created_at|date_local if n.created_at else '—' }}</span>
+                            <span class="s-cell-sub">{{ n.created_at|date_local if n.created_at else '—' }}</span>
                         </td>
                         <td>
                             {{ badge(n.tipo_operacion.value|capitalize, 'info' if n.tipo_operacion.value == 'compra' else 'muted') }}
@@ -335,7 +335,7 @@
                                 {% if n.estado.value == 'APROBADA' %}
                                     {% if saldo_favor > 0 %}{{ badge('Saldo a favor', 'info') }}
                                     {% elif saldo_pendiente > 0 %}{{ badge('Pendiente', 'warn') }}
-                                    {% else %}{{ badge('Pagada', 'ok') }}
+                                    {% else %}{{ badge('Pagada', 'muted') }}
                                     {% endif %}
                                 {% endif %}
                             </span>

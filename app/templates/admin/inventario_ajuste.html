@@ -85,7 +85,7 @@
     const stockResultante = document.getElementById('stock_resultante_display');
     function formatNumber(value, decimals) {
         const safe = Number(value || 0);
-        return safe.toLocaleString('en-US', {
+        return safe.toLocaleString('es-MX', {
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals,
         });

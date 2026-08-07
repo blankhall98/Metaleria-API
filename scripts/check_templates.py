@@ -39,6 +39,15 @@ JINJA = re.compile(r"\{\{.*?\}\}|\{%.*?%\}", re.S)
 
 def compilar() -> list[str]:
     env = Environment(loader=FileSystemLoader(str(RAIZ)))
+    # Los mismos filtros que registra app/web/template_utils.py: sin ellos,
+    # cualquier plantilla que los use fallaría aquí con un falso positivo.
+    from app.core.datetime_utils import format_date_iso, format_date_local, format_datetime_local
+    from app.web.template_utils import format_precio
+
+    env.filters["datetime_local"] = format_datetime_local
+    env.filters["date_local"] = format_date_local
+    env.filters["date_iso"] = format_date_iso
+    env.filters["precio"] = format_precio
     fallos = []
     for f in sorted(RAIZ.rglob("*.html")):
         rel = f.relative_to(RAIZ).as_posix()

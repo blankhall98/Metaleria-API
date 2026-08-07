@@ -69,7 +69,7 @@
                 </div>
                 <div class="text-lg-end">
                     <div class="s-def__label">Folio</div>
-                    <div class="s-folio">{{ folio or '-' }}</div>
+                    <div class="s-folio">{{ folio or '—' }}</div>
                     <div class="text-muted small">Solo superadmin</div>
                 </div>
             </div>
@@ -182,7 +182,7 @@
                                         {% set subtotal_override = form_subtotal_map.get(m.id) if form_subtotal_map is defined else None %}
                                         {% set mode_override = form_precio_mode_map.get(m.id) if form_precio_mode_map is defined else None %}
                                         <td class="text-end">
-                                            <input class="form-control form-control-sm text-end note-unit-input" type="number" step="0.00001" min="0" name="precio_unitario_{{ m.id }}" aria-label="Precio unitario de {{ m.material.nombre if m.material else ('material #' ~ m.material_id) }}" value="{{ unit_override if unit_override is not none else ('%.5f'|format(m.precio_unitario) if m.precio_unitario is not none else '') }}" placeholder="0.00000">
+                                            <input class="form-control form-control-sm text-end note-unit-input" type="number" step="0.00001" min="0" name="precio_unitario_{{ m.id }}" aria-label="Precio unitario de {{ m.material.nombre if m.material else ('material #' ~ m.material_id) }}" value="{{ unit_override if unit_override is not none else ('%.5f'|format(m.precio_unitario) if m.precio_unitario is not none else '') }}" placeholder="0.00">
                                             <input type="hidden" name="precio_mode_{{ m.id }}" class="note-precio-mode" value="{{ mode_override if mode_override else 'unit' }}">
                                         </td>
                                         <td class="text-end">
@@ -263,7 +263,7 @@
 
     function formatNumber(value, decimals) {
         const safe = Number(value || 0);
-        return safe.toLocaleString('en-US', {
+        return safe.toLocaleString('es-MX', {
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals,
         });

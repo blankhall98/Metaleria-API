@@ -104,13 +104,14 @@ Scrap<span class="brand-word__accent">360</span>
 
 {# --- Money ---------------------------------------------------------------
    A settled zero reads as settled, not as an error. Negative amounts keep
-   the sign inside the currency: -$1,990.00.
+   the sign inside the currency: -$1,990.00 — in normal ink: an egress or a
+   liability is not a problem. Red is opted into with tone="danger" and is
+   reserved for amounts that demand action (vencido, descuadre).
 #}
 {% macro money(amount, tone="auto") -%}
 {%- set value = amount or 0 -%}
 {%- if tone == "auto" -%}
     {%- if value == 0 -%}{% set cls = "s-zero" %}
-    {%- elif value < 0 -%}{% set cls = "text-danger" %}
     {%- else -%}{% set cls = "" %}
     {%- endif -%}
 {%- elif tone == "plain" -%}{% set cls = "" %}

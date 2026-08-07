@@ -1053,7 +1053,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const expected = expectedEl ? Number((expectedEl.textContent || '').replace(/[^0-9.-]/g, '')) || 0 : 0;
 
     const formatMoney = (value) =>
-        '$' + Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        '$' + Number(value || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
     const updateTotals = () => {
         let coins = 0, bills = 0;
@@ -1080,7 +1080,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (diffPreview) {
             const sign = isZero ? '' : (diff > 0 ? '+' : '-');
-            diffPreview.textContent = `${sign}$${Math.abs(diff).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            diffPreview.textContent = `${sign}$${Math.abs(diff).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
             diffPreview.classList.toggle('text-success', !isZero && diff > 0);
             diffPreview.classList.toggle('text-danger', !isZero && diff < 0);
             diffPreview.classList.toggle('s-zero', isZero);
@@ -1121,7 +1121,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (floatContado) floatContado.textContent = formatMoney(total);
         if (floatDif) {
             const sign = isZero ? '' : (diff > 0 ? '+' : '-');
-            floatDif.textContent = `${sign}$${Math.abs(diff).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            floatDif.textContent = `${sign}$${Math.abs(diff).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
             floatDif.classList.toggle('text-success', !isZero && diff > 0);
             floatDif.classList.toggle('text-danger', !isZero && diff < 0);
         }

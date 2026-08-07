@@ -39,7 +39,7 @@
                     <tr>
                         <td>{{ op_labels.get(p.tipo_operacion.value, p.tipo_operacion.value|capitalize) }}</td>
                         <td>{{ cliente_labels.get(p.tipo_cliente.value, p.tipo_cliente.value|capitalize) }}</td>
-                        <td class="text-end"><span class="s-money">${{ '{:,.5f}'.format(p.precio_por_unidad) }}</span></td>
+                        <td class="text-end"><span class="s-money">{{ p.precio_por_unidad|precio }}</span></td>
                         <td class="text-end"><span class="s-mono">{{ p.version }}</span></td>
                         <td>{{ p.vigente_desde|datetime_local if p.vigente_desde else '—' }}</td>
                         <td>{{ p.vigente_hasta|datetime_local if p.vigente_hasta else '—' }}</td>
