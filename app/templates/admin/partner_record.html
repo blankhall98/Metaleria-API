@@ -60,6 +60,7 @@
     {% set _secciones = [('#partner-summary', 'Resumen')]
         + ([('#partner-ajuste', 'Ajuste manual')] if can_manage_partner else [])
         + [('#partner-ledger', 'Estado de cuenta'), ('#partner-notes', 'Notas'), ('#partner-payments', 'Pagos')]
+        + ([('#partner-llamadas', 'Llamadas')] if llamadas_enabled else [])
         + ([('#partner-attendance', 'Asistencias')] if attendance_enabled else []) %}
     {{ anchor_nav(_secciones) }}
 
@@ -565,6 +566,83 @@
             {% endif %}
         </div>
     </div>
+
+    {% if llamadas_enabled %}
+        <div class="card mb-3" id="partner-llamadas">
+            <div class="card-body">
+                <div class="s-card-head">
+                    <div>
+                        <h2 class="s-card-title">Bitácora de llamadas</h2>
+                        <p class="s-card-sub">Últimas {{ llamadas_proveedor|length }} llamadas de seguimiento con este proveedor.</p>
+                    </div>
+                    <a href="/web/admin/bitacora-llamadas?proveedor_id={{ partner.id }}" class="btn btn-outline-secondary btn-sm">
+                        {{ icon('phone', 's-icon--sm') }} Ver bitácora completa
+                    </a>
+                </div>
+                {% if llamadas_proveedor|length == 0 %}
+                    {{ empty('Sin llamadas registradas',
+                             'Registra las llamadas con este proveedor desde la bitácora para dar seguimiento a sus entregas.',
+                             'notes') }}
+                {% else %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead>
+                            <tr>
+                                <th data-title-col data-mobile-primary>Fecha</th>
+                                <th>Materiales</th>
+                                <th>Entrega estimada</th>
+                                <th>Comentarios</th>
+                                <th data-mobile-primary>Estatus</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for llamada in llamadas_proveedor %}
+                                <tr>
+                                    <td>{{ llamada.fecha|date_local }}</td>
+                                    <td>
+                                        {% if llamada.materiales|length == 0 %}
+                                            <span class="text-muted">—</span>
+                                        {% else %}
+                                            <div class="s-stack-2">
+                                            {% for linea in llamada.materiales %}
+                                                <div class="small">
+                                                    <span class="fw-semibold">{{ linea.material.nombre if linea.material else "Sin definir" }}</span>
+                                                    {% if linea.precio_por_kg is not none %}
+                                                        · {{ linea.precio_por_kg|precio }}/kg
+                                                    {% elif linea.precio_texto %}
+                                                        · {{ linea.precio_texto }}
+                                                    {% endif %}
+                                                    {% if linea.kg_aproximados is not none %}
+                                                        <span class="text-muted">· ~{{ "{:,.0f}".format(linea.kg_aproximados) }} kg</span>
+                                                    {% endif %}
+                                                </div>
+                                            {% endfor %}
+                                            </div>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ llamada.fecha_estimada_entrega or "—" }}</td>
+                                    <td class="text-muted small">{{ llamada.comentarios or "—" }}</td>
+                                    <td>
+                                        {% if llamada.estatus.value == 'ENTREGADO' %}
+                                            {{ badge('Entregado', 'ok') }}
+                                            {% if llamada.entregada_at %}
+                                                <div class="text-muted small">{{ llamada.entregada_at|date_local }}</div>
+                                            {% endif %}
+                                        {% elif llamada.estatus.value == 'NO_CONFIRMO' %}
+                                            {{ badge('No confirmó', 'muted') }}
+                                        {% else %}
+                                            {{ badge('Pendiente', 'warn') }}
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
 
     {% if attendance_enabled %}
         <div class="card mb-3" id="partner-attendance">

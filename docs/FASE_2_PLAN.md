@@ -208,8 +208,9 @@ pantalla sobre producción. Qué respondió, qué agregó y qué cambió:
 | 6 (FIFO comisionista) | ✅ En prod | `pay_comisionario_fifo` implementado y cableado a `POST /comisionarios/{id}/pago`; verificado 07-ago |
 | 1, orden del récord | ✅ En prod (07-ago, Ronda A) | Existencias alineadas a la izquierda ("stock inicial" ya no existía en ninguna vista); récord en el orden pedido: Resumen → Ajuste manual → Estado de cuenta → Notas → Pagos → Asistencias |
 | 7, 8 (neteo y vinculados) | ✅ En prod (07-ago, Ronda B) | El saldo efectivo es global: el crédito ya no se recorta por sucursal y el FIFO corre sobre todas las notas del socio (causa de los "pendientes fantasma" al filtrar). El par vinculado clasifica SIEMPRE en el bucket de clientes con signo (ejemplo −10,000 de la clienta) en contabilidad, reporte de saldos (sin doble conteo), capital y home. Guardado por `scripts/test_neteo.py` |
-| 5 (archivar sucursales) | 🔴 Pendiente | Mapeado en §4 |
-| 2, 3, 4 (módulos) | 🔓 Desbloqueados | Los 4 Excel ya están en `docs/excel_ejemplos/` — el reloj de entrega corre |
+| 5 (archivar sucursales) | ✅ En prod | Rutas archivar/reactivar (super_admin) con guardas de corte abierto, notas sin aprobar, usuarios activos y stock; los selectores de captura excluyen archivadas y el historial se conserva. Verificado en vivo 07-ago |
+| 2 (bitácora de llamadas) | ✅ En prod (07-ago, Ronda E) | Módulo nuevo: tablas `llamadas_proveedor` + `llamadas_proveedor_materiales` (migración `c3d4e5f6a7b8`), `llamada_service.py`, pantalla `/web/admin/bitacora-llamadas` (captura colapsable + filtros por proveedor/estatus), sección en el récord del proveedor y entrada de menú en Catálogos. Tres estatus reales del Excel (Pendiente/Entregado con auditoría/No confirmó), fecha estimada y precio en texto libre, material "sin definir aún". Guardado por `scripts/test_bitacora.py` |
+| 3, 4 (módulos) | 🔓 Desbloqueados | Los 4 Excel ya están en `docs/excel_ejemplos/` — el reloj de entrega corre |
 
 ## 6. Riesgos y dependencias
 

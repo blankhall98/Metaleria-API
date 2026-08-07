@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty_row, page_header, icon, stat, badge, empty %}
+
+{% block title %}Bitácora de llamadas &middot; Admin{% endblock %}
+
+{% block content %}
+
+{% call page_header('Bitácora de llamadas', eyebrow='Relaciones',
+                    sub='Seguimiento telefónico con proveedores: qué se cotizó, cuándo prometieron entregar y si cumplieron.') %}
+    <a href="/web/admin/proveedores" class="btn btn-outline-secondary btn-sm">
+        {{ icon('truck', 's-icon--sm') }} Proveedores
+    </a>
+{% endcall %}
+
+{% if registrada %}
+    <div class="alert alert-success py-2 small mb-3">Llamada registrada en la bitácora.</div>
+{% endif %}
+{% if eliminada %}
+    <div class="alert alert-success py-2 small mb-3">La llamada se eliminó de la bitácora.</div>
+{% endif %}
+{% if error %}
+    <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
+{% endif %}
+
+<div class="s-stats s-stats--fixed-4">
+    {{ stat('Llamadas', total_llamadas) }}
+    {{ stat('Pendientes', counts[estados[0]], tone=('warn' if counts[estados[0]] else '')) }}
+    {{ stat('Entregadas', counts[estados[1]], tone=('ok' if counts[estados[1]] else '')) }}
+    {{ stat('No confirmó', counts[estados[2]]) }}
+</div>
+
+{% if can_manage %}
+<div class="card mb-3">
+    <div class="card-body">
+        <button type="button" class="s-collapse__trigger" data-bs-toggle="collapse"
+                data-bs-target="#llamadaFormBody" aria-expanded="{{ 'true' if form_abierta else 'false' }}">
+            <div>
+                <h2 class="s-card-title mb-1">Registrar llamada</h2>
+                <p class="s-card-sub mb-0">Proveedor, materiales cotizados y fecha estimada de entrega.</p>
+            </div>
+            {{ icon('chevron-down', 's-collapse__chevron') }}
+        </button>
+        <div id="llamadaFormBody" class="collapse{{ ' show' if form_abierta }} s-collapse__body">
+        <form method="post" action="/web/admin/bitacora-llamadas" data-submit-once="1">
+            <div class="s-form-grid">
+                <div>
+                    <label class="form-label" for="llamadaProveedor">Proveedor <span class="s-req" aria-hidden="true">*</span></label>
+                    <select class="form-select" id="llamadaProveedor" name="proveedor_id" required>
+                        <option value="">Selecciona proveedor</option>
+                        {% for p in proveedores %}
+                            <option value="{{ p.id }}" {% if form_proveedor_id|string == p.id|string %}selected{% endif %}>
+                                {{ p.nombre_completo }}{% if p.sucursal %} · {{ p.sucursal.nombre }}{% endif %}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label" for="llamadaFecha">Fecha de la llamada <span class="s-req" aria-hidden="true">*</span></label>
+                    <input class="form-control" id="llamadaFecha" name="fecha" type="date"
+                           value="{{ form_fecha or hoy_iso }}" required>
+                </div>
+                <div>
+                    <label class="form-label" for="llamadaEstimada">Entrega estimada</label>
+                    <input class="form-control" id="llamadaEstimada" name="fecha_estimada_entrega"
+                           value="{{ form_fecha_estimada }}" maxlength="120"
+                           placeholder="Ej. 25 de agosto o &quot;semana del 25 al 29&quot;">
+                </div>
+                <div class="s-field--full">
+                    <label class="form-label" for="llamadaComentarios">Comentarios</label>
+                    <input class="form-control" id="llamadaComentarios" name="comentarios"
+                           value="{{ form_comentarios }}" maxlength="500"
+                           placeholder="Acuerdos, pendientes o recordatorios (ej. llamar el miércoles)">
+                </div>
+            </div>
+
+            <fieldset class="s-fieldset">
+                <legend>Materiales cotizados</legend>
+                <p class="form-text mb-2">Opcionales. El precio acepta texto libre cuando no se cerró un número (ej. "lista del viernes").</p>
+                <div class="table-responsive">
+                    <table class="table align-middle">
+                        <thead>
+                        <tr>
+                            <th data-title-col>Material</th>
+                            <th>Precio acordado</th>
+                            <th class="text-end">Kg aproximados</th>
+                            <th><span class="s-visually-hidden">Acciones</span></th>
+                        </tr>
+                        </thead>
+                        <tbody id="llamadaMaterialRows">
+                        <tr>
+                            <td>
+                                <select class="form-select form-select-sm" name="material_id" aria-label="Material">
+                                    <option value="">Sin definir aún</option>
+                                    {% for m in materiales %}
+                                        <option value="{{ m.id }}">{{ m.nombre }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td>
+                                <input class="form-control form-control-sm" name="precio" maxlength="120"
+                                       aria-label="Precio acordado" placeholder="$ o texto libre">
+                            </td>
+                            <td class="text-end">
+                                <input class="form-control form-control-sm text-end" type="number" step="0.001" min="0"
+                                       name="kg_aproximados" aria-label="Kg aproximados">
+                            </td>
+                            <td>
+                                <span class="s-actions">
+                                    <button type="button" class="btn btn-sm btn-outline-danger llamada-remove-row">
+                                        {{ icon('trash', 's-icon--sm') }} Quitar
+                                    </button>
+                                </span>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="llamadaAddRowBtn">
+                        {{ icon('plus', 's-icon--sm') }} Agregar material
+                    </button>
+                </div>
+            </fieldset>
+
+            <div class="s-form-actions">
+                <button type="submit" class="btn btn-primary" data-loading-text="Guardando…">Registrar llamada</button>
+            </div>
+        </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-body">
+        <div class="s-between mb-3">
+            <div>
+                <h2 class="s-card-title mb-1">Historial de llamadas</h2>
+                <p class="s-card-sub mb-0">{{ llamadas|length }} llamada{{ 's' if llamadas|length != 1 }} con los filtros actuales.</p>
+            </div>
+            <form method="get" action="/web/admin/bitacora-llamadas" class="d-flex flex-wrap align-items-center gap-2">
+                <select class="form-select form-select-sm" name="proveedor_id" aria-label="Filtrar por proveedor">
+                    <option value="">Todos los proveedores</option>
+                    {% for p in proveedores %}
+                        <option value="{{ p.id }}" {% if proveedor_id == p.id %}selected{% endif %}>{{ p.nombre_completo }}</option>
+                    {% endfor %}
+                </select>
+                <select class="form-select form-select-sm" name="estatus" aria-label="Filtrar por estatus">
+                    <option value="">Todos los estatus</option>
+                    {% for estado in estados %}
+                        <option value="{{ estado.value }}" {% if estatus_filtro == estado.value %}selected{% endif %}>{{ estatus_labels[estado] }}</option>
+                    {% endfor %}
+                </select>
+                <button class="btn btn-outline-secondary btn-sm">{{ icon('filter', 's-icon--sm') }} Filtrar</button>
+            </form>
+        </div>
+
+        {% if llamadas|length == 0 %}
+            {{ empty('Sin llamadas en la bitácora',
+                     'Registra la primera llamada con un proveedor para darle seguimiento a su entrega.',
+                     'notes') }}
+        {% else %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                    <tr>
+                        <th data-mobile-primary>Fecha</th>
+                        <th data-title-col>Proveedor</th>
+                        <th>Materiales</th>
+                        <th>Entrega estimada</th>
+                        <th>Comentarios</th>
+                        <th data-mobile-primary>Estatus</th>
+                        {% if can_manage %}<th class="text-end"><span class="s-visually-hidden">Acciones</span></th>{% endif %}
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for llamada in llamadas %}
+                        <tr>
+                            <td>{{ llamada.fecha|date_local }}</td>
+                            <td>
+                                <a href="/web/admin/proveedores/{{ llamada.proveedor_id }}/record" class="fw-semibold">
+                                    {{ llamada.proveedor.nombre_completo if llamada.proveedor else "—" }}
+                                </a>
+                                {% if llamada.sucursal %}
+                                    <div class="text-muted small">{{ llamada.sucursal.nombre }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if llamada.materiales|length == 0 %}
+                                    <span class="text-muted">—</span>
+                                {% else %}
+                                    <div class="s-stack-2">
+                                    {% for linea in llamada.materiales %}
+                                        <div class="small">
+                                            <span class="fw-semibold">{{ linea.material.nombre if linea.material else "Sin definir" }}</span>
+                                            {% if linea.precio_por_kg is not none %}
+                                                · {{ linea.precio_por_kg|precio }}/kg
+                                            {% elif linea.precio_texto %}
+                                                · {{ linea.precio_texto }}
+                                            {% endif %}
+                                            {% if linea.kg_aproximados is not none %}
+                                                <span class="text-muted">· ~{{ "{:,.0f}".format(linea.kg_aproximados) }} kg</span>
+                                            {% endif %}
+                                        </div>
+                                    {% endfor %}
+                                    </div>
+                                {% endif %}
+                            </td>
+                            <td>{{ llamada.fecha_estimada_entrega or "—" }}</td>
+                            <td class="text-muted small">{{ llamada.comentarios or "—" }}</td>
+                            <td>
+                                {% if llamada.estatus.value == 'ENTREGADO' %}
+                                    {{ badge('Entregado', 'ok') }}
+                                    {% if llamada.entregada_at %}
+                                        <div class="text-muted small">{{ llamada.entregada_at|date_local }}</div>
+                                    {% endif %}
+                                {% elif llamada.estatus.value == 'NO_CONFIRMO' %}
+                                    {{ badge('No confirmó', 'muted') }}
+                                {% else %}
+                                    {{ badge('Pendiente', 'warn') }}
+                                {% endif %}
+                            </td>
+                            {% if can_manage %}
+                            <td class="text-end">
+                                <div class="dropdown">
+                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                                            data-bs-toggle="dropdown" aria-expanded="false">
+                                        Acciones
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        {% for estado in estados %}
+                                            {% if estado != llamada.estatus %}
+                                                <li>
+                                                    <form method="post" action="/web/admin/bitacora-llamadas/{{ llamada.id }}/estatus">
+                                                        <input type="hidden" name="estatus" value="{{ estado.value }}">
+                                                        <button type="submit" class="dropdown-item">Marcar {{ estatus_labels[estado]|lower }}</button>
+                                                    </form>
+                                                </li>
+                                            {% endif %}
+                                        {% endfor %}
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li>
+                                            <form method="post" action="/web/admin/bitacora-llamadas/{{ llamada.id }}/eliminar">
+                                                <button type="submit" class="dropdown-item text-danger"
+                                                        data-confirm="La llamada y sus materiales se eliminarán de la bitácora. ¿Deseas continuar?">Eliminar</button>
+                                            </form>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </td>
+                            {% endif %}
+                        </tr>
+                    {% else %}
+                        {{ empty_row(7 if can_manage else 6, 'Sin llamadas registradas.') }}
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if can_manage %}
+<template id="llamadaMaterialRowTemplate">
+    <tr>
+        <td>
+            <select class="form-select form-select-sm" name="material_id" aria-label="Material">
+                <option value="">Sin definir aún</option>
+                {% for m in materiales %}
+                    <option value="{{ m.id }}">{{ m.nombre }}</option>
+                {% endfor %}
+            </select>
+        </td>
+        <td>
+            <input class="form-control form-control-sm" name="precio" maxlength="120"
+                   aria-label="Precio acordado" placeholder="$ o texto libre">
+        </td>
+        <td class="text-end">
+            <input class="form-control form-control-sm text-end" type="number" step="0.001" min="0"
+                   name="kg_aproximados" aria-label="Kg aproximados">
+        </td>
+        <td>
+            <span class="s-actions">
+                <button type="button" class="btn btn-sm btn-outline-danger llamada-remove-row">
+                    {{ icon('trash', 's-icon--sm') }} Quitar
+                </button>
+            </span>
+        </td>
+    </tr>
+</template>
+
+<script>
+    (function() {
+        const rows = document.getElementById('llamadaMaterialRows');
+        const template = document.getElementById('llamadaMaterialRowTemplate');
+        const addBtn = document.getElementById('llamadaAddRowBtn');
+        if (!rows || !template || !addBtn) {
+            return;
+        }
+        function attach(row) {
+            const removeBtn = row.querySelector('.llamada-remove-row');
+            if (removeBtn) {
+                removeBtn.addEventListener('click', () => row.remove());
+            }
+        }
+        addBtn.addEventListener('click', () => {
+            const clone = template.content.firstElementChild.cloneNode(true);
+            rows.appendChild(clone);
+            attach(clone);
+        });
+        rows.querySelectorAll('tr').forEach(attach);
+    })();
+</script>
+{% endif %}
+{% endblock %}

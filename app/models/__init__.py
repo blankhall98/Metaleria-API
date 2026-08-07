@@ -13,6 +13,11 @@ from .comision import (
     ComisionarioPago,
 )
 from .conversion import ConversionMaterial, ConversionMaterialReversion
+from .llamada import (
+    LlamadaProveedor,
+    LlamadaProveedorEstatus,
+    LlamadaProveedorMaterial,
+)
 from .cash import (
     CorteCaja,
     CorteCajaEstado,
@@ -70,6 +75,9 @@ __all__ = [
     "ComisionarioPago",
     "ConversionMaterial",
     "ConversionMaterialReversion",
+    "LlamadaProveedor",
+    "LlamadaProveedorEstatus",
+    "LlamadaProveedorMaterial",
     "CorteCaja",
     "CorteCajaEstado",
     "CorteCajaGasto",

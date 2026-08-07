@@ -69,6 +69,8 @@ from app.models import (
     NotaDevolucionParcialLinea,
     NotaDevolucionTotal,
     InventarioAjusteManual,
+    LlamadaProveedor,
+    LlamadaProveedorEstatus,
 )
 
 from app.services.pricing_service import create_price_version
@@ -81,6 +83,7 @@ from app.services import (
     conversion_service,
     corte_caja_report_service,
     comision_service,
+    llamada_service,
 )
 from app.services.evidence_service import build_evidence_groups
 from app.services.firebase_storage import resolve_image_content_type, upload_image
@@ -3722,6 +3725,14 @@ def _build_partner_record_context(
         "attendance_to": attendance_to.isoformat() if attendance_to else "",
         "attendance_error": attendance_error,
         "attendance_range_label": attendance_range_label,
+        # Punto 2 (fase 2): bitácora de llamadas — solo aplica a proveedores.
+        "llamadas_enabled": partner_type == "proveedor",
+        "llamadas_proveedor": (
+            llamada_service.query_llamadas(db, proveedor_id=partner.id)[:20]
+            if partner_type == "proveedor"
+            else []
+        ),
+        "llamada_estatus_labels": llamada_service.ESTATUS_LABELS,
     }
 
 
@@ -16713,5 +16724,235 @@ async def reporte_saldos(
             "global_a_cobrar": global_a_cobrar,
             "global_neto": global_neto,
         },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Bitácora de llamadas con proveedores (punto 2, fase 2)
+# ---------------------------------------------------------------------------
+
+
+def _parse_llamada_materiales(form) -> tuple[list[dict], str | None]:
+    """Líneas de material de la captura: (material opcional, precio libre, kg opcional)."""
+    material_ids = form.getlist("material_id")
+    precios = form.getlist("precio")
+    kgs = form.getlist("kg_aproximados")
+    rows: list[dict] = []
+    for idx in range(max(len(material_ids), len(precios), len(kgs))):
+        material_raw = (material_ids[idx] if idx < len(material_ids) else "").strip()
+        precio_raw = (precios[idx] if idx < len(precios) else "").strip()
+        kg_raw = (kgs[idx] if idx < len(kgs) else "").strip()
+        if not material_raw and not precio_raw and not kg_raw:
+            continue
+        material_id = None
+        if material_raw:
+            try:
+                material_id = int(material_raw)
+            except ValueError:
+                return [], "Selecciona un material válido."
+        kg = None
+        if kg_raw:
+            try:
+                kg = Decimal(kg_raw)
+            except InvalidOperation:
+                return [], "Los kg aproximados deben ser un número."
+            if kg < 0:
+                return [], "Los kg aproximados no pueden ser negativos."
+        rows.append({"material_id": material_id, "precio_raw": precio_raw, "kg_aproximados": kg})
+    return rows, None
+
+
+def _bitacora_llamadas_context(
+    request: Request,
+    db: Session,
+    current_user: dict,
+    *,
+    proveedor_id: int | None,
+    estatus_raw: str,
+    error: str | None = None,
+    form_state: dict | None = None,
+):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+
+    estatus_filtro = None
+    if estatus_raw:
+        try:
+            estatus_filtro = LlamadaProveedorEstatus(estatus_raw)
+        except ValueError:
+            estatus_filtro = None
+
+    llamadas = llamada_service.query_llamadas(
+        db,
+        proveedor_id=proveedor_id,
+        estatus=estatus_filtro,
+        sucursal_ids=allowed_suc_ids,
+    )
+    todas = llamada_service.query_llamadas(db, sucursal_ids=allowed_suc_ids)
+    counts = {estado: 0 for estado in LlamadaProveedorEstatus}
+    for llamada in todas:
+        counts[llamada.estatus] += 1
+
+    proveedores_query = db.query(Proveedor).filter(Proveedor.activo.is_(True))
+    if allowed_suc_ids:
+        proveedores_query = proveedores_query.filter(Proveedor.sucursal_id.in_(allowed_suc_ids))
+    proveedores = proveedores_query.order_by(Proveedor.nombre_completo).all()
+    materiales = (
+        db.query(Material)
+        .filter(Material.activo.is_(True))
+        .order_by(Material.orden_display, Material.nombre)
+        .all()
+    )
+
+    hoy = datetime.now(get_app_timezone()).date()
+    form_state = form_state or {}
+    return {
+        "request": request,
+        "env": settings.ENV,
+        "user": current_user,
+        "llamadas": llamadas,
+        "total_llamadas": len(todas),
+        "counts": counts,
+        "estatus_labels": llamada_service.ESTATUS_LABELS,
+        "estados": list(LlamadaProveedorEstatus),
+        "proveedores": proveedores,
+        "materiales": materiales,
+        "proveedor_id": proveedor_id,
+        "estatus_filtro": estatus_filtro.value if estatus_filtro else "",
+        "hoy_iso": hoy.isoformat(),
+        "can_manage": current_user.get("rol") in ("admin", "super_admin"),
+        "error": error,
+        "form_fecha": form_state.get("fecha", ""),
+        "form_proveedor_id": form_state.get("proveedor_id", ""),
+        "form_fecha_estimada": form_state.get("fecha_estimada", ""),
+        "form_comentarios": form_state.get("comentarios", ""),
+        "form_abierta": bool(error),
+    }
+
+
+@router.get("/bitacora-llamadas")
+async def bitacora_llamadas_list(
+    request: Request,
+    proveedor_id: int | None = None,
+    estatus: str = "",
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_viewer_or_admin_or_superadmin),
+):
+    context = _bitacora_llamadas_context(
+        request, db, current_user, proveedor_id=proveedor_id, estatus_raw=estatus
+    )
+    context["registrada"] = request.query_params.get("registrada") == "1"
+    context["eliminada"] = request.query_params.get("eliminada") == "1"
+    return templates.TemplateResponse("admin/bitacora_llamadas.html", context)
+
+
+@router.post("/bitacora-llamadas")
+async def bitacora_llamadas_create(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    form = await request.form()
+    proveedor_raw = (form.get("proveedor_id") or "").strip()
+    fecha_raw = (form.get("fecha") or "").strip()
+    fecha_estimada = (form.get("fecha_estimada_entrega") or "").strip()
+    comentarios = (form.get("comentarios") or "").strip()
+    form_state = {
+        "proveedor_id": proveedor_raw,
+        "fecha": fecha_raw,
+        "fecha_estimada": fecha_estimada,
+        "comentarios": comentarios,
+    }
+
+    def _error(mensaje: str):
+        context = _bitacora_llamadas_context(
+            request, db, current_user,
+            proveedor_id=None, estatus_raw="",
+            error=mensaje, form_state=form_state,
+        )
+        context["registrada"] = False
+        context["eliminada"] = False
+        return templates.TemplateResponse(
+            "admin/bitacora_llamadas.html", context, status_code=400
+        )
+
+    try:
+        proveedor_id = int(proveedor_raw)
+    except ValueError:
+        return _error("Selecciona el proveedor de la llamada.")
+    try:
+        fecha = datetime.strptime(fecha_raw, "%Y-%m-%d").date()
+    except ValueError:
+        return _error("La fecha de la llamada es inválida.")
+
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    proveedor = db.get(Proveedor, proveedor_id)
+    if not proveedor:
+        return _error("El proveedor no existe.")
+    if allowed_suc_ids and proveedor.sucursal_id not in allowed_suc_ids:
+        raise HTTPException(status_code=403, detail="Sin acceso a ese proveedor.")
+
+    materiales_rows, parse_error = _parse_llamada_materiales(form)
+    if parse_error:
+        return _error(parse_error)
+
+    llamada_service.create_llamada(
+        db,
+        proveedor_id=proveedor_id,
+        usuario_id=current_user.get("id"),
+        fecha=fecha,
+        fecha_estimada_entrega=fecha_estimada,
+        comentarios=comentarios,
+        materiales=materiales_rows,
+    )
+    return RedirectResponse(
+        url=_append_query_params("/web/admin/bitacora-llamadas", registrada="1"),
+        status_code=303,
+    )
+
+
+def _get_llamada_checked(db: Session, current_user: dict, llamada_id: int) -> LlamadaProveedor:
+    llamada = db.get(LlamadaProveedor, llamada_id)
+    if not llamada:
+        raise HTTPException(status_code=404, detail="Llamada no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    if allowed_suc_ids and llamada.sucursal_id and llamada.sucursal_id not in allowed_suc_ids:
+        raise HTTPException(status_code=403, detail="Sin acceso a esa llamada.")
+    return llamada
+
+
+@router.post("/bitacora-llamadas/{llamada_id}/estatus")
+async def bitacora_llamada_estatus(
+    llamada_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    llamada = _get_llamada_checked(db, current_user, llamada_id)
+    form = await request.form()
+    try:
+        estatus = LlamadaProveedorEstatus((form.get("estatus") or "").strip())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Estatus inválido.")
+    llamada_service.set_estatus(
+        db, llamada_id=llamada.id, estatus=estatus, usuario_id=current_user.get("id")
+    )
+    next_url = (form.get("next") or "").strip() or "/web/admin/bitacora-llamadas"
+    if not next_url.startswith("/web/"):
+        next_url = "/web/admin/bitacora-llamadas"
+    return RedirectResponse(url=next_url, status_code=303)
+
+
+@router.post("/bitacora-llamadas/{llamada_id}/eliminar")
+async def bitacora_llamada_eliminar(
+    llamada_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    llamada = _get_llamada_checked(db, current_user, llamada_id)
+    llamada_service.delete_llamada(db, llamada_id=llamada.id)
+    return RedirectResponse(
+        url=_append_query_params("/web/admin/bitacora-llamadas", eliminada="1"),
+        status_code=303,
     )
 
