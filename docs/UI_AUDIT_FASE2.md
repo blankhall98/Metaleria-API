@@ -9,7 +9,54 @@ super_admin y trabajador) a 1440px y las críticas a 390px, revisión contra
 **Cómo usar este documento:** es el guion del rediseño pantalla por pantalla.
 Cada sección tiene función, fortalezas, oportunidades y una propuesta con
 prioridad. Se trabaja por orden de prioridad dentro de cada grupo; al terminar
-una pantalla se marca aquí y se vuelve a capturar.
+una pantalla se marca aquí y se vuelve a captar.
+
+---
+
+## Estado (actualizado 7-ago-2026, sesión nocturna)
+
+**Fase 0 completa** (commit `05e4292`): tabla canónica de tonos aplicada y
+documentada; fechas legibles es-MX de raíz en los filtros; filtro `precio` sin
+colas de ceros; IDs internos retirados de listas, defs y sublíneas; cuentas
+bancarias recompuestas; "Partners"→"Socios", "Auditar"→"Ver"; comentarios
+generados con acento; `toLocaleString('es-MX')`; `inputmode="decimal"`
+automático; em dashes.
+
+**Pantallas resueltas después de la fase 0:**
+
+- ✅ **nota-detail** — divulgación progresiva: devoluciones, corrección de pago
+  y ambos ajustes plegados (abren solos con retroalimentación); ~4,000→2,800px
+  escritorio, ~8,700→5,700px móvil. Bug real corregido de paso: el recálculo
+  de precios estaba muerto (`querySelector('.')`).
+- ✅ **corte-caja móvil** — el arqueo vuelve a ser grilla (`data-table-mode=
+  "grid"`, opt-out nuevo documentado), inputs de 44px.
+- ✅ **home admin** — banda clicable, sin alertas duplicadas, actividad
+  reciente; el muro de módulos solo vive donde no hay barra lateral fija.
+- ✅ **worker-home** — nombre de pila, panel Borradores/En revisión/Aprobadas,
+  últimas notas con "Continuar" en borradores.
+- ✅ **worker-notes-list** — chips de estado con contadores; el vacío ya no
+  repite el CTA del header.
+- ✅ **material-precios** — banda Compra/Venta vigente + Margen.
+- ✅ **inventario-list** — saldo con drill-down al kardex, kg cero atenuado.
+- ✅ **inventario-movimientos** — `anchor_nav` (Resumen·Notas·Ajustes·Kardex).
+- ✅ **inventario-valor** — total general en banda + fila de totales.
+- ✅ **cuenta-detail** — actividad mensual sin desierto de ceros.
+- ✅ **cuenta-scrap360-detail** — captura plegada, header en orden canónico.
+- ✅ **partner-record** — estado de cuenta antes que asistencias; header en
+  orden canónico (ambos records).
+- ✅ **transferencias** — "Disponible en origen: N kg" por renglón con aviso
+  de saldo negativo.
+- ✅ **materiales-list** — descripción como sublínea, estado solo si inactivo.
+- ✅ **login** — línea de auxilio de contraseña. **user-form** — sin doble
+  Volver/Cancelar. **perfil** — contraseñas apiladas, tarjeta centrada.
+- ✅ **notas-list / directorios** — "Sucursal Sucursal" recortado, acción de
+  fila unificada a "Ver", Pagada≠Aprobada en tono.
+
+**Pendientes principales:** worker-nota-nueva (indicador de pasos + total en
+dockbar — tocar con calma, el wizard es delicado), corte de caja escritorio
+(tres bloques de ceros → uno), contabilidad (fusión de los dos filtros),
+banda en clientes/comisionarios/cuentas-scrap360, presets de rango de fechas,
+modal propio en vez de `confirm()`, previsualización de foto en perfil.
 
 ---
 
