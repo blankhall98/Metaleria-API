@@ -38,14 +38,18 @@
     </div>
 {% endif %}
 
-{# Figures that appear nowhere else on the page. #}
-<div class="s-stats">
+{# Figures that appear nowhere else on the page. La misma composición del
+   inicio: los conteos del día arriba, las lecturas de dinero anchas abajo. #}
+<div class="s-stats s-stats--fixed-3 mb-3">
     {{ stat('En revisión', notas_revision|length, 'Esperando aprobación administrativa',
             'warn' if notas_revision|length else '') }}
     {{ stat('Vencidas', notas_vencidas|length, 'Requieren seguimiento inmediato',
             'bad' if notas_vencidas|length else '') }}
     {{ stat('Por vencer', notas_por_vencer|length, 'Dentro de ' ~ alerta_dias ~ ' días',
             'warn' if notas_por_vencer|length else '') }}
+</div>
+
+<div class="s-stats">
     {{ stat('Saldo vivo', money(saldo_vivo_total, 'plain'),
             pago_counts['PENDIENTES'] ~ ' notas aprobadas con saldo') }}
     {{ stat('Total selección', money(total_seleccion, 'plain'), 'Suma de la vista filtrada') }}
@@ -270,7 +274,7 @@
         {% endif %}
 
         <div class="table-responsive">
-            <table class="table table-hover table-sm align-middle mb-0">
+            <table class="table table-hover table-sm align-middle mb-0" id="notas-explorador">
                 <thead>
                 <tr>
                     {# Estado and Pago are one status story, and the capture date
@@ -404,6 +408,48 @@
                 </tbody>
             </table>
         </div>
+
+        <div class="text-center mt-3">
+            <button type="button" id="notasVerMas" class="btn btn-outline-secondary" hidden></button>
+        </div>
     </div>
 </section>
+
+<script>
+    /* Paginación del explorador: diez notas a la vista y "Ver más" revela de
+       diez en diez. Las filas ya están en la página (los filtros y la suma de
+       la vista no cambian); solo se dosifica la lectura. */
+    (function () {
+        var PAGE = 10;
+        var boton = document.getElementById('notasVerMas');
+        var cuerpo = document.querySelector('#notas-explorador tbody');
+        if (!boton || !cuerpo) return;
+        var filas = Array.prototype.filter.call(
+            cuerpo.rows,
+            function (fila) { return fila.cells.length > 1; }
+        );
+        var visibles = PAGE;
+
+        function aplicar() {
+            filas.forEach(function (fila, i) {
+                fila.style.display = i < visibles ? '' : 'none';
+            });
+            var restantes = filas.length - visibles;
+            if (restantes > 0) {
+                boton.hidden = false;
+                boton.textContent = 'Ver ' + Math.min(restantes, PAGE) + ' más ('
+                    + restantes + ' restante' + (restantes === 1 ? '' : 's') + ')';
+            } else {
+                boton.hidden = true;
+            }
+        }
+
+        boton.addEventListener('click', function () {
+            visibles += PAGE;
+            aplicar();
+        });
+
+        if (filas.length > PAGE) aplicar();
+    })();
+</script>
 {% endblock %}
