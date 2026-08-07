@@ -2539,6 +2539,62 @@ def _apply_scrap360_adjustment(
     return mov
 
 
+def _scrap360_movimiento_delta(mov: CuentaScrap360Movimiento) -> Decimal:
+    """Efecto del movimiento sobre el saldo: ingreso +, egreso −, ajuste firmado."""
+    monto = Decimal(str(mov.monto or 0))
+    tipo = (mov.tipo or "").strip().lower()
+    if tipo == "ingreso":
+        return abs(monto)
+    if tipo == "egreso":
+        return -abs(monto)
+    return monto
+
+
+def _revert_scrap360_movimiento(
+    db: Session,
+    *,
+    movimiento: CuentaScrap360Movimiento,
+    usuario_id: int | None,
+) -> CuentaScrap360Movimiento:
+    """Deshace un movimiento MANUAL de tesorería (punto 12, fase 2).
+
+    La reversa es un movimiento compensatorio al final del libro — el
+    saldo_resultante del original queda intacto como historia. Solo aplica a
+    movimientos manuales: los ligados a una nota se deshacen desde la nota.
+    """
+    if movimiento.nota_id or movimiento.nota_pago_id:
+        raise ValueError("Este movimiento pertenece a una nota; deshazlo desde la nota.")
+    if movimiento.reversal_of_id:
+        raise ValueError("Este registro ya es una reversa; no puede revertirse.")
+    if movimiento.reverted_at:
+        raise ValueError("Este movimiento ya fue deshecho.")
+
+    cuenta = db.get(CuentaScrap360, movimiento.cuenta_id)
+    if not cuenta:
+        raise ValueError("Cuenta Scrap360 no encontrada.")
+
+    delta = _scrap360_movimiento_delta(movimiento)
+    nuevo_saldo = Decimal(str(cuenta.saldo_actual or 0)) - delta
+    cuenta.saldo_actual = nuevo_saldo
+    cuenta.updated_at = datetime.utcnow()
+    reversa = CuentaScrap360Movimiento(
+        cuenta_id=cuenta.id,
+        usuario_id=usuario_id,
+        tipo="ajuste",
+        monto=-delta,
+        saldo_resultante=nuevo_saldo,
+        comentario=f"Reversa del movimiento #{movimiento.id}"
+        + (f" — {movimiento.comentario}" if movimiento.comentario else ""),
+        reversal_of_id=movimiento.id,
+    )
+    movimiento.reverted_at = datetime.utcnow()
+    movimiento.reverted_by_user_id = usuario_id
+    db.add(cuenta)
+    db.add(reversa)
+    db.add(movimiento)
+    return reversa
+
+
 def _scrap360_concept_label(concepto: str | None) -> str:
     mapping = {key: label for key, label in _SCRAP360_AJUSTE_CONCEPTOS}
     return mapping.get((concepto or "").strip().lower(), "Ajuste manual")
@@ -3628,6 +3684,18 @@ def _build_partner_record_context(
         "ajuste_error": ajuste_error,
         "ajuste_favor_label": ajuste_favor_label,
         "ajuste_contra_label": ajuste_contra_label,
+        # Punto 12 (fase 2): historial de ajustes con su botón de deshacer.
+        "ajustes_partner": (
+            db.query(AjusteSaldoPartner)
+            .filter(
+                AjusteSaldoPartner.partner_type == partner_type,
+                AjusteSaldoPartner.partner_id == partner.id,
+            )
+            .order_by(AjusteSaldoPartner.created_at.desc(), AjusteSaldoPartner.id.desc())
+            .limit(50)
+            .all()
+        ),
+        "ajuste_deshecho": request.query_params.get("ajuste_deshecho") == "1",
         "form_ajuste_direccion": form_state.get("ajuste_direccion", ""),
         "form_ajuste_monto": form_state.get("ajuste_monto", ""),
         "form_ajuste_comentario": form_state.get("ajuste_comentario", ""),
@@ -6194,6 +6262,37 @@ async def proveedor_ajuste_saldo(
         status_code=303,
     )
 
+
+@router.post("/ajustes-saldo/{ajuste_id}/deshacer")
+async def ajuste_saldo_partner_deshacer(
+    ajuste_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    """Punto 12 (fase 2): deshacer un ajuste manual de saldo de socio."""
+    ajuste = db.get(AjusteSaldoPartner, ajuste_id)
+    if not ajuste:
+        raise HTTPException(status_code=404, detail="Ajuste no encontrado.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    if allowed_suc_ids and ajuste.sucursal_id and ajuste.sucursal_id not in allowed_suc_ids:
+        raise HTTPException(status_code=403, detail="Sin acceso a esta sucursal.")
+
+    partner_base = "clientes" if ajuste.partner_type == "cliente" else "proveedores"
+    record_url = f"/web/admin/{partner_base}/{ajuste.partner_id}/record"
+    try:
+        note_service.revert_partner_adjustment(
+            db, ajuste_id=ajuste_id, usuario_id=current_user.get("id")
+        )
+    except ValueError as exc:
+        return RedirectResponse(
+            url=_append_query_params(record_url, ajuste_error=str(exc)) + "#partner-ajuste",
+            status_code=303,
+        )
+    return RedirectResponse(
+        url=f"{record_url}?ajuste_deshecho=1#partner-ajuste",
+        status_code=303,
+    )
+
 # ---------- CLIENTES ----------
 
 
@@ -7427,6 +7526,45 @@ async def comisionario_pago_fifo(
             pago_fifo=str(len(pagos)),
             pago_monto=f"{monto_val:,.2f}",
         )
+        + "#comisionario-pagos",
+        status_code=303,
+    )
+
+
+@router.post("/comisionarios/pagos/{pago_id}/deshacer")
+async def comisionario_pago_deshacer(
+    pago_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    """Punto 12 (fase 2): deshacer un pago a comisionista."""
+    pago = db.get(ComisionarioPago, pago_id)
+    if not pago:
+        raise HTTPException(status_code=404, detail="Pago no encontrado.")
+    nota = db.get(ComisionarioNota, pago.nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="La nota del pago no existe.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    if allowed_suc_ids and nota.sucursal_id and nota.sucursal_id not in allowed_suc_ids:
+        raise HTTPException(status_code=403, detail="Sin acceso a esta sucursal.")
+
+    form = await request.form()
+    next_raw = (form.get("next") or "").strip()
+    fallback = f"/web/admin/comisionarios/{nota.comisionario_id}/record#comisionario-pagos"
+    redirect_to = next_raw if next_raw.startswith("/web/admin/") else fallback
+
+    try:
+        comision_service.revert_comisionario_pago(
+            db, pago_id=pago_id, usuario_id=current_user.get("id")
+        )
+    except ValueError as exc:
+        return RedirectResponse(
+            url=_append_query_params(redirect_to.split("#")[0], pago_error=str(exc)),
+            status_code=303,
+        )
+    return RedirectResponse(
+        url=_append_query_params(redirect_to.split("#")[0], pago_deshecho="1")
         + "#comisionario-pagos",
         status_code=303,
     )
@@ -9182,6 +9320,39 @@ async def cuenta_scrap360_ajuste(
         usuario_id=current_user.get("id"),
     )
     db.commit()
+    return RedirectResponse(url=f"/web/admin/cuentas-scrap360/{cuenta.id}?ajuste=1", status_code=303)
+
+
+@router.post("/cuentas-scrap360/{cuenta_id}/movimientos/{movimiento_id}/deshacer")
+async def cuenta_scrap360_movimiento_deshacer(
+    cuenta_id: int,
+    movimiento_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    """Punto 12 (fase 2): deshacer un movimiento manual de tesorería."""
+    cuenta = db.get(CuentaScrap360, cuenta_id)
+    if not cuenta:
+        raise HTTPException(status_code=404, detail="Cuenta Scrap360 no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_scrap360_access(cuenta, allowed_suc_ids)
+    movimiento = db.get(CuentaScrap360Movimiento, movimiento_id)
+    if not movimiento or movimiento.cuenta_id != cuenta.id:
+        raise HTTPException(status_code=404, detail="Movimiento no encontrado.")
+
+    try:
+        _revert_scrap360_movimiento(db, movimiento=movimiento, usuario_id=current_user.get("id"))
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        return templates.TemplateResponse(
+            "admin/cuenta_scrap360_detail.html",
+            _build_cuenta_scrap360_detail_context(
+                db, request=request, current_user=current_user, cuenta=cuenta, error=str(exc)
+            ),
+            status_code=400,
+        )
     return RedirectResponse(url=f"/web/admin/cuentas-scrap360/{cuenta.id}?ajuste=1", status_code=303)
 
 
@@ -14499,6 +14670,7 @@ def _build_corte_manual_movimientos(
         else:
             total_egresos += abs(signed)
         row = {
+            "id": mov.id,
             "fecha": mov.created_at,
             "tipo": tipo_val,
             "tipo_label": tipo_labels.get(tipo_val, tipo_val.title()),
@@ -14508,6 +14680,7 @@ def _build_corte_manual_movimientos(
             "usuario": mov.usuario.nombre_completo if mov.usuario else "-",
             "monto": signed,
             "monto_abs": abs(signed),
+            "reverted": bool(mov.reverted_at),
         }
         movimientos.append(row)
         if row["categoria"]:
@@ -15213,6 +15386,86 @@ async def corte_caja_add_gasto(
         url=f"/web/admin/corte-caja?sucursal_id={corte.sucursal_id}&fecha={corte.fecha.isoformat()}&success=gasto",
         status_code=303,
     )
+
+
+def _corte_zero_out_deshacer(
+    db: Session,
+    registro,
+    *,
+    corte: CorteCaja,
+    usuario_id: int | None,
+) -> str | None:
+    """Zero-out de un gasto/movimiento del corte ABIERTO (punto 12, fase 2).
+
+    El monto pasa a 0 (todas las sumas del corte quedan correctas sin filtros
+    nuevos), el monto original queda en la descripción y el trío reverted_*
+    deja candado y auditoría. Devuelve un mensaje de error o None.
+    """
+    if corte.estado != CorteCajaEstado.abierto:
+        return "Solo puedes deshacer registros de un corte abierto."
+    if registro.reverted_at:
+        return "Este registro ya fue deshecho."
+    monto = Decimal(str(registro.monto or 0))
+    if monto <= Decimal("0"):
+        return "Este registro ya está en ceros."
+    registro.descripcion = f"DESHECHO ${monto:,.2f} — {registro.descripcion}"
+    registro.monto = Decimal("0")
+    registro.reverted_at = datetime.utcnow()
+    registro.reverted_by_user_id = usuario_id
+    db.add(registro)
+    return None
+
+
+@router.post("/corte-caja/gastos/{gasto_id}/deshacer")
+async def corte_caja_gasto_deshacer(
+    gasto_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    gasto = db.get(CorteCajaGasto, gasto_id)
+    if not gasto:
+        raise HTTPException(status_code=404, detail="Gasto no encontrado.")
+    corte = db.get(CorteCaja, gasto.corte_id)
+    if not corte:
+        raise HTTPException(status_code=404, detail="Corte de caja no encontrado.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    if allowed_suc_ids is not None and corte.sucursal_id not in allowed_suc_ids:
+        raise HTTPException(status_code=403, detail="No tienes acceso a esta sucursal.")
+
+    error = _corte_zero_out_deshacer(db, gasto, corte=corte, usuario_id=current_user.get("id"))
+    base_url = f"/web/admin/corte-caja?sucursal_id={corte.sucursal_id}&fecha={corte.fecha.isoformat()}"
+    if error:
+        db.rollback()
+        return RedirectResponse(url=f"{base_url}&error_deshacer={error}", status_code=303)
+    db.commit()
+    return RedirectResponse(url=f"{base_url}&success=deshecho", status_code=303)
+
+
+@router.post("/corte-caja/movimientos/{movimiento_id}/deshacer")
+async def corte_caja_movimiento_deshacer(
+    movimiento_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    movimiento = db.get(CorteCajaMovimiento, movimiento_id)
+    if not movimiento:
+        raise HTTPException(status_code=404, detail="Movimiento no encontrado.")
+    corte = db.get(CorteCaja, movimiento.corte_id)
+    if not corte:
+        raise HTTPException(status_code=404, detail="Corte de caja no encontrado.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    if allowed_suc_ids is not None and corte.sucursal_id not in allowed_suc_ids:
+        raise HTTPException(status_code=403, detail="No tienes acceso a esta sucursal.")
+
+    error = _corte_zero_out_deshacer(db, movimiento, corte=corte, usuario_id=current_user.get("id"))
+    base_url = f"/web/admin/corte-caja?sucursal_id={corte.sucursal_id}&fecha={corte.fecha.isoformat()}"
+    if error:
+        db.rollback()
+        return RedirectResponse(url=f"{base_url}&error_deshacer={error}", status_code=303)
+    db.commit()
+    return RedirectResponse(url=f"{base_url}&success=deshecho", status_code=303)
 
 
 @router.post("/corte-caja/{corte_id}/movimientos")

@@ -116,6 +116,7 @@
                         <th class="text-end" data-mobile-primary>Saldo</th>
                         <th>Usuario</th>
                         <th>Comentario</th>
+                        <th class="text-end"><span class="s-visually-hidden">Acciones</span></th>
                     </tr>
                     </thead>
                     <tbody>
@@ -169,9 +170,23 @@
                                 {% endif %}
                             </td>
                             <td class="text-muted small">{{ mov.comentario or "—" }}</td>
+                            <td class="text-end">
+                                {% if mov.reversal_of_id %}
+                                    {{ badge('Reversa', 'muted') }}
+                                {% elif mov.reverted_at %}
+                                    {{ badge('Deshecho', 'muted') }}
+                                {% elif not mov.nota_id and not mov.nota_pago_id %}
+                                    <form method="post" action="/web/admin/cuentas-scrap360/{{ cuenta.id }}/movimientos/{{ mov.id }}/deshacer" class="d-inline">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                data-confirm="Se registrará un movimiento compensatorio por el efecto contrario y el saldo de la cuenta se restaurará. ¿Deseas continuar?">Deshacer</button>
+                                    </form>
+                                {% else %}
+                                    <span class="text-muted small">Desde la nota</span>
+                                {% endif %}
+                            </td>
                         </tr>
                     {% else %}
-                        {{ empty_row(8, 'Sin movimientos registrados.') }}
+                        {{ empty_row(9, 'Sin movimientos registrados.') }}
                     {% endfor %}
                     </tbody>
                 </table>

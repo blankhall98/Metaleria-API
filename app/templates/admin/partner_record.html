@@ -174,6 +174,9 @@
                 {% if ajuste_ok %}
                     <div class="alert alert-success py-2 small">Ajuste registrado correctamente.</div>
                 {% endif %}
+                {% if ajuste_deshecho %}
+                    <div class="alert alert-success py-2 small">Ajuste deshecho correctamente: se registró la reversa compensatoria.</div>
+                {% endif %}
                 {% if ajuste_error %}
                     <div class="alert alert-danger py-2 small">{{ ajuste_error }}</div>
                 {% endif %}
@@ -202,6 +205,50 @@
                         <button class="btn btn-outline-primary">Aplicar ajuste</button>
                     </div>
                 </form>
+
+                {% if ajustes_partner %}
+                    <div class="table-responsive mt-4">
+                        <table class="table table-hover table-sm align-middle mb-0">
+                            <thead>
+                            <tr>
+                                <th data-title-col data-mobile-primary>Fecha</th>
+                                <th class="text-end" data-mobile-primary>Monto</th>
+                                <th>Comentario</th>
+                                <th data-mobile-primary>Estado</th>
+                                <th class="text-end"><span class="s-visually-hidden">Acciones</span></th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for aj in ajustes_partner %}
+                                <tr>
+                                    <td>{{ aj.created_at|datetime_local if aj.created_at else '—' }}</td>
+                                    <td class="text-end">{{ money(aj.monto) }}</td>
+                                    <td class="small text-muted">{{ aj.comentario or '—' }}</td>
+                                    <td>
+                                        {% if aj.reversal_of_id %}
+                                            {{ badge('Reversa', 'muted') }}
+                                        {% elif aj.reverted_at %}
+                                            {{ badge('Deshecho', 'muted') }}
+                                        {% else %}
+                                            {{ badge('Activo', 'ok') }}
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">
+                                        {% if not aj.reversal_of_id and not aj.reverted_at %}
+                                            <form method="post" action="/web/admin/ajustes-saldo/{{ aj.id }}/deshacer" class="d-inline">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                        data-confirm="Se registrará una reversa compensatoria por el monto contrario de este ajuste. ¿Deseas continuar?">Deshacer</button>
+                                            </form>
+                                        {% else %}
+                                            <span class="text-muted small">Solo auditoría</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% endif %}
             </div>
         </div>
     {% endif %}

@@ -88,5 +88,12 @@ class AjusteSaldoPartner(Base):
     usuario_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
+    # Deshacer (punto 12, fase 2): la reversa es un registro compensatorio con
+    # el monto negado; reversal_of_id la enlaza y reverted_* marcan el original.
+    reversal_of_id = Column(Integer, ForeignKey("ajustes_saldo_partner.id"), nullable=True, index=True)
+    reverted_at = Column(DateTime, nullable=True)
+    reverted_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
     sucursal = relationship("Sucursal")
-    usuario = relationship("User")
+    usuario = relationship("User", foreign_keys=[usuario_id])
+    reverted_by = relationship("User", foreign_keys=[reverted_by_user_id])

@@ -88,12 +88,17 @@
 {% if error %}
     <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
 {% endif %}
+{% if request.query_params.get('error_deshacer') %}
+    <div class="alert alert-danger py-2 small mb-3">{{ request.query_params.get('error_deshacer') }}</div>
+{% endif %}
 {% if success == 'open' %}
     <div class="alert alert-success py-2 small mb-3">Caja abierta correctamente.</div>
 {% elif success == 'gasto' %}
     <div class="alert alert-success py-2 small mb-3">Gasto registrado correctamente.</div>
 {% elif success == 'movimiento' %}
     <div class="alert alert-success py-2 small mb-3">Movimiento manual registrado correctamente.</div>
+{% elif success == 'deshecho' %}
+    <div class="alert alert-success py-2 small mb-3">Registro deshecho correctamente: quedó en ceros y el saldo del corte se recalculó.</div>
 {% elif success == 'arqueo' %}
     <div class="alert alert-success py-2 small mb-3">Conteo de efectivo guardado correctamente.</div>
 {% elif success == 'close' %}
@@ -698,9 +703,10 @@
                     <div class="col-xl-7">
                         <h3 class="s-card-title">Relación de gastos</h3>
                         <p class="s-card-sub">Gastos de caja chica capturados durante la jornada.</p>
+                        {% set corte_abierto = corte and corte.estado.value == 'ABIERTO' %}
                         <div class="table-responsive">
                             <table class="table table-hover align-middle">
-                                <thead><tr><th>Fecha</th><th data-title-col>Descripción</th><th>Categoría</th><th>Usuario</th><th class="text-end" data-mobile-primary>Monto</th></tr></thead>
+                                <thead><tr><th>Fecha</th><th data-title-col>Descripción</th><th>Categoría</th><th>Usuario</th><th class="text-end" data-mobile-primary>Monto</th>{% if corte_abierto %}<th class="text-end"><span class="s-visually-hidden">Acciones</span></th>{% endif %}</tr></thead>
                                 <tbody>
                                     {% for gasto in gastos %}
                                         <tr>
@@ -709,9 +715,21 @@
                                             <td>{% if gasto.categoria %}{{ badge(GASTO_CAT.get(gasto.categoria|upper, gasto.categoria|replace('_', ' ')|capitalize), 'muted') }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
                                             <td>{{ gasto.usuario.nombre_completo if gasto.usuario else '—' }}</td>
                                             <td class="text-end">{{ money(gasto.monto) }}</td>
+                                            {% if corte_abierto %}
+                                                <td class="text-end">
+                                                    {% if gasto.reverted_at %}
+                                                        {{ badge('Deshecho', 'muted') }}
+                                                    {% else %}
+                                                        <form method="post" action="/web/admin/corte-caja/gastos/{{ gasto.id }}/deshacer" class="d-inline">
+                                                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                                    data-confirm="El gasto quedará en ceros y el saldo del corte se recalculará. ¿Deseas continuar?">Deshacer</button>
+                                                        </form>
+                                                    {% endif %}
+                                                </td>
+                                            {% endif %}
                                         </tr>
                                     {% else %}
-                                        {{ empty_row(5, 'No hay gastos registrados.') }}
+                                        {{ empty_row(6 if corte_abierto else 5, 'No hay gastos registrados.') }}
                                     {% endfor %}
                                 </tbody>
                             </table>
@@ -722,7 +740,7 @@
                         <p class="s-card-sub">Depósitos, retiros y ajustes manuales.</p>
                         <div class="table-responsive">
                             <table class="table table-hover align-middle">
-                                <thead><tr><th>Fecha</th><th>Categoría</th><th data-title-col>Descripción</th><th class="text-end" data-mobile-primary>Monto</th></tr></thead>
+                                <thead><tr><th>Fecha</th><th>Categoría</th><th data-title-col>Descripción</th><th class="text-end" data-mobile-primary>Monto</th>{% if corte_abierto %}<th class="text-end"><span class="s-visually-hidden">Acciones</span></th>{% endif %}</tr></thead>
                                 <tbody>
                                     {% for row in otros_ajustes_rows %}
                                         <tr>
@@ -730,9 +748,21 @@
                                             <td>{{ badge(row.categoria_label, 'muted') }}</td>
                                             <td class="s-cell-wrap">{{ row.descripcion }}</td>
                                             <td class="text-end">{{ money(row.monto) }}</td>
+                                            {% if corte_abierto %}
+                                                <td class="text-end">
+                                                    {% if row.reverted %}
+                                                        {{ badge('Deshecho', 'muted') }}
+                                                    {% else %}
+                                                        <form method="post" action="/web/admin/corte-caja/movimientos/{{ row.id }}/deshacer" class="d-inline">
+                                                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                                    data-confirm="El movimiento quedará en ceros y el saldo del corte se recalculará. ¿Deseas continuar?">Deshacer</button>
+                                                        </form>
+                                                    {% endif %}
+                                                </td>
+                                            {% endif %}
                                         </tr>
                                     {% else %}
-                                        {{ empty_row(4, 'No hay ajustes.') }}
+                                        {{ empty_row(5 if corte_abierto else 4, 'No hay ajustes.') }}
                                     {% endfor %}
                                 </tbody>
                             </table>

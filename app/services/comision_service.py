@@ -280,6 +280,73 @@ def pay_comisionario_fifo(
     return pagos
 
 
+def revert_comisionario_pago(
+    db: Session,
+    *,
+    pago_id: int,
+    usuario_id: int | None,
+) -> ComisionarioPago:
+    """Deshace un pago a comisionista (punto 12, fase 2).
+
+    Mismo mecanismo que los pagos de nota: zero-out — el monto pasa a 0 con
+    la etiqueta DESHECHO en el comentario (las agregaciones que suman pagos
+    quedan correctas sin filtros nuevos) y el trío reverted_* deja candado y
+    auditoría. El saldo de la nota se restaura y, si el pago descontó una
+    Cuenta Scrap360, se reingresa con un movimiento compensatorio.
+    Commit incluido.
+    """
+    pago = db.get(ComisionarioPago, pago_id)
+    if not pago:
+        raise ValueError("Pago no encontrado.")
+    if pago.reverted_at:
+        raise ValueError("Este pago ya fue deshecho.")
+    monto = _safe_decimal(pago.monto)
+    if monto <= Decimal("0"):
+        raise ValueError("Este pago ya está en ceros.")
+
+    nota = db.get(ComisionarioNota, pago.nota_id)
+    if not nota:
+        raise ValueError("La nota del pago no existe.")
+    pagado_actual = _safe_decimal(nota.monto_pagado)
+    if pagado_actual < monto:
+        raise ValueError(
+            "El pago ya no puede deshacerse: la nota tiene menos pagado que el monto del pago."
+        )
+
+    nota.monto_pagado = pagado_actual - monto
+    nota.updated_at = datetime.utcnow()
+
+    if pago.cuenta_scrap360_id:
+        cuenta = db.get(CuentaScrap360, pago.cuenta_scrap360_id)
+        if cuenta:
+            nuevo_saldo = _safe_decimal(cuenta.saldo_actual) + monto
+            cuenta.saldo_actual = nuevo_saldo
+            cuenta.updated_at = datetime.utcnow()
+            db.add(cuenta)
+            db.add(
+                CuentaScrap360Movimiento(
+                    cuenta_id=cuenta.id,
+                    usuario_id=usuario_id,
+                    tipo="ingreso",
+                    monto=monto,
+                    saldo_resultante=nuevo_saldo,
+                    comentario=f"Reversa de pago de comisión #{pago.id} (nota #{nota.id})",
+                )
+            )
+
+    etiqueta = f"DESHECHO ${monto:,.2f}"
+    pago.comentario = f"{etiqueta} — {pago.comentario}" if pago.comentario else etiqueta
+    pago.monto = Decimal("0")
+    pago.reverted_at = datetime.utcnow()
+    pago.reverted_by_user_id = usuario_id
+
+    db.add(nota)
+    db.add(pago)
+    db.commit()
+    db.refresh(pago)
+    return pago
+
+
 def add_comisionario_pago(
     db: Session,
     *,

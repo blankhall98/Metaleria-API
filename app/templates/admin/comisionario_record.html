@@ -302,6 +302,13 @@
             <h2 class="s-card-title">Historial de pagos</h2>
             <p class="s-card-sub mb-3">Pagos registrados en notas de comisión.</p>
 
+            {% if request.query_params.get('pago_deshecho') == '1' %}
+                <div class="alert alert-success py-2 small mb-3">Pago deshecho correctamente: el saldo de la nota se restauró y, si descontó una Cuenta Scrap360, se reingresó.</div>
+            {% endif %}
+            {% if request.query_params.get('pago_error') %}
+                <div class="alert alert-danger py-2 small mb-3">{{ request.query_params.get('pago_error') }}</div>
+            {% endif %}
+
             {% if pagos|length == 0 %}
                 {{ empty('Sin pagos registrados',
                          'Los pagos aparecen aquí en cuanto se registran desde una nota de comisión.',
@@ -318,6 +325,7 @@
                             <th>Cuenta</th>
                             <th>Usuario</th>
                             <th>Comentario</th>
+                            <th class="text-end"><span class="s-visually-hidden">Acciones</span></th>
                         </tr>
                         </thead>
                         <tbody>
@@ -355,9 +363,22 @@
                                     {% endif %}
                                 </td>
                                 <td class="text-muted">{{ pago.comentario or '—' }}</td>
+                                <td class="text-end">
+                                    {% if pago.reverted_at %}
+                                        {{ badge('Deshecho', 'muted') }}
+                                    {% elif (pago.monto or 0) > 0 %}
+                                        <form method="post" action="/web/admin/comisionarios/pagos/{{ pago.id }}/deshacer" class="d-inline">
+                                            <input type="hidden" name="next" value="/web/admin/comisionarios/{{ comisionario.id }}/record">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                    data-confirm="Se restaurará el saldo de la nota y, si el pago descontó una Cuenta Scrap360, se reingresará. ¿Deseas continuar?">Deshacer</button>
+                                        </form>
+                                    {% else %}
+                                        <span class="text-muted small">—</span>
+                                    {% endif %}
+                                </td>
                             </tr>
                         {% else %}
-                            {{ empty_row(7, 'Aún no hay pagos registrados.') }}
+                            {{ empty_row(8, 'Aún no hay pagos registrados.') }}
                         {% endfor %}
                         </tbody>
                     </table>

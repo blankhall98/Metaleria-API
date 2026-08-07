@@ -85,10 +85,18 @@ class CorteCajaGasto(Base):
     descripcion = Column(String(255), nullable=False)
     categoria = Column(String(80), nullable=True)
     monto = Column(Numeric(12, 2), nullable=False, default=Decimal("0"))
+
+    # Deshacer (punto 12, fase 2): zero-out con corte ABIERTO; el trío deja
+    # candado y auditoría. Un corte cerrado no se toca (encadena al día
+    # siguiente).
+    reverted_at = Column(DateTime, nullable=True)
+    reverted_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     corte = relationship("CorteCaja", back_populates="gastos")
-    usuario = relationship("User")
+    usuario = relationship("User", foreign_keys=[usuario_id])
+    reverted_by = relationship("User", foreign_keys=[reverted_by_user_id])
 
 
 class CorteCajaMovimiento(Base):
@@ -109,10 +117,16 @@ class CorteCajaMovimiento(Base):
     categoria = Column(String(50), nullable=True)
     descripcion = Column(String(255), nullable=False)
     monto = Column(Numeric(12, 2), nullable=False, default=Decimal("0"))
+
+    # Deshacer (punto 12, fase 2): mismo mecanismo que los gastos del corte.
+    reverted_at = Column(DateTime, nullable=True)
+    reverted_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     corte = relationship("CorteCaja", back_populates="movimientos")
-    usuario = relationship("User")
+    usuario = relationship("User", foreign_keys=[usuario_id])
+    reverted_by = relationship("User", foreign_keys=[reverted_by_user_id])
 
 
 class CorteCajaDenominacion(Base):

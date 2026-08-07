@@ -114,9 +114,15 @@ class ComisionarioPago(Base):
     cuenta_financiera = Column(String(100), nullable=True)
     comentario = Column(String(255), nullable=True)
 
+    # Deshacer (punto 12, fase 2): igual que NotaPago — zero-out (monto → 0
+    # con etiqueta en el comentario) y el trío deja candado y auditoría.
+    reverted_at = Column(DateTime, nullable=True)
+    reverted_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     nota = relationship("ComisionarioNota", back_populates="pagos")
-    usuario = relationship("User")
+    usuario = relationship("User", foreign_keys=[usuario_id])
+    reverted_by = relationship("User", foreign_keys=[reverted_by_user_id])
     cuenta = relationship("Cuenta")
     cuenta_scrap360 = relationship("CuentaScrap360")

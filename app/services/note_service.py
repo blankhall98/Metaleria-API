@@ -455,6 +455,47 @@ def get_partner_adjustment_totals_map(
     return totals
 
 
+def revert_partner_adjustment(
+    db: Session,
+    *,
+    ajuste_id: int,
+    usuario_id: int | None,
+) -> AjusteSaldoPartner:
+    """Deshace un ajuste manual de saldo de socio (punto 12, fase 2).
+
+    La reversa es un registro COMPENSATORIO con el monto negado — todos los
+    consumidores suman la tabla completa, así que el neto queda en cero sin
+    tocar ninguna vista. El original se marca (reverted_*) para que no pueda
+    revertirse dos veces, y reversal_of_id enlaza ambos. Commit incluido.
+    """
+    ajuste = db.get(AjusteSaldoPartner, ajuste_id)
+    if not ajuste:
+        raise ValueError("Ajuste de saldo no encontrado.")
+    if ajuste.reversal_of_id:
+        raise ValueError("Este registro ya es una reversa; no puede revertirse.")
+    if ajuste.reverted_at:
+        raise ValueError("Este ajuste ya fue deshecho.")
+
+    monto = Decimal(str(ajuste.monto or 0))
+    reversa = AjusteSaldoPartner(
+        partner_type=ajuste.partner_type,
+        partner_id=ajuste.partner_id,
+        sucursal_id=ajuste.sucursal_id,
+        monto=-monto,
+        comentario=f"Reversa del ajuste #{ajuste.id}"
+        + (f" — {ajuste.comentario}" if ajuste.comentario else ""),
+        usuario_id=usuario_id,
+        reversal_of_id=ajuste.id,
+    )
+    ajuste.reverted_at = datetime.utcnow()
+    ajuste.reverted_by_user_id = usuario_id
+    db.add(reversa)
+    db.add(ajuste)
+    db.commit()
+    db.refresh(reversa)
+    return reversa
+
+
 def _linked_partner_maps(
     db: Session,
     partner_keys: set[tuple[str, int]],

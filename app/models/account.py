@@ -82,8 +82,17 @@ class CuentaScrap360Movimiento(Base):
     monto = Column(Numeric(12, 2), nullable=False, default=0)
     saldo_resultante = Column(Numeric(12, 2), nullable=False, default=0)
     comentario = Column(String(255), nullable=True)
+
+    # Deshacer (punto 12, fase 2): la reversa de un movimiento manual es un
+    # movimiento compensatorio al final del libro (el saldo_resultante del
+    # original queda intacto como historia); reversal_of_id los enlaza.
+    reversal_of_id = Column(Integer, ForeignKey("cuentas_scrap360_movimientos.id"), nullable=True, index=True)
+    reverted_at = Column(DateTime, nullable=True)
+    reverted_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     cuenta = relationship("CuentaScrap360", back_populates="movimientos")
     nota = relationship("Nota")
-    usuario = relationship("User")
+    usuario = relationship("User", foreign_keys=[usuario_id])
+    reverted_by = relationship("User", foreign_keys=[reverted_by_user_id])
