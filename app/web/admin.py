@@ -2316,7 +2316,7 @@ def _build_comisionario_ledger(
             {
                 "fecha": nota.created_at,
                 "orden": 0,
-                "tipo": "Nota comision",
+                "tipo": "Nota de comisión",
                 "nota_id": nota.id,
                 "cargo": total,
                 "abono": Decimal("0"),

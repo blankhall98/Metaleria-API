@@ -17,7 +17,7 @@
 
 {% set role_labels = {'super_admin': 'Super admin', 'admin': 'Admin', 'visor': 'Visor (solo lectura)', 'trabajador': 'Trabajador'} %}
 
-<div class="card s-narrow">
+<div class="card s-narrow mx-auto">
     <div class="card-body">
         <form method="post" action="/web/perfil" enctype="multipart/form-data"
               data-submit-once="1" data-loading-text="Guardando…">
@@ -70,7 +70,9 @@
 
             <fieldset class="s-fieldset">
                 <legend>Contraseña</legend>
-                <div class="s-form-grid">
+                {# Apiladas: el cambio de contraseña es un flujo secuencial
+                   (actual → nueva → confirmar), no tres campos paralelos. #}
+                <div class="s-stack s-measure-sm">
                     <div>
                         <label class="form-label" for="password_actual">Contraseña actual</label>
                         <div class="s-password">

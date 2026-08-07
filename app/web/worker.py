@@ -179,12 +179,23 @@ async def notes_list(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_worker),
 ):
-    notas = (
-        db.query(Nota)
-        .filter(Nota.trabajador_id == current_user["id"])
-        .order_by(Nota.id.desc())
-        .all()
-    )
+    # Chips de estado: cuando el historial crece, "las que me devolvieron"
+    # deben estar a un toque, no a un scroll.
+    estado_raw = (request.query_params.get("estado") or "").strip().upper()
+    estados_validos = {"BORRADOR", "EN_REVISION", "APROBADA", "CANCELADA"}
+    estado_current = estado_raw if estado_raw in estados_validos else "TODAS"
+
+    base_query = db.query(Nota).filter(Nota.trabajador_id == current_user["id"])
+    estado_counts = {
+        estado: base_query.filter(Nota.estado == NotaEstado(estado)).count()
+        for estado in estados_validos
+    }
+    estado_counts["TODAS"] = base_query.count()
+
+    notas_query = base_query
+    if estado_current != "TODAS":
+        notas_query = notas_query.filter(Nota.estado == NotaEstado(estado_current))
+    notas = notas_query.order_by(Nota.id.desc()).all()
     folio_map = {}
     for nota in notas:
         folio = note_service.format_folio(
@@ -208,6 +219,8 @@ async def notes_list(
             "notas": notas,
             "folio_map": folio_map,
             "partner_map": partner_map,
+            "estado_current": estado_current,
+            "estado_counts": estado_counts,
             "success": request.query_params.get("success"),
         },
     )

@@ -2752,6 +2752,9 @@ textarea.form-control {
 
 .s-stack   { display: flex; flex-direction: column; gap: var(--s-4); }
 .s-stack-2 { display: flex; flex-direction: column; gap: var(--s-2); }
+
+/* Ancho de lectura corto para flujos secuenciales (cambio de contraseña). */
+.s-measure-sm { max-width: 24rem; }
 .s-row     { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
 .s-between { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-3); }
 .s-grow    { flex: 1 1 auto; min-width: 0; }

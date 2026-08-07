@@ -21,17 +21,40 @@
     <div class="alert alert-success py-2 small">Nota actualizada correctamente.</div>
 {% endif %}
 
+{% if estado_counts and estado_counts.get('TODAS') %}
+    <nav class="s-segmented s-rail mb-3" aria-label="Filtrar por estado">
+        <a href="/web/worker/notes" class="s-segmented__item {{ 'active' if estado_current == 'TODAS' }}">
+            Todas <span class="s-segmented__count">{{ estado_counts['TODAS'] }}</span>
+        </a>
+        <a href="/web/worker/notes?estado=BORRADOR" class="s-segmented__item {{ 'active' if estado_current == 'BORRADOR' }}">
+            Borrador <span class="s-segmented__count">{{ estado_counts['BORRADOR'] }}</span>
+        </a>
+        <a href="/web/worker/notes?estado=EN_REVISION" class="s-segmented__item {{ 'active' if estado_current == 'EN_REVISION' }}">
+            En revisi&oacute;n <span class="s-segmented__count">{{ estado_counts['EN_REVISION'] }}</span>
+        </a>
+        <a href="/web/worker/notes?estado=APROBADA" class="s-segmented__item {{ 'active' if estado_current == 'APROBADA' }}">
+            Aprobadas <span class="s-segmented__count">{{ estado_counts['APROBADA'] }}</span>
+        </a>
+        <a href="/web/worker/notes?estado=CANCELADA" class="s-segmented__item {{ 'active' if estado_current == 'CANCELADA' }}">
+            Canceladas <span class="s-segmented__count">{{ estado_counts['CANCELADA'] }}</span>
+        </a>
+    </nav>
+{% endif %}
+
 <div class="card">
     <div class="card-body">
         {% if notas|length == 0 %}
-            {{ empty('Aún no tienes notas',
-                     'Captura una nota de pesaje con el material, los pesajes y la evidencia; después envíala a revisión.',
-                     'note') }}
-            <div class="s-form-actions">
-                <a href="/web/worker/notes/nueva" class="btn btn-outline-primary">
-                    {{ icon('plus', 's-icon--sm') }} Nueva nota
-                </a>
-            </div>
+            {% if estado_current != 'TODAS' %}
+                {{ empty('Sin notas en este estado',
+                         'Cambia de filtro o captura una nueva nota.',
+                         'note') }}
+            {% else %}
+                {# El botón del header ya ofrece "Nueva nota": el vacío solo
+                   explica cómo empezar, sin repetir el CTA. #}
+                {{ empty('Aún no tienes notas',
+                         'Captura una nota de pesaje con el material, los pesajes y la evidencia; después envíala a revisión.',
+                         'note') }}
+            {% endif %}
         {% else %}
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
