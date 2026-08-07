@@ -34,6 +34,33 @@
     }
     window.toggleDrawer = toggleDrawer;
 
+    /* Sidebar colapsable (modo mini, solo barra fija >=1200px). El estado se
+       aplica antes del primer render desde base.html; aquí solo se conmuta. */
+    var SIDEBAR_MINI_KEY = 's360.sidebarMini';
+
+    function initSidebarToggle() {
+        var toggle = document.getElementById('sidebarCollapseToggle');
+        if (!toggle) return;
+
+        function applyMini(mini) {
+            document.body.classList.toggle('s-sidebar-mini', mini);
+            toggle.setAttribute('aria-expanded', mini ? 'false' : 'true');
+            toggle.setAttribute(
+                'aria-label',
+                mini ? 'Expandir menú' : 'Colapsar menú'
+            );
+            var label = toggle.querySelector('.s-sidebar-toggle__label');
+            if (label) label.textContent = mini ? 'Expandir' : 'Colapsar menú';
+        }
+
+        applyMini(document.body.classList.contains('s-sidebar-mini'));
+        toggle.addEventListener('click', function () {
+            var mini = !document.body.classList.contains('s-sidebar-mini');
+            try { localStorage.setItem(SIDEBAR_MINI_KEY, mini ? '1' : '0'); } catch (e) { /* sin almacenamiento */ }
+            applyMini(mini);
+        });
+    }
+
     /* ----------------------------------------------------------------------
        Tables
        --------------------------------------------------------------------------
@@ -437,6 +464,7 @@
        ---------------------------------------------------------------------- */
 
     function init() {
+        initSidebarToggle();
         ensureTableShells();
         annotateTables();
         collapseRowActions();

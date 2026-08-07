@@ -26,6 +26,15 @@
 {% set current_path = request.url.path if request and request.url else '' %}
 {% set show_mobile_dock = user and user.rol in ['super_admin', 'admin', 'visor', 'trabajador'] %}
 <body class="{% if show_mobile_dock %}app-has-mobile-dock {% endif %}{% if user %}role-{{ user.rol }}{% else %}role-guest{% endif %}">
+<script>
+    /* Aplica el estado colapsado de la barra lateral antes del primer render
+       para que no parpadee de ancha a angosta en cada navegación. */
+    try {
+        if (localStorage.getItem('s360.sidebarMini') === '1') {
+            document.body.classList.add('s-sidebar-mini');
+        }
+    } catch (e) { /* almacenamiento bloqueado: se queda expandida */ }
+</script>
 
 {% include "_icons.html" %}
 {% from "_macros.html" import icon %}
@@ -61,7 +70,7 @@
 {% macro nav_link(href, label, icon_name, exact=False) %}
     {% set is_active = (current_path == href) if exact else (current_path.startswith(href)) %}
     <a class="nav-drawer-link d-flex align-items-center gap-2 {% if is_active %}active{% endif %}"
-       href="{{ href }}"{% if is_active %} aria-current="page"{% endif %}>
+       href="{{ href }}" title="{{ label }}"{% if is_active %} aria-current="page"{% endif %}>
         {{ icon(icon_name, 's-icon--sm') }}
         <span class="s-grow">{{ label }}</span>
         {% if href == '/web/admin/notas' %}
@@ -148,17 +157,25 @@
         {% endif %}
 
         <div class="s-divider"></div>
-        <div class="d-flex align-items-center gap-2 px-2 pb-2">
+        <div class="nav-drawer-user d-flex align-items-center gap-2 px-2 pb-2" title="{{ user.username }} · {{ user.rol|replace('_', ' ')|title }}">
             <span class="user-avatar">{{ user.username[0]|upper }}</span>
-            <div class="small s-grow">
+            <div class="small s-grow nav-drawer-user__text">
                 <div class="fw-semibold">{{ user.username }}</div>
                 <div class="text-muted">{{ user.rol|replace('_', ' ')|title }}</div>
             </div>
         </div>
-        <a class="btn btn-outline-secondary btn-sm" href="/web/logout">
-            {{ icon('logout', 's-icon--sm') }} Cerrar sesi&oacute;n
+        <a class="btn btn-outline-secondary btn-sm nav-drawer-logout" href="/web/logout" title="Cerrar sesión">
+            {{ icon('logout', 's-icon--sm') }} <span class="nav-drawer-logout__label">Cerrar sesi&oacute;n</span>
         </a>
     </div>
+
+    {% if user.rol != 'trabajador' %}
+        <button type="button" id="sidebarCollapseToggle" class="s-sidebar-toggle"
+                aria-expanded="true" aria-label="Colapsar men&uacute;">
+            {{ icon('chevron-left', 's-icon--sm') }}
+            <span class="s-sidebar-toggle__label">Colapsar men&uacute;</span>
+        </button>
+    {% endif %}
 </div>
 <div id="navOverlay" class="nav-overlay" onclick="toggleDrawer(false)"></div>
 {% endif %}

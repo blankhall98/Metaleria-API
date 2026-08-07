@@ -134,7 +134,8 @@
     --s-shell-pad: clamp(0.875rem, 1.5vw, 1.5rem);
     --s-navbar-h: 56px;
     --s-dock-h: 64px;
-    --s-sidebar-w: 240px;
+    --s-sidebar-w: 272px;
+    --s-sidebar-w-mini: 72px;
     --s-focus: 0 0 0 3px rgba(31, 92, 158, 0.32);
 
     /* --- Legacy variable remap: re-themes ~3.5k lines of old CSS -------- */
@@ -285,17 +286,24 @@ input[type="number"] {
    3. APP SHELL
    ========================================================================== */
 
+/* Barra superior con efecto glass: translúcida y con desenfoque del contenido
+   que pasa por debajo, sin perder la línea de borde que define la superficie.
+   Si el navegador no soporta backdrop-filter, cae a la superficie sólida. */
 .navbar {
-    background: var(--s-surface);
+    background: rgba(255, 255, 255, 0.78);
+    -webkit-backdrop-filter: saturate(1.6) blur(14px);
+    backdrop-filter: saturate(1.6) blur(14px);
     border-bottom: 1px solid var(--s-line);
-    box-shadow: none;
-    backdrop-filter: none;
+    box-shadow: 0 1px 8px rgba(19, 26, 36, 0.04);
     min-height: var(--s-navbar-h);
     padding: var(--s-2) 0;
     margin-bottom: 0 !important;
     position: sticky;
     top: 0;
     z-index: 1030;
+}
+@supports not (backdrop-filter: blur(1px)) {
+    .navbar { background: var(--s-surface); box-shadow: none; }
 }
 
 .navbar .container-fluid {
@@ -618,6 +626,90 @@ body.drawer-open { overflow: hidden; }
 
     /* A pinned sidebar must not lock body scroll if the drawer state lingers. */
     body.drawer-open { overflow: auto; }
+
+    /* --- Sidebar colapsable (modo mini) --------------------------------
+       Redefinir el token basta: la propia barra, el margen del contenido,
+       el footer y la barra flotante del corte lo consumen. El botón vive al
+       pie de la barra y el estado persiste en localStorage. */
+    body.s-sidebar-mini { --s-sidebar-w: var(--s-sidebar-w-mini); }
+
+    body.role-super_admin .nav-drawer,
+    body.role-admin .nav-drawer,
+    body.role-visor .nav-drawer,
+    body.role-super_admin .page-shell,
+    body.role-admin .page-shell,
+    body.role-visor .page-shell {
+        transition: width var(--s-dur) var(--s-ease),
+                    min-width var(--s-dur) var(--s-ease),
+                    max-width var(--s-dur) var(--s-ease),
+                    margin-left var(--s-dur) var(--s-ease);
+    }
+
+    .s-sidebar-toggle {
+        display: flex;
+        align-items: center;
+        gap: var(--s-2);
+        margin: 0;
+        padding: var(--s-3) var(--s-4);
+        border: 0;
+        border-top: 1px solid var(--s-line);
+        background: transparent;
+        color: var(--s-text-muted);
+        font: inherit;
+        font-size: var(--s-fs-sm);
+        font-weight: 500;
+        min-height: 44px;
+        cursor: pointer;
+        transition: background var(--s-dur) var(--s-ease), color var(--s-dur) var(--s-ease);
+    }
+    .s-sidebar-toggle:hover { background: var(--s-n50); color: var(--s-text); }
+    .s-sidebar-toggle .s-icon { transition: transform var(--s-dur) var(--s-ease); }
+    body.s-sidebar-mini .s-sidebar-toggle { justify-content: center; padding-inline: 0; }
+    body.s-sidebar-mini .s-sidebar-toggle .s-icon { transform: rotate(180deg); }
+    body.s-sidebar-mini .s-sidebar-toggle .s-sidebar-toggle__label { display: none; }
+
+    /* En mini solo quedan los iconos, centrados; el nombre del enlace pasa al
+       tooltip nativo (title) y las etiquetas de grupo se vuelven separadores. */
+    body.s-sidebar-mini .nav-drawer-body { padding-inline: var(--s-2); }
+    body.s-sidebar-mini .nav-drawer-link {
+        display: flex;
+        justify-content: center;
+        padding-inline: 0;
+        position: relative;
+    }
+    body.s-sidebar-mini .nav-drawer-link .s-grow { display: none; }
+    body.s-sidebar-mini .nav-drawer-link .s-icon { width: 20px; height: 20px; }
+    body.s-sidebar-mini .nav-drawer-link .s-count-badge {
+        position: absolute;
+        top: 4px;
+        right: 8px;
+        font-size: 0.625rem;
+        padding: 1px 5px;
+    }
+    body.s-sidebar-mini .nav-drawer-group-label {
+        font-size: 0;
+        line-height: 0;
+        padding: 0;
+        margin: var(--s-2) var(--s-3);
+        border-top: 1px solid var(--s-line);
+    }
+    body.s-sidebar-mini .nav-drawer-group-label:first-child {
+        border-top: 0;
+        margin: 0;
+    }
+    body.s-sidebar-mini .nav-drawer-user { justify-content: center; padding-inline: 0; }
+    body.s-sidebar-mini .nav-drawer-user__text { display: none; }
+    body.s-sidebar-mini .nav-drawer-logout {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    body.s-sidebar-mini .nav-drawer-logout__label { display: none; }
+}
+
+/* Fuera del modo barra fija, el botón de colapso no existe. */
+@media (max-width: 1199.98px) {
+    .s-sidebar-toggle { display: none; }
 }
 
 /* ==========================================================================
