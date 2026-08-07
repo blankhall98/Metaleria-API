@@ -163,6 +163,54 @@ que probablemente se cubren con el "comodín manual" de la propuesta — confirm
    con $1,314,992 pendiente mientras el ledger, aplicando el ajuste de −$942,274, termina
    en $264,128 — es el punto 7 en vivo. Confirmar que ese es el comportamiento reclamado.
 
+## 5c. Junta con la clienta — 07-ago-2026 (grabación en `docs/excel_ejemplos/2026-08-07 10-30-56.mkv`)
+
+La clienta recorrió el documento "AJUSTES SCRAP 360" (actualizado ese día) compartiendo
+pantalla sobre producción. Qué respondió, qué agregó y qué cambió:
+
+**Respuestas a las preguntas de §5b:**
+
+- **Punto 1**: es la vista **Inventario**: quitar cualquier resto visual de "stock
+  inicial" y **alinear la columna de existencias al centro o a la izquierda** (hoy va
+  a la derecha). Revisar también el "Saldo inicial" visible en Cuentas Scrap360.
+- **Punto 8**: el ejemplo definitivo — cliente debe $5,000, le compro $15,000, saldo
+  −$10,000: esos −10,000 **restan del saldo de clientes**; nunca aparecen como saldo
+  deudor en proveedores. Aplica en ambos sentidos. (Responde la pregunta 5: el
+  vinculado desaparece del bucket contrario; el saldo vive con signo en su bucket de
+  origen.)
+- **Punto 13 (Cuentas)**: confirma que no le sirve como pantalla; se mantiene **oculto
+  del menú** (ya está) y NO se elimina — los pagos por transferencia/cheque lo
+  requieren por dentro. Explicado así a la clienta.
+
+**Requisitos nuevos de la junta:**
+
+- **Contenedores (punto 3)**: además de lo del Excel — columna **número de contenedor**,
+  y dos columnas nuevas que el Excel no tiene: **"Peso Báscula Pública"** y
+  **"Peso de Puerto"** (ambos en kg). Kilos tratados vs. vendidos con botón
+  "completada" que la saca de pendientes de entrega.
+- **Capital (punto 4)**: confirmado por día y por sucursal con la chequera en USD y
+  TC manual; **nuevo**: poder **fusionar sucursales** en el reporte (ej. sucursal 1+3
+  como una sola vista).
+- **Récord de proveedor — orden de bloques**: "Asistencias" hasta el final; "Ajuste
+  manual de saldo" hasta arriba; después "Estado de cuenta". (Ajusta el orden que
+  traíamos: Resumen → **Ajuste manual** → **Estado de cuenta** → Notas → Pagos →
+  **Asistencias**.)
+
+**Estado real de los puntos tras el trabajo del 6-7 de agosto:**
+
+| Punto | Estado | Nota |
+|---|---|---|
+| 9 (notas antigua↔reciente) | ✅ En prod | Toggle "Recientes/Antiguas primero" en la lista de notas |
+| 10 (historial reciente arriba) | ✅ En prod | Toggle "Recientes primero/Cronológico" en el récord |
+| 11 (saldos alfabético) | ✅ En prod | Toggle "Por cantidad/Alfabético" en el visor de saldos |
+| 13 (ocultar Cuentas) | ✅ En prod | Menú y mosaico sin la entrada; rutas vivas |
+| 12 (deshacer) | 🟡 Parcial | Pagos de nota, ajustes de nota, devoluciones y conversiones ya tienen reversa; faltan `AjusteSaldoPartner`, `ComisionarioPago`, ajustes de CuentaScrap360 y gastos/movimientos del corte |
+| 6 (FIFO comisionista) | 🟡 Verificar | El formulario del récord ya anuncia FIFO; confirmar que `comision_service` lo ejecuta de verdad |
+| 1, orden del récord | 🔜 Ronda A | Cosmético, inmediato |
+| 7, 8 (neteo y vinculados) | 🔴 Pendiente | El mapeo de §4 sigue vigente; es el dolor #1 visible en prod (232 "vencidas" infladas) |
+| 5 (archivar sucursales) | 🔴 Pendiente | Mapeado en §4 |
+| 2, 3, 4 (módulos) | 🔓 Desbloqueados | Los 4 Excel ya están en `docs/excel_ejemplos/` — el reloj de entrega corre |
+
 ## 6. Riesgos y dependencias
 
 1. **Los 3 Excel del cliente** — bloquean puntos 2, 3, 4 y arrancan el reloj de 2 semanas. Pedirlos ya.
@@ -177,6 +225,27 @@ que probablemente se cubren con el "comodín manual" de la propuesta — confirm
 | Fecha | Trabajo | Resultado |
 |---|---|---|
 | 2026-08-06 | Revisión a fondo: propuesta v1.1, docs del repo, auditoría de homologación front-end (51 templates) y mapeo backend de los 13 puntos | Este documento. 20/49 pantallas conformes; backlog etapa 0 con 12 tareas; 13 puntos mapeados a archivos con esfuerzo estimado |
+| 2026-08-06/07 | Sesión nocturna: fase 0 de la auditoría UI (tonos, fechas, precios, IDs) + 16 pantallas de la hoja de ruta + marca/login/footer + colapsables + KPIs en banda | 12 deploys a prod; puntos 9, 10, 11 y 13 de la fase 2 quedaron cubiertos de paso |
+| 2026-08-07 | Junta con la clienta (grabación + doc actualizado + 4 Excel ya en repo); análisis de fórmulas de los 3 módulos | §5c: 3 preguntas respondidas, 3 requisitos nuevos; etapa 2 desbloqueada; tablero de estado por punto |
+
+### Metodología por punto (acordada 07-ago)
+
+Un punto a la vez, con este ciclo: **(1)** leer su mapeo en §4/§5 y confirmar el
+comportamiento actual en el código; **(2)** implementar en un bloque acotado;
+**(3)** verificar — `check_pages`, `check_templates`, `fix_accents`, prueba visual
+390/1440 y, si toca dinero, prueba funcional con datos; **(4)** deploy a Heroku +
+push a GitHub; **(5)** marcar aquí el punto con fecha y commit; **(6)** aviso corto
+a la clienta con lo que ya puede ver en prod.
+
+Orden de resolución (dependencias primero, dolor visible primero):
+
+| Ronda | Puntos | Por qué en este orden |
+|---|---|---|
+| **A** | 1 + orden del récord + verificación en vivo de 6/9/10/11 | Quick wins, un solo deploy; cierra lo cosmético de la junta el mismo día |
+| **B** | 7 → 8 | Comparten el motor de agrupación; es el dolor #1 en prod (pendientes fantasma y saldos cruzados); tests mínimos del motor antes de tocarlo |
+| **C** | 12 → 6 | Las reversas faltantes requieren migraciones; el FIFO de comisiones reutiliza la decisión de reversa |
+| **D** | 5 | Archivar sucursales con guardas |
+| **E** | 2 → 3 → 4 | Módulos nuevos con Excel en mano: bitácora (menor), contenedores (mayor, con Peso Báscula Pública/Puerto y premio editable por fila), capital diario (con fusión de sucursales y chequera USD/TC) |
 | 2026-08-06 | Análisis de los 4 Excel del cliente + captura WhatsApp | §5b: fórmulas de puntos 2/3/4 descifradas; 7 preguntas para la junta; la captura confirma el bug del punto 7 en vivo |
 | 2026-08-06/07 (noche) | **Etapa 1: 7 puntos resueltos sin esperar junta** — 13 (Cuentas oculto del menú, rutas y accesos contextuales vivos) · 9 (explorador de notas con control Recientes/Antiguas primero, corte a 200 después de ordenar) · 10 (estado de cuenta del socio con toggle Recientes primero/Cronológico; el saldo acumulado sigue calculándose en orden cronológico) · 11 (reporte de saldos Por cantidad/Alfabético, orden en servidor e insensible a acentos) · 5 (archivar/reactivar sucursales con guardas accionables: corte abierto, notas sin aprobar, usuarios asignados, existencias; selectores solo-activas, listas y reportes conservan historial; corte bloquea abrir en archivada) · 6 (`pay_comisionario_fifo`: una transacción, un pago por nota consumida en orden antiguo→reciente, formulario en el record con desglose y validaciones; probado de punta a punta) · 7 (**motor de neteo movido a `note_service.build_effective_note_balance_map`, consciente del par vinculado** — el crédito de una identidad alcanza a la otra con la aritmética de signos correcta; consumidores corregidos: record unificado, notas_pendientes del reporte de contabilidad y resumen del home). **Primeras pruebas automatizadas del proyecto**: `tests/test_neteo.py` (7 casos, incluido el escenario exacto de la captura del cliente). Verificación integral: ajuste −$1,800 al Proveedor Uno netea home/notas/reporte y desaparece al revertirlo; 84 vistas del gate en verde. Nota operativa local: uvicorn `--reload` no recarga Python en este entorno (y vigilar el cwd reinicia con cada escritura a metalleria.db) — reiniciar el server a mano tras cambios de backend |
 | 2026-08-06 | **Etapa 0 ejecutada completa** (plan pantalla por pantalla en `FASE_2_ETAPA_0_PANTALLAS.md`) | `check_ui.js` reactivado (npm + playwright-core) y **84 vistas en verde a 1440/390 px**; `precios_material` migrada; un solo botón primario en home y nota; 33 tablas con estado vacío; glifos → sprite (`chevron-down` nuevo); solo-lectura como `<output>`/texto (corte y wizard); familia `corte-*` promovida a componentes canónicos `s-collapse`/`s-cat-*`/`s-method-pill`/`s-dockbar` (§21 de scrap360.css); stats consolidadas (defs() en secciones); **`style.css` eliminado** (drawer/dock/footer portados con tokens; remap legado podado de 270 a 20 líneas); diccionario de acentos +12 palabras y 6 frases; `UI_UX.md` reescrito post-rediseño; `KNOWN_ISSUES` #19 resuelto. Verificación: import OK, 51 plantillas compilan, acentos 0 pendientes, 29 rutas 200, capturas antes/después comparadas |
