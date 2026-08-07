@@ -177,11 +177,13 @@
                         {% endif %}
                         {% if is_approved %}
                             {% if saldo_a_favor > 0 %}
-                                <span class="badge bg-info text-dark">{{ payment_badge }}</span>
+                                {{ badge(payment_badge, 'info') }}
                             {% elif saldo_pendiente > 0 %}
-                                <span class="badge bg-warning text-dark">{{ payment_badge }}</span>
+                                {{ badge(payment_badge, 'warn') }}
                             {% else %}
-                                <span class="badge bg-success">{{ payment_badge }}</span>
+                                {# Pagada = saldada, nada por hacer: muted, nunca el
+                                   verde de Aprobada (tabla canónica de tonos). #}
+                                {{ badge(payment_badge, 'muted') }}
                             {% endif %}
                         {% endif %}
                         {% if is_transfer %}
@@ -809,15 +811,21 @@
         <div class="s-split">
             <div class="s-split__main">
                 {% if can_manage_note %}
+                    {# Acción correctiva: plegada por defecto; se abre sola cuando
+                       hay retroalimentación de un intento (éxito o error). #}
+                    {% set devol_parcial_open = devolucion_parcial_updated or (form_devol_comment is not none) %}
                     <div class="card mb-3" id="note-returns">
                         <div class="card-body">
-                            <div class="s-card-head">
+                            <button type="button" class="s-collapse__trigger" data-bs-toggle="collapse"
+                                    data-bs-target="#devolucionParcialBody" aria-expanded="{{ 'true' if devol_parcial_open else 'false' }}">
                                 <div>
-                                    <h2 class="s-card-title">Devolución parcial</h2>
-                                    <p class="s-card-sub">Edita cuántas unidades regresan por material y a qué precio por kilo se valora la devolución.</p>
+                                    <h2 class="s-card-title mb-1">Devolución parcial</h2>
+                                    <p class="s-card-sub mb-0">Edita cuántas unidades regresan por material y a qué precio por kilo se valora la devolución.</p>
                                 </div>
                                 {{ badge('No genera reembolso automático', 'muted') }}
-                            </div>
+                                {{ icon('chevron-down', 's-collapse__chevron') }}
+                            </button>
+                            <div id="devolucionParcialBody" class="collapse{{ ' show' if devol_parcial_open }} s-collapse__body">
                             <form method="post" action="/web/admin/notas/{{ nota.id }}/devolucion-parcial" class="note-return-form" data-current-total="{{ nota.total_monto or 0 }}" data-current-paid="{{ nota.monto_pagado or 0 }}" data-iva-factor="{{ (1 + ((iva_pct or 0) / 100)) if nota.iva_incluido else 1 }}">
                             <div class="table-scroll-shell">
                                 <div class="table-responsive">
@@ -897,6 +905,7 @@
                                 </div>
                             </div>
                             </form>
+                            </div>
                         </div>
                     </div>
                 {% endif %}
@@ -916,9 +925,20 @@
                         </div>
 
                         {% if can_manage_note %}
+                            {# Corregir el pago inicial es la excepción; registrar un
+                               abono es el flujo normal. La corrección va plegada. #}
+                            {% set pago_inicial_open = pago_inicial_updated or (form_pago_inicial_monto is not none) %}
                             <div class="s-form-grid">
-                                <form method="post" action="/web/admin/notas/{{ nota.id }}/pago-inicial" class="s-subpanel">
-                                <div class="s-card-title">Corregir pago inicial</div>
+                                {# align-self-start: plegado, el panel mide lo que su
+                                   título; sin esto la celda se estira junto al abono. #}
+                                <div class="s-subpanel align-self-start">
+                                <form method="post" action="/web/admin/notas/{{ nota.id }}/pago-inicial">
+                                <button type="button" class="s-collapse__trigger" data-bs-toggle="collapse"
+                                        data-bs-target="#pagoInicialBody" aria-expanded="{{ 'true' if pago_inicial_open else 'false' }}">
+                                    <span class="s-card-title mb-0">Corregir pago inicial</span>
+                                    {{ icon('chevron-down', 's-collapse__chevron') }}
+                                </button>
+                                <div id="pagoInicialBody" class="collapse{{ ' show' if pago_inicial_open }} s-collapse__body">
                                 <div class="row g-2 align-items-end">
                                     <div class="col-md-6">
                                         <label class="form-label" for="pago_inicial_monto">Pago inicial objetivo</label>
@@ -971,8 +991,10 @@
                                         <button type="submit" class="btn btn-outline-secondary btn-sm">Actualizar pago inicial</button>
                                     </div>
                                 </div>
-                                <div class="form-text text-muted mt-2">Útil cuando la nota se aprobó con un pago inicial incorrecto. Si eliges una Cuenta Scrap360, el descuento saldra de ahi; si fue una transferencia o cheque externo, puedes dejar las cuentas vacias.</div>
+                                <div class="form-text text-muted mt-2">Útil cuando la nota se aprobó con un pago inicial incorrecto. Si eliges una Cuenta Scrap360, el descuento saldrá de ahí; si fue una transferencia o cheque externo, puedes dejar las cuentas vacías.</div>
+                                </div>
                                 </form>
+                                </div>
                                 <form method="post" action="/web/admin/notas/{{ nota.id }}/pago" class="s-subpanel">
                                 <div class="s-card-title">Registrar nuevo abono</div>
                                 <div class="row g-2 align-items-end">
@@ -1186,19 +1208,27 @@
         </div>
     {% endif %}
     {% if is_approved or note_balance_adjustments %}
+        {# Corrección excepcional: plegada salvo que haya actividad que revisar
+           o retroalimentación de un intento. #}
+        {% set ajuste_saldo_open = ajuste_saldo_updated or ajuste_saldo_reverted or (form_ajuste_saldo_monto is not none) %}
         <div class="card mb-3" id="note-balance-adjustments">
             <div class="card-body">
-                <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2 mb-3">
+                <button type="button" class="s-collapse__trigger" data-bs-toggle="collapse"
+                        data-bs-target="#ajusteSaldoBody" aria-expanded="{{ 'true' if ajuste_saldo_open else 'false' }}">
                     <div>
                         <h2 class="h6 text-dark mb-1">Ajuste de saldo ligado a esta nota</h2>
                         <p class="text-muted small mb-0">Corrige el saldo financiero de esta nota sin tocar inventario, pesos ni totales originales. Se mantiene auditable y se puede revertir una sola vez.</p>
                     </div>
-                    <div class="s-badge-stack">
-                        <span class="badge bg-light text-dark border">{{ note_balance_adjustments|length }} registros</span>
-                        <span class="badge bg-success">{{ note_balance_adjustment_active_count }} activos</span>
-                        <span class="badge bg-secondary">{{ note_balance_adjustment_reversion_count }} reversiones</span>
-                    </div>
-                </div>
+                    {% if note_balance_adjustments %}
+                        <div class="s-badge-stack">
+                            <span class="badge bg-light text-dark border">{{ note_balance_adjustments|length }} registros</span>
+                            <span class="badge bg-success">{{ note_balance_adjustment_active_count }} activos</span>
+                            <span class="badge bg-secondary">{{ note_balance_adjustment_reversion_count }} reversiones</span>
+                        </div>
+                    {% endif %}
+                    {{ icon('chevron-down', 's-collapse__chevron') }}
+                </button>
+                <div id="ajusteSaldoBody" class="collapse{{ ' show' if ajuste_saldo_open }} s-collapse__body">
 
                 <div class="s-subpanel mb-3">
                     <div class="card-body px-0 py-0">
@@ -1343,23 +1373,30 @@
                         <div class="text-muted small">Usa este módulo cuando necesites liquidar, bonificar o cargar una diferencia financiera específica sin tocar inventario.</div>
                     </div>
                 {% endif %}
+                </div>
             </div>
         </div>
     {% endif %}
     {% if is_approved or note_adjustments %}
+        {% set ajuste_manual_open = ajuste_manual_updated or ajuste_manual_reverted %}
         <div class="card mb-3" id="note-manual-adjustments">
             <div class="card-body">
-                <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2 mb-3">
+                <button type="button" class="s-collapse__trigger" data-bs-toggle="collapse"
+                        data-bs-target="#ajusteManualBody" aria-expanded="{{ 'true' if ajuste_manual_open else 'false' }}">
                     <div>
                         <h2 class="h6 text-dark mb-1">Ajuste manual ligado a esta nota</h2>
                         <p class="text-muted small mb-0">Corrige inventario operativo desde esta nota sin modificar totales, pagos o valuación. El ajuste queda auditado y se puede revertir una sola vez.</p>
                     </div>
-                    <div class="s-badge-stack">
-                        <span class="badge bg-light text-dark border">{{ note_adjustments|length }} registros</span>
-                        <span class="badge bg-success">{{ note_adjustment_active_count }} activos</span>
-                        <span class="badge bg-secondary">{{ note_adjustment_reversion_count }} reversiones</span>
-                    </div>
-                </div>
+                    {% if note_adjustments %}
+                        <div class="s-badge-stack">
+                            <span class="badge bg-light text-dark border">{{ note_adjustments|length }} registros</span>
+                            <span class="badge bg-success">{{ note_adjustment_active_count }} activos</span>
+                            <span class="badge bg-secondary">{{ note_adjustment_reversion_count }} reversiones</span>
+                        </div>
+                    {% endif %}
+                    {{ icon('chevron-down', 's-collapse__chevron') }}
+                </button>
+                <div id="ajusteManualBody" class="collapse{{ ' show' if ajuste_manual_open }} s-collapse__body">
 
                 {% if is_approved and can_manage_note %}
                     <div class="s-form-grid">
@@ -1511,6 +1548,7 @@
                         <div class="text-muted small">Usa este módulo cuando necesites corregir inventario operativo de esta nota sin editar sus montos o sus pagos.</div>
                     </div>
                 {% endif %}
+                </div>
             </div>
         </div>
     {% endif %}
@@ -1925,7 +1963,10 @@
             togglePagoInicialCuenta();
         }
 
-        const noteTable = document.querySelector('.');
+        /* La tabla de revisión se localiza por su atributo de datos, no por una
+           clase de estilo: sobrevivió a un renombre que dejó '.' como selector
+           y apagó el recálculo de precios en silencio. */
+        const noteTable = document.querySelector('table[data-precio-endpoint]');
         const priceEndpoint = noteTable ? noteTable.dataset.precioEndpoint : '';
         const tipoOperacion = noteTable ? noteTable.dataset.tipoOperacion : '';
 
