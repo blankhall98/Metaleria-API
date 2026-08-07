@@ -180,16 +180,31 @@
     {% if resumen and resumen.actividad is defined %}
         <div class="card mb-3">
             <div class="card-body">
-                <div class="d-flex align-items-center gap-3">
+                <div class="d-flex flex-wrap align-items-center gap-2">
                     <button type="button" class="s-collapse__trigger s-grow" data-bs-toggle="collapse"
                             data-bs-target="#actividadRecienteBody" aria-expanded="true">
                         <div>
                             <h2 class="s-card-title mb-1">Actividad reciente</h2>
-                            <p class="s-card-sub mb-0">Las últimas notas capturadas en cualquier sucursal.</p>
+                            <p class="s-card-sub mb-0">
+                                {% if actividad_sucursal_id %}Las últimas notas de la sucursal elegida.{% else %}Las últimas notas capturadas en cualquier sucursal.{% endif %}
+                            </p>
                         </div>
                         {{ icon('chevron-down', 's-collapse__chevron') }}
                     </button>
-                    <a href="/web/admin/notas" class="btn btn-outline-secondary btn-sm">Ver todas</a>
+                    {% if sucursales_activas and sucursales_activas|length > 1 %}
+                        <form method="get" action="/web" class="d-flex align-items-center gap-2 mb-0">
+                            <label class="s-visually-hidden" for="actividad-sucursal">Sucursal de la actividad</label>
+                            <select class="form-select form-select-sm" id="actividad-sucursal"
+                                    name="actividad_sucursal" onchange="this.form.submit()">
+                                <option value="">Todas las sucursales</option>
+                                {% for s in sucursales_activas %}
+                                    <option value="{{ s.id }}" {% if actividad_sucursal_id == s.id %}selected{% endif %}>{{ s.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                        </form>
+                    {% endif %}
+                    <a href="/web/admin/notas{% if actividad_sucursal_id %}?sucursal_id={{ actividad_sucursal_id }}{% endif %}"
+                       class="btn btn-outline-secondary btn-sm">Ver todas</a>
                 </div>
                 <div id="actividadRecienteBody" class="collapse show s-collapse__body">
                 {% if resumen.actividad %}
@@ -199,6 +214,7 @@
                             <tr>
                                 <th data-title-col data-mobile-primary>Socio</th>
                                 <th>Folio</th>
+                                {% if not actividad_sucursal_id %}<th>Sucursal</th>{% endif %}
                                 <th data-mobile-primary>Estado</th>
                                 <th class="text-end" data-mobile-primary>Total</th>
                                 <th>Fecha</th>
@@ -214,6 +230,7 @@
                                         <div class="text-muted small">{{ TIPO_LABEL.get(a.tipo, a.tipo|capitalize) }}</div>
                                     </td>
                                     <td><span class="s-folio">{{ a.folio }}</span></td>
+                                    {% if not actividad_sucursal_id %}<td>{{ a.sucursal }}</td>{% endif %}
                                     <td>
                                         {% if a.estado == 'BORRADOR' %}{{ badge('Borrador', 'muted') }}
                                         {% elif a.estado == 'EN_REVISION' %}{{ badge('En revisión', 'warn') }}
@@ -232,7 +249,11 @@
                         </table>
                     </div>
                 {% else %}
-                    {{ empty('Sin notas todavía', 'La actividad aparece en cuanto se captura la primera nota.', 'notes') }}
+                    {% if actividad_sucursal_id %}
+                        {{ empty('Sin notas en esta sucursal', 'Elige otra sucursal o vuelve a "Todas las sucursales".', 'notes') }}
+                    {% else %}
+                        {{ empty('Sin notas todavía', 'La actividad aparece en cuanto se captura la primera nota.', 'notes') }}
+                    {% endif %}
                 {% endif %}
                 </div>
             </div>

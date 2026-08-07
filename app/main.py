@@ -46,7 +46,11 @@ def _get_session_user(request: Request) -> dict | None:
     return request.session.get("user")
 
 
-def _home_resumen(db: Session, notas_revision_count: int) -> dict:
+def _home_resumen(
+    db: Session,
+    notas_revision_count: int,
+    actividad_sucursal_id: int | None = None,
+) -> dict:
     """Operating figures for the dashboard.
 
     Read-only aggregates over approved notes; a failure here must never take
@@ -97,9 +101,15 @@ def _home_resumen(db: Session, notas_revision_count: int) -> dict:
         inventario_kg = db.query(func.coalesce(func.sum(Inventario.stock_actual), 0)).scalar()
 
         # Actividad reciente: el panel no solo dice cuánto, también qué pasó.
-        from app.models import Cliente, Proveedor
+        # El filtro de sucursal se aplica aquí, no en el cliente: "las últimas
+        # cinco de esa sucursal", no un recorte de las cinco globales.
+        from app.models import Cliente, Proveedor, Sucursal
 
-        recientes = db.query(Nota).order_by(Nota.created_at.desc()).limit(5).all()
+        recientes_query = db.query(Nota)
+        if actividad_sucursal_id:
+            recientes_query = recientes_query.filter(Nota.sucursal_id == actividad_sucursal_id)
+        recientes = recientes_query.order_by(Nota.created_at.desc()).limit(5).all()
+        sucursales_map = {s.id: s.nombre for s in db.query(Sucursal).all()}
         prov_ids = {n.proveedor_id for n in recientes if n.proveedor_id}
         cli_ids = {n.cliente_id for n in recientes if n.cliente_id}
         prov_map = (
@@ -127,6 +137,7 @@ def _home_resumen(db: Session, notas_revision_count: int) -> dict:
                 "estado": n.estado.value if n.estado else "",
                 "total": n.total_monto,
                 "fecha": n.created_at,
+                "sucursal": sucursales_map.get(n.sucursal_id, "—"),
             })
 
         return {
@@ -231,14 +242,28 @@ def create_app() -> FastAPI:
         resumen: dict = {}
         worker_resumen: dict = {}
         nombre_pila = ""
+        sucursales_activas: list = []
+        actividad_sucursal_id: int | None = None
 
         if user and user.get("rol") in ("admin", "super_admin", "visor"):
+            try:
+                actividad_sucursal_id = int(request.query_params.get("actividad_sucursal") or 0) or None
+            except ValueError:
+                actividad_sucursal_id = None
             db = SessionLocal()
             try:
                 notas_revision_count = (
                     db.query(Nota).filter(Nota.estado == NotaEstado.en_revision).count()
                 )
-                resumen = _home_resumen(db, notas_revision_count)
+                resumen = _home_resumen(db, notas_revision_count, actividad_sucursal_id)
+                from app.models import Sucursal, SucursalStatus
+
+                sucursales_activas = (
+                    db.query(Sucursal)
+                    .filter(Sucursal.estado == SucursalStatus.activa)
+                    .order_by(Sucursal.nombre)
+                    .all()
+                )
             finally:
                 db.close()
         elif user and user.get("rol") == "trabajador":
@@ -259,6 +284,8 @@ def create_app() -> FastAPI:
                 "resumen": resumen,
                 "worker_resumen": worker_resumen,
                 "nombre_pila": nombre_pila,
+                "sucursales_activas": sucursales_activas,
+                "actividad_sucursal_id": actividad_sucursal_id,
             },
         )
 
