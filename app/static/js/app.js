@@ -193,7 +193,10 @@
 
         // Tables with real column structure restack into cards on phones.
         // Two-column key/value tables already read fine as they are.
-        if (columnCount >= 3) {
+        // data-table-mode="grid" opts out: una grilla de captura (el arqueo de
+        // denominaciones) debe seguir siendo grilla en el teléfono, no un
+        // acordeón de tarjetas.
+        if (columnCount >= 3 && table.dataset.tableMode !== 'grid') {
             var shell = table.closest('.table-responsive');
             if (shell) shell.classList.add('s-table-cards');
             table.classList.add('s-table-sticky');

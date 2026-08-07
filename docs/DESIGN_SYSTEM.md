@@ -286,6 +286,10 @@ Controls you have:
 
 - `data-title-col` on a `<th>` — pick the column that names the record. Without
   it, the first column that isn't an id is chosen.
+- `data-table-mode="grid"` on the `<table>` — opt out of the phone card
+  restack. For capture grids (the arqueo's denomination count) where one row
+  per denomination must stay one row; pair it with mobile CSS that gives the
+  inputs a 44px thumb target (see `.s-denom-table`).
 - `data-mobile-primary` on a `<th>` — the columns a phone user came for. Marked
   columns always show in card mode; the rest fold behind "Ver N campos más".
   Without any marks the first four columns show, which is the wrong guess for a

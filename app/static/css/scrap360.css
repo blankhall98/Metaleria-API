@@ -3125,6 +3125,28 @@ button.s-method-pill:hover { filter: brightness(0.97); }
    Was style="max-width: 7rem" repeated on six table rows. */
 .s-input-qty { max-width: 7rem; }
 
+/* --- Arqueo de denominaciones en el teléfono ----------------------------
+   Contar efectivo con el teléfono en la mano es EL caso de uso del corte.
+   La tabla se excluye del restack (data-table-mode="grid") y conserva sus
+   tres columnas — una fila por denominación —, con el campo de cantidad a
+   altura de pulgar. */
+@media (max-width: 767.98px) {
+    .s-denom-table { table-layout: fixed; }
+    .s-denom-table th:first-child,
+    .s-denom-table td:first-child { width: 34%; }
+    .s-denom-table th,
+    .s-denom-table td {
+        padding-inline: var(--s-2);
+        vertical-align: middle;
+    }
+    .s-denom-table .s-input-qty {
+        max-width: none;
+        width: 100%;
+        min-height: var(--s-control-h-lg);
+        font-size: var(--s-fs-md);
+    }
+}
+
 /* ==========================================================================
    22. MEDIA: EVIDENCE CARDS, THUMBNAILS AND THE PICKER SHEET
    --------------------------------------------------------------------------
