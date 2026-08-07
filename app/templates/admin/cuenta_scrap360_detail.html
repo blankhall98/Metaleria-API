@@ -7,14 +7,15 @@
 
 {% call page_header(cuenta.nombre, eyebrow='Finanzas',
                     sub=(cuenta.tipo|capitalize) ~ ' · ' ~ sucursales_label) %}
-    <a href="/web/admin/cuentas-scrap360" class="btn btn-outline-secondary btn-sm">
-        {{ icon('arrow-left', 's-icon--sm') }} Volver
-    </a>
+    {# Orden canónico del design system: exportaciones → Volver → primaria. #}
     <a href="/web/admin/cuentas-scrap360/{{ cuenta.id }}/estado?format=pdf" class="btn btn-outline-secondary btn-sm">
         {{ icon('print', 's-icon--sm') }} Exportar PDF
     </a>
     <a href="/web/admin/cuentas-scrap360/{{ cuenta.id }}/estado?format=excel" class="btn btn-outline-secondary btn-sm">
         {{ icon('download', 's-icon--sm') }} Exportar Excel
+    </a>
+    <a href="/web/admin/cuentas-scrap360" class="btn btn-outline-secondary btn-sm">
+        {{ icon('arrow-left', 's-icon--sm') }} Volver
     </a>
     <a href="/web/admin/cuentas-scrap360/{{ cuenta.id }}/editar" class="btn btn-outline-primary btn-sm">
         {{ icon('edit', 's-icon--sm') }} Editar
@@ -41,10 +42,20 @@
     esta cuenta hasta que registres el pago real desde la nota.
 </p>
 
+{# La bitácora es la protagonista; la captura manual se pliega y solo llega
+   abierta cuando hay retroalimentación de un intento. #}
+{% set ajuste_open = ajuste_ok or error or form_ajuste_monto %}
 <div class="card mb-3">
     <div class="card-body">
-        <h2 class="s-card-title">Movimiento manual</h2>
-        <p class="s-card-sub mb-3">Registra depósitos, cargos, comisiones o ajustes sin tocar notas existentes.</p>
+        <button type="button" class="s-collapse__trigger" data-bs-toggle="collapse"
+                data-bs-target="#movManualBody" aria-expanded="{{ 'true' if ajuste_open else 'false' }}">
+            <div>
+                <h2 class="s-card-title mb-1">Movimiento manual</h2>
+                <p class="s-card-sub mb-0">Registra depósitos, cargos, comisiones o ajustes sin tocar notas existentes.</p>
+            </div>
+            {{ icon('chevron-down', 's-collapse__chevron') }}
+        </button>
+        <div id="movManualBody" class="collapse{{ ' show' if ajuste_open }} s-collapse__body">
         <form method="post" action="/web/admin/cuentas-scrap360/{{ cuenta.id }}/ajuste">
             <div class="s-form-grid">
             <div>
@@ -76,6 +87,7 @@
                 <button class="btn btn-primary">Guardar movimiento</button>
             </div>
         </form>
+        </div>
     </div>
 </div>
 

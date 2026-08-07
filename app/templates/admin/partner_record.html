@@ -9,9 +9,7 @@
 
 {% call page_header(partner_label ~ ' · ' ~ partner.nombre_completo, eyebrow='Relaciones',
                     sub=(record_scope_label if unified_enabled else tipo_operacion_label)) %}
-    <a href="/web/admin/{{ partner_base }}" class="btn btn-outline-secondary btn-sm">
-        {{ icon('arrow-left', 's-icon--sm') }} Volver
-    </a>
+    {# Orden canónico: exportaciones y secundarias → Volver → primaria. #}
     <a href="/web/admin/{{ partner_base }}/{{ partner.id }}/estado-cuenta?format=pdf" class="btn btn-outline-secondary btn-sm">
         {{ icon('print', 's-icon--sm') }} Exportar PDF
     </a>
@@ -19,10 +17,13 @@
         {{ icon('download', 's-icon--sm') }} Exportar Excel
     </a>
     {% if can_view_partner_accounts %}
-        <a href="/web/admin/cuentas?owner_key={{ owner_key }}" class="btn btn-outline-primary btn-sm">
+        <a href="/web/admin/cuentas?owner_key={{ owner_key }}" class="btn btn-outline-secondary btn-sm">
             {{ icon('bank', 's-icon--sm') }} Cuentas
         </a>
     {% endif %}
+    <a href="/web/admin/{{ partner_base }}" class="btn btn-outline-secondary btn-sm">
+        {{ icon('arrow-left', 's-icon--sm') }} Volver
+    </a>
     {% if can_manage_partner and not partner_is_internal and not linked_partner and partner_base != 'proveedores' %}
         {% if partner_base == 'clientes' %}
             <form method="post" action="/web/admin/clientes/{{ partner.id }}/crear-proveedor" class="d-inline">
@@ -54,6 +55,8 @@
         </div>
     {% endif %}
 
+    {# El índice sigue el orden real de la página: el estado de cuenta es el
+       corazón del expediente y va antes que las asistencias. #}
     {% set _secciones = [('#partner-summary', 'Resumen'), ('#partner-ledger', 'Estado de cuenta')]
         + ([('#partner-attendance', 'Asistencias')] if attendance_enabled else [])
         + [('#partner-notes', 'Notas'), ('#partner-payments', 'Pagos')] %}
@@ -162,6 +165,85 @@
         </div>
     </div>
 
+    <div class="card mb-3" id="partner-ledger">
+        <div class="card-body">
+            <div class="s-card-head">
+                <div>
+                    <h2 class="s-card-title">{{ 'Estado de cuenta unificado' if unified_enabled else 'Estado de cuenta' }}</h2>
+                    <p class="s-card-sub">
+                        {% if orden_historial == 'recientes' %}
+                            Movimientos con lo más reciente arriba; el saldo acumulado sigue siendo el cronológico.
+                        {% else %}
+                            Movimientos cronológicos con saldo acumulado.
+                        {% endif %}
+                        {{ ledger_saldo_help }}
+                    </p>
+                </div>
+                <div class="text-muted small">
+                    {{ ledger_saldo_label }}: {{ money(ledger_final) }}
+                </div>
+            </div>
+
+            <nav class="s-segmented mb-3" aria-label="Orden del estado de cuenta">
+                <a href="{{ orden_historial_links.recientes }}#partner-ledger"
+                   class="s-segmented__item {{ 'active' if orden_historial == 'recientes' }}">
+                    Recientes primero
+                </a>
+                <a href="{{ orden_historial_links.cronologico }}#partner-ledger"
+                   class="s-segmented__item {{ 'active' if orden_historial == 'cronologico' }}">
+                    Cronológico
+                </a>
+            </nav>
+
+            {% if ledger_rows|length == 0 %}
+                {{ empty('Sin movimientos',
+                         'Aún no hay notas aprobadas, pagos ni ajustes para generar el estado de cuenta.',
+                         'ledger') }}
+            {% else %}
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead>
+                        <tr>
+                            <th data-mobile-primary>Fecha</th>
+                            <th data-title-col data-mobile-primary>Movimiento</th>
+                            <th data-mobile-primary>Nota</th>
+                            <th>Método</th>
+                            <th>Cuenta</th>
+                            <th class="text-end">Cargo</th>
+                            <th class="text-end">Abono</th>
+                            <th class="text-end" data-mobile-primary>Saldo</th>
+                            <th>Comentario</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for row in ledger_rows %}
+                            <tr>
+                                <td>{{ row.fecha|datetime_local if row.fecha else "—" }}</td>
+                                <td>{{ row.tipo }}</td>
+                                <td>
+                                    {% if row.nota_id %}
+                                        <span class="fw-semibold">{{ row.folio }}</span>
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ row.metodo|capitalize if row.metodo and row.metodo != '-' else '—' }}</td>
+                                <td>{{ row.cuenta or "—" }}</td>
+                                <td class="text-end">{{ money(row.cargo) }}</td>
+                                <td class="text-end">{{ money(row.abono) }}</td>
+                                <td class="text-end">{{ money(row.saldo) }}</td>
+                                <td class="text-muted small">{{ row.comentario or "—" }}</td>
+                            </tr>
+                        {% else %}
+                            {{ empty_row(9, 'Sin movimientos en el estado de cuenta.') }}
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
     {% if attendance_enabled %}
         <div class="card mb-3" id="partner-attendance">
             <div class="card-body">
@@ -259,85 +341,6 @@
             </div>
         </div>
     {% endif %}
-
-    <div class="card mb-3" id="partner-ledger">
-        <div class="card-body">
-            <div class="s-card-head">
-                <div>
-                    <h2 class="s-card-title">{{ 'Estado de cuenta unificado' if unified_enabled else 'Estado de cuenta' }}</h2>
-                    <p class="s-card-sub">
-                        {% if orden_historial == 'recientes' %}
-                            Movimientos con lo más reciente arriba; el saldo acumulado sigue siendo el cronológico.
-                        {% else %}
-                            Movimientos cronológicos con saldo acumulado.
-                        {% endif %}
-                        {{ ledger_saldo_help }}
-                    </p>
-                </div>
-                <div class="text-muted small">
-                    {{ ledger_saldo_label }}: {{ money(ledger_final) }}
-                </div>
-            </div>
-
-            <nav class="s-segmented mb-3" aria-label="Orden del estado de cuenta">
-                <a href="{{ orden_historial_links.recientes }}#partner-ledger"
-                   class="s-segmented__item {{ 'active' if orden_historial == 'recientes' }}">
-                    Recientes primero
-                </a>
-                <a href="{{ orden_historial_links.cronologico }}#partner-ledger"
-                   class="s-segmented__item {{ 'active' if orden_historial == 'cronologico' }}">
-                    Cronológico
-                </a>
-            </nav>
-
-            {% if ledger_rows|length == 0 %}
-                {{ empty('Sin movimientos',
-                         'Aún no hay notas aprobadas, pagos ni ajustes para generar el estado de cuenta.',
-                         'ledger') }}
-            {% else %}
-                <div class="table-responsive">
-                    <table class="table table-hover align-middle">
-                        <thead>
-                        <tr>
-                            <th data-mobile-primary>Fecha</th>
-                            <th data-title-col data-mobile-primary>Movimiento</th>
-                            <th data-mobile-primary>Nota</th>
-                            <th>Método</th>
-                            <th>Cuenta</th>
-                            <th class="text-end">Cargo</th>
-                            <th class="text-end">Abono</th>
-                            <th class="text-end" data-mobile-primary>Saldo</th>
-                            <th>Comentario</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        {% for row in ledger_rows %}
-                            <tr>
-                                <td>{{ row.fecha|datetime_local if row.fecha else "—" }}</td>
-                                <td>{{ row.tipo }}</td>
-                                <td>
-                                    {% if row.nota_id %}
-                                        <span class="fw-semibold">{{ row.folio }}</span>
-                                    {% else %}
-                                        <span class="text-muted">—</span>
-                                    {% endif %}
-                                </td>
-                                <td>{{ row.metodo|capitalize if row.metodo and row.metodo != '-' else '—' }}</td>
-                                <td>{{ row.cuenta or "—" }}</td>
-                                <td class="text-end">{{ money(row.cargo) }}</td>
-                                <td class="text-end">{{ money(row.abono) }}</td>
-                                <td class="text-end">{{ money(row.saldo) }}</td>
-                                <td class="text-muted small">{{ row.comentario or "—" }}</td>
-                            </tr>
-                        {% else %}
-                            {{ empty_row(9, 'Sin movimientos en el estado de cuenta.') }}
-                        {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            {% endif %}
-        </div>
-    </div>
 
     {% if can_manage_partner %}
         <div class="card mb-3" id="partner-ajuste">
