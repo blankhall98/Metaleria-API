@@ -248,6 +248,13 @@ label plus the value colour — never a filled background, never a spine. Two pe
 row on phones. **Never repeat a figure that is already visible elsewhere on the
 same page.**
 
+Column count is **balanced automatically**: `app.js` counts the band's cells
+and picks the layout that leaves no widow (7 → 4+3, 6 → 3+3, 5 → 3+2) via
+`data-cols`; auto-fit never decides. A screen that wants a specific
+composition declares it with `s-stats--fixed-4` / `s-stats--fixed-3` (the home
+does: four counts above, three wide money readings below). Medium screens drop
+to two columns, phones always show two.
+
 ### Tables
 
 ```jinja

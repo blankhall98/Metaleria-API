@@ -1395,18 +1395,27 @@ body.drawer-open { overflow: hidden; }
 .s-drill:hover { color: var(--s-p600); }
 .s-drill:hover .s-zero { color: var(--s-p600); }
 
-/* Bandas con recuento fijo de columnas para el inicio: el auto-fit amontonaba
-   siete lecturas en celdas angostas de etiqueta partida. Cuatro conteos
-   arriba, tres lecturas anchas abajo; en pantallas medianas bajan a dos. */
-.s-stats--fixed-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.s-stats--fixed-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* Bandas con recuento fijo de columnas: el auto-fit amontonaba lecturas en
+   celdas angostas de etiqueta partida. app.js calcula el recuento balanceado
+   de cada banda (data-cols); las clases --fixed-* lo declaran a mano cuando
+   una pantalla quiere una composición específica (el inicio: 4 arriba, 3
+   abajo). En pantallas medianas todo baja a dos columnas. */
+.s-stats--fixed-4,
+.s-stats[data-cols="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.s-stats--fixed-3,
+.s-stats[data-cols="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.s-stats[data-cols="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.s-stats[data-cols="1"] { grid-template-columns: minmax(0, 1fr); }
 @media (max-width: 991.98px) {
     .s-stats--fixed-4,
-    .s-stats--fixed-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .s-stats--fixed-3,
+    .s-stats[data-cols="3"],
+    .s-stats[data-cols="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 575.98px) {
-    .s-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .s-stats,
+    .s-stats[data-cols] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .s-stat { padding: var(--s-3) var(--s-4); }
     .s-stat__value { font-size: var(--s-fs-xl); }
     /* Con un número impar de lecturas, la última llena el renglón en vez de

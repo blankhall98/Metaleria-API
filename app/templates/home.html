@@ -180,7 +180,7 @@
     {% if resumen and resumen.actividad is defined %}
         <div class="card mb-3">
             <div class="card-body">
-                <div class="d-flex flex-wrap align-items-center gap-2">
+                <div class="d-flex flex-wrap align-items-center gap-3">
                     <button type="button" class="s-collapse__trigger s-grow" data-bs-toggle="collapse"
                             data-bs-target="#actividadRecienteBody" aria-expanded="true">
                         <div>
@@ -189,7 +189,7 @@
                                 {% if actividad_sucursal_id %}Las últimas notas de la sucursal elegida.{% else %}Las últimas notas capturadas en cualquier sucursal.{% endif %}
                             </p>
                         </div>
-                        {{ icon('chevron-down', 's-collapse__chevron') }}
+                        {{ icon('chevron-down', 's-collapse__chevron me-2') }}
                     </button>
                     {% if sucursales_activas and sucursales_activas|length > 1 %}
                         <form method="get" action="/web" class="d-flex align-items-center gap-2 mb-0">

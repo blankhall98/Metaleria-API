@@ -78,6 +78,27 @@
         });
     }
 
+    /* ----------------------------------------------------------------------
+       Bandas de indicadores
+       --------------------------------------------------------------------------
+       El auto-fit amontonaba las lecturas en celdas angostas con etiquetas
+       partidas. Cada banda recibe un número fijo de columnas calculado para
+       que las filas queden balanceadas (sin celdas viudas): 7 → 4+3, 6 → 3+3,
+       5 → 3+2. El CSS aplica el recuento por breakpoint vía data-cols. */
+    function initStatBands() {
+        document.querySelectorAll('.s-stats').forEach(function (band) {
+            if (band.dataset.cols || /s-stats--fixed/.test(band.className)) return;
+            var n = band.children.length;
+            if (!n) return;
+            var cols;
+            if (n <= 4) cols = n;
+            else if (n % 4 === 0) cols = 4;
+            else if (n % 3 === 0) cols = 3;
+            else cols = (n % 4) >= (n % 3) ? 4 : 3;
+            band.dataset.cols = String(cols);
+        });
+    }
+
     /* Grupos colapsables de la barra lateral. El estado vive en localStorage;
        el grupo que contiene la página activa se abre siempre, aunque el
        usuario lo haya plegado en otra visita. */
@@ -548,6 +569,7 @@
         } catch (e) { /* navegadores sin addEventListener en MediaQueryList */ }
         initSidebarToggle();
         initNavGroups();
+        initStatBands();
         initUserMenu();
         ensureTableShells();
         annotateTables();
