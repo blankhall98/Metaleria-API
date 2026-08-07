@@ -499,7 +499,17 @@ def build_effective_note_balance_map(
     una nunca alcanzaba las notas de la otra). Dentro de un par todo se lleva a
     la vista proveedor (positivo = por pagar al socio): las notas usan el signo
     de proveedor y el delta del cliente entra negado.
+
+    El neteo es un hecho GLOBAL del socio, no de la vista que lo consulta
+    (segunda mitad del punto 7): el crédito no se recorta por sucursal y el
+    reparto FIFO corre sobre todas las notas aprobadas del grupo — aunque la
+    vista pida un subconjunto — para que una nota neteada esté en ceros en
+    cualquier pantalla y con cualquier filtro. `allowed_suc_ids` y
+    `sucursal_id` se conservan en la firma por compatibilidad, pero ya no
+    restringen el cálculo.
     """
+    del allowed_suc_ids, sucursal_id  # el saldo efectivo no depende de la vista
+
     balances: dict[int, dict[str, Decimal | bool]] = {}
     approved_notes: list[Nota] = []
     partner_keys: set[tuple[str, int]] = set()
@@ -508,11 +518,11 @@ def build_effective_note_balance_map(
         [nota.id for nota in notas if nota.id],
     )
 
-    for nota in notas:
+    def register_note(nota: Nota, adjustment_map: dict[int, Decimal]) -> None:
         raw_without_adjustment = raw_note_payment_balance(nota)
         raw = raw_note_payment_balance(
             nota,
-            note_adjustment_delta=note_adjustment_totals.get(nota.id, Decimal("0")),
+            note_adjustment_delta=adjustment_map.get(nota.id, Decimal("0")),
         )
         balances[nota.id] = {
             **raw,
@@ -523,6 +533,9 @@ def build_effective_note_balance_map(
             "saldo_cubierto_por_ajuste": False,
             "saldo_parcialmente_cubierto": False,
         }
+
+    for nota in notas:
+        register_note(nota, note_adjustment_totals)
         if nota.estado != NotaEstado.aprobada:
             continue
         partner_type, partner_id = _nota_partner_key(nota)
@@ -542,12 +555,7 @@ def build_effective_note_balance_map(
         elif ptype == "cliente" and pid in link_by_cli:
             extended_keys.add(("proveedor", link_by_cli[pid]))
 
-    adjustment_totals = get_partner_adjustment_totals_map(
-        db,
-        extended_keys,
-        allowed_suc_ids=allowed_suc_ids,
-        sucursal_id=sucursal_id,
-    )
+    adjustment_totals = get_partner_adjustment_totals_map(db, extended_keys)
 
     def canonical_group(partner_type: str, partner_id: int) -> tuple:
         if partner_type == "proveedor" and partner_id in link_by_prov:
@@ -561,6 +569,56 @@ def build_effective_note_balance_map(
         partner_type, partner_id = _nota_partner_key(nota)
         if partner_type and partner_id:
             grouped_notes[canonical_group(partner_type, partner_id)].append(nota)
+
+    # Para los grupos con crédito, el FIFO necesita el conjunto COMPLETO de
+    # notas aprobadas del socio, no solo las que pidió la vista: si faltan,
+    # se cargan aquí y se reparten junto con las demás. Sus balances viajan
+    # en el resultado (los consumidores leen por id de nota).
+    creditor_prov_ids: set[int] = set()
+    creditor_cli_ids: set[int] = set()
+    for group_key in grouped_notes:
+        if group_key[0] == "par":
+            _, prov_id, cli_id = group_key
+            delta = (
+                (adjustment_totals.get(("proveedor", prov_id)) or Decimal("0"))
+                - (adjustment_totals.get(("cliente", cli_id)) or Decimal("0"))
+            )
+            if delta != Decimal("0"):
+                creditor_prov_ids.add(prov_id)
+                creditor_cli_ids.add(cli_id)
+        else:
+            delta = adjustment_totals.get(group_key) or Decimal("0")
+            if delta != Decimal("0"):
+                if group_key[0] == "proveedor":
+                    creditor_prov_ids.add(group_key[1])
+                else:
+                    creditor_cli_ids.add(group_key[1])
+
+    if creditor_prov_ids or creditor_cli_ids:
+        known_ids = {nota.id for nota in notas if nota.id}
+        conditions = []
+        if creditor_prov_ids:
+            conditions.append(Nota.proveedor_id.in_(sorted(creditor_prov_ids)))
+        if creditor_cli_ids:
+            conditions.append(Nota.cliente_id.in_(sorted(creditor_cli_ids)))
+        extra_query = db.query(Nota).filter(
+            Nota.estado == NotaEstado.aprobada,
+            Nota.tipo_operacion.in_([TipoOperacion.compra, TipoOperacion.venta]),
+            or_(*conditions),
+        )
+        if known_ids:
+            extra_query = extra_query.filter(Nota.id.notin_(known_ids))
+        extra_notes = extra_query.all()
+        if extra_notes:
+            extra_adjustments = _get_note_balance_adjustment_totals_map(
+                db,
+                [nota.id for nota in extra_notes if nota.id],
+            )
+            for nota in extra_notes:
+                register_note(nota, extra_adjustments)
+                partner_type, partner_id = _nota_partner_key(nota)
+                if partner_type and partner_id:
+                    grouped_notes[canonical_group(partner_type, partner_id)].append(nota)
 
     for group_key, partner_notes in grouped_notes.items():
         if group_key[0] == "par":

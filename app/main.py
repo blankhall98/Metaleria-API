@@ -77,6 +77,17 @@ def _home_resumen(
         notas_aprobadas = db.query(Nota).filter(Nota.estado == NotaEstado.aprobada).all()
         balances = note_service.build_effective_note_balance_map(db, notas_aprobadas)
 
+        # Punto 8 (fase 2): las notas de un par cliente↔proveedor vinculado
+        # contribuyen al saldo de CLIENTES con su signo (las compras al par
+        # restan de por cobrar), nunca al bucket de proveedores.
+        par_keys: set[tuple[str, int]] = set()
+        for nota in notas_aprobadas:
+            if nota.proveedor_id:
+                par_keys.add(("proveedor", nota.proveedor_id))
+            if nota.cliente_id:
+                par_keys.add(("cliente", nota.cliente_id))
+        link_by_prov, link_by_cli = note_service._linked_partner_maps(db, par_keys)
+
         por_pagar = Decimal("0")
         por_cobrar = Decimal("0")
         vencidas = 0
@@ -86,7 +97,16 @@ def _home_resumen(
             pendiente = Decimal(str(balance.get("saldo_pendiente") or 0))
             if pendiente <= Decimal("0"):
                 continue
-            if nota.tipo_operacion == TipoOperacion.compra:
+            es_de_par = (
+                (nota.proveedor_id and nota.proveedor_id in link_by_prov)
+                or (nota.cliente_id and nota.cliente_id in link_by_cli)
+            )
+            if es_de_par:
+                if nota.tipo_operacion == TipoOperacion.venta:
+                    por_cobrar += pendiente
+                elif nota.tipo_operacion == TipoOperacion.compra:
+                    por_cobrar -= pendiente
+            elif nota.tipo_operacion == TipoOperacion.compra:
                 por_pagar += pendiente
             elif nota.tipo_operacion == TipoOperacion.venta:
                 por_cobrar += pendiente

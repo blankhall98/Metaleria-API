@@ -159,10 +159,12 @@ def _classify_partner_group_balances(
         has_cliente = bool(meta.get("has_cliente", group_key[0] == "cliente"))
 
         if has_proveedor and has_cliente:
-            if balance > Decimal("0"):
-                totals["total_por_pagar_proveedores"] += balance
-            elif balance < Decimal("0"):
-                totals["total_por_cobrar_clientes"] += -balance
+            # Punto 8 (fase 2): el par cliente↔proveedor vive SIEMPRE en el
+            # bucket de clientes, con su signo. "Un cliente me debe 5,000,
+            # le compro 15,000: esos −10,000 restan del saldo de clientes;
+            # no aparecen como deudor en proveedores." El mapa viene en
+            # vista proveedor (positivo = por pagar), así que se niega.
+            totals["total_por_cobrar_clientes"] += -balance
             continue
 
         if has_proveedor:

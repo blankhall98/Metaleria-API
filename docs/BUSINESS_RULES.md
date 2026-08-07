@@ -120,3 +120,30 @@ Partner-level grouping (contabilidad/capital/saldos reports): linked proveedor+c
 Movement sign convention at report time (`_movimiento_monto_firmado`): **compra negative, venta positive**; `pago` follows the note's operation; `reverso*` flips; `restauracion*` restores.
 
 All PDFs are hand-rolled (latin-1, `errors="ignore"` — chars outside latin-1 silently dropped); Excel exports are SpreadsheetML 2003 XML with a `.xls` extension (Excel opens with a format warning).
+
+## 9. Effective note balance and linked-pair rules (fase 2, puntos 7 y 8)
+
+**The effective balance of a note is a GLOBAL fact** — the same in every view,
+with every filter. `note_service.build_effective_note_balance_map` is the only
+engine: canonical formula (total − pagado + note adjustments) plus the FIFO
+credit from `AjusteSaldoPartner`. Two invariants (guarded by
+`scripts/test_neteo.py`, run `python -m scripts.test_neteo`):
+
+1. **Partner credit is never filtered by sucursal.** A neteo adjustment
+   belongs to the partner, not to the branch where it was captured; filtering
+   the notes list by sucursal must not resurrect settled notes.
+2. **FIFO runs over ALL the partner's approved notes**, even when the view
+   requests a subset — the engine fetches the missing ones so the credit is
+   assigned identically everywhere.
+
+**A linked cliente↔proveedor pair nets as ONE group** (proveedor view:
+positive = payable to the partner; the cliente delta enters negated) and its
+net balance is **always classified in the CLIENTES bucket, with its sign**
+(`_classify_partner_group_balances`, single copy in
+`contabilidad_report_service`). The client's canonical example: a cliente owes
+$5,000, we buy $15,000 from them → those −$10,000 SUBTRACT from the clientes
+balance; they never appear as proveedor debt. Non-linked partners keep their
+own bucket in both signs (a proveedor whose balance flips shows as "a favor de
+la empresa", never jumps to clientes). Consumers of this rule: contabilidad
+(page + export), reporte de saldos (the pair appears ONLY in the clientes
+table), capital real, and the home dashboard.

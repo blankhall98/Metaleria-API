@@ -477,45 +477,10 @@ def _build_partner_balance_group_metadata(
     return metadata
 
 
-def _classify_partner_group_balances(
-    partner_group_balances: dict[tuple[str, int], Decimal],
-    *,
-    group_metadata: dict[tuple[str, int], dict[str, bool]] | None = None,
-) -> dict[str, Decimal]:
-    totals = {
-        "total_por_cobrar_clientes": Decimal("0"),
-        "saldo_favor_clientes": Decimal("0"),
-        "total_por_pagar_proveedores": Decimal("0"),
-        "saldo_favor_empresa": Decimal("0"),
-    }
-    group_metadata = group_metadata or {}
-
-    for group_key, balance in partner_group_balances.items():
-        meta = group_metadata.get(group_key, {})
-        has_proveedor = bool(meta.get("has_proveedor", group_key[0] == "proveedor"))
-        has_cliente = bool(meta.get("has_cliente", group_key[0] == "cliente"))
-
-        if has_proveedor and has_cliente:
-            if balance > Decimal("0"):
-                totals["total_por_pagar_proveedores"] += balance
-            elif balance < Decimal("0"):
-                totals["total_por_cobrar_clientes"] += -balance
-            continue
-
-        if has_proveedor:
-            if balance > Decimal("0"):
-                totals["total_por_pagar_proveedores"] += balance
-            elif balance < Decimal("0"):
-                totals["saldo_favor_empresa"] += -balance
-            continue
-
-        if has_cliente:
-            if balance < Decimal("0"):
-                totals["total_por_cobrar_clientes"] += -balance
-            elif balance > Decimal("0"):
-                totals["saldo_favor_clientes"] += balance
-
-    return totals
+# Punto 8 (fase 2): una sola clasificación de saldos para todo el sistema.
+# La copia local divergía de la del reporte; la regla del par vinculado
+# ("siempre en el bucket de clientes, con signo") vive en el service.
+_classify_partner_group_balances = contabilidad_report_service._classify_partner_group_balances
 
 
 # Punto 7 (fase 2): el motor de neteo vive ahora en note_service, consciente
@@ -3052,10 +3017,45 @@ def _build_capital_real_context(
         suc_name = nombre.replace("Sucursal ", "", 1).strip()
         return suc_name in sucursal_names
 
-    total_por_cobrar_clientes = Decimal("0")
-    saldo_favor_clientes = Decimal("0")
-    total_por_pagar_proveedores = Decimal("0")
-    saldo_favor_empresa = Decimal("0")
+    # Punto 8 (fase 2): los saldos del capital se agrupan por socio — y el par
+    # cliente↔proveedor vinculado como un solo grupo — y se clasifican con la
+    # regla única del sistema (el par vive en el bucket de clientes con su
+    # signo). Antes cada nota y cada ajuste se clasificaban sueltos por tipo,
+    # así que el par quedaba repartido entre ambos buckets.
+    ajustes_query = db.query(AjusteSaldoPartner)
+    if allowed_suc_ids is not None:
+        ajustes_query = ajustes_query.filter(AjusteSaldoPartner.sucursal_id.in_(allowed_suc_ids))
+    ajustes = ajustes_query.all()
+
+    capital_keys: set[tuple[str, int]] = set()
+    for nota in notas:
+        partner_kind, partner_id = _nota_partner_key(nota)
+        if partner_kind and partner_id:
+            capital_keys.add((partner_kind, partner_id))
+    for ajuste in ajustes:
+        if ajuste.partner_type and ajuste.partner_id:
+            capital_keys.add((ajuste.partner_type, ajuste.partner_id))
+    link_by_prov, link_by_cli = note_service._linked_partner_maps(db, capital_keys)
+
+    def _capital_group(partner_type: str, partner_id: int) -> tuple:
+        if partner_type == "proveedor" and partner_id in link_by_prov:
+            return ("par", partner_id, link_by_prov[partner_id])
+        if partner_type == "cliente" and partner_id in link_by_cli:
+            return ("par", link_by_cli[partner_id], partner_id)
+        return (partner_type, partner_id)
+
+    group_balances: dict[tuple, Decimal] = defaultdict(lambda: Decimal("0"))
+    group_meta: dict[tuple, dict[str, bool]] = {}
+
+    def _capital_meta(key: tuple, partner_type: str) -> None:
+        meta = group_meta.setdefault(key, {"has_proveedor": False, "has_cliente": False})
+        if key[0] == "par":
+            meta["has_proveedor"] = True
+            meta["has_cliente"] = True
+        elif partner_type == "proveedor":
+            meta["has_proveedor"] = True
+        else:
+            meta["has_cliente"] = True
 
     for nota in notas:
         note_delta = Decimal(str(note_adjustment_totals.get(nota.id, Decimal("0")) or 0))
@@ -3064,6 +3064,8 @@ def _build_capital_real_context(
         saldo = total - pagado + note_delta
 
         partner_kind, partner_id = _nota_partner_key(nota)
+        if not partner_kind or not partner_id:
+            continue
         if partner_kind == "cliente":
             nombre = clientes_map.get(partner_id)
         else:
@@ -3071,39 +3073,36 @@ def _build_capital_real_context(
         if _is_internal_partner(nombre):
             continue
 
-        if nota.tipo_operacion == TipoOperacion.venta:
-            if saldo >= Decimal("0"):
-                total_por_cobrar_clientes += saldo
-            else:
-                saldo_favor_clientes += -saldo
-        elif nota.tipo_operacion == TipoOperacion.compra:
-            if saldo >= Decimal("0"):
-                total_por_pagar_proveedores += saldo
-            else:
-                saldo_favor_empresa += -saldo
+        # Vista proveedor: compras suman (por pagar), ventas restan.
+        sign = Decimal("1") if nota.tipo_operacion == TipoOperacion.compra else Decimal("-1")
+        key = _capital_group(partner_kind, partner_id)
+        group_balances[key] += sign * saldo
+        _capital_meta(key, partner_kind)
 
-    ajustes_query = db.query(AjusteSaldoPartner)
-    if allowed_suc_ids is not None:
-        ajustes_query = ajustes_query.filter(AjusteSaldoPartner.sucursal_id.in_(allowed_suc_ids))
-    ajustes = ajustes_query.all()
     for ajuste in ajustes:
         delta = Decimal(str(ajuste.monto or 0))
         if ajuste.partner_type == "cliente":
             nombre = clientes_map.get(ajuste.partner_id)
             if _is_internal_partner(nombre):
                 continue
-            if delta >= Decimal("0"):
-                total_por_cobrar_clientes += delta
-            else:
-                saldo_favor_clientes += -delta
+            key = _capital_group("cliente", ajuste.partner_id)
+            group_balances[key] -= delta
+            _capital_meta(key, "cliente")
         elif ajuste.partner_type == "proveedor":
             nombre = proveedores_map.get(ajuste.partner_id)
             if _is_internal_partner(nombre):
                 continue
-            if delta >= Decimal("0"):
-                total_por_pagar_proveedores += delta
-            else:
-                saldo_favor_empresa += -delta
+            key = _capital_group("proveedor", ajuste.partner_id)
+            group_balances[key] += delta
+            _capital_meta(key, "proveedor")
+
+    _capital_totals = _classify_partner_group_balances(
+        group_balances, group_metadata=group_meta
+    )
+    total_por_cobrar_clientes = _capital_totals["total_por_cobrar_clientes"]
+    saldo_favor_clientes = _capital_totals["saldo_favor_clientes"]
+    total_por_pagar_proveedores = _capital_totals["total_por_pagar_proveedores"]
+    saldo_favor_empresa = _capital_totals["saldo_favor_empresa"]
 
     comisionarios_query = db.query(ComisionarioNota).filter(
         ComisionarioNota.estado == ComisionarioNotaEstado.aprobada
@@ -16293,6 +16292,12 @@ async def reporte_saldos(
     proveedores_rows: list[dict] = []
     for proveedor in proveedores_q:
         if _is_internal_partner_name(db, proveedor.nombre_completo):
+            continue
+        # Punto 8 (fase 2): el par vinculado vive en la tabla de clientes con
+        # su saldo neto y su signo. Emitirlo también aquí lo contaba doble en
+        # los totales globales y lo mostraba "como proveedor", que es lo que
+        # la clienta rechaza.
+        if _get_formally_linked_cliente(db, proveedor):
             continue
         bundle = _collect_proveedor_sales_bundle(
             db, proveedor=proveedor, allowed_suc_ids=allowed_suc_ids, sucursal_id=sucursal_id

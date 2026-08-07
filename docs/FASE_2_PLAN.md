@@ -207,7 +207,7 @@ pantalla sobre producción. Qué respondió, qué agregó y qué cambió:
 | 12 (deshacer) | 🟡 Parcial | Pagos de nota, ajustes de nota, devoluciones y conversiones ya tienen reversa; faltan `AjusteSaldoPartner`, `ComisionarioPago`, ajustes de CuentaScrap360 y gastos/movimientos del corte |
 | 6 (FIFO comisionista) | ✅ En prod | `pay_comisionario_fifo` implementado y cableado a `POST /comisionarios/{id}/pago`; verificado 07-ago |
 | 1, orden del récord | ✅ En prod (07-ago, Ronda A) | Existencias alineadas a la izquierda ("stock inicial" ya no existía en ninguna vista); récord en el orden pedido: Resumen → Ajuste manual → Estado de cuenta → Notas → Pagos → Asistencias |
-| 7, 8 (neteo y vinculados) | 🔴 Pendiente | El mapeo de §4 sigue vigente; es el dolor #1 visible en prod (232 "vencidas" infladas) |
+| 7, 8 (neteo y vinculados) | ✅ En prod (07-ago, Ronda B) | El saldo efectivo es global: el crédito ya no se recorta por sucursal y el FIFO corre sobre todas las notas del socio (causa de los "pendientes fantasma" al filtrar). El par vinculado clasifica SIEMPRE en el bucket de clientes con signo (ejemplo −10,000 de la clienta) en contabilidad, reporte de saldos (sin doble conteo), capital y home. Guardado por `scripts/test_neteo.py` |
 | 5 (archivar sucursales) | 🔴 Pendiente | Mapeado en §4 |
 | 2, 3, 4 (módulos) | 🔓 Desbloqueados | Los 4 Excel ya están en `docs/excel_ejemplos/` — el reloj de entrega corre |
 
