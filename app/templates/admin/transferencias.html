@@ -114,6 +114,7 @@
                                                 <option value="{{ m.id }}" {% if row.material_id and row.material_id|int == m.id %}selected{% endif %}>{{ m.nombre }}</option>
                                             {% endfor %}
                                         </select>
+                                        <div class="transfer-stock text-muted small mt-1"></div>
                                     </td>
                                     <td>
                                         <select class="form-select form-select-sm" name="tipo_cliente" aria-label="Tipo de precio">
@@ -147,6 +148,7 @@
                                             <option value="{{ m.id }}">{{ m.nombre }}</option>
                                         {% endfor %}
                                     </select>
+                                    <div class="transfer-stock text-muted small mt-1"></div>
                                 </td>
                                 <td>
                                     <select class="form-select form-select-sm" name="tipo_cliente" aria-label="Tipo de precio">
@@ -202,6 +204,7 @@
                     <option value="{{ m.id }}">{{ m.nombre }}</option>
                 {% endfor %}
             </select>
+            <div class="transfer-stock text-muted small mt-1"></div>
         </td>
         <td>
             <select class="form-select form-select-sm" name="tipo_cliente" aria-label="Tipo de precio">
@@ -227,6 +230,7 @@
     </tr>
 </template>
 
+<script type="application/json" id="transferStockMap">{{ stock_map_json|default('{}')|safe }}</script>
 <script>
     function formatNumber(value, decimals) {
         const safe = Number(value || 0);
@@ -276,6 +280,7 @@
         const row = tpl.content.cloneNode(true);
         container.appendChild(row);
         updateTransferTotals();
+        updateTransferStock();
     }
 
     function removeTransferRow(btn) {
@@ -286,10 +291,43 @@
         updateTransferTotals();
     }
 
+    /* Existencias del material en la sucursal origen, junto al select: el
+       dato que evita transferir lo que no hay. Es un aviso, no un bloqueo —
+       el saldo puede quedar negativo a propósito (material comprometido). */
+    let stockMap = {};
+    try {
+        stockMap = JSON.parse(document.getElementById('transferStockMap').textContent || '{}');
+    } catch (err) { stockMap = {}; }
+
+    function updateTransferStock() {
+        const origenSel = document.querySelector('[name="origen_sucursal_id"]');
+        const origenId = origenSel ? String(origenSel.value || '') : '';
+        const porMaterial = stockMap[origenId] || null;
+        document.querySelectorAll('#transferRows .transfer-row').forEach((row) => {
+            const matSel = row.querySelector('select[name="material_id"]');
+            const hint = row.querySelector('.transfer-stock');
+            const kgInput = row.querySelector('input[name="kg_neto"]');
+            if (!hint) return;
+            const matId = matSel ? String(matSel.value || '') : '';
+            if (!origenId || !matId) { hint.textContent = ''; hint.classList.remove('text-warning'); return; }
+            const disponible = porMaterial && Object.prototype.hasOwnProperty.call(porMaterial, matId)
+                ? porMaterial[matId] : 0;
+            const pedido = parseNumber(kgInput ? kgInput.value : 0);
+            hint.textContent = `Disponible en origen: ${formatNumber(disponible, 2)} kg`;
+            const excede = pedido > 0 && pedido > disponible;
+            hint.classList.toggle('text-warning', excede);
+            if (excede) {
+                hint.textContent += ' — la transferencia dejará el saldo en negativo';
+            }
+        });
+    }
+
     const formEl = document.getElementById('transferForm');
     if (formEl) {
-        formEl.addEventListener('input', updateTransferTotals);
+        formEl.addEventListener('input', () => { updateTransferTotals(); updateTransferStock(); });
+        formEl.addEventListener('change', updateTransferStock);
     }
     updateTransferTotals();
+    updateTransferStock();
 </script>
 {% endblock %}

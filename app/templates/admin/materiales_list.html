@@ -38,7 +38,6 @@
                 <thead>
                     <tr>
                         <th data-title-col data-mobile-primary>Material</th>
-                        <th>Descripción</th>
                         <th>Unidad</th>
                         <th data-mobile-primary>Estado</th>
                         <th><span class="s-visually-hidden">Acciones</span></th>
@@ -49,13 +48,17 @@
                         <tr>
                             <td>
                                 <div class="fw-semibold">{{ m.nombre }}</div>
+                                {# La descripción es contexto del nombre, no una
+                                   columna: casi siempre lo repetía. #}
+                                {% if m.descripcion and m.descripcion|lower != m.nombre|lower %}
+                                    <div class="text-muted small">{{ m.descripcion }}</div>
+                                {% endif %}
                             </td>
+                            <td>{{ (m.unidad_medida or '—')|replace('m3', 'm³') }}</td>
                             <td>
-                                <span class="text-muted">{{ m.descripcion or 'Sin descripción' }}</span>
-                            </td>
-                            <td>{{ (m.unidad_medida or '-')|replace('m3', 'm³') }}</td>
-                            <td>
-                                {{ badge('Activo', 'ok') if m.activo else badge('Inactivo', 'muted') }}
+                                {# El estado por defecto no se pinta: cinco badges
+                                   verdes idénticos no discriminan nada. #}
+                                {% if not m.activo %}{{ badge('Inactivo', 'muted') }}{% else %}<span class="text-muted">—</span>{% endif %}
                             </td>
                             <td>
                                 <span class="s-actions">
@@ -71,7 +74,7 @@
                             </td>
                         </tr>
                     {% else %}
-                        {{ empty_row(5, 'No hay materiales registrados.') }}
+                        {{ empty_row(4, 'No hay materiales registrados.') }}
                     {% endfor %}
                 </tbody>
             </table>

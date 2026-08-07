@@ -10004,6 +10004,24 @@ async def notas_list(
     )
 
 
+def _transfer_stock_map(db: Session, sucursales: list[Sucursal]) -> str:
+    """{sucursal_id: {material_id: kg}} como JSON para el hint de existencias.
+
+    Transferir sin ver la disponibilidad del origen era el hueco operativo
+    de la pantalla: se podía capturar más de lo que hay.
+    """
+    import json
+
+    suc_ids = [s.id for s in sucursales]
+    if not suc_ids:
+        return "{}"
+    rows = db.query(Inventario).filter(Inventario.sucursal_id.in_(suc_ids)).all()
+    mapping: dict[str, dict[str, float]] = {}
+    for inv in rows:
+        mapping.setdefault(str(inv.sucursal_id), {})[str(inv.material_id)] = float(inv.stock_actual or 0)
+    return json.dumps(mapping)
+
+
 @router.get("/transferencias")
 async def transferencias_get(
     request: Request,
@@ -10074,6 +10092,7 @@ async def transferencias_get(
             "nota_salida_sucursal": nota_salida_sucursal,
             "nota_entrada_sucursal": nota_entrada_sucursal,
             "missing_transfer_note": missing_transfer_note,
+            "stock_map_json": _transfer_stock_map(db, sucursales),
             "error": None,
         },
     )
@@ -10121,6 +10140,7 @@ async def transferencias_post(
                 "ok": False,
                 "nota_salida_id": None,
                 "nota_entrada_id": None,
+                "stock_map_json": _transfer_stock_map(db, sucursales),
                 "error": msg,
             },
             status_code=400,
