@@ -9,10 +9,10 @@ here before you use it twice.
 - Macros: `app/templates/_macros.html`
 - Icons: `app/templates/_icons.html`
 
-Load order is `bootstrap → style.css (legacy) → scrap360.css`. The legacy sheet
-is being retired; **never add rules to it**. `scrap360.css` owns every visual
-decision and remaps the legacy class names onto the canonical components, so
-old markup inherits the new look automatically.
+Load order is `bootstrap → scrap360.css`. The legacy `style.css` was retired on
+2026-08-06 — `scrap360.css` owns every visual decision. Do not create page-level
+`<style>` blocks or a second sheet: if a screen needs something new, it becomes
+a token or component here first.
 
 ---
 
@@ -377,9 +377,11 @@ breaks the total a nota is approved with, and there is nothing to gain visually.
 If you touch them, move them to `data-` attributes and update the selectors in
 the same commit — do not rename them as if they were styling.
 
-Everything else that is not in this document is a leftover. The census in
-`scripts/check_ui.js` treats any other `note-*`, `notes-*`, `ops-*`,
-`corte-caja-*`, `evidence-*` or `record-*` class as a regression.
+The same applies to the other behaviour hooks catalogued in `docs/UI_UX.md`
+§"Behaviour-only class names": `evidence-*`/`subpesaje-*`/`evid-*` (worker
+wizard and evidence page), `note-edit-*` (edit recalculation) and
+`denom-count-input` (arqueo). Everything else that is not in this document is a
+leftover and a regression.
 
 ### Icons
 

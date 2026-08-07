@@ -80,15 +80,12 @@
                     'Dentro de los próximos 5 días',
                     'warn' if resumen.por_vencer else '') }}
             {{ stat('Notas de hoy', resumen.notas_hoy, 'Capturadas desde las 00:00', 'info') }}
-        </div>
-
-        <div class="s-stats">
             {{ stat('Por pagar a proveedores', money(resumen.por_pagar, 'plain'),
                     'Saldo vivo de notas de compra') }}
             {{ stat('Por cobrar a clientes', money(resumen.por_cobrar, 'plain'),
                     'Saldo vivo de notas de venta') }}
             {{ stat('Inventario total', kg(resumen.inventario_kg),
-                    'Stock actual en todas las sucursales') }}
+                    'Existencias actuales en todas las sucursales') }}
         </div>
     {% endif %}
 
@@ -99,7 +96,7 @@
                 Hay <strong>{{ resumen.en_revision }}</strong>
                 nota{{ 's' if resumen.en_revision != 1 }} esperando tu revisi&oacute;n.
             </span>
-            <a href="/web/admin/notas?estado=EN_REVISION" class="btn btn-sm btn-primary">Revisar ahora</a>
+            <a href="/web/admin/notas?estado=EN_REVISION" class="btn btn-sm btn-outline-primary">Revisar ahora</a>
         </div>
     {% endif %}
 

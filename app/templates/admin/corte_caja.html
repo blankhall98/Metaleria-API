@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_header, icon, stat, badge, money, kg, empty_row %}
+{% from "_macros.html" import page_header, icon, stat, badge, money, kg, empty_row, defs, def %}
 
 {% block title %}Corte de caja{% endblock %}
 
@@ -168,7 +168,7 @@
                 <p class="s-section-label">Monedas</p>
                 <div class="table-responsive">
                     <table class="table table-hover align-middle">
-                        <thead><tr><th data-title-col>Denominación</th><th class="text-end">Cantidad</th><th class="text-end">Total</th></tr></thead>
+                        <thead><tr><th data-title-col>Denominación</th><th class="text-end" data-mobile-primary>Cantidad</th><th class="text-end" data-mobile-primary>Total</th></tr></thead>
                         <tbody>
                             {% for denom in denom_monedas %}
                                 <tr>
@@ -188,7 +188,7 @@
                 <p class="s-section-label">Billetes</p>
                 <div class="table-responsive">
                     <table class="table table-hover align-middle">
-                        <thead><tr><th data-title-col>Denominación</th><th class="text-end">Cantidad</th><th class="text-end">Total</th></tr></thead>
+                        <thead><tr><th data-title-col>Denominación</th><th class="text-end" data-mobile-primary>Cantidad</th><th class="text-end" data-mobile-primary>Total</th></tr></thead>
                         <tbody>
                             {% for denom in denom_billetes %}
                                 <tr>
@@ -249,16 +249,16 @@
         Ver desglose
     </button>
     <div id="kpiDesglose" class="collapse mt-2">
-        <div class="s-stats">
-            {{ stat('Saldo inicial', money(saldo_inicial, 'plain'), 'Con el que se abrió la caja') }}
-            {{ stat('Dotación', money(dotaciones_total, 'plain'), dotaciones_rows|length ~ ' movimientos') }}
-            {{ stat('Ventas en efectivo', money(ventas_efectivo_total, 'plain'), ventas_efectivo_rows|length ~ ' cobros') }}
-            {{ stat('Compras en efectivo', money(compras_efectivo_total, 'plain'), compras_efectivo_rows|length ~ ' pagos') }}
-            {{ stat('Gastos', money(gastos_total, 'plain'), gastos|length ~ ' registros') }}
+        {% call defs() %}
+            {{ def('Saldo inicial', money(saldo_inicial, 'plain'), 'Con el que se abrió la caja') }}
+            {{ def('Dotación', money(dotaciones_total, 'plain'), dotaciones_rows|length ~ ' movimientos') }}
+            {{ def('Ventas en efectivo', money(ventas_efectivo_total, 'plain'), ventas_efectivo_rows|length ~ ' cobros') }}
+            {{ def('Compras en efectivo', money(compras_efectivo_total, 'plain'), compras_efectivo_rows|length ~ ' pagos') }}
+            {{ def('Gastos', money(gastos_total, 'plain'), gastos|length ~ ' registros') }}
             {% if corte.estado.value == 'CERRADO' %}
-                {{ stat('Saldo final', money(corte.saldo_cierre, 'plain'), 'Efectivo contado al cierre') }}
+                {{ def('Saldo final', money(corte.saldo_cierre, 'plain'), 'Efectivo contado al cierre') }}
             {% endif %}
-        </div>
+        {% endcall %}
         {% if corte.estado.value == 'CERRADO' and corte.motivo_diferencia %}
             <p class="s-card-sub mt-2"><strong>Motivo de la diferencia:</strong> {{ corte.motivo_diferencia }}</p>
         {% endif %}
@@ -269,7 +269,7 @@
    SECCIÓN 1 — REGISTROS
 ══════════════════════════════════════════════════════════════════════ #}
 {% if corte.estado.value == 'ABIERTO' %}
-<div id="section-registros" class="corte-section-anchor">
+<div id="section-registros" class="s-anchor-target">
     <div class="s-card-head">
         <div>
             <h2 class="s-card-title">Registros del día</h2>
@@ -352,7 +352,7 @@
 {# ══════════════════════════════════════════════════════════════════════
    SECCIÓN 2 — OPERACIONES DEL DÍA
 ══════════════════════════════════════════════════════════════════════ #}
-<div id="section-operaciones" class="corte-section-anchor">
+<div id="section-operaciones" class="s-anchor-target">
     <div class="s-card-head">
         <div>
             <h2 class="s-card-title">Operaciones del día</h2>
@@ -361,13 +361,13 @@
     </div>
 
     {% if scrap360_summary %}
-    <div class="corte-sdiv mb-2">
-        <button type="button" class="corte-sdiv-trigger" data-bs-toggle="collapse" data-bs-target="#scrap360SummaryBody" aria-expanded="true">
+    <div class="s-collapse mb-2">
+        <button type="button" class="s-collapse__trigger" data-bs-toggle="collapse" data-bs-target="#scrap360SummaryBody" aria-expanded="true">
             <span class="fw-semibold small">Resumen por cuenta Scrap360</span>
             <span class="text-muted small ms-1">&mdash; Transferencias y cheques</span>
-            <span class="corte-collapse-chevron ms-auto">&#8964;</span>
+            <span class="s-collapse__chevron ms-auto">{{ icon('chevron-down', 's-icon--sm') }}</span>
         </button>
-        <div id="scrap360SummaryBody" class="collapse show corte-sdiv-body">
+        <div id="scrap360SummaryBody" class="collapse show s-collapse__body">
             <div class="table-responsive">
                 <table class="table table-hover align-middle">
                     <thead>
@@ -399,17 +399,17 @@
     {% endif %}
 
     {# Compras del día — colapsable #}
-    <div class="corte-sdiv mb-2">
-        <button type="button" class="corte-sdiv-trigger" data-bs-toggle="collapse" data-bs-target="#comprasTableBody" aria-expanded="false">
+    <div class="s-collapse mb-2">
+        <button type="button" class="s-collapse__trigger" data-bs-toggle="collapse" data-bs-target="#comprasTableBody" aria-expanded="false">
             <span class="fw-semibold small">Relación de compras</span>
             <span class="text-muted small ms-1">&mdash; {{ compras_notas }} notas &middot; {{ "{:,.2f}".format(compras_kg or 0) }} kg &middot; ${{ "{:,.2f}".format(compras_total or 0) }}</span>
-            <span class="corte-collapse-chevron ms-auto">&#8964;</span>
+            <span class="s-collapse__chevron ms-auto">{{ icon('chevron-down', 's-icon--sm') }}</span>
         </button>
-        <div id="comprasTableBody" class="collapse corte-sdiv-body">
+        <div id="comprasTableBody" class="collapse s-collapse__body">
                 {% if corte_color_legend %}
-                <div class="d-flex flex-wrap gap-2 mb-3 corte-color-legend">
+                <div class="d-flex flex-wrap gap-2 mb-3 s-cat-legend">
                     {% for item in corte_color_legend %}
-                        <span class="corte-legend-badge corte-row-{{ item.color_key }}">{{ item.label }}</span>
+                        <span class="s-cat-legend__item s-cat-row-{{ item.color_key }}">{{ item.label }}</span>
                     {% endfor %}
                 </div>
                 {% endif %}
@@ -434,7 +434,7 @@
                             {% for row in compras_rows %}
                                 {% set is_first = row.nota_id not in ns.seen_compra_ids %}
                                 {% if is_first %}{% set ns.seen_compra_ids = ns.seen_compra_ids + [row.nota_id] %}{% endif %}
-                                <tr class="corte-row-{{ row.color_key }}">
+                                <tr class="s-cat-row-{{ row.color_key }}">
                                     <td>{{ row.folio }}</td>
                                     <td class="s-cell-wrap">{{ row.partner }}</td>
                                     <td class="s-cell-wrap">{{ row.material }}</td>
@@ -446,11 +446,11 @@
                                         {% if is_first and row.metodo_pago in ('cheque', 'transferencia') %}
                                             {% set pill_complete = (row.metodo_pago == 'cheque' and row.numero_cheque) or (row.metodo_pago == 'transferencia' and row.cuenta_scrap360_nombre) %}
                                             {% if corte.estado.value == 'ABIERTO' %}
-                                                <button type="button" class="btn btn-sm corte-pago-pill {% if pill_complete %}corte-pago-pill--ok{% else %}corte-pago-pill--pending{% endif %}" data-bs-toggle="modal" data-bs-target="#pagoDetalleModal" data-nota-id="{{ row.nota_id }}" data-metodo="{{ row.metodo_pago }}" data-numero-cheque="{{ row.numero_cheque or '' }}" data-cuenta-scrap360-id="{{ row.cuenta_scrap360_id or '' }}" data-folio="{{ row.folio }}" data-partner="{{ row.partner }}" data-total="{{ row.total_nota or 0 }}">
-                                                    {% if row.metodo_pago == 'cheque' %}{% if row.numero_cheque %}Cheque #{{ row.numero_cheque }}{% else %}Cheque &#9998;{% endif %}{% else %}{% if row.cuenta_scrap360_nombre %}Transferencia &middot; {{ row.cuenta_scrap360_nombre[:14] }}{% else %}Transferencia &#9998;{% endif %}{% endif %}
+                                                <button type="button" class="btn btn-sm s-method-pill {% if pill_complete %}s-method-pill--ok{% else %}s-method-pill--pending{% endif %}" data-bs-toggle="modal" data-bs-target="#pagoDetalleModal" data-nota-id="{{ row.nota_id }}" data-metodo="{{ row.metodo_pago }}" data-numero-cheque="{{ row.numero_cheque or '' }}" data-cuenta-scrap360-id="{{ row.cuenta_scrap360_id or '' }}" data-folio="{{ row.folio }}" data-partner="{{ row.partner }}" data-total="{{ row.total_nota or 0 }}">
+                                                    {% if row.metodo_pago == 'cheque' %}{% if row.numero_cheque %}Cheque #{{ row.numero_cheque }}{% else %}Cheque {{ icon('edit', 's-icon--sm') }}{% endif %}{% else %}{% if row.cuenta_scrap360_nombre %}Transferencia &middot; {{ row.cuenta_scrap360_nombre[:14] }}{% else %}Transferencia {{ icon('edit', 's-icon--sm') }}{% endif %}{% endif %}
                                                 </button>
                                             {% else %}
-                                                <span class="corte-pago-pill {% if pill_complete %}corte-pago-pill--ok{% else %}corte-pago-pill--pending{% endif %}">{% if row.metodo_pago == 'cheque' %}{% if row.numero_cheque %}Cheque #{{ row.numero_cheque }}{% else %}Cheque{% endif %}{% else %}{% if row.cuenta_scrap360_nombre %}Transferencia &middot; {{ row.cuenta_scrap360_nombre[:14] }}{% else %}Transferencia{% endif %}{% endif %}</span>
+                                                <span class="s-method-pill {% if pill_complete %}s-method-pill--ok{% else %}s-method-pill--pending{% endif %}">{% if row.metodo_pago == 'cheque' %}{% if row.numero_cheque %}Cheque #{{ row.numero_cheque }}{% else %}Cheque{% endif %}{% else %}{% if row.cuenta_scrap360_nombre %}Transferencia &middot; {{ row.cuenta_scrap360_nombre[:14] }}{% else %}Transferencia{% endif %}{% endif %}</span>
                                             {% endif %}
                                         {% elif is_first and row.metodo_pago and row.metodo_pago != '-' %}
                                             {{ badge(METODO_PAGO.get(row.metodo_pago|lower, row.metodo_pago|capitalize), 'muted') }}
@@ -471,13 +471,13 @@
     </div>
 
     {# Ventas del día — colapsable #}
-    <div class="corte-sdiv mb-2">
-        <button type="button" class="corte-sdiv-trigger" data-bs-toggle="collapse" data-bs-target="#ventasTableBody" aria-expanded="false">
+    <div class="s-collapse mb-2">
+        <button type="button" class="s-collapse__trigger" data-bs-toggle="collapse" data-bs-target="#ventasTableBody" aria-expanded="false">
             <span class="fw-semibold small">Relación de ventas</span>
             <span class="text-muted small ms-1">&mdash; {{ ventas_notas }} notas &middot; {{ "{:,.2f}".format(ventas_kg or 0) }} kg &middot; ${{ "{:,.2f}".format(ventas_total or 0) }}</span>
-            <span class="corte-collapse-chevron ms-auto">&#8964;</span>
+            <span class="s-collapse__chevron ms-auto">{{ icon('chevron-down', 's-icon--sm') }}</span>
         </button>
-        <div id="ventasTableBody" class="collapse corte-sdiv-body">
+        <div id="ventasTableBody" class="collapse s-collapse__body">
                 <div class="table-responsive">
                     <table class="table table-hover align-middle">
                         <thead>
@@ -499,7 +499,7 @@
                             {% for row in ventas_rows %}
                                 {% set is_first = row.nota_id not in ns2.seen_venta_ids %}
                                 {% if is_first %}{% set ns2.seen_venta_ids = ns2.seen_venta_ids + [row.nota_id] %}{% endif %}
-                                <tr class="corte-row-{{ row.color_key }}">
+                                <tr class="s-cat-row-{{ row.color_key }}">
                                     <td>{{ row.folio }}</td>
                                     <td class="s-cell-wrap">{{ row.partner }}</td>
                                     <td class="s-cell-wrap">{{ row.material }}</td>
@@ -511,11 +511,11 @@
                                         {% if is_first and row.metodo_pago in ('cheque', 'transferencia') %}
                                             {% set pill_complete = (row.metodo_pago == 'cheque' and row.numero_cheque) or (row.metodo_pago == 'transferencia' and row.cuenta_scrap360_nombre) %}
                                             {% if corte.estado.value == 'ABIERTO' %}
-                                                <button type="button" class="btn btn-sm corte-pago-pill {% if pill_complete %}corte-pago-pill--ok{% else %}corte-pago-pill--pending{% endif %}" data-bs-toggle="modal" data-bs-target="#pagoDetalleModal" data-nota-id="{{ row.nota_id }}" data-metodo="{{ row.metodo_pago }}" data-numero-cheque="{{ row.numero_cheque or '' }}" data-cuenta-scrap360-id="{{ row.cuenta_scrap360_id or '' }}" data-folio="{{ row.folio }}" data-partner="{{ row.partner }}" data-total="{{ row.total_nota or 0 }}">
-                                                    {% if row.metodo_pago == 'cheque' %}{% if row.numero_cheque %}Cheque #{{ row.numero_cheque }}{% else %}Cheque &#9998;{% endif %}{% else %}{% if row.cuenta_scrap360_nombre %}Transferencia &middot; {{ row.cuenta_scrap360_nombre[:14] }}{% else %}Transferencia &#9998;{% endif %}{% endif %}
+                                                <button type="button" class="btn btn-sm s-method-pill {% if pill_complete %}s-method-pill--ok{% else %}s-method-pill--pending{% endif %}" data-bs-toggle="modal" data-bs-target="#pagoDetalleModal" data-nota-id="{{ row.nota_id }}" data-metodo="{{ row.metodo_pago }}" data-numero-cheque="{{ row.numero_cheque or '' }}" data-cuenta-scrap360-id="{{ row.cuenta_scrap360_id or '' }}" data-folio="{{ row.folio }}" data-partner="{{ row.partner }}" data-total="{{ row.total_nota or 0 }}">
+                                                    {% if row.metodo_pago == 'cheque' %}{% if row.numero_cheque %}Cheque #{{ row.numero_cheque }}{% else %}Cheque {{ icon('edit', 's-icon--sm') }}{% endif %}{% else %}{% if row.cuenta_scrap360_nombre %}Transferencia &middot; {{ row.cuenta_scrap360_nombre[:14] }}{% else %}Transferencia {{ icon('edit', 's-icon--sm') }}{% endif %}{% endif %}
                                                 </button>
                                             {% else %}
-                                                <span class="corte-pago-pill {% if pill_complete %}corte-pago-pill--ok{% else %}corte-pago-pill--pending{% endif %}">{% if row.metodo_pago == 'cheque' %}{% if row.numero_cheque %}Cheque #{{ row.numero_cheque }}{% else %}Cheque{% endif %}{% else %}{% if row.cuenta_scrap360_nombre %}Transferencia &middot; {{ row.cuenta_scrap360_nombre[:14] }}{% else %}Transferencia{% endif %}{% endif %}</span>
+                                                <span class="s-method-pill {% if pill_complete %}s-method-pill--ok{% else %}s-method-pill--pending{% endif %}">{% if row.metodo_pago == 'cheque' %}{% if row.numero_cheque %}Cheque #{{ row.numero_cheque }}{% else %}Cheque{% endif %}{% else %}{% if row.cuenta_scrap360_nombre %}Transferencia &middot; {{ row.cuenta_scrap360_nombre[:14] }}{% else %}Transferencia{% endif %}{% endif %}</span>
                                             {% endif %}
                                         {% elif is_first and row.metodo_pago and row.metodo_pago != '-' %}
                                             {{ badge(METODO_PAGO.get(row.metodo_pago|lower, row.metodo_pago|capitalize), 'muted') }}
@@ -598,12 +598,12 @@
     {% endif %}
 
     {# Movimientos y tablas de detalle — todo colapsado bajo un único acordeón #}
-    <div class="corte-sdiv mb-2">
-        <button type="button" class="corte-sdiv-trigger" data-bs-toggle="collapse" data-bs-target="#detalleMovimientosBody" aria-expanded="false">
+    <div class="s-collapse mb-2">
+        <button type="button" class="s-collapse__trigger" data-bs-toggle="collapse" data-bs-target="#detalleMovimientosBody" aria-expanded="false">
             <span class="fw-semibold small">Detalle de movimientos del día</span>
-            <span class="corte-collapse-chevron ms-auto">&#8964;</span>
+            <span class="s-collapse__chevron ms-auto">{{ icon('chevron-down', 's-icon--sm') }}</span>
         </button>
-        <div id="detalleMovimientosBody" class="collapse corte-sdiv-body">
+        <div id="detalleMovimientosBody" class="collapse s-collapse__body">
 
                 {# Efectivo #}
                 <div class="row g-3 mb-4">
@@ -648,7 +648,7 @@
                         <p class="s-card-sub">Entradas de efectivo por {{ "${:,.2f}".format(dotaciones_total or 0) }}.</p>
                         <div class="table-responsive">
                             <table class="table table-hover align-middle">
-                                <thead><tr><th>Fecha</th><th data-title-col>Concepto</th><th class="text-end">Monto</th></tr></thead>
+                                <thead><tr><th>Fecha</th><th data-title-col>Concepto</th><th class="text-end" data-mobile-primary>Monto</th></tr></thead>
                                 <tbody>
                                     {% for row in dotaciones_rows %}
                                         <tr><td>{{ row.fecha|datetime_local if row.fecha else '—' }}</td><td class="s-cell-wrap">{{ row.descripcion }}</td><td class="text-end">{{ money(row.monto_abs) }}</td></tr>
@@ -664,7 +664,7 @@
                         <p class="s-card-sub">Reintegros por {{ "${:,.2f}".format(sobrantes_viaticos_total or 0) }}.</p>
                         <div class="table-responsive">
                             <table class="table table-hover align-middle">
-                                <thead><tr><th>Fecha</th><th data-title-col>Concepto</th><th class="text-end">Monto</th></tr></thead>
+                                <thead><tr><th>Fecha</th><th data-title-col>Concepto</th><th class="text-end" data-mobile-primary>Monto</th></tr></thead>
                                 <tbody>
                                     {% for row in sobrantes_viaticos_rows %}
                                         <tr><td>{{ row.fecha|datetime_local if row.fecha else '—' }}</td><td class="s-cell-wrap">{{ row.descripcion }}</td><td class="text-end">{{ money(row.monto_abs) }}</td></tr>
@@ -680,7 +680,7 @@
                         <p class="s-card-sub">Reintegros por {{ "${:,.2f}".format(sobrantes_gastos_total or 0) }}.</p>
                         <div class="table-responsive">
                             <table class="table table-hover align-middle">
-                                <thead><tr><th>Fecha</th><th data-title-col>Concepto</th><th class="text-end">Monto</th></tr></thead>
+                                <thead><tr><th>Fecha</th><th data-title-col>Concepto</th><th class="text-end" data-mobile-primary>Monto</th></tr></thead>
                                 <tbody>
                                     {% for row in sobrantes_gastos_rows %}
                                         <tr><td>{{ row.fecha|datetime_local if row.fecha else '—' }}</td><td class="s-cell-wrap">{{ row.descripcion }}</td><td class="text-end">{{ money(row.monto_abs) }}</td></tr>
@@ -722,7 +722,7 @@
                         <p class="s-card-sub">Depósitos, retiros y ajustes manuales.</p>
                         <div class="table-responsive">
                             <table class="table table-hover align-middle">
-                                <thead><tr><th>Fecha</th><th>Categoría</th><th data-title-col>Descripción</th><th class="text-end">Monto</th></tr></thead>
+                                <thead><tr><th>Fecha</th><th>Categoría</th><th data-title-col>Descripción</th><th class="text-end" data-mobile-primary>Monto</th></tr></thead>
                                 <tbody>
                                     {% for row in otros_ajustes_rows %}
                                         <tr>
@@ -782,7 +782,7 @@
 {# ══════════════════════════════════════════════════════════════════════
    SECCIÓN 3 — CIERRE Y ARQUEO
 ══════════════════════════════════════════════════════════════════════ #}
-<div id="section-cierre" class="corte-section-anchor">
+<div id="section-cierre" class="s-anchor-target">
     <div class="s-card-head">
         <div>
             <h2 class="s-card-title">Cierre y arqueo</h2>
@@ -821,7 +821,7 @@
                                 <p class="s-section-label">Monedas</p>
                                 <div class="table-responsive">
                                     <table class="table table-hover align-middle">
-                                        <thead><tr><th data-title-col>Denominación</th><th class="text-end">Cantidad</th><th class="text-end">Total</th></tr></thead>
+                                        <thead><tr><th data-title-col>Denominación</th><th class="text-end" data-mobile-primary>Cantidad</th><th class="text-end" data-mobile-primary>Total</th></tr></thead>
                                         <tbody>
                                             {% for denom in denom_monedas %}
                                             <tr>
@@ -841,7 +841,7 @@
                                 <p class="s-section-label">Billetes</p>
                                 <div class="table-responsive">
                                     <table class="table table-hover align-middle">
-                                        <thead><tr><th data-title-col>Denominación</th><th class="text-end">Cantidad</th><th class="text-end">Total</th></tr></thead>
+                                        <thead><tr><th data-title-col>Denominación</th><th class="text-end" data-mobile-primary>Cantidad</th><th class="text-end" data-mobile-primary>Total</th></tr></thead>
                                         <tbody>
                                             {% for denom in denom_billetes %}
                                             <tr>
@@ -875,9 +875,7 @@
                     <div class="s-form-grid">
                         <div>
                             <span class="s-def__label">Saldo contado</span>
-                            <span class="s-def__value">
-                                <input class="form-control" type="number" step="0.01" min="0" value="{{ form_saldo_cierre }}" id="cashCountTotalInput" aria-label="Saldo contado" readonly>
-                            </span>
+                            <output class="s-def__value s-money d-block" id="cashCountTotalInput">&mdash;</output>
                             <p class="form-text">Se calcula solo a partir del arqueo por denominaciones.</p>
                         </div>
                         <div>
@@ -918,10 +916,10 @@
                             <p class="s-section-label">Monedas</p>
                             <div class="table-responsive">
                                 <table class="table table-hover align-middle">
-                                    <thead><tr><th data-title-col>Denominación</th><th class="text-end">Cantidad</th><th class="text-end">Total</th></tr></thead>
+                                    <thead><tr><th data-title-col>Denominación</th><th class="text-end" data-mobile-primary>Cantidad</th><th class="text-end" data-mobile-primary>Total</th></tr></thead>
                                     <tbody>
                                         {% for denom in denom_monedas %}
-                                            <tr><td>{{ denom.label }}</td><td class="text-end"><input class="form-control form-control-sm text-end denom-count-input s-input-qty" type="number" min="0" step="1" inputmode="numeric" aria-label="Cantidad de {{ denom.label }}" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="coins" disabled></td><td class="text-end s-money" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td></tr>
+                                            <tr><td>{{ denom.label }}</td><td class="text-end s-num">{{ denom.count or 0 }}</td><td class="text-end s-money" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td></tr>
                                         {% else %}
                                             {{ empty_row(3, 'Sin denominaciones registradas.') }}
                                         {% endfor %}
@@ -934,10 +932,10 @@
                             <p class="s-section-label">Billetes</p>
                             <div class="table-responsive">
                                 <table class="table table-hover align-middle">
-                                    <thead><tr><th data-title-col>Denominación</th><th class="text-end">Cantidad</th><th class="text-end">Total</th></tr></thead>
+                                    <thead><tr><th data-title-col>Denominación</th><th class="text-end" data-mobile-primary>Cantidad</th><th class="text-end" data-mobile-primary>Total</th></tr></thead>
                                     <tbody>
                                         {% for denom in denom_billetes %}
-                                            <tr><td>{{ denom.label }}</td><td class="text-end"><input class="form-control form-control-sm text-end denom-count-input s-input-qty" type="number" min="0" step="1" inputmode="numeric" aria-label="Cantidad de {{ denom.label }}" name="{{ denom.key }}" value="{{ denom.count }}" data-denom-value="{{ denom.value }}" data-denom-target="row-{{ denom.key }}" data-denom-group="bills" disabled></td><td class="text-end s-money" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td></tr>
+                                            <tr><td>{{ denom.label }}</td><td class="text-end s-num">{{ denom.count or 0 }}</td><td class="text-end s-money" id="row-{{ denom.key }}">${{ "{:,.2f}".format(denom.subtotal or 0) }}</td></tr>
                                         {% else %}
                                             {{ empty_row(3, 'Sin denominaciones registradas.') }}
                                         {% endfor %}
@@ -975,13 +973,13 @@
 </div>
 
 {# Historial — colapsable #}
-<div class="corte-sdiv mb-4">
-    <button type="button" class="corte-sdiv-trigger" data-bs-toggle="collapse" data-bs-target="#cortesHistorial" aria-expanded="false">
+<div class="s-collapse mb-4">
+    <button type="button" class="s-collapse__trigger" data-bs-toggle="collapse" data-bs-target="#cortesHistorial" aria-expanded="false">
         <span class="fw-semibold small">Historial de cortes</span>
         <span class="text-muted small ms-1">&mdash; últimos {{ historial|length }}</span>
-        <span class="corte-collapse-chevron ms-auto">&#8964;</span>
+        <span class="s-collapse__chevron ms-auto">{{ icon('chevron-down', 's-icon--sm') }}</span>
     </button>
-    <div id="cortesHistorial" class="collapse corte-sdiv-body">
+    <div id="cortesHistorial" class="collapse s-collapse__body">
         <div class="table-responsive">
             <table class="table table-hover align-middle">
                 <thead>
@@ -1015,22 +1013,22 @@
 
 {# Barra flotante — solo cuando ABIERTO #}
 {% if corte.estado.value == 'ABIERTO' %}
-<div class="corte-floating-bar" id="corteFloatingBar">
-    <div class="corte-float-item">
+<div class="s-dockbar" id="corteFloatingBar">
+    <div class="s-dockbar__item">
         <span>Esperado</span>
         <strong id="floatExpected">${{ "{:,.2f}".format(saldo_calculado or 0) }}</strong>
     </div>
-    <div class="corte-float-divider"></div>
-    <div class="corte-float-item">
+    <div class="s-dockbar__divider"></div>
+    <div class="s-dockbar__item">
         <span>Contado</span>
         <strong id="floatContado">${{ "{:,.2f}".format(denom_total or 0) }}</strong>
     </div>
-    <div class="corte-float-divider"></div>
-    <div class="corte-float-item" id="floatDifItem">
+    <div class="s-dockbar__divider"></div>
+    <div class="s-dockbar__item" id="floatDifItem">
         <span id="floatDifLabel">{% if (diferencia_provisional or 0) > 0 %}Sobrante{% elif (diferencia_provisional or 0) < 0 %}Faltante{% else %}Diferencia{% endif %}</span>
-        <strong id="floatDif" class="{% if (diferencia_provisional or 0) > 0 %}float-positive{% elif (diferencia_provisional or 0) < 0 %}float-negative{% endif %}">{% if (diferencia_provisional or 0) > 0 %}+{% elif (diferencia_provisional or 0) < 0 %}-{% endif %}${{ "{:,.2f}".format((diferencia_provisional or 0)|abs) }}</strong>
+        <strong id="floatDif" class="{% if (diferencia_provisional or 0) > 0 %}text-success{% elif (diferencia_provisional or 0) < 0 %}text-danger{% endif %}">{% if (diferencia_provisional or 0) > 0 %}+{% elif (diferencia_provisional or 0) < 0 %}-{% endif %}${{ "{:,.2f}".format((diferencia_provisional or 0)|abs) }}</strong>
     </div>
-    <a href="#section-cierre" class="corte-float-action ms-auto">Ir al cierre</a>
+    <a href="#section-cierre" class="s-dockbar__action ms-auto">Ir al cierre</a>
 </div>
 {% endif %}
 
@@ -1078,7 +1076,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (billsTableTotal) billsTableTotal.textContent = formatMoney(bills);
         if (grandTotal) grandTotal.textContent = formatMoney(total);
         if (grandInline) grandInline.textContent = formatMoney(total);
-        if (grandInput) grandInput.value = total.toFixed(2);
+        if (grandInput) grandInput.value = formatMoney(total);
 
         if (diffPreview) {
             const sign = isZero ? '' : (diff > 0 ? '+' : '-');
@@ -1124,8 +1122,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (floatDif) {
             const sign = isZero ? '' : (diff > 0 ? '+' : '-');
             floatDif.textContent = `${sign}$${Math.abs(diff).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-            floatDif.classList.toggle('float-positive', !isZero && diff > 0);
-            floatDif.classList.toggle('float-negative', !isZero && diff < 0);
+            floatDif.classList.toggle('text-success', !isZero && diff > 0);
+            floatDif.classList.toggle('text-danger', !isZero && diff < 0);
         }
         if (floatDifLabel) floatDifLabel.textContent = isZero ? 'Diferencia' : (diff > 0 ? 'Sobrante' : 'Faltante');
     };
@@ -1136,17 +1134,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     updateTotals();
 
-    /* Chevron rotation on Bootstrap collapse */
-    document.querySelectorAll('[data-bs-toggle="collapse"]').forEach((trigger) => {
-        const targetId = trigger.dataset.bsTarget;
-        if (!targetId) return;
-        const target = document.querySelector(targetId);
-        if (!target) return;
-        const chevron = trigger.querySelector('.corte-collapse-chevron');
-        if (!chevron) return;
-        target.addEventListener('show.bs.collapse', () => chevron.style.transform = 'rotate(180deg)');
-        target.addEventListener('hide.bs.collapse', () => chevron.style.transform = '');
-    });
+    /* La rotación del chevrón la hace el CSS con [aria-expanded] — Bootstrap
+       actualiza ese atributo en el trigger al abrir y cerrar. */
 });
 </script>
 {% endblock %}

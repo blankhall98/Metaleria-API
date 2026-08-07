@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_header, icon, stat, badge, money, kg, empty %}
+{% from "_macros.html" import empty_row, page_header, icon, stat, badge, money, kg, empty %}
 
 {% block title %}Nota de comisión #{{ nota.id }}{% endblock %}
 
@@ -94,6 +94,8 @@
                             <td class="text-end"><span class="s-num">{{ "{:,.5f}".format(nm.precio_por_kg or 0) }}</span></td>
                             <td class="text-end">{{ money(nm.subtotal) }}</td>
                         </tr>
+                    {% else %}
+                        {{ empty_row(4, 'La nota no tiene materiales.') }}
                     {% endfor %}
                     </tbody>
                 </table>
@@ -192,6 +194,8 @@
                             <td>{{ pago.usuario.username if pago.usuario else (pago.usuario_id or '—') }}</td>
                             <td class="text-muted">{{ pago.comentario or '—' }}</td>
                         </tr>
+                    {% else %}
+                        {{ empty_row(7, 'Aún no hay pagos registrados.') }}
                     {% endfor %}
                     </tbody>
                 </table>

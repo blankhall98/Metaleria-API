@@ -192,7 +192,7 @@
                 const close = document.createElement('button');
                 close.type = 'button';
                 close.className = 'chip-remove';
-                close.textContent = '×';
+                close.innerHTML = '<svg class="s-icon s-icon--sm" aria-hidden="true" focusable="false"><use href="#i-close"></use></svg>';
                 close.setAttribute('aria-label', 'Quitar placa ' + pl);
                 close.onclick = () => {
                     placas.splice(idx, 1);

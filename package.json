@@ -1,0 +1,11 @@
+{
+  "name": "scrap360-ui-checks",
+  "private": true,
+  "description": "Dependencias de scripts/check_ui.js (puerta de calidad del design system). Requiere el server local (uvicorn, puerto 8010) y CHROME_PATH apuntando a un Chrome instalado.",
+  "scripts": {
+    "check:ui": "node scripts/check_ui.js"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.49.0"
+  }
+}

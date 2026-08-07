@@ -1,37 +1,34 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, icon, badge, empty_row %}
 
 {% block title %}Precios &middot; {{ material.nombre }}{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <p class="text-uppercase text-muted small mb-1">Precios</p>
-        <h1 class="h4 text-white mb-1">Precios &middot; {{ material.nombre }}</h1>
-        <p class="text-muted small mb-0">
-            Unidad: {{ material.unidad_medida }} &middot;
-            {% if material.activo %}Material activo{% else %}Material inactivo{% endif %}
-        </p>
-    </div>
-    <div class="d-flex gap-2">
-        <a href="/web/admin/materiales" class="btn btn-outline-secondary btn-sm">
-            Volver a materiales
-        </a>
-        <a href="/web/admin/materiales/{{ material.id }}/precios/nuevo" class="btn btn-primary btn-sm">
-            Nueva versión
-        </a>
-    </div>
-</div>
+{% call page_header('Precios · ' ~ material.nombre, eyebrow='Catálogos',
+                    sub='Historial de versiones por operación y tipo de cliente. Unidad: ' ~ material.unidad_medida ~ '.') %}
+    <a href="/web/admin/materiales" class="btn btn-outline-secondary">Volver</a>
+    <a href="/web/admin/materiales/{{ material.id }}/precios/nuevo" class="btn btn-primary">
+        {{ icon('plus', 's-icon--sm') }} Crear versión de precio
+    </a>
+{% endcall %}
+
+{% if not material.activo %}
+<div class="alert alert-warning py-2 small">Este material está inactivo: sus precios no se aplican a notas nuevas.</div>
+{% endif %}
+
+{% set op_labels = {'compra': 'Compra', 'venta': 'Venta', 'comision': 'Comisión'} %}
+{% set cliente_labels = {'regular': 'Regular', 'mayorista': 'Mayorista', 'menudeo': 'Menudeo'} %}
 
 <div class="card">
     <div class="card-body">
         <div class="table-responsive">
-            <table class="table table-hover table-sm align-middle mb-0">
+            <table class="table table-hover align-middle mb-0">
                 <thead>
                 <tr>
-                    <th data-title-col>Tipo operación</th>
-                    <th>Tipo cliente</th>
-                    <th data-mobile-primary>Precio por unidad</th>
-                    <th>Versión</th>
+                    <th data-title-col>Operación</th>
+                    <th>Tipo de cliente</th>
+                    <th class="text-end" data-mobile-primary>Precio por unidad</th>
+                    <th class="text-end s-col-fit">Versión</th>
                     <th>Vigente desde</th>
                     <th>Vigente hasta</th>
                     <th data-mobile-primary>Estado</th>
@@ -40,20 +37,18 @@
                 <tbody>
                 {% for p in precios %}
                     <tr>
-                        <td>{{ p.tipo_operacion.value }}</td>
-                        <td>{{ p.tipo_cliente.value }}</td>
-                        <td>${{ '{:,.5f}'.format(p.precio_por_unidad) }}</td>
-                        <td><span class="pill">{{ p.version }}</span></td>
-                        <td>{{ p.vigente_desde }}</td>
-                        <td>{{ p.vigente_hasta or '-' }}</td>
+                        <td>{{ op_labels.get(p.tipo_operacion.value, p.tipo_operacion.value|capitalize) }}</td>
+                        <td>{{ cliente_labels.get(p.tipo_cliente.value, p.tipo_cliente.value|capitalize) }}</td>
+                        <td class="text-end"><span class="s-money">${{ '{:,.5f}'.format(p.precio_por_unidad) }}</span></td>
+                        <td class="text-end"><span class="s-mono">{{ p.version }}</span></td>
+                        <td>{{ p.vigente_desde|datetime_local if p.vigente_desde else '—' }}</td>
+                        <td>{{ p.vigente_hasta|datetime_local if p.vigente_hasta else '—' }}</td>
                         <td>
-                            {% if p.activo %}
-                                <span class="badge bg-success">Activo</span>
-                            {% else %}
-                                <span class="badge bg-secondary">Histórico</span>
-                            {% endif %}
+                            {% if p.activo %}{{ badge('Vigente', 'ok') }}{% else %}{{ badge('Histórico', 'muted') }}{% endif %}
                         </td>
                     </tr>
+                {% else %}
+                    {{ empty_row(7, 'Este material aún no tiene precios. Crea la primera versión para poder usarlo en notas.') }}
                 {% endfor %}
                 </tbody>
             </table>

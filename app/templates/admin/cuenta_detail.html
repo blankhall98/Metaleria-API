@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_header, icon, stat, badge, money, empty %}
+{% from "_macros.html" import empty_row, page_header, icon, stat, badge, money, empty, defs, def %}
 
 {% block title %}Cuenta {{ cuenta.nombre }}{% endblock %}
 
@@ -99,15 +99,15 @@
         <h2 class="s-card-title">Indicadores</h2>
         <p class="s-card-sub mb-3">{{ 'Pagos por mes' if is_partner else 'Saldo por mes' }} · Últimos 12 meses.</p>
 
-        <div class="s-stats">
-            {{ stat('Mes actual', money(kpi_current.saldo if kpi_current else 0),
-                    kpi_current.label if kpi_current else 'Sin movimientos este mes') }}
-            {{ stat('Promedio mensual', money(kpi_promedio if kpi_promedio is not none else 0)) }}
-            {{ stat('Mejor mes', money(kpi_best.saldo if kpi_best else 0),
-                    kpi_best.label if kpi_best else 'Sin datos') }}
-            {{ stat('Peor mes', money(kpi_worst.saldo if kpi_worst else 0),
-                    kpi_worst.label if kpi_worst else 'Sin datos') }}
-        </div>
+        {% call defs() %}
+            {{ def('Mes actual', money(kpi_current.saldo if kpi_current else 0),
+                   kpi_current.label if kpi_current else 'Sin movimientos este mes') }}
+            {{ def('Promedio mensual', money(kpi_promedio if kpi_promedio is not none else 0)) }}
+            {{ def('Mejor mes', money(kpi_best.saldo if kpi_best else 0),
+                   kpi_best.label if kpi_best else 'Sin datos') }}
+            {{ def('Peor mes', money(kpi_worst.saldo if kpi_worst else 0),
+                   kpi_worst.label if kpi_worst else 'Sin datos') }}
+        {% endcall %}
 
         {% if kpi_movs_total == 0 %}
             {{ empty('Sin movimientos en el período',
@@ -134,6 +134,8 @@
                             <td class="text-end">{{ money(row.egresos) }}</td>
                             <td class="text-end">{{ money(row.saldo) }}</td>
                         </tr>
+                    {% else %}
+                        {{ empty_row(5, 'Sin actividad mensual todavía.') }}
                     {% endfor %}
                     </tbody>
                 </table>
@@ -147,13 +149,13 @@
         <h2 class="s-card-title">Conciliación</h2>
         <p class="s-card-sub mb-3">Esperado contra pagado por partner.</p>
 
-        <div class="s-stats">
-            {{ stat('Notas aprobadas', recon_totals.notas) }}
-            {{ stat('Esperado', money(recon_totals.expected)) }}
-            {{ stat('Pagado', money(recon_totals.paid)) }}
-            {{ stat('Pendiente', money(recon_totals.pending)) }}
-            {{ stat('Pagos conciliados', recon_totals.pagos) }}
-        </div>
+        {% call defs() %}
+            {{ def('Notas aprobadas', recon_totals.notas) }}
+            {{ def('Esperado', money(recon_totals.expected)) }}
+            {{ def('Pagado', money(recon_totals.paid)) }}
+            {{ def('Pendiente', money(recon_totals.pending)) }}
+            {{ def('Pagos conciliados', recon_totals.pagos) }}
+        {% endcall %}
 
         {% if recon_rows|length == 0 %}
             {{ empty('Sin notas por conciliar',
@@ -191,6 +193,8 @@
                             <td class="text-end">{{ money(row.pending) }}</td>
                             <td class="text-end">{{ row.pagos }}</td>
                         </tr>
+                    {% else %}
+                        {{ empty_row(7, 'Sin registros de conciliación.') }}
                     {% endfor %}
                     </tbody>
                 </table>
@@ -201,11 +205,11 @@
             <div class="s-subpanel mt-3">
                 <h3 class="s-card-title">Alertas</h3>
                 <p class="s-card-sub mb-3">Pagos sin conciliación o fuera de cuenta.</p>
-                <div class="s-stats">
-                    {{ stat('Pagos sin nota', pagos_sin_nota_count, '', 'warn' if pagos_sin_nota_count else '') }}
-                    {{ stat('Pagos fuera de cuenta', pagos_fuera_cuenta_count, '', 'warn' if pagos_fuera_cuenta_count else '') }}
-                    {{ stat('Pagos en nota no aprobada', pagos_no_aprobados_count, '', 'warn' if pagos_no_aprobados_count else '') }}
-                </div>
+                {% call defs() %}
+                    {{ def('Pagos sin nota', pagos_sin_nota_count) }}
+                    {{ def('Pagos fuera de cuenta', pagos_fuera_cuenta_count) }}
+                    {{ def('Pagos en nota no aprobada', pagos_no_aprobados_count) }}
+                {% endcall %}
 
                 {% if pagos_sin_nota|length > 0 %}
                     <p class="s-section-label">Pagos sin nota</p>
@@ -227,6 +231,8 @@
                                     <td>{{ pago.metodo_pago|capitalize if pago.metodo_pago else "—" }}</td>
                                     <td class="text-muted small">{{ pago.comentario or "—" }}</td>
                                 </tr>
+                            {% else %}
+                                {{ empty_row(4, 'Sin pagos en esta categoría.') }}
                             {% endfor %}
                             </tbody>
                         </table>
@@ -270,6 +276,8 @@
                                     <td class="text-end">{{ money(pago.monto) }}</td>
                                     <td>{{ nota.cuenta.display_label if nota and nota.cuenta else '—' }}</td>
                                 </tr>
+                            {% else %}
+                                {{ empty_row(5, 'Sin pagos en esta categoría.') }}
                             {% endfor %}
                             </tbody>
                         </table>
@@ -318,6 +326,8 @@
                                     </td>
                                     <td class="text-end">{{ money(pago.monto) }}</td>
                                 </tr>
+                            {% else %}
+                                {{ empty_row(4, 'Sin pagos en esta categoría.') }}
                             {% endfor %}
                             </tbody>
                         </table>
@@ -372,6 +382,8 @@
                                 <td>{{ m.created_at|datetime_local if m.created_at else "—" }}</td>
                                 <td class="small text-muted">{{ m.comentario or "—" }}</td>
                             </tr>
+                        {% else %}
+                            {{ empty_row(9, 'Sin movimientos registrados.') }}
                         {% endfor %}
                         </tbody>
                     </table>
@@ -427,6 +439,8 @@
                             </td>
                             <td class="text-muted">{{ pago.comentario or "—" }}</td>
                         </tr>
+                    {% else %}
+                        {{ empty_row(6, 'Aún no hay pagos ligados a esta cuenta.') }}
                     {% endfor %}
                     </tbody>
                 </table>
@@ -506,6 +520,8 @@
                                 </span>
                             </td>
                         </tr>
+                    {% else %}
+                        {{ empty_row(9, 'Sin notas ligadas a esta cuenta.') }}
                     {% endfor %}
                     </tbody>
                 </table>

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_header, icon, stat, badge, money, kg, empty %}
+{% from "_macros.html" import empty_row, page_header, icon, stat, badge, money, kg, empty %}
 
 {% block title %}Valor del inventario{% endblock %}
 
@@ -126,6 +126,8 @@
                                     <td class="text-muted small">{{ row.source_help }}</td>
                                     <td>{{ row.updated_at|datetime_local if row.updated_at else '—' }}</td>
                                 </tr>
+                            {% else %}
+                                {{ empty_row(7, 'Sin existencias para valuar con los filtros aplicados.') }}
                             {% endfor %}
                             </tbody>
                             <tfoot>
@@ -184,6 +186,8 @@
                                     </span>
                                 </td>
                             </tr>
+                        {% else %}
+                            {{ empty_row(6, 'Sin sucursales con existencias.') }}
                         {% endfor %}
                         </tbody>
                     </table>

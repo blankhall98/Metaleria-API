@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_header, icon, stat, money, empty %}
+{% from "_macros.html" import empty_row, page_header, icon, stat, money, empty %}
 
 {% block title %}Reporte de saldos{% endblock %}
 
@@ -70,6 +70,8 @@
                             </td>
                             <td class="text-end">{{ money(row.saldo_neto) }}</td>
                         </tr>
+                        {% else %}
+                            {{ empty_row(4, 'Sin proveedores con saldo.') }}
                         {% endfor %}
                     </tbody>
                     <tfoot class="table-group-divider">
@@ -119,6 +121,8 @@
                             </td>
                             <td class="text-end">{{ money(row.saldo_neto) }}</td>
                         </tr>
+                        {% else %}
+                            {{ empty_row(4, 'Sin clientes con saldo.') }}
                         {% endfor %}
                     </tbody>
                     <tfoot class="table-group-divider">

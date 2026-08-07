@@ -26,7 +26,7 @@
     {% endif %}
 {% endif %}
 {% set next_step_title = 'Resumen operativo' %}
-{% set next_step_copy = 'Revisa el estado general de la nota y navega a la seccion que necesitas.' %}
+{% set next_step_copy = 'Revisa el estado general de la nota y navega a la sección que necesitas.' %}
 {% set next_step_href = '#note-summary' %}
 {% set next_step_button = 'Ir al resumen' %}
 {% set history_href = '#note-payments' %}
@@ -72,20 +72,20 @@
             <a href="/web/admin/notas/{{ nota.id }}/factura" class="btn btn-outline-secondary">Orden PDF</a>
         {% endif %}
         <a href="/web/admin/notas" class="btn btn-outline-secondary">Volver</a>
-        <a href="/web/admin/notas/{{ nota.id }}/evidencias" class="btn btn-primary">Evidencias</a>
+        <a href="/web/admin/notas/{{ nota.id }}/evidencias" class="btn btn-outline-primary">Evidencias</a>
     {% endcall %}
 
     {% if error %}
         <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
     {% endif %}
     {% if approved_query %}
-        <div class="alert alert-success py-2 small mb-3">La nota fue aprobada correctamente.{% if auto_open_pdf_query and user.rol == 'super_admin' %} El PDF se abrio en una pestaña lista para imprimir.{% endif %}</div>
+        <div class="alert alert-success py-2 small mb-3">La nota fue aprobada correctamente.{% if auto_open_pdf_query and user.rol == 'super_admin' %} El PDF se abrió en una pestaña lista para imprimir.{% endif %}</div>
     {% endif %}
     {% if edit_updated %}
         <div class="alert alert-success py-2 small mb-3">Edición guardada correctamente.</div>
     {% endif %}
     {% if request.query_params.get("cancelled") == "1" %}
-        <div class="alert alert-success py-2 small mb-3">La devolución total fue aplicada correctamente. Puedes revisar la verificacion automática o revertirla desde esta misma vista.</div>
+        <div class="alert alert-success py-2 small mb-3">La devolución total fue aplicada correctamente. Puedes revisar la verificación automática o revertirla desde esta misma vista.</div>
     {% endif %}
     {% if precios_updated %}
         <div class="alert alert-success py-2 small mb-3">Precios actualizados correctamente.</div>
@@ -94,7 +94,7 @@
         <div class="alert alert-success py-2 small mb-3">Abono registrado correctamente.</div>
     {% endif %}
     {% if pago_reverted %}
-        <div class="alert alert-success py-2 small mb-3">Abono deshecho correctamente. Se revirtieron saldo, log contable y movimiento en Cuenta Scrap360 si existía.</div>
+        <div class="alert alert-success py-2 small mb-3">Abono deshecho correctamente. Se revirtieron saldo, movimiento contable y movimiento en Cuenta Scrap360 si existía.</div>
     {% endif %}
     {% if ajuste_manual_updated %}
         <div class="alert alert-success py-2 small mb-3">Ajuste manual ligado a la nota registrado correctamente. La nota conserva sus montos; solo cambia el inventario auditado para esta nota.</div>
@@ -115,7 +115,7 @@
         <div class="alert alert-success py-2 small mb-3">Devolución parcial aplicada correctamente. El saldo se recalculó y cualquier sobrepago permanece como saldo a favor.</div>
     {% endif %}
     {% if devolucion_parcial_reverted %}
-        <div class="alert alert-success py-2 small mb-3">La linea de devolución parcial fue revertida correctamente.</div>
+        <div class="alert alert-success py-2 small mb-3">La línea de devolución parcial fue revertida correctamente.</div>
     {% endif %}
     {% if devolucion_total_reverted %}
         <div class="alert alert-success py-2 small mb-3">La devolución total fue revertida. La nota regresó a estado aprobada con sus efectos contables e inventario restaurados.</div>
@@ -295,7 +295,7 @@
     </div>
 
     {% if saldo_a_favor > 0 and is_approved %}
-        <div class="card mb-3 s-subpanel">
+        <div class="card mb-3">
             <div class="card-body">
                 <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
                     <div>
@@ -313,7 +313,7 @@
             <div class="card-body">
                 <div class="d-flex align-items-center gap-2 mb-2">
                     <span class="chip-strong">Devolución</span>
-                    <span class="text-muted small">Verificacion automática</span>
+                    <span class="text-muted small">Verificación automática</span>
                 </div>
                 {% if devolucion_check and devolucion_check.aplica %}
                     <div class="s-defs">
@@ -340,20 +340,20 @@
             </div>
         </div>
         {% if devolucion_total_activa %}
-            <div class="card mb-3 s-subpanel">
+            <div class="card mb-3">
                 <div class="card-body">
                     <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
                         <div>
                             <div class="fw-semibold">Devolución total activa</div>
                             <div class="text-muted small">
-                                Accion #{{ devolucion_total_activa.id }}
+                                Acción #{{ devolucion_total_activa.id }}
                                 &middot; {{ devolucion_total_activa.created_at|datetime_local if devolucion_total_activa.created_at else '-' }}
                                 &middot; {{ devolucion_total_activa.usuario.username if devolucion_total_activa.usuario else (devolucion_total_activa.usuario_id or '-') }}
                             </div>
                             <div class="text-muted small">{{ devolucion_total_activa.comentario or 'Sin comentario.' }}</div>
                         </div>
                         {% if can_manage_note %}
-                            <form method="post" action="/web/admin/notas/{{ nota.id }}/devolucion-total/{{ devolucion_total_activa.id }}/revertir" onsubmit="return confirm('La nota volvera a estado aprobada y se restauraran inventario, contabilidad y pagos activos. Deseas continuar?');">
+                            <form method="post" action="/web/admin/notas/{{ nota.id }}/devolucion-total/{{ devolucion_total_activa.id }}/revertir" onsubmit="return confirm('La nota volvera a estado aprobada y se restaurarán inventario, contabilidad y pagos activos. Deseas continuar?');">
                                 <button type="submit" class="btn btn-outline-primary">Revertir devolución total</button>
                             </form>
                         {% endif %}
@@ -406,6 +406,8 @@
                                         {% endif %}
                                     </td>
                                 </tr>
+                            {% else %}
+                                {{ empty_row(5, 'Sin devoluciones totales.') }}
                             {% endfor %}
                             </tbody>
                         </table>
@@ -555,6 +557,8 @@
                                                 </td>
                                             </tr>
                                         {% endif %}
+                                    {% else %}
+                                        {{ empty_row(8, 'La nota no tiene materiales.') }}
                                     {% endfor %}
                                     </tbody>
                                     </table>
@@ -579,14 +583,14 @@
                                 </div>
                                 <div class="col-12">
                                     {% if nota.tipo_operacion.value == 'compra' %}
-                                    <label class="form-label" for="f_inventario_sucursal_id">Sucursal fisica del inventario</label>
+                                    <label class="form-label" for="f_inventario_sucursal_id">Sucursal física del inventario</label>
                                     {% set inventario_sucursal_val = form_inventario_sucursal_id if form_inventario_sucursal_id is not none else (inventario_sucursal.id if inventario_sucursal else nota.sucursal_id) %}
                                     <select class="form-select" name="inventario_sucursal_id" id="f_inventario_sucursal_id">
                                         {% for s in inventory_sucursales %}
                                             <option value="{{ s.id }}" {% if inventario_sucursal_val|string == s.id|string %}selected{% endif %}>{{ s.nombre }}</option>
                                         {% endfor %}
                                     </select>
-                                    <div class="form-text text-muted">La nota seguira contablemente en {{ sucursal.nombre if sucursal else '-' }}, pero el stock se registrará en la sucursal fisica seleccionada.</div>
+                                    <div class="form-text text-muted">La nota seguirá contablemente en {{ sucursal.nombre if sucursal else '-' }}, pero las existencias se registrarán en la sucursal física seleccionada.</div>
                                     {% endif %}
                                 </div>
                                 <div class="col-12">
@@ -791,6 +795,8 @@
                                     </td>
                                 </tr>
                             {% endif %}
+                        {% else %}
+                            {{ empty_row(7, 'La nota no tiene materiales.') }}
                         {% endfor %}
                         </tbody>
                         </table>
@@ -858,6 +864,8 @@
                                             </td>
                                             <td class="text-end fw-semibold">$0.00</td>
                                         </tr>
+                                    {% else %}
+                                        {{ empty_row(4, 'La nota no tiene materiales.') }}
                                     {% endfor %}
                                     </tbody>
                                     </table>
@@ -1322,6 +1330,8 @@
                                             </div>
                                         </td>
                                     </tr>
+                                {% else %}
+                                    {{ empty_row(7, 'Sin ajustes de saldo.') }}
                                 {% endfor %}
                                 </tbody>
                             </table>
@@ -1400,11 +1410,11 @@
                                     <span class="s-def__value" id="note_adjust_preview_kg">-</span>
                                 </div>
                                 <div class="s-def">
-                                    <span class="s-def__label">Stock actual</span>
+                                    <span class="s-def__label">Existencias actuales</span>
                                     <span class="s-def__value" id="note_adjust_preview_stock">-</span>
                                 </div>
                                 <div class="s-def">
-                                    <span class="s-def__label">Stock estimado</span>
+                                    <span class="s-def__label">Existencias estimadas</span>
                                     <span class="s-def__value" id="note_adjust_preview_result">-</span>
                                 </div>
                             </div>
@@ -1440,8 +1450,8 @@
                                     <th data-title-col>Material</th>
                                     <th data-mobile-primary>Estado</th>
                                     <th class="text-end" data-mobile-primary>Movimiento</th>
-                                    <th class="text-end">Stock anterior</th>
-                                    <th class="text-end">Stock resultante</th>
+                                    <th class="text-end">Existencias anteriores</th>
+                                    <th class="text-end">Existencias resultantes</th>
                                     <th>Comentario</th>
                                     <th class="text-end">Acciones</th>
                                 </tr>
@@ -1454,7 +1464,7 @@
                                             <div class="fw-semibold">{{ ajuste.material.nombre if ajuste.material else ('Material #' ~ ajuste.material_id) }}</div>
                                             <div class="text-muted small">
                                                 {% if ajuste.nota_material %}
-                                                    Linea de nota #{{ ajuste.nota_material.id }}
+                                                    Línea de nota #{{ ajuste.nota_material.id }}
                                                 {% else %}
                                                     Ligado a nota
                                                 {% endif %}
@@ -1488,6 +1498,8 @@
                                             </div>
                                         </td>
                                     </tr>
+                                {% else %}
+                                    {{ empty_row(8, 'Sin ajustes manuales de inventario.') }}
                                 {% endfor %}
                                 </tbody>
                             </table>
@@ -1511,7 +1523,7 @@
                         {% if is_cancelled %}
                             <p class="text-muted small mb-0">La nota esta en devolución total. Puedes auditar las devoluciones parciales previas y, si necesitas cambiarlas, primero revierte la devolución total.</p>
                         {% else %}
-                            <p class="text-muted small mb-0">Cada linea se puede revertir una sola vez mientras la nota siga aprobada y el inventario lo permita.</p>
+                            <p class="text-muted small mb-0">Cada línea se puede revertir una sola vez mientras la nota siga aprobada y el inventario lo permita.</p>
                         {% endif %}
                     </div>
                     <span class="badge bg-light text-dark border">{{ devoluciones_parciales|length }} acciones</span>
@@ -1529,7 +1541,7 @@
                                 <th data-mobile-primary>Estado</th>
                                 <th>Usuario</th>
                                 <th>Comentario</th>
-                                <th class="text-end">Accion</th>
+                                <th class="text-end">Acción</th>
                             </tr>
                             </thead>
                             <tbody>
@@ -1539,7 +1551,7 @@
                                         <td>{{ devolucion.created_at|datetime_local if devolucion.created_at else '-' }}</td>
                                         <td>
                                             <div class="fw-semibold">{{ linea.material.nombre if linea.material else (linea.nota_material.material.nombre if linea.nota_material and linea.nota_material.material else ('Material #' ~ linea.material_id)) }}</div>
-                                            <div class="text-muted small">Accion #{{ devolucion.id }} &middot; Linea #{{ linea.id }}</div>
+                                            <div class="text-muted small">Acción #{{ devolucion.id }} &middot; Línea #{{ linea.id }}</div>
                                         </td>
                                         <td class="text-end">{{ "{:,.3f}".format(linea.kg_devolucion or 0) }} kg</td>
                                         <td class="text-end">${{ "{:,.5f}".format(linea.precio_unitario_devolucion or 0) }}</td>
@@ -1560,8 +1572,8 @@
                                         </td>
                                         <td class="text-end">
                                             {% if can_manage_note and not linea.reverted_at and is_approved %}
-                                                <form method="post" action="/web/admin/notas/{{ nota.id }}/devolucion-parcial/{{ linea.id }}/revertir" class="d-inline" onsubmit="return confirm('Se restauraran exactamente los kg y el valor de esta linea de devolución parcial. Deseas continuar?');">
-                                                    <button type="submit" class="btn btn-sm btn-outline-primary">Revertir linea</button>
+                                                <form method="post" action="/web/admin/notas/{{ nota.id }}/devolucion-parcial/{{ linea.id }}/revertir" class="d-inline" onsubmit="return confirm('Se restaurarán exactamente los kg y el valor de esta línea de devolución parcial. Deseas continuar?');">
+                                                    <button type="submit" class="btn btn-sm btn-outline-primary">Revertir línea</button>
                                                 </form>
                                             {% elif not linea.reverted_at and is_cancelled %}
                                                 <span class="text-muted small">Revertir primero la devolución total</span>
@@ -1571,6 +1583,8 @@
                                         </td>
                                     </tr>
                                 {% endfor %}
+                            {% else %}
+                                {{ empty_row(9, 'Sin devoluciones parciales.') }}
                             {% endfor %}
                             </tbody>
                         </table>
@@ -1630,6 +1644,8 @@
                                     {% endif %}
                                 </td>
                             </tr>
+                        {% else %}
+                            {{ empty_row(7, 'Sin movimientos de inventario ligados a la nota.') }}
                         {% endfor %}
                         </tbody>
                         </table>

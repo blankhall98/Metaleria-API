@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_header, icon, stat, money, kg, empty %}
+{% from "_macros.html" import empty_row, page_header, icon, stat, money, kg, empty, defs, def %}
 
 {% block title %}Capital real{% endblock %}
 
@@ -116,6 +116,8 @@
                                         <td>{{ row.sucursales_label }}</td>
                                         <td class="text-end">{{ money(row.saldo_actual) }}</td>
                                     </tr>
+                                {% else %}
+                                    {{ empty_row(4, 'Sin cuentas con saldo en el alcance seleccionado.') }}
                                 {% endfor %}
                             </tbody>
                         </table>
@@ -135,12 +137,12 @@
                     <a href="/web/admin/inventario/valor" class="btn btn-outline-primary btn-sm">Valuación</a>
                 </div>
 
-                <div class="s-stats">
-                    {{ stat('Materiales con existencias', inventario_materiales_con_stock) }}
-                    {{ stat('Valuados manualmente', inventario_manual_count) }}
-                    {{ stat('Valuados en automático', inventario_automatic_count) }}
-                    {{ stat('Sin referencia', inventario_sin_precio_count) }}
-                </div>
+                {% call defs() %}
+                    {{ def('Materiales con existencias', inventario_materiales_con_stock) }}
+                    {{ def('Valuados manualmente', inventario_manual_count) }}
+                    {{ def('Valuados en automático', inventario_automatic_count) }}
+                    {{ def('Sin referencia', inventario_sin_precio_count) }}
+                {% endcall %}
 
                 {% if inventario_summary|length == 0 %}
                     {{ empty('Sin sucursales accesibles',

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_header, icon, badge, money, kg, empty %}
+{% from "_macros.html" import empty_row, page_header, icon, badge, money, kg, empty %}
 
 {% block title %}Mis notas{% endblock %}
 
@@ -87,6 +87,8 @@
                             </span>
                         </td>
                     </tr>
+                {% else %}
+                    {{ empty_row(8, 'Aún no tienes notas capturadas.') }}
                 {% endfor %}
                 </tbody>
             </table>

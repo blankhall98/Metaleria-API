@@ -189,6 +189,8 @@
                                             <input class="form-control form-control-sm text-end note-subtotal-input" type="number" step="0.01" min="0" name="subtotal_{{ m.id }}" aria-label="Subtotal de {{ m.material.nombre if m.material else ('material #' ~ m.material_id) }}" value="{{ subtotal_override if subtotal_override is not none else ('%.2f'|format(m.subtotal) if m.subtotal is not none else '') }}" placeholder="0.00">
                                         </td>
                                     </tr>
+                                {% else %}
+                                    {{ empty_row(9, 'La nota no tiene materiales.') }}
                                 {% endfor %}
                                 </tbody>
                                 </table>
@@ -221,7 +223,7 @@
                         </div>
                         <label class="form-label" for="comentario_edicion">Comentario de edición</label>
                         <textarea class="form-control" id="comentario_edicion" name="comentario_edicion" rows="5" placeholder="Explica por qué se modifica la nota.">{{ comentario_edicion }}</textarea>
-                        <div class="form-text text-muted">Si la nota ya estaba aprobada, los cambios ajustan inventario y log contable. Si el nuevo total queda por debajo de lo ya pagado, el excedente se conserva como saldo a favor.</div>
+                        <div class="form-text text-muted">Si la nota ya estaba aprobada, los cambios ajustan inventario y movimiento contable. Si el nuevo total queda por debajo de lo ya pagado, el excedente se conserva como saldo a favor.</div>
 
                         <div class="s-subpanel mt-3">
                             <div class="s-section-label">Acciones</div>

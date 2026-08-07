@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_header, icon, stat, badge, money, kg, empty %}
+{% from "_macros.html" import empty_row, page_header, icon, stat, badge, money, kg, empty, defs, def, anchor_nav %}
 
 {% block title %}{{ partner_label }} · {{ partner.nombre_completo }}{% endblock %}
 
@@ -54,15 +54,10 @@
         </div>
     {% endif %}
 
-    <nav class="s-anchor-nav" aria-label="Secciones">
-        <a href="#partner-summary" class="btn btn-sm btn-outline-secondary">Resumen</a>
-        <a href="#partner-ledger" class="btn btn-sm btn-outline-secondary">Estado de cuenta</a>
-        {% if attendance_enabled %}
-            <a href="#partner-attendance" class="btn btn-sm btn-outline-secondary">Asistencias</a>
-        {% endif %}
-        <a href="#partner-notes" class="btn btn-sm btn-outline-secondary">Notas</a>
-        <a href="#partner-payments" class="btn btn-sm btn-outline-secondary">Pagos</a>
-    </nav>
+    {% set _secciones = [('#partner-summary', 'Resumen'), ('#partner-ledger', 'Estado de cuenta')]
+        + ([('#partner-attendance', 'Asistencias')] if attendance_enabled else [])
+        + [('#partner-notes', 'Notas'), ('#partner-payments', 'Pagos')] %}
+    {{ anchor_nav(_secciones) }}
 
     <div class="s-stats">
         {{ stat('Notas totales', summary.total_notas,
@@ -219,11 +214,11 @@
                     <div class="alert alert-danger py-2 small mb-3">{{ attendance_error }}</div>
                 {% endif %}
 
-                <div class="s-stats">
-                    {{ stat('Asistencias históricas', attendance_total_historico, '1 asistencia por día con nota registrada') }}
-                    {{ stat('Asistencias en rango', attendance_total_filtrado) }}
-                    {{ stat('Rango actual', attendance_range_label) }}
-                </div>
+                {% call defs() %}
+                    {{ def('Asistencias históricas', attendance_total_historico, '1 asistencia por día con nota registrada') }}
+                    {{ def('Asistencias en rango', attendance_total_filtrado) }}
+                    {{ def('Rango actual', attendance_range_label) }}
+                {% endcall %}
 
                 {% if attendance_rows|length == 0 %}
                     {{ empty('Sin asistencias en el rango',
@@ -258,6 +253,8 @@
                                         {% endif %}
                                     </td>
                                 </tr>
+                            {% else %}
+                                {{ empty_row(4, 'Sin asistencias en el período.') }}
                             {% endfor %}
                             </tbody>
                         </table>
@@ -319,6 +316,8 @@
                                 <td class="text-end">{{ money(row.saldo) }}</td>
                                 <td class="text-muted small">{{ row.comentario or "—" }}</td>
                             </tr>
+                        {% else %}
+                            {{ empty_row(9, 'Sin movimientos en el estado de cuenta.') }}
                         {% endfor %}
                         </tbody>
                     </table>
@@ -507,6 +506,8 @@
                                     </span>
                                 </td>
                             </tr>
+                        {% else %}
+                            {{ empty_row(10, 'Sin notas para este socio.') }}
                         {% endfor %}
                         </tbody>
                     </table>
@@ -591,6 +592,8 @@
                                 </td>
                                 <td class="text-muted">{{ pago.comentario or '—' }}</td>
                             </tr>
+                        {% else %}
+                            {{ empty_row(8, 'Aún no hay pagos registrados.') }}
                         {% endfor %}
                         </tbody>
                     </table>

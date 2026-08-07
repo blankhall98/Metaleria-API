@@ -387,11 +387,24 @@ body.app-has-mobile-dock .page-shell {
 /* --- Drawer ----------------------------------------------------------- */
 
 .nav-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    height: 100vh;
+    height: 100dvh;
+    z-index: 1100;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(110%);
+    transition: transform var(--s-dur-lg) var(--s-ease);
     background: var(--s-surface);
     border-left: 1px solid var(--s-line);
     box-shadow: var(--s-e-3);
     width: min(320px, 88vw);
 }
+.nav-drawer.open { transform: translateX(0); }
+
+body.drawer-open { overflow: hidden; }
 
 .nav-drawer-header {
     padding: var(--s-4);
@@ -399,6 +412,8 @@ body.app-has-mobile-dock .page-shell {
 }
 
 .nav-drawer-body {
+    flex: 1;
+    overflow-y: auto;
     padding: var(--s-3);
     display: flex;
     flex-direction: column;
@@ -446,9 +461,34 @@ body.app-has-mobile-dock .page-shell {
 }
 .nav-drawer-group-label:first-child { padding-top: var(--s-1); }
 
-.nav-overlay { background: rgba(19, 26, 36, 0.45); }
+.nav-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(19, 26, 36, 0.45);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--s-dur) var(--s-ease);
+    z-index: 1095;
+}
+.nav-overlay.open { opacity: 1; pointer-events: all; }
 
 /* --- Mobile dock ------------------------------------------------------ */
+
+.mobile-dock { display: none; }
+
+@media (max-width: 991.98px) {
+    .mobile-dock {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 1092;
+        display: grid;
+        padding: var(--s-1) var(--s-2) 0;
+    }
+    .mobile-dock--admin { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .mobile-dock--worker { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
 
 .mobile-dock {
     background: var(--s-surface);
@@ -459,11 +499,23 @@ body.app-has-mobile-dock .page-shell {
 }
 
 .mobile-dock-link {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    background: transparent;
+    text-decoration: none;
+    font: inherit;
+    border-radius: var(--s-r-sm);
     color: var(--s-text-muted);
     gap: 2px;
     min-height: 48px;
     font-weight: 500;
+    transition: color var(--s-dur) var(--s-ease), background var(--s-dur) var(--s-ease);
 }
+.mobile-dock-link:hover,
+.mobile-dock-link--menu:hover { color: var(--s-p600); background: var(--s-sunken); }
 .mobile-dock-link.active { color: var(--s-p600); }
 .mobile-dock-link .s-icon { width: 21px; height: 21px; }
 .mobile-dock-label { font-size: 0.625rem; letter-spacing: 0.01em; }
@@ -477,6 +529,40 @@ body.app-has-mobile-dock .page-shell {
     font-size: var(--s-fs-xs);
 }
 .footer .fw-semibold { font-family: var(--s-font-display); }
+
+.footer-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    justify-content: center;
+    text-align: center;
+}
+.footer-brand small { display: block; color: var(--s-text-muted); letter-spacing: 0.2px; }
+.footer-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--s-1);
+    text-align: center;
+    line-height: 1.5;
+}
+.footer-meta-line {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    flex-wrap: wrap;
+    justify-content: center;
+}
+.footer-credit { opacity: 0.7; }
+.footer-heart { color: var(--s-bad); margin: 0 0.15rem; }
+.footer-credit a { color: inherit; text-decoration: none; border-bottom: 1px solid var(--s-line-strong); }
+.footer-credit a:hover { color: var(--s-p500); border-bottom-color: var(--s-p500); }
+
+@media (min-width: 992px) {
+    .footer-brand { justify-content: flex-start; text-align: left; }
+    .footer-meta { align-items: flex-end; text-align: right; }
+    .footer-meta-line { justify-content: flex-end; }
+}
 
 /* --- Persistent sidebar on wide screens --------------------------------
    Below 1400px the same markup stays an overlay drawer. Above it there is
@@ -492,6 +578,7 @@ body.app-has-mobile-dock .page-shell {
         bottom: 0;
         left: 0;
         right: auto;
+        height: auto;
         /* The legacy drawer declares min-width: 320px, which would otherwise
            win over the sidebar width and push content under the panel. */
         width: var(--s-sidebar-w);
@@ -1251,6 +1338,13 @@ table.table-hover > tbody > tr:hover > * { background-color: var(--s-p50) !impor
 }
 .s-table-pin thead th:first-child { z-index: 3; background: var(--s-n50); }
 .s-table-pin.table-hover tbody tr:hover td:first-child { background: var(--s-p50); }
+
+/* Filas de detalle y filas revertidas en las tablas de nota. El desglose de
+   subpesajes se hunde bajo su material; una fila revertida sigue legible pero
+   ya no compite con las vivas. */
+.table tr.note-subpesaje-row > td,
+.table.table-hover tbody tr.note-subpesaje-row:hover > td { background: var(--s-sunken); }
+.table tbody tr.is-reverted > td { color: var(--s-text-muted); }
 
 /* ==========================================================================
    9. TABLE → CARD ON PHONES
@@ -2039,109 +2133,17 @@ textarea.form-control {
 }
 
 /* ==========================================================================
-   15. LEGACY COMPONENT REMAP
+   15. OVERRIDES DE BOOTSTRAP Y GANCHOS ACTIVOS
    --------------------------------------------------------------------------
-   The old build grew ~280 bespoke class names — eight separate KPI cards,
-   five panel styles. Rather than leave them inconsistent, each is mapped onto
-   the canonical look above. Templates migrate to .s-* names over time.
+   Lo que queda del antiguo remap legado: utilidades de Bootstrap ancladas a
+   los tokens y los pocos ganchos de comportamiento que conservan estilo aquí.
    ========================================================================== */
 
-/* --- Panels that were gradient-filled cards ---------------------------- */
-.ops-shortcut-panel,
-.notes-search-panel,
-.notes-result-card,
-.notes-toolbar-card,
-.notes-admin-cta,
-.note-hero-card,
-.note-side-card,
-.note-editor-card,
-.note-flow-card,
-.note-summary-card,
-.note-report-card,
-.note-payments-card,
-.note-adjustments-card,
-.note-comments-card,
-.note-step-panel,
-.note-submit-panel,
-.entity-form-card,
-.entity-form-shell,
-.entity-list-card,
-.entity-side-card,
-.entity-preview-card,
-.user-form-card,
-.user-form-shell,
-.user-side-card,
-.user-toolbar-card,
-.users-management-card,
-.user-persona-card,
-.user-role-explainer,
-.partner-match-card,
-.partner-unified-banner,
-.worker-note-card,
-.worker-step-card,
-.step-card,
-.material-card,
-.cash-count-sheet,
-.evidence-page > .card,
-.note-inline-info,
-.note-adjust-preview,
-.note-table-assist,
-.notes-deadline-card,
-.corte-caja-page .card {
-    background: var(--s-surface);
-    background-image: none;
-    border: 1px solid var(--s-line);
-    border-radius: var(--s-r-md);
-    box-shadow: none;
-}
+.bg-light { background-color: var(--s-n50) !important; }
+.border { border-color: var(--s-line) !important; }
 
-/* Sub-regions inside a panel read as sunken, not as another card. */
-.entity-form-section,
-.user-form-section,
-.cash-count-section,
-.subpesaje-panel,
-.note-adjust-preview,
-.note-inline-info,
-.note-payment-summary,
-.note-return-preview {
-    background: var(--s-sunken);
-    background-image: none;
-    border: 1px solid var(--s-line);
-    border-radius: var(--s-r-sm);
-    box-shadow: none;
-}
-
-/* --- Every legacy KPI card becomes the canonical stat tile ------------- */
-.notes-kpi-card,
-.scrap360-kpi-card,
-.ops-kpi-pill,
-.evidence-meta-tile,
-.note-meta-item,
-.user-side-stat,
-.note-return-summary-item,
-.note-adjust-preview-item,
-.cash-count-total-card,
-.notes-deadline-card,
-.partner-balance-hero,
-.evidence-tally-item {
-    background: var(--s-surface);
-    background-image: none;
-    border: 1px solid var(--s-line);
-    border-left: 3px solid var(--s-n300);
-    border-radius: var(--s-r-sm);
-    padding: var(--s-3) var(--s-4);
-    box-shadow: none;
-    color: var(--s-text);
-}
-
-.notes-kpi-label,
-.scrap360-kpi-label,
-.ops-kpi-label,
-.note-meta-label,
-.notes-deadline-label,
-.partner-balance-label,
-.evid-label,
-.cash-count-section__title {
+/* Ganchos del formulario de nota del trabajador y de la página de evidencias */
+.evid-label {
     display: block;
     font-family: var(--s-font-body);
     font-size: var(--s-fs-micro);
@@ -2151,165 +2153,8 @@ textarea.form-control {
     color: var(--s-text-muted);
     margin-bottom: var(--s-1);
 }
-
-.notes-kpi-sub,
-.note-meta-sub,
-.notes-deadline-sub,
-.note-step-sub {
-    display: block;
-    font-size: var(--s-fs-xs);
-    color: var(--s-text-muted);
-    margin-top: 2px;
-}
-
-.partner-balance-amount {
-    font-family: var(--s-font-display);
-    font-size: var(--s-fs-2xl);
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    font-variant-numeric: tabular-nums;
-}
-
-/* Tone modifiers become a coloured spine, not a pastel fill. */
-.tone-blue,    .scrap360-kpi-card.tone-blue    { border-left-color: var(--s-p500); background: var(--s-surface); background-image: none; }
-.tone-green,   .scrap360-kpi-card.tone-green   { border-left-color: var(--s-ok); background: var(--s-surface); background-image: none; }
-.tone-red,     .scrap360-kpi-card.tone-rose,
-.scrap360-kpi-card.tone-red                    { border-left-color: var(--s-bad); background: var(--s-surface); background-image: none; }
-.tone-amber,   .scrap360-kpi-card.tone-amber   { border-left-color: var(--s-warn); background: var(--s-surface); background-image: none; }
-.tone-neutral, .scrap360-kpi-card.tone-neutral { border-left-color: var(--s-n300); background: var(--s-surface); background-image: none; }
-
-.tone-green .notes-kpi-value,  .tone-green strong  { color: var(--s-ok); }
-.tone-red .notes-kpi-value,    .tone-red strong    { color: var(--s-bad); }
-.tone-amber .notes-kpi-value,  .tone-amber strong  { color: var(--s-warn); }
-
-/* --- Grids ------------------------------------------------------------- */
-.notes-kpi-grid,
-.scrap360-kpi-grid,
-.note-kpi-grid-detail,
-.evidence-metrics,
-.entity-summary-strip,
-.users-summary-strip,
-.note-meta-grid,
-.ops-kpi-strip {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
-    gap: var(--s-3);
-}
-
-.ops-shortcut-grid,
-.action-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
-    gap: var(--s-3);
-}
-
-@media (max-width: 575.98px) {
-    .notes-kpi-grid,
-    .scrap360-kpi-grid,
-    .note-kpi-grid-detail,
-    .evidence-metrics,
-    .entity-summary-strip,
-    .users-summary-strip,
-    .note-meta-grid,
-    .ops-kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-2); }
-
-    .ops-shortcut-grid,
-    .action-grid { grid-template-columns: 1fr; }
-}
-
-/* --- Icons that were emoji -------------------------------------------- */
-.ops-shortcut-icon,
-.action-icon,
-.evidence-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 34px;
-    height: 34px;
-    border-radius: var(--s-r-sm);
-    background: var(--s-p50);
-    background-image: none;
-    color: var(--s-p600);
-    border: 1px solid var(--s-p100);
-    box-shadow: none;
-    flex: 0 0 auto;
-}
-
-.ops-shortcut-label,
-.note-step-pill,
-.notes-op-chip {
-    font-size: var(--s-fs-micro);
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--s-text-muted);
-}
-
-/* --- Hero blocks: demoted to page headers ----------------------------- */
-.hero,
-.login-panel {
-    background: var(--s-surface);
-    background-image: none;
-    border: 1px solid var(--s-line);
-    border-radius: var(--s-r-lg);
-    box-shadow: none;
-}
-.hero::after { content: none; }
-.hero-badge,
-.hero-badges .hero-badge {
-    background: var(--s-n50);
-    border: 1px solid var(--s-n200);
-    color: var(--s-n700);
-    border-radius: var(--s-r-sm);
-    font-size: var(--s-fs-xs);
-    font-weight: 500;
-}
-
-/* --- Misc legacy ------------------------------------------------------- */
-.hover-lift { transition: border-color var(--s-dur) var(--s-ease); }
-.hover-lift:hover { transform: none !important; box-shadow: none !important; border-color: var(--s-line-strong); }
-
-.sticky-tools {
-    background: var(--s-surface);
-    border-bottom: 1px solid var(--s-line);
-    box-shadow: none;
-}
-
-.bg-light { background-color: var(--s-n50) !important; }
-.border { border-color: var(--s-line) !important; }
-
-.corte-pago-pill,
-.corte-pago-pill--ok,
-.corte-pago-pill--pending {
-    border-radius: var(--s-r-sm);
-    font-size: var(--s-fs-micro);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 0.1875rem 0.5rem;
-    background-image: none;
-}
-.corte-pago-pill--ok { background: var(--s-ok-tint); color: var(--s-ok); border: 1px solid var(--s-ok-line); }
-.corte-pago-pill--pending { background: var(--s-warn-tint); color: var(--s-warn); border: 1px solid var(--s-warn-line); }
-
-.remove-btn,
 .subpesaje-actions .btn { min-height: 36px; }
-
-/* Evidence grid keeps its layout, loses the decoration. */
-.evidence-item,
-.extra-evidence-item,
-.evidence-picker-card {
-    background: var(--s-surface);
-    border: 1px solid var(--s-line);
-    border-radius: var(--s-r-sm);
-    box-shadow: none;
-}
-.evid-thumb,
-.evidence-media,
-.extra-evidence-thumb { border-radius: var(--s-r-sm); background: var(--s-n100); }
-
-.evidence-picker-backdrop { background: rgba(19, 26, 36, 0.5); }
-.evidence-picker-modal { border-radius: var(--s-r-lg); box-shadow: var(--s-e-3); }
+.evid-thumb { border-radius: var(--s-r-sm); background: var(--s-n100); }
 
 /* ==========================================================================
    16. WORKER NOTE FORM — the one screen used on a phone all day
@@ -2671,13 +2516,13 @@ textarea.form-control {
 }
 
 /* ==========================================================================
-   19. CORTE DE CAJA
+   21. CATEGORÍAS, COLAPSABLES Y BARRA DE RESUMEN
    --------------------------------------------------------------------------
-   This screen used to carry its own <style> block: 130 lines, ~40 raw hex
-   values, a private sticky nav, its own section headers and a dark floating
-   bar. It was the main reason the app stopped feeling like one product. The
-   rules live here now, on the tokens, and the components that already existed
-   (.s-anchor-nav, .s-card-title, .badge) do the work they were built for.
+   Componentes que nacieron en el corte de caja y se promovieron a vocabulario
+   canónico: filas categorizadas por método de pago (.s-cat-row-*), la leyenda
+   de colores (.s-cat-legend), la píldora de referencia de pago
+   (.s-method-pill), secciones colapsables (.s-collapse) y la barra flotante
+   de resumen (.s-dockbar). Cualquier pantalla puede usarlos.
    ========================================================================== */
 
 /* --- Account colour coding ------------------------------------------------
@@ -2697,36 +2542,36 @@ textarea.form-control {
     --s-cat-transfer: var(--s-n500);
 }
 
-.corte-row-cash      { --s-cat: var(--s-cat-cash); }
-.corte-row-account-1 { --s-cat: var(--s-cat-1); }
-.corte-row-account-2 { --s-cat: var(--s-cat-2); }
-.corte-row-account-3 { --s-cat: var(--s-cat-3); }
-.corte-row-account-4 { --s-cat: var(--s-cat-4); }
-.corte-row-account-5 { --s-cat: var(--s-cat-5); }
-.corte-row-transfer  { --s-cat: var(--s-cat-transfer); }
+.s-cat-row-cash      { --s-cat: var(--s-cat-cash); }
+.s-cat-row-account-1 { --s-cat: var(--s-cat-1); }
+.s-cat-row-account-2 { --s-cat: var(--s-cat-2); }
+.s-cat-row-account-3 { --s-cat: var(--s-cat-3); }
+.s-cat-row-account-4 { --s-cat: var(--s-cat-4); }
+.s-cat-row-account-5 { --s-cat: var(--s-cat-5); }
+.s-cat-row-transfer  { --s-cat: var(--s-cat-transfer); }
 
-.table tr[class*="corte-row-"] td:first-child {
+.table tr[class*="s-cat-row-"] td:first-child {
     box-shadow: inset 3px 0 0 var(--s-cat);
 }
 
 /* In card mode each row is already a card, so the spine is its left edge. */
 @media (max-width: 767.98px) {
-    .table.s-table-cards tr[class*="corte-row-"] td:first-child { box-shadow: none; }
-    .table.s-table-cards tr[class*="corte-row-"] { border-left: 3px solid var(--s-cat); }
+    .table.s-table-cards tr[class*="s-cat-row-"] td:first-child { box-shadow: none; }
+    .table.s-table-cards tr[class*="s-cat-row-"] { border-left: 3px solid var(--s-cat); }
 }
 
 /* --- Legend ---------------------------------------------------------------
    Colour is never the only signal: the legend names every account. The hue
    rides a dot so the label stays readable text instead of tinted-on-tinted. */
 
-.corte-color-legend {
+.s-cat-legend {
     display: flex;
     flex-wrap: wrap;
     gap: var(--s-2) var(--s-4);
     margin-bottom: var(--s-3);
 }
 
-.corte-legend-badge {
+.s-cat-legend__item {
     display: inline-flex;
     align-items: center;
     gap: var(--s-2);
@@ -2734,7 +2579,7 @@ textarea.form-control {
     font-weight: 500;
     color: var(--s-text-soft);
 }
-.corte-legend-badge::before {
+.s-cat-legend__item::before {
     content: "";
     width: 10px;
     height: 10px;
@@ -2746,7 +2591,7 @@ textarea.form-control {
 /* --- Payment state on a movement row -------------------------------------
    Was a 999px pill in its own colours. It is a status, so it reads as one. */
 
-.corte-pago-pill {
+.s-method-pill {
     display: inline-flex;
     align-items: center;
     gap: var(--s-1);
@@ -2760,14 +2605,14 @@ textarea.form-control {
     white-space: nowrap;
     cursor: default;
 }
-button.corte-pago-pill { cursor: pointer; }
-button.corte-pago-pill:hover { filter: brightness(0.97); }
-.corte-pago-pill--pending {
+button.s-method-pill { cursor: pointer; }
+button.s-method-pill:hover { filter: brightness(0.97); }
+.s-method-pill--pending {
     background: var(--s-warn-tint);
     border-color: var(--s-warn-line);
     color: var(--s-warn);
 }
-.corte-pago-pill--ok {
+.s-method-pill--ok {
     background: var(--s-n50);
     border-color: var(--s-n200);
     color: var(--s-p700);
@@ -2778,11 +2623,11 @@ button.corte-pago-pill:hover { filter: brightness(0.97); }
    .s-anchor-nav and .s-card-title like every other one. The collapse stays,
    because the sections really do fold. */
 
-.corte-section-anchor { scroll-margin-top: calc(var(--s-navbar-h) + var(--s-4)); }
+.s-anchor-target { scroll-margin-top: calc(var(--s-navbar-h) + var(--s-4)); }
 
-.corte-sdiv { margin-bottom: var(--s-2); }
+.s-collapse { margin-bottom: var(--s-2); }
 
-.corte-sdiv-trigger {
+.s-collapse__trigger {
     display: flex;
     align-items: center;
     gap: var(--s-2);
@@ -2795,22 +2640,22 @@ button.corte-pago-pill:hover { filter: brightness(0.97); }
     text-align: left;
     transition: border-color var(--s-dur) var(--s-ease);
 }
-.corte-sdiv-trigger:hover { border-bottom-color: var(--s-line-strong); }
-.corte-sdiv-body { padding: var(--s-4) 0 var(--s-2); }
+.s-collapse__trigger:hover { border-bottom-color: var(--s-line-strong); }
+.s-collapse__body { padding: var(--s-4) 0 var(--s-2); }
 
-.corte-collapse-chevron {
+.s-collapse__chevron {
     margin-left: auto;
     color: var(--s-text-muted);
     transition: transform var(--s-dur) var(--s-ease);
 }
-.corte-sdiv-trigger[aria-expanded="true"] .corte-collapse-chevron { transform: rotate(180deg); }
+.s-collapse__trigger[aria-expanded="true"] .s-collapse__chevron { transform: rotate(180deg); }
 
 /* --- Running totals bar ---------------------------------------------------
    A dark slab pinned over a light app read as a different product. It
    summarises the screen you are on, so it is a surface with a top border —
    and it still clears the phone dock. */
 
-.corte-floating-bar {
+.s-dockbar {
     position: fixed;
     bottom: 0;
     left: 0;
@@ -2826,41 +2671,39 @@ button.corte-pago-pill:hover { filter: brightness(0.97); }
     font-size: var(--s-fs-xs);
     z-index: 150;
 }
-.app-has-mobile-dock .corte-floating-bar { bottom: 56px; }
+.app-has-mobile-dock .s-dockbar { bottom: 56px; }
 
 /* The bar is fixed to the viewport, so left: 0 put its first figure under the
    pinned sidebar — "Sobrante" read as "brante". It starts where the content
    starts, like everything else on the page. */
 @media (min-width: 1200px) {
-    body.role-super_admin .corte-floating-bar,
-    body.role-admin .corte-floating-bar,
-    body.role-visor .corte-floating-bar {
+    body.role-super_admin .s-dockbar,
+    body.role-admin .s-dockbar,
+    body.role-visor .s-dockbar {
         left: var(--s-sidebar-w);
     }
 }
 
-.corte-float-item { display: flex; flex-direction: column; }
-.corte-float-item span {
+.s-dockbar__item { display: flex; flex-direction: column; }
+.s-dockbar__item span {
     font-size: var(--s-fs-micro);
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--s-text-muted);
 }
-.corte-float-item strong { font-size: var(--s-fs-base); font-weight: 600; }
-.float-positive { color: var(--s-ok); }
-.float-negative { color: var(--s-bad); }
-.corte-float-divider {
+.s-dockbar__item strong { font-size: var(--s-fs-base); font-weight: 600; }
+.s-dockbar__divider {
     width: 1px;
     align-self: stretch;
     background: var(--s-line);
     flex-shrink: 0;
 }
-.corte-float-action { margin-left: auto; }
+.s-dockbar__action { margin-left: auto; }
 
 @media (max-width: 767.98px) {
-    .corte-floating-bar { gap: var(--s-3); padding: var(--s-2) var(--s-4); overflow-x: auto; }
-    .corte-float-divider { display: none; }
+    .s-dockbar { gap: var(--s-3); padding: var(--s-2) var(--s-4); overflow-x: auto; }
+    .s-dockbar__divider { display: none; }
 }
 
 /* --- Sticky side rail ----------------------------------------------------
@@ -2884,7 +2727,7 @@ button.corte-pago-pill:hover { filter: brightness(0.97); }
 .s-input-qty { max-width: 7rem; }
 
 /* ==========================================================================
-   20. MEDIA: EVIDENCE CARDS, THUMBNAILS AND THE PICKER SHEET
+   22. MEDIA: EVIDENCE CARDS, THUMBNAILS AND THE PICKER SHEET
    --------------------------------------------------------------------------
    Photographic evidence of a weighing is the one place in this app where the
    record is an image, so the grid of cards, the thumbnail strip and the

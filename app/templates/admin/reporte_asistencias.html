@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_header, icon, stat, badge, empty %}
+{% from "_macros.html" import empty_row, page_header, icon, stat, badge, empty %}
 
 {% block title %}Reporte de asistencias{% endblock %}
 
@@ -50,7 +50,7 @@
     <div class="s-stats">
         {{ stat('Total asistencias', total_asistencias) }}
         {{ stat('Proveedores distintos', total_proveedores) }}
-        {{ stat('Período', fecha_inicio ~ ' → ' ~ fecha_fin) }}
+        {{ stat('Período', fecha_inicio ~ ' – ' ~ fecha_fin) }}
     </div>
 
     <div class="card mb-3">
@@ -75,6 +75,8 @@
                             <td class="fw-semibold">{{ s.nombre }}</td>
                             <td class="text-end">{{ s.total }}</td>
                         </tr>
+                        {% else %}
+                            {{ empty_row(3, 'Sin asistencias en el rango seleccionado.') }}
                         {% endfor %}
                     </tbody>
                 </table>
@@ -110,7 +112,7 @@
                                     {% if is_new_prov %}
                                         <span class="fw-semibold">{{ row.proveedor_nombre }}</span>
                                     {% else %}
-                                        <span class="text-muted">&#8627;</span>
+                                        <span class="s-visually-hidden">{{ row.proveedor_nombre }}</span>
                                     {% endif %}
                                 </td>
                                 <td>{{ row.fecha|datetime_local if row.fecha else '—' }}</td>
@@ -127,6 +129,8 @@
                                     {% endif %}
                                 </td>
                             </tr>
+                        {% else %}
+                            {{ empty_row(4, 'Sin asistencias en el rango seleccionado.') }}
                         {% endfor %}
                     </tbody>
                 </table>

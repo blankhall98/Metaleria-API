@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_header, icon, stat, badge, money, empty %}
+{% from "_macros.html" import empty_row, page_header, icon, stat, badge, money, empty %}
 
 {% block title %}Cuenta Scrap360 {{ cuenta.nombre }}{% endblock %}
 
@@ -156,6 +156,8 @@
                             </td>
                             <td class="text-muted small">{{ mov.comentario or "—" }}</td>
                         </tr>
+                    {% else %}
+                        {{ empty_row(8, 'Sin movimientos registrados.') }}
                     {% endfor %}
                     </tbody>
                 </table>

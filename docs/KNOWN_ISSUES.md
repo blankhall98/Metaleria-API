@@ -47,5 +47,5 @@ Confirmed findings from the July 2026 full-codebase audit. Ordered by severity. 
 16. `"Pago inicial"` comment prefix is a functional key for `adjust_initial_payment`.
 17. `Inventario(sucursal, material)` has no unique constraint; get-or-create in service code only.
 18. Excel exports are SpreadsheetML XML with `.xls` extension → Excel format warning on open. PDFs are latin-1 with `errors="ignore"` → non-latin-1 chars silently dropped.
-19. CSS: undefined vars `--success`/`--danger`/`--text-dark` referenced in style.css; unclosed-scope effect — the `@media (max-width: 768px)` block starting ~style.css:2857 swallows all `.cash-count-*`/`.corte-caja-*` rules (lines ~2874–3164), so they only apply below 768px; mojibake `â†”`/`Â·` in `notes_list.html:340` and `contabilidad_list.html:87`.
+19. ~~CSS: undefined vars / unclosed media scope in style.css; mojibake in two templates~~ — **RESOLVED 2026-08-06**: `style.css` was deleted (etapa 0 de la fase 2; las 10 clases vivas se portaron a `scrap360.css`), and the mojibake was already gone from both templates.
 20. Stock is not enforced at normal venta approval — negative inventory is possible on purpose (approve first, fix stock later); only transfers hard-block.

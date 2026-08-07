@@ -162,7 +162,7 @@
 
 {# --------------------------------------------------- pendientes de validar #}
 {% if notas_revision %}
-    <section class="s-card mb-4" id="notes-review-panel">
+    <section class="s-card mb-4">
         <div class="card-body">
             <div class="s-card-head">
                 <div>
@@ -200,6 +200,8 @@
                                 <td>{{ n.created_at|datetime_local if n.created_at else '—' }}</td>
                                 <td class="s-col-fit"><a href="/web/admin/notas/{{ n.id }}" class="btn btn-sm btn-outline-secondary">Ver</a></td>
                             </tr>
+                        {% else %}
+                            {{ empty_row(6, 'No hay notas en revisión.') }}
                         {% endfor %}
                     </tbody>
                 </table>
