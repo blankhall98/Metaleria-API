@@ -137,10 +137,12 @@
         {% endif %}
     </header>
 
-    {# Cada lectura navega a la vista que la explica; las bandas de alerta que
-       repetían estas mismas cifras 20px abajo se retiraron. #}
+    {# Dos bandas con columnas fijas en lugar de siete celdas amontonadas por
+       auto-fit: arriba el pulso de las notas (4 conteos), abajo el dinero y
+       el inventario (3 lecturas anchas). Cada lectura navega a la vista que
+       la explica. #}
     {% if resumen %}
-        <div class="s-stats">
+        <div class="s-stats s-stats--fixed-4 mb-3">
             <a class="s-stat-link" href="/web/admin/notas?estado=EN_REVISION">
                 {{ stat('En revisión', resumen.en_revision,
                         'Notas esperando aprobación',
@@ -157,17 +159,20 @@
                         'warn' if resumen.por_vencer else '') }}
             </a>
             {{ stat('Notas de hoy', resumen.notas_hoy, 'Capturadas desde las 00:00', 'info') }}
+        </div>
+
+        <div class="s-stats s-stats--fixed-3">
             <a class="s-stat-link" href="/web/admin/reporte-saldos">
-                {{ stat('Por pagar a proveedores', money(resumen.por_pagar, 'plain'),
-                        'Saldo vivo de notas de compra') }}
+                {{ stat('Por pagar', money(resumen.por_pagar, 'plain'),
+                        'Saldo vivo con proveedores') }}
             </a>
             <a class="s-stat-link" href="/web/admin/reporte-saldos">
-                {{ stat('Por cobrar a clientes', money(resumen.por_cobrar, 'plain'),
-                        'Saldo vivo de notas de venta') }}
+                {{ stat('Por cobrar', money(resumen.por_cobrar, 'plain'),
+                        'Saldo vivo con clientes') }}
             </a>
             <a class="s-stat-link" href="/web/admin/inventario">
-                {{ stat('Inventario total', kg(resumen.inventario_kg),
-                        'Existencias actuales en todas las sucursales') }}
+                {{ stat('Inventario', kg(resumen.inventario_kg),
+                        'Existencias en todas las sucursales') }}
             </a>
         </div>
     {% endif %}
@@ -175,13 +180,18 @@
     {% if resumen and resumen.actividad is defined %}
         <div class="card mb-3">
             <div class="card-body">
-                <div class="s-card-head">
-                    <div>
-                        <h2 class="s-card-title">Actividad reciente</h2>
-                        <p class="s-card-sub">Las últimas notas capturadas en cualquier sucursal.</p>
-                    </div>
+                <div class="d-flex align-items-center gap-3">
+                    <button type="button" class="s-collapse__trigger s-grow" data-bs-toggle="collapse"
+                            data-bs-target="#actividadRecienteBody" aria-expanded="true">
+                        <div>
+                            <h2 class="s-card-title mb-1">Actividad reciente</h2>
+                            <p class="s-card-sub mb-0">Las últimas notas capturadas en cualquier sucursal.</p>
+                        </div>
+                        {{ icon('chevron-down', 's-collapse__chevron') }}
+                    </button>
                     <a href="/web/admin/notas" class="btn btn-outline-secondary btn-sm">Ver todas</a>
                 </div>
+                <div id="actividadRecienteBody" class="collapse show s-collapse__body">
                 {% if resumen.actividad %}
                     <div class="table-responsive">
                         <table class="table table-hover align-middle">
@@ -224,6 +234,7 @@
                 {% else %}
                     {{ empty('Sin notas todavía', 'La actividad aparece en cuanto se captura la primera nota.', 'notes') }}
                 {% endif %}
+                </div>
             </div>
         </div>
     {% endif %}
@@ -240,9 +251,7 @@
         </a>
     {% endmacro %}
 
-    {# En escritorio la barra lateral fija ya ofrece estos mismos destinos; el
-       directorio completo solo aporta en pantallas donde la barra vive en un
-       cajón (móvil y tableta). #}
+    {# Accesos rápidos a todos los módulos, en todas las pantallas. #}
     <section class="s-card mt-4 home-modules">
         <div class="card-body">
             <div class="s-card-head">

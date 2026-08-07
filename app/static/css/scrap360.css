@@ -1395,12 +1395,14 @@ body.drawer-open { overflow: hidden; }
 .s-drill:hover { color: var(--s-p600); }
 .s-drill:hover .s-zero { color: var(--s-p600); }
 
-/* El directorio de módulos del inicio duplica la barra lateral fija: solo se
-   muestra donde la navegación vive en un cajón (móvil y tableta). */
-@media (min-width: 1200px) {
-    body.role-super_admin .home-modules,
-    body.role-admin .home-modules,
-    body.role-visor .home-modules { display: none; }
+/* Bandas con recuento fijo de columnas para el inicio: el auto-fit amontonaba
+   siete lecturas en celdas angostas de etiqueta partida. Cuatro conteos
+   arriba, tres lecturas anchas abajo; en pantallas medianas bajan a dos. */
+.s-stats--fixed-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.s-stats--fixed-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 991.98px) {
+    .s-stats--fixed-4,
+    .s-stats--fixed-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 575.98px) {
