@@ -71,6 +71,10 @@ from app.models import (
     InventarioAjusteManual,
     LlamadaProveedor,
     LlamadaProveedorEstatus,
+    TratoVenta,
+    TratoVentaContenedor,
+    TratoVentaEstado,
+    TratoVentaNota,
 )
 
 from app.services.pricing_service import create_price_version
@@ -84,6 +88,7 @@ from app.services import (
     corte_caja_report_service,
     comision_service,
     llamada_service,
+    trato_service,
 )
 from app.services.evidence_service import build_evidence_groups
 from app.services.firebase_storage import resolve_image_content_type, upload_image
@@ -16953,6 +16958,482 @@ async def bitacora_llamada_eliminar(
     llamada_service.delete_llamada(db, llamada_id=llamada.id)
     return RedirectResponse(
         url=_append_query_params("/web/admin/bitacora-llamadas", eliminada="1"),
+        status_code=303,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tratos de venta de contenedores (punto 3, fase 2)
+# ---------------------------------------------------------------------------
+
+_CONTENEDOR_CAMPOS_DECIMALES = (
+    ("kg", "Los kg del contenedor"),
+    ("peso_bascula_publica", "El peso de báscula pública"),
+    ("peso_puerto", "El peso de puerto"),
+    ("lme_usd_ton", "El LME"),
+    ("descuento_factor", "El descuento"),
+    ("precio_lb_usd", "El precio por libra"),
+    ("tc1", "El tipo de cambio 1"),
+    ("usd_tc1", "Los USD al tipo de cambio 1"),
+    ("tc2", "El tipo de cambio 2"),
+    ("usd_tc2", "Los USD al tipo de cambio 2"),
+    ("premio_pct", "El premio"),
+)
+
+
+def _parse_contenedor_form(form) -> tuple[dict, str | None]:
+    campos: dict = {}
+    orden_raw = (form.get("orden") or "").strip()
+    if orden_raw:
+        try:
+            campos["orden"] = int(orden_raw)
+        except ValueError:
+            return {}, "El orden debe ser un número entero."
+    else:
+        campos["orden"] = None
+    campos["numero_contenedor"] = (form.get("numero_contenedor") or "").strip() or None
+    campos["comentarios"] = (form.get("comentarios") or "").strip() or None
+    fecha_raw = (form.get("fecha_carga") or "").strip()
+    if fecha_raw:
+        try:
+            campos["fecha_carga"] = datetime.strptime(fecha_raw, "%Y-%m-%d").date()
+        except ValueError:
+            return {}, "La fecha de carga es inválida."
+    else:
+        campos["fecha_carga"] = None
+    for campo, etiqueta in _CONTENEDOR_CAMPOS_DECIMALES:
+        raw = (form.get(campo) or "").strip().replace(",", "")
+        if not raw:
+            campos[campo] = Decimal("0") if campo == "kg" else None
+            continue
+        try:
+            valor = Decimal(raw)
+        except InvalidOperation:
+            return {}, f"{etiqueta} debe ser un número."
+        if valor < 0:
+            return {}, f"{etiqueta} no puede ser negativo."
+        campos[campo] = valor
+    return campos, None
+
+
+def _get_trato_checked(db: Session, current_user: dict, trato_id: int) -> TratoVenta:
+    trato = db.get(TratoVenta, trato_id)
+    if not trato:
+        raise HTTPException(status_code=404, detail="Trato no encontrado.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    if allowed_suc_ids and trato.cliente and trato.cliente.sucursal_id not in allowed_suc_ids:
+        raise HTTPException(status_code=403, detail="Sin acceso a ese trato.")
+    return trato
+
+
+def _tratos_clientes_materiales(db: Session, current_user: dict):
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    clientes_query = db.query(Cliente).filter(Cliente.activo.is_(True))
+    if allowed_suc_ids:
+        clientes_query = clientes_query.filter(Cliente.sucursal_id.in_(allowed_suc_ids))
+    clientes = clientes_query.order_by(Cliente.nombre_completo).all()
+    materiales = (
+        db.query(Material)
+        .filter(Material.activo.is_(True))
+        .order_by(Material.orden_display, Material.nombre)
+        .all()
+    )
+    return allowed_suc_ids, clientes, materiales
+
+
+@router.get("/tratos-venta")
+async def tratos_venta_list(
+    request: Request,
+    cliente_id: int | None = None,
+    estado: str = "",
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    allowed_suc_ids, clientes, materiales = _tratos_clientes_materiales(db, current_user)
+    estado_filtro = None
+    if estado:
+        try:
+            estado_filtro = TratoVentaEstado(estado)
+        except ValueError:
+            estado_filtro = None
+    tratos = trato_service.query_tratos(db, cliente_id=cliente_id, estado=estado_filtro)
+    if allowed_suc_ids:
+        tratos = [
+            t for t in tratos if t.cliente and t.cliente.sucursal_id in allowed_suc_ids
+        ]
+
+    rows = []
+    abiertos = 0
+    for trato in tratos:
+        resumen = trato_service.resumen_trato(db, trato)
+        if trato.estado == TratoVentaEstado.abierto:
+            abiertos += 1
+        rows.append({"trato": trato, "resumen": resumen})
+
+    hoy = datetime.now(get_app_timezone()).date()
+    return templates.TemplateResponse(
+        "admin/tratos_venta_list.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "rows": rows,
+            "abiertos": abiertos,
+            "clientes": clientes,
+            "materiales": materiales,
+            "cliente_id": cliente_id,
+            "estado_filtro": estado_filtro.value if estado_filtro else "",
+            "estados": list(TratoVentaEstado),
+            "estado_labels": trato_service.ESTADO_LABELS,
+            "hoy_iso": hoy.isoformat(),
+            "creado": request.query_params.get("creado") == "1",
+            "eliminado": request.query_params.get("eliminado") == "1",
+            "error": request.query_params.get("error") or None,
+            "form_abierta": False,
+        },
+    )
+
+
+@router.post("/tratos-venta")
+async def tratos_venta_create(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    form = await request.form()
+
+    def _volver(mensaje: str):
+        return RedirectResponse(
+            url=_append_query_params("/web/admin/tratos-venta", error=mensaje),
+            status_code=303,
+        )
+
+    try:
+        cliente_id = int((form.get("cliente_id") or "").strip())
+    except ValueError:
+        return _volver("Selecciona el comprador del trato.")
+    try:
+        material_id = int((form.get("material_id") or "").strip())
+    except ValueError:
+        return _volver("Selecciona el material del trato.")
+
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    cliente = db.get(Cliente, cliente_id)
+    if not cliente:
+        return _volver("El cliente no existe.")
+    if allowed_suc_ids and cliente.sucursal_id not in allowed_suc_ids:
+        raise HTTPException(status_code=403, detail="Sin acceso a ese cliente.")
+
+    fechas: dict = {}
+    for campo, etiqueta in (("fecha_po", "fecha de PO"), ("fecha_vencimiento", "fecha de vencimiento")):
+        raw = (form.get(campo) or "").strip()
+        if raw:
+            try:
+                fechas[campo] = datetime.strptime(raw, "%Y-%m-%d").date()
+            except ValueError:
+                return _volver(f"La {etiqueta} es inválida.")
+        else:
+            fechas[campo] = None
+
+    try:
+        kg_tratados = Decimal((form.get("kg_tratados") or "0").strip().replace(",", "") or "0")
+        premio_pct = Decimal((form.get("premio_pct") or "5.5").strip() or "5.5")
+    except InvalidOperation:
+        return _volver("Los kg tratados y el premio deben ser números.")
+
+    try:
+        trato = trato_service.create_trato(
+            db,
+            cliente_id=cliente_id,
+            material_id=material_id,
+            usuario_id=current_user.get("id"),
+            contrato=form.get("contrato"),
+            fecha_po=fechas["fecha_po"],
+            fecha_vencimiento=fechas["fecha_vencimiento"],
+            kg_tratados=kg_tratados,
+            premio_pct=premio_pct,
+            comentarios=form.get("comentarios"),
+        )
+    except ValueError as exc:
+        return _volver(str(exc))
+    return RedirectResponse(
+        url=f"/web/admin/tratos-venta/{trato.id}?creado=1", status_code=303
+    )
+
+
+@router.get("/tratos-venta/{trato_id}")
+async def trato_venta_detail(
+    trato_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    trato = _get_trato_checked(db, current_user, trato_id)
+    resumen = trato_service.resumen_trato(db, trato)
+
+    ocupadas = {row.nota_id for row in db.query(TratoVentaNota.nota_id).all()}
+    candidatas_query = db.query(Nota).filter(
+        Nota.cliente_id == trato.cliente_id,
+        Nota.tipo_operacion == TipoOperacion.venta,
+        Nota.estado == NotaEstado.aprobada,
+    )
+    if ocupadas:
+        candidatas_query = candidatas_query.filter(~Nota.id.in_(ocupadas))
+    candidatas = candidatas_query.order_by(Nota.created_at.desc()).limit(100).all()
+    folio_map = _build_folio_map(
+        [row["nota"] for row in resumen["notas_rows"]] + candidatas
+    )
+
+    return templates.TemplateResponse(
+        "admin/trato_venta_detail.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "trato": trato,
+            "resumen": resumen,
+            "estado_labels": trato_service.ESTADO_LABELS,
+            "candidatas": candidatas,
+            "folio_map": folio_map,
+            "creado": request.query_params.get("creado") == "1",
+            "guardado": request.query_params.get("guardado") == "1",
+            "error": request.query_params.get("error") or None,
+        },
+    )
+
+
+def _render_contenedor_form(
+    request,
+    current_user,
+    *,
+    trato: TratoVenta,
+    contenedor: TratoVentaContenedor | None,
+    form_values: dict,
+    error: str | None,
+    status_code: int = 200,
+):
+    return templates.TemplateResponse(
+        "admin/trato_contenedor_form.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "trato": trato,
+            "contenedor": contenedor,
+            "form_values": form_values,
+            "error": error,
+            "lb_por_kg": str(trato_service.LB_POR_KG),
+        },
+        status_code=status_code,
+    )
+
+
+def _contenedor_form_values(contenedor: TratoVentaContenedor | None, trato: TratoVenta) -> dict:
+    if not contenedor:
+        return {"premio_pct": str(trato.premio_pct or "")}
+    valores = {}
+    for campo in (
+        "orden", "numero_contenedor", "kg", "peso_bascula_publica", "peso_puerto",
+        "lme_usd_ton", "descuento_factor", "precio_lb_usd",
+        "tc1", "usd_tc1", "tc2", "usd_tc2", "premio_pct", "comentarios",
+    ):
+        valor = getattr(contenedor, campo)
+        valores[campo] = "" if valor is None else str(valor)
+    valores["fecha_carga"] = (
+        contenedor.fecha_carga.isoformat() if contenedor.fecha_carga else ""
+    )
+    return valores
+
+
+@router.get("/tratos-venta/{trato_id}/contenedores/nuevo")
+async def trato_contenedor_new_get(
+    trato_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    trato = _get_trato_checked(db, current_user, trato_id)
+    return _render_contenedor_form(
+        request, current_user, trato=trato, contenedor=None,
+        form_values=_contenedor_form_values(None, trato), error=None,
+    )
+
+
+@router.post("/tratos-venta/{trato_id}/contenedores/nuevo")
+async def trato_contenedor_new_post(
+    trato_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    trato = _get_trato_checked(db, current_user, trato_id)
+    form = await request.form()
+    campos, parse_error = _parse_contenedor_form(form)
+    if parse_error:
+        return _render_contenedor_form(
+            request, current_user, trato=trato, contenedor=None,
+            form_values=dict(form), error=parse_error, status_code=400,
+        )
+    trato_service.add_contenedor(db, trato_id=trato.id, campos=campos)
+    return RedirectResponse(
+        url=f"/web/admin/tratos-venta/{trato.id}?guardado=1", status_code=303
+    )
+
+
+@router.get("/tratos-venta/{trato_id}/contenedores/{contenedor_id}/editar")
+async def trato_contenedor_edit_get(
+    trato_id: int,
+    contenedor_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    trato = _get_trato_checked(db, current_user, trato_id)
+    contenedor = db.get(TratoVentaContenedor, contenedor_id)
+    if not contenedor or contenedor.trato_id != trato.id:
+        raise HTTPException(status_code=404, detail="Contenedor no encontrado.")
+    return _render_contenedor_form(
+        request, current_user, trato=trato, contenedor=contenedor,
+        form_values=_contenedor_form_values(contenedor, trato), error=None,
+    )
+
+
+@router.post("/tratos-venta/{trato_id}/contenedores/{contenedor_id}/editar")
+async def trato_contenedor_edit_post(
+    trato_id: int,
+    contenedor_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    trato = _get_trato_checked(db, current_user, trato_id)
+    contenedor = db.get(TratoVentaContenedor, contenedor_id)
+    if not contenedor or contenedor.trato_id != trato.id:
+        raise HTTPException(status_code=404, detail="Contenedor no encontrado.")
+    form = await request.form()
+    campos, parse_error = _parse_contenedor_form(form)
+    if parse_error:
+        return _render_contenedor_form(
+            request, current_user, trato=trato, contenedor=contenedor,
+            form_values=dict(form), error=parse_error, status_code=400,
+        )
+    trato_service.update_contenedor(db, contenedor_id=contenedor.id, campos=campos)
+    return RedirectResponse(
+        url=f"/web/admin/tratos-venta/{trato.id}?guardado=1", status_code=303
+    )
+
+
+@router.post("/tratos-venta/{trato_id}/contenedores/{contenedor_id}/eliminar")
+async def trato_contenedor_eliminar(
+    trato_id: int,
+    contenedor_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    trato = _get_trato_checked(db, current_user, trato_id)
+    contenedor = db.get(TratoVentaContenedor, contenedor_id)
+    if not contenedor or contenedor.trato_id != trato.id:
+        raise HTTPException(status_code=404, detail="Contenedor no encontrado.")
+    trato_service.delete_contenedor(db, contenedor_id=contenedor.id)
+    return RedirectResponse(
+        url=f"/web/admin/tratos-venta/{trato.id}?guardado=1", status_code=303
+    )
+
+
+@router.post("/tratos-venta/{trato_id}/notas")
+async def trato_nota_link(
+    trato_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    trato = _get_trato_checked(db, current_user, trato_id)
+    form = await request.form()
+    try:
+        nota_id = int((form.get("nota_id") or "").strip())
+    except ValueError:
+        return RedirectResponse(
+            url=_append_query_params(
+                f"/web/admin/tratos-venta/{trato.id}",
+                error="Selecciona la nota de venta a vincular.",
+            ),
+            status_code=303,
+        )
+    try:
+        trato_service.link_nota(db, trato_id=trato.id, nota_id=nota_id)
+    except ValueError as exc:
+        return RedirectResponse(
+            url=_append_query_params(
+                f"/web/admin/tratos-venta/{trato.id}", error=str(exc)
+            ),
+            status_code=303,
+        )
+    return RedirectResponse(
+        url=f"/web/admin/tratos-venta/{trato.id}?guardado=1", status_code=303
+    )
+
+
+@router.post("/tratos-venta/{trato_id}/notas/{nota_id}/quitar")
+async def trato_nota_unlink(
+    trato_id: int,
+    nota_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    trato = _get_trato_checked(db, current_user, trato_id)
+    try:
+        trato_service.unlink_nota(db, trato_id=trato.id, nota_id=nota_id)
+    except ValueError as exc:
+        return RedirectResponse(
+            url=_append_query_params(
+                f"/web/admin/tratos-venta/{trato.id}", error=str(exc)
+            ),
+            status_code=303,
+        )
+    return RedirectResponse(
+        url=f"/web/admin/tratos-venta/{trato.id}?guardado=1", status_code=303
+    )
+
+
+@router.post("/tratos-venta/{trato_id}/completar")
+async def trato_completar(
+    trato_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    trato = _get_trato_checked(db, current_user, trato_id)
+    form = await request.form()
+    completado = (form.get("completado") or "").strip() == "1"
+    trato_service.set_completado(
+        db, trato_id=trato.id, completado=completado, usuario_id=current_user.get("id")
+    )
+    return RedirectResponse(
+        url=f"/web/admin/tratos-venta/{trato.id}?guardado=1", status_code=303
+    )
+
+
+@router.post("/tratos-venta/{trato_id}/eliminar")
+async def trato_eliminar(
+    trato_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    trato = _get_trato_checked(db, current_user, trato_id)
+    try:
+        trato_service.delete_trato(db, trato_id=trato.id)
+    except ValueError as exc:
+        return RedirectResponse(
+            url=_append_query_params(
+                f"/web/admin/tratos-venta/{trato.id}", error=str(exc)
+            ),
+            status_code=303,
+        )
+    return RedirectResponse(
+        url=_append_query_params("/web/admin/tratos-venta", eliminado="1"),
         status_code=303,
     )
 

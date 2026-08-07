@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty_row, page_header, icon, stat, badge, money, kg, empty %}
+
+{% block title %}Trato #{{ trato.id }} &middot; Admin{% endblock %}
+
+{% block content %}
+
+{% set completado = trato.estado.value == 'COMPLETADO' %}
+{% call page_header('Trato #' ~ trato.id ~ ' · ' ~ (trato.cliente.nombre_completo if trato.cliente else '—'),
+                    eyebrow='Operación',
+                    sub=(trato.material.nombre if trato.material else '—')
+                        ~ (' · Contrato ' ~ trato.contrato if trato.contrato else '')
+                        ~ (' · Vence ' ~ trato.fecha_vencimiento|date_local if trato.fecha_vencimiento else '')) %}
+    <a href="/web/admin/tratos-venta" class="btn btn-outline-secondary btn-sm">
+        {{ icon('arrow-left', 's-icon--sm') }} Volver
+    </a>
+    <form method="post" action="/web/admin/tratos-venta/{{ trato.id }}/completar" class="d-inline">
+        {% if completado %}
+            <input type="hidden" name="completado" value="0">
+            <button type="submit" class="btn btn-outline-secondary btn-sm">Reabrir trato</button>
+        {% else %}
+            <input type="hidden" name="completado" value="1">
+            <button type="submit" class="btn btn-outline-primary btn-sm"
+                    data-confirm="El trato se marcará como completado y saldrá de los pendientes de entrega. ¿Deseas continuar?">
+                {{ icon('check', 's-icon--sm') }} Marcar completado
+            </button>
+        {% endif %}
+    </form>
+{% endcall %}
+
+{% if creado %}
+    <div class="alert alert-success py-2 small mb-3">Trato creado. Agrega sus contenedores.</div>
+{% endif %}
+{% if guardado %}
+    <div class="alert alert-success py-2 small mb-3">Cambios guardados.</div>
+{% endif %}
+{% if error %}
+    <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
+{% endif %}
+
+{% if completado %}
+    <div class="alert alert-secondary py-2 small mb-3">
+        Trato completado{% if trato.completado_at %} el {{ trato.completado_at|date_local }}{% endif %}{% if trato.completado_by %} por {{ trato.completado_by.nombre_completo or trato.completado_by.username }}{% endif %}.
+        Ya no aparece entre los pendientes de entrega.
+    </div>
+{% endif %}
+
+<div class="s-stats s-stats--fixed-4">
+    {{ stat('Kg tratados', kg(resumen.kg_tratados)) }}
+    {{ stat('Kg en contenedores', kg(resumen.kg_contenedores)) }}
+    {{ stat('Kg vendidos', kg(resumen.kg_vendidos), 'De notas de venta aprobadas vinculadas') }}
+    {{ stat('Kg por vender', kg(resumen.kg_restantes), tone=('warn' if resumen.kg_restantes > 0 and not completado else '')) }}
+</div>
+<div class="s-stats s-stats--fixed-3">
+    {{ stat('Total USD', '$' ~ "{:,.2f}".format(resumen.total_usd)) }}
+    {{ stat('Total pesos', money(resumen.total_pesos), 'Pagos a los TC capturados') }}
+    {{ stat('Total venta', money(resumen.total_venta), 'Con premio incluido') }}
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="s-card-head">
+            <div>
+                <h2 class="s-card-title">Contenedores</h2>
+                <p class="s-card-sub">
+                    Premio por defecto del trato: {{ trato.premio_pct }} %. El precio por libra sale del
+                    LME × descuento, o se captura directo cuando el material no cotiza.
+                </p>
+            </div>
+            <a href="/web/admin/tratos-venta/{{ trato.id }}/contenedores/nuevo" class="btn btn-primary btn-sm">
+                {{ icon('plus', 's-icon--sm') }} Agregar contenedor
+            </a>
+        </div>
+
+        {% if resumen.contenedores_calc|length == 0 %}
+            {{ empty('Sin contenedores',
+                     'Agrega el primer contenedor del trato con su LME, descuento y tipo de cambio.',
+                     'box') }}
+        {% else %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                    <tr>
+                        <th data-title-col>Contenedor</th>
+                        <th>Carga</th>
+                        <th class="text-end" data-mobile-primary>Kg</th>
+                        <th class="text-end">Báscula púb.</th>
+                        <th class="text-end">Puerto</th>
+                        <th class="text-end">$/lb USD</th>
+                        <th class="text-end">TC</th>
+                        <th class="text-end">Total USD</th>
+                        <th class="text-end">$/kg c. premio</th>
+                        <th class="text-end" data-mobile-primary>Total venta</th>
+                        <th class="text-end"><span class="s-visually-hidden">Acciones</span></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for contenedor, calc in resumen.contenedores_calc %}
+                        <tr>
+                            <td>
+                                <span class="fw-semibold">{{ contenedor.numero_contenedor or ('Contenedor ' ~ loop.index) }}</span>
+                                {% if contenedor.orden %}<div class="text-muted small">Orden {{ contenedor.orden }}</div>{% endif %}
+                            </td>
+                            <td>{{ contenedor.fecha_carga|date_local if contenedor.fecha_carga else "—" }}</td>
+                            <td class="text-end">{{ kg(contenedor.kg) }}</td>
+                            <td class="text-end">
+                                {% if contenedor.peso_bascula_publica is not none %}{{ kg(contenedor.peso_bascula_publica) }}{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if contenedor.peso_puerto is not none %}{{ kg(contenedor.peso_puerto) }}{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if calc.precio_lb_usd is not none %}
+                                    <span class="s-num">{{ "{:,.4f}".format(calc.precio_lb_usd) }}</span>
+                                    {% if contenedor.lme_usd_ton %}
+                                        <div class="text-muted small">LME {{ "{:,.0f}".format(contenedor.lme_usd_ton) }} × {{ contenedor.descuento_factor }}</div>
+                                    {% else %}
+                                        <div class="text-muted small">Directo</div>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if calc.tc_efectivo is not none %}
+                                    <span class="s-num">{{ "{:,.4f}".format(calc.tc_efectivo) }}</span>
+                                    {% if contenedor.usd_tc2 is not none %}<div class="text-muted small">Ponderado</div>{% endif %}
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if calc.total_usd is not none %}<span class="s-num">{{ "{:,.2f}".format(calc.total_usd) }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if calc.precio_con_premio is not none %}
+                                    {{ calc.precio_con_premio|precio }}
+                                    <div class="text-muted small">Premio {{ calc.premio_pct or 0 }} %</div>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if calc.total_venta is not none %}{{ money(calc.total_venta) }}{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td class="text-end">
+                                <span class="s-actions">
+                                    <a href="/web/admin/tratos-venta/{{ trato.id }}/contenedores/{{ contenedor.id }}/editar"
+                                       class="btn btn-sm btn-outline-secondary">{{ icon('edit', 's-icon--sm') }} Editar</a>
+                                    <form method="post" action="/web/admin/tratos-venta/{{ trato.id }}/contenedores/{{ contenedor.id }}/eliminar" class="d-inline">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                data-confirm="El contenedor se eliminará del trato. ¿Deseas continuar?">Eliminar</button>
+                                    </form>
+                                </span>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <h2 class="s-card-title">Notas de venta vinculadas</h2>
+        <p class="s-card-sub mb-3">
+            Los kg vendidos del trato se leen de estas notas aprobadas; el trato nunca modifica la nota.
+        </p>
+
+        {% if resumen.notas_rows|length == 0 %}
+            {{ empty('Sin notas vinculadas',
+                     'Vincula las notas de venta aprobadas de este comprador para medir el avance del contrato.',
+                     'notes') }}
+        {% else %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                    <tr>
+                        <th data-title-col data-mobile-primary>Folio</th>
+                        <th>Fecha</th>
+                        <th class="text-end" data-mobile-primary>Kg</th>
+                        <th class="text-end">Monto</th>
+                        <th>Estado</th>
+                        <th class="text-end"><span class="s-visually-hidden">Acciones</span></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for row in resumen.notas_rows %}
+                        {% set nota = row.nota %}
+                        <tr>
+                            <td><a href="/web/admin/notas/{{ nota.id }}" class="fw-semibold">{{ folio_map.get(nota.id, 'Nota #' ~ nota.id) }}</a></td>
+                            <td>{{ nota.created_at|date_local if nota.created_at else "—" }}</td>
+                            <td class="text-end">{{ kg(row.kg) }}</td>
+                            <td class="text-end">{{ money(nota.total_monto) }}</td>
+                            <td>
+                                {% if row.aprobada %}
+                                    {{ badge('Aprobada', 'ok') }}
+                                {% else %}
+                                    {{ badge(nota.estado.value|capitalize, 'muted') }}
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                <form method="post" action="/web/admin/tratos-venta/{{ trato.id }}/notas/{{ nota.id }}/quitar" class="d-inline">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger"
+                                            data-confirm="La nota se desvinculará del trato (la nota no se toca). ¿Deseas continuar?">Quitar</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+
+        {% if candidatas|length > 0 %}
+            <form method="post" action="/web/admin/tratos-venta/{{ trato.id }}/notas" class="d-flex flex-wrap align-items-center gap-2 mt-3">
+                <select class="form-select form-select-sm w-auto" name="nota_id" aria-label="Nota de venta a vincular" required>
+                    <option value="">Vincular nota de venta…</option>
+                    {% for nota in candidatas %}
+                        <option value="{{ nota.id }}">
+                            {{ folio_map.get(nota.id, 'Nota #' ~ nota.id) }} · {{ "{:,.2f}".format(nota.total_kg_neto or 0) }} kg · {{ nota.created_at|date_local if nota.created_at else '' }}
+                        </option>
+                    {% endfor %}
+                </select>
+                <button class="btn btn-outline-primary btn-sm">Vincular</button>
+            </form>
+        {% else %}
+            <p class="form-text mt-3 mb-0">No hay más notas de venta aprobadas de este comprador sin vincular.</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="s-card-head">
+            <div>
+                <h2 class="s-card-title">Datos del trato</h2>
+                <p class="s-card-sub mb-0">
+                    Registrado{% if trato.created_at %} el {{ trato.created_at|date_local }}{% endif %}{% if trato.usuario %} por {{ trato.usuario.nombre_completo or trato.usuario.username }}{% endif %}.
+                    {% if trato.fecha_po %} PO del {{ trato.fecha_po|date_local }}.{% endif %}
+                    {% if trato.comentarios %} {{ trato.comentarios }}{% endif %}
+                </p>
+            </div>
+            {% if trato.contenedores|length == 0 and resumen.notas_rows|length == 0 %}
+                <form method="post" action="/web/admin/tratos-venta/{{ trato.id }}/eliminar" class="d-inline">
+                    <button type="submit" class="btn btn-outline-danger btn-sm"
+                            data-confirm="El trato se eliminará (está vacío). ¿Deseas continuar?">Eliminar trato</button>
+                </form>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

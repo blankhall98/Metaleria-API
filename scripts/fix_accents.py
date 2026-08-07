@@ -117,7 +117,8 @@ WORDS: dict[str, str] = {
     "despues": "después",
     "mas": "más",
     "solo": "sólo",
-    "estas": "estás",
+    # "estas" NO va en el diccionario: como demostrativo ("estas notas") no
+    # lleva acento y el corrector no puede distinguirlo del verbo "estás".
     "estes": "estés",
     # verbs (future / preterite)
     "sera": "será",

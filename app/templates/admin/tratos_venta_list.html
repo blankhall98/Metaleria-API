@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty_row, page_header, icon, stat, badge, money, kg, empty %}
+
+{% block title %}Tratos de contenedores &middot; Admin{% endblock %}
+
+{% block content %}
+
+{% call page_header('Tratos de contenedores', eyebrow='Operación',
+                    sub='Contratos de venta por contenedor: LME, tipo de cambio, premio y avance contra las notas de venta.') %}
+    <a href="/web/admin/notas?tipo=venta" class="btn btn-outline-secondary btn-sm">
+        {{ icon('notes', 's-icon--sm') }} Notas de venta
+    </a>
+{% endcall %}
+
+{% if creado %}
+    <div class="alert alert-success py-2 small mb-3">Trato creado. Agrega sus contenedores desde el detalle.</div>
+{% endif %}
+{% if eliminado %}
+    <div class="alert alert-success py-2 small mb-3">El trato se eliminó.</div>
+{% endif %}
+{% if error %}
+    <div class="alert alert-danger py-2 small mb-3">{{ error }}</div>
+{% endif %}
+
+{% set kg_tratados_total = rows|map(attribute='resumen.kg_tratados')|sum %}
+{% set kg_vendidos_total = rows|map(attribute='resumen.kg_vendidos')|sum %}
+<div class="s-stats s-stats--fixed-4">
+    {{ stat('Tratos', rows|length) }}
+    {{ stat('Abiertos', abiertos, tone=('info' if abiertos else '')) }}
+    {{ stat('Kg tratados', kg(kg_tratados_total)) }}
+    {{ stat('Kg vendidos', kg(kg_vendidos_total)) }}
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <button type="button" class="s-collapse__trigger" data-bs-toggle="collapse"
+                data-bs-target="#tratoFormBody" aria-expanded="{{ 'true' if form_abierta else 'false' }}">
+            <div>
+                <h2 class="s-card-title mb-1">Nuevo trato</h2>
+                <p class="s-card-sub mb-0">Comprador, material, kilos del contrato y premio por defecto.</p>
+            </div>
+            {{ icon('chevron-down', 's-collapse__chevron') }}
+        </button>
+        <div id="tratoFormBody" class="collapse{{ ' show' if form_abierta }} s-collapse__body">
+        <form method="post" action="/web/admin/tratos-venta" data-submit-once="1">
+            <div class="s-form-grid">
+                <div>
+                    <label class="form-label" for="tratoCliente">Comprador <span class="s-req" aria-hidden="true">*</span></label>
+                    <select class="form-select" id="tratoCliente" name="cliente_id" required>
+                        <option value="">Selecciona cliente</option>
+                        {% for c in clientes %}
+                            <option value="{{ c.id }}">{{ c.nombre_completo }}{% if c.sucursal %} · {{ c.sucursal.nombre }}{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label" for="tratoMaterial">Material <span class="s-req" aria-hidden="true">*</span></label>
+                    <select class="form-select" id="tratoMaterial" name="material_id" required>
+                        <option value="">Selecciona material</option>
+                        {% for m in materiales %}
+                            <option value="{{ m.id }}">{{ m.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label" for="tratoContrato">Contrato</label>
+                    <input class="form-control" id="tratoContrato" name="contrato" maxlength="100" placeholder="Ej. V26-0421">
+                </div>
+                <div>
+                    <label class="form-label" for="tratoKg">Kg tratados <span class="s-req" aria-hidden="true">*</span></label>
+                    <input class="form-control" id="tratoKg" name="kg_tratados" type="number" step="0.001" min="0" required placeholder="0.000">
+                </div>
+                <div>
+                    <label class="form-label" for="tratoFechaPo">Fecha de PO</label>
+                    <input class="form-control" id="tratoFechaPo" name="fecha_po" type="date">
+                </div>
+                <div>
+                    <label class="form-label" for="tratoVencimiento">Vencimiento</label>
+                    <input class="form-control" id="tratoVencimiento" name="fecha_vencimiento" type="date">
+                </div>
+                <div>
+                    <label class="form-label" for="tratoPremio">Premio por defecto (%)</label>
+                    <input class="form-control" id="tratoPremio" name="premio_pct" type="number" step="0.001" min="0" value="5.5">
+                    <p class="form-text">Cada contenedor puede sobrescribirlo (a veces es 6 %).</p>
+                </div>
+                <div class="s-field--full">
+                    <label class="form-label" for="tratoComentarios">Comentarios</label>
+                    <input class="form-control" id="tratoComentarios" name="comentarios" maxlength="500" placeholder="Condiciones, referencias o acuerdos del contrato">
+                </div>
+            </div>
+            <div class="s-form-actions">
+                <button type="submit" class="btn btn-primary" data-loading-text="Guardando…">Crear trato</button>
+            </div>
+        </form>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="s-between mb-3">
+            <div>
+                <h2 class="s-card-title mb-1">Historial de tratos</h2>
+                <p class="s-card-sub mb-0">El avance compara los kg del contrato contra las notas de venta aprobadas vinculadas.</p>
+            </div>
+            <form method="get" action="/web/admin/tratos-venta" class="d-flex flex-wrap align-items-center gap-2">
+                <select class="form-select form-select-sm" name="cliente_id" aria-label="Filtrar por comprador">
+                    <option value="">Todos los compradores</option>
+                    {% for c in clientes %}
+                        <option value="{{ c.id }}" {% if cliente_id == c.id %}selected{% endif %}>{{ c.nombre_completo }}</option>
+                    {% endfor %}
+                </select>
+                <select class="form-select form-select-sm" name="estado" aria-label="Filtrar por estado">
+                    <option value="">Todos los estados</option>
+                    {% for e in estados %}
+                        <option value="{{ e.value }}" {% if estado_filtro == e.value %}selected{% endif %}>{{ estado_labels[e] }}</option>
+                    {% endfor %}
+                </select>
+                <button class="btn btn-outline-secondary btn-sm">{{ icon('filter', 's-icon--sm') }} Filtrar</button>
+            </form>
+        </div>
+
+        {% if rows|length == 0 %}
+            {{ empty('Sin tratos registrados',
+                     'Crea el primer trato de venta de contenedores para darle seguimiento a un contrato.',
+                     'box') }}
+        {% else %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                    <tr>
+                        <th data-title-col>Comprador</th>
+                        <th>Material</th>
+                        <th>Contrato</th>
+                        <th>Vencimiento</th>
+                        <th class="text-end" data-mobile-primary>Kg tratados</th>
+                        <th class="text-end" data-mobile-primary>Kg vendidos</th>
+                        <th class="text-end">Por vender</th>
+                        <th data-mobile-primary>Estado</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for row in rows %}
+                        {% set trato = row.trato %}
+                        {% set resumen = row.resumen %}
+                        <tr>
+                            <td>
+                                <a href="/web/admin/tratos-venta/{{ trato.id }}" class="fw-semibold">
+                                    {{ trato.cliente.nombre_completo if trato.cliente else "—" }}
+                                </a>
+                                <div class="text-muted small">Trato #{{ trato.id }} · {{ trato.contenedores|length }} contenedor{{ 'es' if trato.contenedores|length != 1 }}</div>
+                            </td>
+                            <td>{{ trato.material.nombre if trato.material else "—" }}</td>
+                            <td>{{ trato.contrato or "—" }}</td>
+                            <td>{{ trato.fecha_vencimiento|date_local if trato.fecha_vencimiento else "—" }}</td>
+                            <td class="text-end">{{ kg(resumen.kg_tratados) }}</td>
+                            <td class="text-end">{{ kg(resumen.kg_vendidos) }}</td>
+                            <td class="text-end">{{ kg(resumen.kg_restantes) }}</td>
+                            <td>
+                                {% if trato.estado.value == 'COMPLETADO' %}
+                                    {{ badge('Completado', 'muted') }}
+                                {% else %}
+                                    {{ badge('Abierto', 'info') }}
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% else %}
+                        {{ empty_row(8, 'Sin tratos registrados.') }}
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

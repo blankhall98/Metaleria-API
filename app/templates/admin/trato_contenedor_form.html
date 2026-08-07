@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_header, icon %}
+
+{% set editando = contenedor is not none %}
+{% block title %}{{ 'Editar contenedor' if editando else 'Nuevo contenedor' }} &middot; Admin{% endblock %}
+
+{% block content %}
+{% call page_header(('Editar contenedor' if editando else 'Nuevo contenedor'),
+                    eyebrow='Trato #' ~ trato.id,
+                    sub=(trato.cliente.nombre_completo if trato.cliente else '—')
+                        ~ ' · ' ~ (trato.material.nombre if trato.material else '—')
+                        ~ (' · Contrato ' ~ trato.contrato if trato.contrato else '')) %}
+    <a href="/web/admin/tratos-venta/{{ trato.id }}" class="btn btn-outline-secondary">Volver</a>
+{% endcall %}
+
+{% if error %}
+    <div class="alert alert-danger py-2 small">{{ error }}</div>
+{% endif %}
+
+{% set accion = '/web/admin/tratos-venta/' ~ trato.id ~ '/contenedores/' ~ (contenedor.id ~ '/editar' if editando else 'nuevo') %}
+<div class="card">
+    <div class="card-body">
+        <form method="post" action="{{ accion }}" data-submit-once="1" id="contenedorForm">
+            <fieldset class="s-fieldset">
+                <legend>Identificación y pesos</legend>
+                <div class="s-form-grid">
+                    <div>
+                        <label class="form-label" for="numeroContenedor">Número de contenedor</label>
+                        <input class="form-control" id="numeroContenedor" name="numero_contenedor" maxlength="60"
+                               value="{{ form_values.get('numero_contenedor', '') }}" placeholder="Ej. MSKU-830142-0">
+                    </div>
+                    <div>
+                        <label class="form-label" for="orden">Orden</label>
+                        <input class="form-control" id="orden" name="orden" type="number" min="1" step="1"
+                               value="{{ form_values.get('orden', '') }}" placeholder="Ej. 2">
+                        <p class="form-text">Posición dentro del contrato (el "2" de "contenedor 2 de 3").</p>
+                    </div>
+                    <div>
+                        <label class="form-label" for="fechaCarga">Fecha de carga</label>
+                        <input class="form-control" id="fechaCarga" name="fecha_carga" type="date"
+                               value="{{ form_values.get('fecha_carga', '') }}">
+                    </div>
+                    <div>
+                        <label class="form-label" for="kgInput">Kg cargados</label>
+                        <input class="form-control" id="kgInput" name="kg" type="number" step="0.001" min="0"
+                               value="{{ form_values.get('kg', '') }}" placeholder="0.000">
+                        <p class="form-text">Déjalo en 0 mientras el contenedor no se carga.</p>
+                    </div>
+                    <div>
+                        <label class="form-label" for="pesoBascula">Peso báscula pública (kg)</label>
+                        <input class="form-control" id="pesoBascula" name="peso_bascula_publica" type="number" step="0.001" min="0"
+                               value="{{ form_values.get('peso_bascula_publica', '') }}">
+                    </div>
+                    <div>
+                        <label class="form-label" for="pesoPuerto">Peso de puerto (kg)</label>
+                        <input class="form-control" id="pesoPuerto" name="peso_puerto" type="number" step="0.001" min="0"
+                               value="{{ form_values.get('peso_puerto', '') }}">
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset class="s-fieldset">
+                <legend>Precio</legend>
+                <div class="s-form-grid">
+                    <div>
+                        <label class="form-label" for="lmeInput">LME (USD/ton)</label>
+                        <input class="form-control" id="lmeInput" name="lme_usd_ton" type="number" step="0.00001" min="0"
+                               value="{{ form_values.get('lme_usd_ton', '') }}" placeholder="Ej. 9000">
+                    </div>
+                    <div>
+                        <label class="form-label" for="descuentoInput">Descuento (factor)</label>
+                        <input class="form-control" id="descuentoInput" name="descuento_factor" type="number" step="0.00001" min="0"
+                               value="{{ form_values.get('descuento_factor', '') }}" placeholder="Ej. 0.665">
+                    </div>
+                    <div>
+                        <label class="form-label" for="precioLbInput">Precio por libra USD (directo)</label>
+                        <input class="form-control" id="precioLbInput" name="precio_lb_usd" type="number" step="0.00001" min="0"
+                               value="{{ form_values.get('precio_lb_usd', '') }}" placeholder="Solo si no hay LME">
+                        <p class="form-text">Para materiales sin LME (ej. EBONY); tiene prioridad sobre el LME.</p>
+                    </div>
+                    <div>
+                        <label class="form-label" for="premioInput">Premio (%)</label>
+                        <input class="form-control" id="premioInput" name="premio_pct" type="number" step="0.001" min="0"
+                               value="{{ form_values.get('premio_pct', '') }}" placeholder="{{ trato.premio_pct }}">
+                        <p class="form-text">Vacío usa el del trato ({{ trato.premio_pct }} %).</p>
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset class="s-fieldset">
+                <legend>Tipo de cambio</legend>
+                <p class="form-text mb-2">Con solo TC 1, el total en pesos es Total USD × TC 1. Si el pago se partió, captura los USD de cada tramo.</p>
+                <div class="s-form-grid">
+                    <div>
+                        <label class="form-label" for="tc1Input">TC 1</label>
+                        <input class="form-control" id="tc1Input" name="tc1" type="number" step="0.0001" min="0"
+                               value="{{ form_values.get('tc1', '') }}" placeholder="Ej. 17.50">
+                    </div>
+                    <div>
+                        <label class="form-label" for="usdTc1Input">USD al TC 1</label>
+                        <input class="form-control" id="usdTc1Input" name="usd_tc1" type="number" step="0.01" min="0"
+                               value="{{ form_values.get('usd_tc1', '') }}" placeholder="Solo si el pago se parte">
+                    </div>
+                    <div>
+                        <label class="form-label" for="tc2Input">TC 2</label>
+                        <input class="form-control" id="tc2Input" name="tc2" type="number" step="0.0001" min="0"
+                               value="{{ form_values.get('tc2', '') }}">
+                    </div>
+                    <div>
+                        <label class="form-label" for="usdTc2Input">USD al TC 2</label>
+                        <input class="form-control" id="usdTc2Input" name="usd_tc2" type="number" step="0.01" min="0"
+                               value="{{ form_values.get('usd_tc2', '') }}">
+                    </div>
+                    <div class="s-field--full">
+                        <label class="form-label" for="comentariosInput">Comentarios</label>
+                        <input class="form-control" id="comentariosInput" name="comentarios" maxlength="255"
+                               value="{{ form_values.get('comentarios', '') }}" placeholder="Notas del contenedor (kg extra, condiciones, referencias)">
+                    </div>
+                </div>
+            </fieldset>
+
+            <div class="s-subpanel mt-3">
+                <p class="s-section-label">Vista previa del cálculo</p>
+                <div class="s-stack-2">
+                    <div class="s-between"><span class="text-muted small">Precio por libra USD</span><strong class="s-num" id="prevPrecioLb">—</strong></div>
+                    <div class="s-between"><span class="text-muted small">Libras</span><strong class="s-num" id="prevLibras">—</strong></div>
+                    <div class="s-between"><span class="text-muted small">Total USD</span><strong class="s-num" id="prevTotalUsd">—</strong></div>
+                    <div class="s-between"><span class="text-muted small">TC efectivo</span><strong class="s-num" id="prevTc">—</strong></div>
+                    <div class="s-between"><span class="text-muted small">Precio por kg MXN</span><strong class="s-num" id="prevPrecioKg">—</strong></div>
+                    <div class="s-between"><span class="text-muted small">Precio con premio</span><strong class="s-num" id="prevPrecioPremio">—</strong></div>
+                    <div class="s-between"><span class="text-muted small">Total venta MXN</span><strong class="s-money" id="prevTotalVenta">—</strong></div>
+                </div>
+            </div>
+
+            <div class="s-form-actions">
+                <a href="/web/admin/tratos-venta/{{ trato.id }}" class="btn btn-outline-secondary">Cancelar</a>
+                <button type="submit" class="btn btn-primary" data-loading-text="Guardando…">
+                    {{ 'Guardar cambios' if editando else 'Agregar contenedor' }}
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    (function() {
+        const LB_POR_KG = parseFloat('{{ lb_por_kg }}');
+        const PREMIO_TRATO = parseFloat('{{ trato.premio_pct }}') || 0;
+        const el = (id) => document.getElementById(id);
+        const inputs = ['kgInput', 'lmeInput', 'descuentoInput', 'precioLbInput',
+                        'premioInput', 'tc1Input', 'usdTc1Input', 'tc2Input', 'usdTc2Input'];
+
+        function num(id) {
+            const value = parseFloat(el(id)?.value);
+            return Number.isFinite(value) ? value : null;
+        }
+
+        function fmt(value, decimals) {
+            if (value === null || !Number.isFinite(value)) { return '—'; }
+            return value.toLocaleString('es-MX', {
+                minimumFractionDigits: decimals,
+                maximumFractionDigits: decimals,
+            });
+        }
+
+        function recalc() {
+            const kg = num('kgInput') || 0;
+            const lme = num('lmeInput');
+            const descuento = num('descuentoInput');
+            let precioLb = num('precioLbInput');
+            if (precioLb === null && lme !== null && descuento !== null) {
+                precioLb = (lme * descuento / 1000) / LB_POR_KG;
+            }
+            const libras = kg * LB_POR_KG;
+            const totalUsd = precioLb !== null ? libras * precioLb : null;
+
+            const tc1 = num('tc1Input');
+            const usdTc1 = num('usdTc1Input');
+            const tc2 = num('tc2Input');
+            const usdTc2 = num('usdTc2Input');
+            let tcEfectivo = null;
+            if (usdTc1 !== null && tc1 !== null) {
+                let pesos = usdTc1 * tc1;
+                let usd = usdTc1;
+                if (usdTc2 !== null && tc2 !== null) { pesos += usdTc2 * tc2; usd += usdTc2; }
+                if (usd > 0) { tcEfectivo = pesos / usd; }
+            } else if (tc1 !== null) {
+                tcEfectivo = tc1;
+            }
+
+            let precioKg = null, precioPremio = null, totalVenta = null;
+            if (precioLb !== null && tcEfectivo !== null) {
+                precioKg = precioLb * LB_POR_KG * tcEfectivo;
+                const pct = num('premioInput') !== null ? num('premioInput') : PREMIO_TRATO;
+                precioPremio = precioKg * (1 + pct / 100);
+                totalVenta = kg * precioPremio;
+            }
+
+            el('prevPrecioLb').textContent = precioLb !== null ? fmt(precioLb, 4) : '—';
+            el('prevLibras').textContent = fmt(libras, 2);
+            el('prevTotalUsd').textContent = totalUsd !== null ? `$${fmt(totalUsd, 2)}` : '—';
+            el('prevTc').textContent = tcEfectivo !== null ? fmt(tcEfectivo, 4) : '—';
+            el('prevPrecioKg').textContent = precioKg !== null ? `$${fmt(precioKg, 4)}` : '—';
+            el('prevPrecioPremio').textContent = precioPremio !== null ? `$${fmt(precioPremio, 4)}` : '—';
+            el('prevTotalVenta').textContent = totalVenta !== null ? `$${fmt(totalVenta, 2)}` : '—';
+        }
+
+        inputs.forEach((id) => el(id)?.addEventListener('input', recalc));
+        recalc();
+    })();
+</script>
+{% endblock %}

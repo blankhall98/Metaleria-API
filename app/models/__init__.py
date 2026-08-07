@@ -18,6 +18,12 @@ from .llamada import (
     LlamadaProveedorEstatus,
     LlamadaProveedorMaterial,
 )
+from .trato import (
+    TratoVenta,
+    TratoVentaContenedor,
+    TratoVentaEstado,
+    TratoVentaNota,
+)
 from .cash import (
     CorteCaja,
     CorteCajaEstado,
@@ -78,6 +84,10 @@ __all__ = [
     "LlamadaProveedor",
     "LlamadaProveedorEstatus",
     "LlamadaProveedorMaterial",
+    "TratoVenta",
+    "TratoVentaContenedor",
+    "TratoVentaEstado",
+    "TratoVentaNota",
     "CorteCaja",
     "CorteCajaEstado",
     "CorteCajaGasto",
