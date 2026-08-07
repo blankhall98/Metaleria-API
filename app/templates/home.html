@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon, stat, money, kg, brand_mark, brand_word %}
+{% from "_macros.html" import icon, stat, money, kg, badge, empty, brand_mark, brand_word %}
 
 {% block title %}Inicio{% endblock %}
 
@@ -10,7 +10,7 @@
     <header class="s-page-head">
         <div class="s-page-head__main">
             <span class="s-eyebrow">Panel del trabajador</span>
-            <h1 class="s-page-title">Hola, {{ user.username }}</h1>
+            <h1 class="s-page-title">Hola, {{ nombre_pila or user.username }}</h1>
             <p class="s-page-sub">Captura una nota de pesaje o revisa las que ya enviaste.</p>
         </div>
         <div class="s-page-head__actions">
@@ -20,22 +20,91 @@
         </div>
     </header>
 
-    <div class="s-tiles">
-        <a href="/web/worker/notes/nueva" class="s-tile">
-            <span class="s-icon-tile">{{ icon('note') }}</span>
-            <span class="s-tile__body">
-                <span class="s-tile__title">Nueva nota</span>
-                <span class="s-tile__text">Captura de compra o venta con materiales y subpesajes.</span>
-            </span>
-        </a>
-        <a href="/web/worker/notes" class="s-tile">
-            <span class="s-icon-tile">{{ icon('notes') }}</span>
-            <span class="s-tile__body">
-                <span class="s-tile__title">Mis notas</span>
-                <span class="s-tile__text">Consulta el estado de las notas que capturaste.</span>
-            </span>
-        </a>
-    </div>
+    {% if worker_resumen %}
+        <div class="s-stats">
+            <a class="s-stat-link" href="/web/worker/notes">
+                {{ stat('Borradores', worker_resumen.borradores,
+                        'Sin enviar a revisión',
+                        'warn' if worker_resumen.borradores else '') }}
+            </a>
+            <a class="s-stat-link" href="/web/worker/notes">
+                {{ stat('En revisión', worker_resumen.en_revision, 'Esperando al administrador') }}
+            </a>
+            <a class="s-stat-link" href="/web/worker/notes">
+                {{ stat('Aprobadas', worker_resumen.aprobadas, 'Historial completo',
+                        'ok' if worker_resumen.aprobadas else '') }}
+            </a>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-body">
+                <div class="s-card-head">
+                    <div>
+                        <h2 class="s-card-title">Tus últimas notas</h2>
+                        <p class="s-card-sub">El estado de lo que capturaste recientemente.</p>
+                    </div>
+                    <a href="/web/worker/notes" class="btn btn-outline-secondary btn-sm">Ver todas</a>
+                </div>
+                {% if worker_resumen.recientes %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead>
+                            <tr>
+                                <th data-title-col data-mobile-primary>Operación</th>
+                                <th data-mobile-primary>Estado</th>
+                                <th class="text-end" data-mobile-primary>Total</th>
+                                <th>Fecha</th>
+                                <th><span class="s-visually-hidden">Acciones</span></th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for n in worker_resumen.recientes %}
+                                <tr>
+                                    <td class="fw-semibold">{{ n.tipo|capitalize }}</td>
+                                    <td>
+                                        {% if n.estado == 'BORRADOR' %}{{ badge('Borrador', 'muted') }}
+                                        {% elif n.estado == 'EN_REVISION' %}{{ badge('En revisión', 'warn') }}
+                                        {% elif n.estado == 'APROBADA' %}{{ badge('Aprobada', 'ok') }}
+                                        {% else %}{{ badge('Cancelada', 'bad') }}
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">{{ money(n.total) }}</td>
+                                    <td>{{ n.fecha|datetime_local if n.fecha else '—' }}</td>
+                                    <td>
+                                        {% if n.estado == 'BORRADOR' %}
+                                            <a href="/web/worker/notes/{{ n.id }}/editar" class="btn btn-sm btn-outline-primary">Continuar</a>
+                                        {% else %}
+                                            <a href="/web/worker/notes" class="btn btn-sm btn-outline-secondary">Ver</a>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    {{ empty('Aún no tienes notas', 'Captura tu primera nota de pesaje con el botón de arriba.', 'notes') }}
+                {% endif %}
+            </div>
+        </div>
+    {% else %}
+        <div class="s-tiles">
+            <a href="/web/worker/notes/nueva" class="s-tile">
+                <span class="s-icon-tile">{{ icon('note') }}</span>
+                <span class="s-tile__body">
+                    <span class="s-tile__title">Nueva nota</span>
+                    <span class="s-tile__text">Captura de compra o venta con materiales y subpesajes.</span>
+                </span>
+            </a>
+            <a href="/web/worker/notes" class="s-tile">
+                <span class="s-icon-tile">{{ icon('notes') }}</span>
+                <span class="s-tile__body">
+                    <span class="s-tile__title">Mis notas</span>
+                    <span class="s-tile__text">Consulta el estado de las notas que capturaste.</span>
+                </span>
+            </a>
+        </div>
+    {% endif %}
 
 {# ------------------------------------------------- admin / visor / super #}
 {% elif user %}
@@ -49,7 +118,7 @@
                 {% if solo_lectura %}
                     Estado actual de notas, saldos e inventario en modo solo lectura.
                 {% else %}
-                    Estado actual de la operaci&oacute;n. Usa el men&uacute; lateral para llegar a cada m&oacute;dulo.
+                    Estado actual de la operaci&oacute;n y las &uacute;ltimas notas capturadas.
                 {% endif %}
             </p>
         </div>
@@ -68,46 +137,94 @@
         {% endif %}
     </header>
 
+    {# Cada lectura navega a la vista que la explica; las bandas de alerta que
+       repetían estas mismas cifras 20px abajo se retiraron. #}
     {% if resumen %}
         <div class="s-stats">
-            {{ stat('En revisión', resumen.en_revision,
-                    'Notas esperando aprobación',
-                    'warn' if resumen.en_revision else '') }}
-            {{ stat('Vencidas', resumen.vencidas,
-                    'Requieren seguimiento inmediato',
-                    'bad' if resumen.vencidas else '') }}
-            {{ stat('Por vencer', resumen.por_vencer,
-                    'Dentro de los próximos 5 días',
-                    'warn' if resumen.por_vencer else '') }}
+            <a class="s-stat-link" href="/web/admin/notas?estado=EN_REVISION">
+                {{ stat('En revisión', resumen.en_revision,
+                        'Notas esperando aprobación',
+                        'warn' if resumen.en_revision else '') }}
+            </a>
+            <a class="s-stat-link" href="/web/admin/notas?seguimiento=VENCIDAS">
+                {{ stat('Vencidas', resumen.vencidas,
+                        'Requieren seguimiento inmediato',
+                        'bad' if resumen.vencidas else '') }}
+            </a>
+            <a class="s-stat-link" href="/web/admin/notas?seguimiento=POR_VENCER">
+                {{ stat('Por vencer', resumen.por_vencer,
+                        'Dentro de los próximos 5 días',
+                        'warn' if resumen.por_vencer else '') }}
+            </a>
             {{ stat('Notas de hoy', resumen.notas_hoy, 'Capturadas desde las 00:00', 'info') }}
-            {{ stat('Por pagar a proveedores', money(resumen.por_pagar, 'plain'),
-                    'Saldo vivo de notas de compra') }}
-            {{ stat('Por cobrar a clientes', money(resumen.por_cobrar, 'plain'),
-                    'Saldo vivo de notas de venta') }}
-            {{ stat('Inventario total', kg(resumen.inventario_kg),
-                    'Existencias actuales en todas las sucursales') }}
+            <a class="s-stat-link" href="/web/admin/reporte-saldos">
+                {{ stat('Por pagar a proveedores', money(resumen.por_pagar, 'plain'),
+                        'Saldo vivo de notas de compra') }}
+            </a>
+            <a class="s-stat-link" href="/web/admin/reporte-saldos">
+                {{ stat('Por cobrar a clientes', money(resumen.por_cobrar, 'plain'),
+                        'Saldo vivo de notas de venta') }}
+            </a>
+            <a class="s-stat-link" href="/web/admin/inventario">
+                {{ stat('Inventario total', kg(resumen.inventario_kg),
+                        'Existencias actuales en todas las sucursales') }}
+            </a>
         </div>
     {% endif %}
 
-    {% if resumen and resumen.en_revision %}
-        <div class="alert alert-warning d-flex flex-wrap align-items-center gap-3" role="alert">
-            {{ icon('alert', 's-icon--sm') }}
-            <span class="s-grow">
-                Hay <strong>{{ resumen.en_revision }}</strong>
-                nota{{ 's' if resumen.en_revision != 1 }} esperando tu revisi&oacute;n.
-            </span>
-            <a href="/web/admin/notas?estado=EN_REVISION" class="btn btn-sm btn-outline-primary">Revisar ahora</a>
-        </div>
-    {% endif %}
-
-    {% if resumen and resumen.vencidas %}
-        <div class="alert alert-danger d-flex flex-wrap align-items-center gap-3" role="alert">
-            {{ icon('alert', 's-icon--sm') }}
-            <span class="s-grow">
-                <strong>{{ resumen.vencidas }}</strong>
-                nota{{ 's' if resumen.vencidas != 1 }} con pago vencido.
-            </span>
-            <a href="/web/admin/notas?seguimiento=VENCIDAS" class="btn btn-sm btn-outline-danger">Ver vencidas</a>
+    {% if resumen and resumen.actividad is defined %}
+        <div class="card mb-3">
+            <div class="card-body">
+                <div class="s-card-head">
+                    <div>
+                        <h2 class="s-card-title">Actividad reciente</h2>
+                        <p class="s-card-sub">Las últimas notas capturadas en cualquier sucursal.</p>
+                    </div>
+                    <a href="/web/admin/notas" class="btn btn-outline-secondary btn-sm">Ver todas</a>
+                </div>
+                {% if resumen.actividad %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead>
+                            <tr>
+                                <th data-title-col data-mobile-primary>Socio</th>
+                                <th>Folio</th>
+                                <th data-mobile-primary>Estado</th>
+                                <th class="text-end" data-mobile-primary>Total</th>
+                                <th>Fecha</th>
+                                <th><span class="s-visually-hidden">Acciones</span></th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for a in resumen.actividad %}
+                                <tr>
+                                    {% set TIPO_LABEL = {'compra': 'Compra', 'venta': 'Venta', 'comision': 'Comisión'} %}
+                                    <td>
+                                        <div class="fw-semibold">{{ a.partner }}</div>
+                                        <div class="text-muted small">{{ TIPO_LABEL.get(a.tipo, a.tipo|capitalize) }}</div>
+                                    </td>
+                                    <td><span class="s-folio">{{ a.folio }}</span></td>
+                                    <td>
+                                        {% if a.estado == 'BORRADOR' %}{{ badge('Borrador', 'muted') }}
+                                        {% elif a.estado == 'EN_REVISION' %}{{ badge('En revisión', 'warn') }}
+                                        {% elif a.estado == 'APROBADA' %}{{ badge('Aprobada', 'ok') }}
+                                        {% else %}{{ badge('Cancelada', 'bad') }}
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">{{ money(a.total) }}</td>
+                                    <td>{{ a.fecha|datetime_local if a.fecha else '—' }}</td>
+                                    <td>
+                                        <a href="/web/admin/notas/{{ a.id }}" class="btn btn-sm btn-outline-secondary">Ver</a>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    {{ empty('Sin notas todavía', 'La actividad aparece en cuanto se captura la primera nota.', 'notes') }}
+                {% endif %}
+            </div>
         </div>
     {% endif %}
 
@@ -123,7 +240,10 @@
         </a>
     {% endmacro %}
 
-    <section class="s-card mt-4">
+    {# En escritorio la barra lateral fija ya ofrece estos mismos destinos; el
+       directorio completo solo aporta en pantallas donde la barra vive en un
+       cajón (móvil y tableta). #}
+    <section class="s-card mt-4 home-modules">
         <div class="card-body">
             <div class="s-card-head">
                 <div>

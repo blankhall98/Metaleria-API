@@ -1374,10 +1374,36 @@ body.drawer-open { overflow: hidden; }
 .s-stat--info .s-stat__value          { color: var(--s-p600); }
 .s-stat--brass .s-stat__label::before { background: var(--s-brass300); }
 
+/* Una lectura puede navegar a la vista que la explica: el enlace envuelve la
+   celda sin alterar la banda y el hover lo insinúa con el fondo. */
+.s-stats > .s-stat-link {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    min-width: 0;
+}
+.s-stat-link .s-stat {
+    height: 100%;
+    transition: background var(--s-dur) var(--s-ease);
+}
+.s-stat-link:hover .s-stat { background: var(--s-n25); }
+.s-stat-link:hover .s-stat__label { color: var(--s-p600); }
+
+/* El directorio de módulos del inicio duplica la barra lateral fija: solo se
+   muestra donde la navegación vive en un cajón (móvil y tableta). */
+@media (min-width: 1200px) {
+    body.role-super_admin .home-modules,
+    body.role-admin .home-modules,
+    body.role-visor .home-modules { display: none; }
+}
+
 @media (max-width: 575.98px) {
     .s-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .s-stat { padding: var(--s-3) var(--s-4); }
     .s-stat__value { font-size: var(--s-fs-xl); }
+    /* Con un número impar de lecturas, la última llena el renglón en vez de
+       dejar una celda viuda con un hueco al lado. */
+    .s-stats > :last-child:nth-child(odd) { grid-column: span 2; }
 }
 
 /* ==========================================================================

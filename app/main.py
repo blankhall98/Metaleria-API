@@ -96,6 +96,39 @@ def _home_resumen(db: Session, notas_revision_count: int) -> dict:
 
         inventario_kg = db.query(func.coalesce(func.sum(Inventario.stock_actual), 0)).scalar()
 
+        # Actividad reciente: el panel no solo dice cuánto, también qué pasó.
+        from app.models import Cliente, Proveedor
+
+        recientes = db.query(Nota).order_by(Nota.created_at.desc()).limit(5).all()
+        prov_ids = {n.proveedor_id for n in recientes if n.proveedor_id}
+        cli_ids = {n.cliente_id for n in recientes if n.cliente_id}
+        prov_map = (
+            {p.id: p.nombre_completo for p in db.query(Proveedor).filter(Proveedor.id.in_(prov_ids)).all()}
+            if prov_ids else {}
+        )
+        cli_map = (
+            {c.id: c.nombre_completo for c in db.query(Cliente).filter(Cliente.id.in_(cli_ids)).all()}
+            if cli_ids else {}
+        )
+        actividad = []
+        for n in recientes:
+            folio = note_service.format_folio(
+                sucursal_id=n.sucursal_id,
+                tipo_operacion=n.tipo_operacion,
+                folio_seq=n.folio_seq,
+            )
+            if not folio:
+                folio = "Pendiente" if n.estado in (NotaEstado.borrador, NotaEstado.en_revision) else "—"
+            actividad.append({
+                "id": n.id,
+                "folio": folio,
+                "partner": prov_map.get(n.proveedor_id) or cli_map.get(n.cliente_id) or "—",
+                "tipo": n.tipo_operacion.value if n.tipo_operacion else "",
+                "estado": n.estado.value if n.estado else "",
+                "total": n.total_monto,
+                "fecha": n.created_at,
+            })
+
         return {
             "en_revision": notas_revision_count,
             "notas_hoy": notas_hoy,
@@ -104,8 +137,48 @@ def _home_resumen(db: Session, notas_revision_count: int) -> dict:
             "vencidas": vencidas,
             "por_vencer": por_vencer,
             "inventario_kg": Decimal(str(inventario_kg or 0)),
+            "actividad": actividad,
         }
     except Exception:  # noqa: BLE001 - the dashboard degrades, it does not fail
+        return {}
+
+
+def _worker_home_resumen(db: Session, user_id: int | None) -> dict:
+    """El panel del trabajador: sus pendientes y sus últimas notas.
+
+    Solo lecturas; si algo falla el home degrada a la bienvenida simple.
+    """
+    try:
+        from app.models import User
+
+        usuario = db.query(User).filter(User.id == user_id).first() if user_id else None
+        nombre_pila = ""
+        if usuario and usuario.nombre_completo:
+            nombre_pila = usuario.nombre_completo.strip().split(" ")[0]
+
+        propias = db.query(Nota).filter(Nota.trabajador_id == user_id)
+        borradores = propias.filter(Nota.estado == NotaEstado.borrador).count()
+        en_revision = propias.filter(Nota.estado == NotaEstado.en_revision).count()
+        aprobadas = propias.filter(Nota.estado == NotaEstado.aprobada).count()
+        recientes = propias.order_by(Nota.created_at.desc()).limit(5).all()
+
+        return {
+            "nombre_pila": nombre_pila,
+            "borradores": borradores,
+            "en_revision": en_revision,
+            "aprobadas": aprobadas,
+            "recientes": [
+                {
+                    "id": n.id,
+                    "estado": n.estado.value if n.estado else "",
+                    "tipo": n.tipo_operacion.value if n.tipo_operacion else "",
+                    "total": n.total_monto,
+                    "fecha": n.created_at,
+                }
+                for n in recientes
+            ],
+        }
+    except Exception:  # noqa: BLE001 - el home degrada, no falla
         return {}
 
 
@@ -156,6 +229,8 @@ def create_app() -> FastAPI:
         user = _get_session_user(request)
         notas_revision_count = 0
         resumen: dict = {}
+        worker_resumen: dict = {}
+        nombre_pila = ""
 
         if user and user.get("rol") in ("admin", "super_admin", "visor"):
             db = SessionLocal()
@@ -164,6 +239,13 @@ def create_app() -> FastAPI:
                     db.query(Nota).filter(Nota.estado == NotaEstado.en_revision).count()
                 )
                 resumen = _home_resumen(db, notas_revision_count)
+            finally:
+                db.close()
+        elif user and user.get("rol") == "trabajador":
+            db = SessionLocal()
+            try:
+                worker_resumen = _worker_home_resumen(db, user.get("id"))
+                nombre_pila = worker_resumen.pop("nombre_pila", "") or ""
             finally:
                 db.close()
 
@@ -175,6 +257,8 @@ def create_app() -> FastAPI:
                 "user": user,
                 "notas_revision_count": notas_revision_count,
                 "resumen": resumen,
+                "worker_resumen": worker_resumen,
+                "nombre_pila": nombre_pila,
             },
         )
 
