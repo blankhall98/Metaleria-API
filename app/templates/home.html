@@ -287,6 +287,8 @@
                 {{ module('/web/admin/notas', 'Notas',
                           'Revisa, aprueba y cobra notas de compra y venta.', 'notes') }}
                 {% if not solo_lectura %}
+                    {{ module('/web/admin/tratos-venta', 'Contenedores',
+                              'Tratos de venta y avance de kilos por contenedor.', 'container') }}
                     {{ module('/web/admin/corte-caja', 'Corte de caja',
                               'Control diario de efectivo y caja chica.', 'cash') }}
                 {% endif %}
@@ -302,6 +304,8 @@
                 {% endif %}
                 {{ module('/web/admin/proveedores', 'Proveedores',
                           'Contactos, placas, saldos y estado de cuenta.', 'truck') }}
+                {{ module('/web/admin/bitacora-llamadas', 'Bitácora de llamadas',
+                          'Llamadas con proveedores y seguimiento de entregas.', 'phone') }}
                 {{ module('/web/admin/clientes', 'Clientes',
                           'Clientes, placas y datos de contacto.', 'users') }}
                 {% if not solo_lectura %}
