@@ -3459,3 +3459,167 @@ button.s-method-pill:hover { filter: brightness(0.97); }
         border-radius: var(--s-r-lg) var(--s-r-lg) 0 0;
     }
 }
+
+/* ==========================================================================
+   22. TÁCTIL — TELÉFONO Y TABLET
+   --------------------------------------------------------------------------
+   Ergonomía táctil por debajo de 1024px. Este bloque contiene únicamente
+   media queries max-width y vive al final de la hoja a propósito: gana el
+   cascade sin tocar una sola regla base, así que el escritorio (≥1024px) es
+   idéntico byte a byte. Tres capas: el teléfono corrige los controles que la
+   regla móvil de 44px no alcanzaba; la tablet (768–1023.98) recibe la misma
+   talla táctil sin perder el modo tabla; y las bandas de indicadores dejan de
+   rematar en una celda viuda con hueco.
+   ========================================================================== */
+
+@media (max-width: 767.98px) {
+    /* Los controles -sm declaran su talla DESPUÉS del bloque móvil de 44px
+       (§forms), así que en el teléfono seguían en 30px: los formularios de
+       abono de la nota, los selectores de exportación y los filtros de
+       bitácora y tratos. Reafirmado aquí, la talla móvil gana siempre. */
+    .form-control,
+    .form-select,
+    .form-control-sm,
+    .form-select-sm {
+        font-size: var(--s-fs-md);
+        height: var(--s-control-h-lg);
+        min-height: var(--s-control-h-lg);
+    }
+    textarea.form-control,
+    textarea.form-control-sm { height: auto; }
+    .form-control-sm,
+    .form-select-sm { padding-inline: 0.625rem; }
+
+    /* Todo botón del contenido es un objetivo táctil: 44px el estándar y
+       40px la talla chica (píldoras del índice de secciones, acciones de
+       encabezado, exportadores). El alto fijo pasa a mínimo para que un
+       texto a dos líneas no desborde su botón. */
+    main .btn { height: auto; min-height: var(--s-control-h-lg); }
+    main .btn-sm { height: auto; min-height: 40px; }
+    main .btn-icon { width: var(--s-control-h-lg); min-width: var(--s-control-h-lg); }
+    main .btn-icon.btn-sm { width: 40px; min-width: 40px; }
+
+    /* En modo tarjeta el menú "⋯" quedaba como un botón de 30px huérfano en
+       la esquina de la tarjeta: el idioma de escritorio "width: 1%" de la
+       columna de acciones seguía ganando el cascade dentro de la tarjeta.
+       La fila de acciones recupera el ancho y se estira completa; el
+       envoltorio .s-actions (inline-flex a contenido) también se suelta. */
+    .s-table-cards .table tbody td.s-cell-actions {
+        width: 100%;
+        white-space: normal;
+    }
+    .s-table-cards tbody td.s-cell-actions .s-actions {
+        display: flex;
+        flex: 1 1 100%;
+        min-width: 0;
+        flex-wrap: wrap;
+        gap: var(--s-2);
+        white-space: normal;
+    }
+    .s-table-cards tbody td.s-cell-actions .s-actions > * { flex: 1 1 auto; }
+    .s-table-cards tbody td.s-cell-actions .s-rowmenu { flex: 1 1 auto; }
+    .s-table-cards tbody td.s-cell-actions .s-rowmenu__toggle { width: 100%; }
+    .s-table-cards tbody td.s-cell-actions form { display: flex; flex: 1 1 auto; }
+    .s-table-cards tbody td.s-cell-actions form .btn { flex: 1 1 auto; }
+
+    /* Una celda de tarjeta con control de captura deja el rompecabezas flex
+       y apila como bloque: etiqueta arriba, control a lo ancho, texto de
+       ayuda debajo. Sin esto, el input de kg del editor de nota quedaba
+       aplastado a unos pixeles junto a su texto de ayuda desbordado. */
+    .s-table-cards tbody td:has(.form-control, .form-select) {
+        display: block;
+        text-align: left;
+    }
+    .s-table-cards tbody td:has(.form-control, .form-select)::before {
+        display: block;
+        max-width: none;
+        margin-bottom: 2px;
+    }
+    .s-table-cards tbody td .form-control,
+    .s-table-cards tbody td .form-select { width: 100%; }
+    .s-table-cards tbody td .form-text,
+    .s-table-cards tbody td small { text-align: left; }
+
+    /* Un enlace dentro de una tarjeta (el folio, "#9", "Ver evidencia")
+       crece a objetivo táctil sin cambiar de aspecto: el margen negativo
+       cancela el relleno, así que el texto no se mueve un pixel. */
+    .s-table-cards tbody td a:not(.btn) {
+        display: inline-flex;
+        align-items: center;
+        min-height: 36px;
+        padding-inline: 0.375rem;
+        margin-inline: -0.375rem;
+    }
+    .s-card-more { min-height: 40px; }
+
+    /* Las opciones del menú "⋯" también se tocan con el pulgar. */
+    .s-rowmenu__item { padding-block: 0.6875rem; }
+
+    /* La casilla nativa de 13px es impracticable con el dedo. */
+    main .form-check-input { width: 1.375rem; height: 1.375rem; }
+
+    /* El pie de totales metía sus cuatro celdas en un renglón que desbordaba
+       el teléfono: el rótulo toma su línea y las cifras fluyen debajo. */
+    .s-table-cards tfoot tr { flex-wrap: wrap; row-gap: 2px; }
+    .s-table-cards tfoot td { width: auto; flex: 0 1 auto; }
+    .s-table-cards tfoot td:first-child { flex: 1 1 100%; font-weight: 600; }
+}
+
+/* La tablet es táctil: misma talla de control que el teléfono, sin perder el
+   modo tabla ni el layout de escritorio. A partir de 1024px no cambia nada. */
+@media (min-width: 768px) and (max-width: 1023.98px) {
+    main .form-control,
+    main .form-select,
+    main .form-control-sm,
+    main .form-select-sm {
+        font-size: var(--s-fs-md);
+        height: var(--s-control-h-lg);
+        min-height: var(--s-control-h-lg);
+    }
+    main textarea.form-control,
+    main textarea.form-control-sm { height: auto; }
+
+    main .btn { height: auto; min-height: var(--s-control-h-lg); }
+    main .btn-sm { height: auto; min-height: 40px; }
+    main .btn-icon { width: var(--s-control-h-lg); min-width: var(--s-control-h-lg); }
+    main .btn-icon.btn-sm { width: 40px; min-width: 40px; }
+
+    .s-rowmenu__item { padding-block: 0.6875rem; }
+
+    /* Un punto más de apriete en el modo compacto: con ello un libro mayor
+       de 9–10 columnas cabe en una tablet vertical sin scroll lateral. */
+    .s-table-compact > thead > tr > th,
+    .s-table-compact > tbody > tr > td { padding-inline: 0.3125rem; }
+
+    /* Excepción de talla: un control dentro de una fila de tabla conserva la
+       letra compacta (la de 16px ensanchaba el editor de nota +400px) pero
+       sube a 40px de alto para el pulgar. */
+    main .table td .form-control-sm,
+    main .table td .form-select-sm {
+        font-size: var(--s-fs-sm);
+        height: 40px;
+        min-height: 40px;
+    }
+
+    /* Un enlace dentro de una celda (folio, "Nota #9", kg con desglose)
+       crece a objetivo táctil sin mover el texto: margen negativo contra
+       relleno equivalente. */
+    main .table tbody td a:not(.btn) {
+        display: inline-block;
+        padding: 0.5rem 0.375rem;
+        margin: -0.5rem -0.375rem;
+    }
+
+    /* La casilla nativa de 13px es impracticable con el dedo. */
+    main .form-check-input { width: 1.375rem; height: 1.375rem; }
+}
+
+/* Con recuento impar colapsado a dos columnas, la última lectura de una banda
+   dejaba media banda hueca; ahora cierra el renglón completo, como ya lo
+   hacía el teléfono (<576px). */
+@media (max-width: 991.98px) {
+    .s-stats--fixed-4 > :last-child:nth-child(odd),
+    .s-stats--fixed-3 > :last-child:nth-child(odd),
+    .s-stats[data-cols="3"] > :last-child:nth-child(odd),
+    .s-stats[data-cols="4"] > :last-child:nth-child(odd) { grid-column: span 2; }
+}
