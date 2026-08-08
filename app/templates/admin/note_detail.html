@@ -123,6 +123,15 @@
     {% if request.query_params.get('success') == 'referencia_pago' %}
         <div class="alert alert-success py-2 small mb-3">Referencia de pago actualizada correctamente.</div>
     {% endif %}
+    {% if request.query_params.get('trato') == '1' %}
+        <div class="alert alert-success py-2 small mb-3">La venta quedó vinculada al trato. Sus kilos abonan al contrato en cuanto la nota está aprobada.</div>
+    {% endif %}
+    {% if request.query_params.get('trato_quitado') == '1' %}
+        <div class="alert alert-success py-2 small mb-3">La venta se desvinculó del trato (la nota no se tocó).</div>
+    {% endif %}
+    {% if request.query_params.get('error_trato') %}
+        <div class="alert alert-danger py-2 small mb-3">{{ request.query_params.get('error_trato') }}</div>
+    {% endif %}
 
     <div class="card mb-3">
         <div class="card-body">
@@ -158,6 +167,48 @@
             </nav>
         </div>
     </div>
+
+    {# Punto 3 (fase 2): la venta elige a qué trato de contenedores abona. #}
+    {% if trato_link or (tratos_disponibles and can_manage_note) %}
+        <div class="card mb-3" id="note-trato">
+            <div class="card-body">
+                {% if trato_link %}
+                    <div class="s-between">
+                        <div>
+                            <h2 class="s-card-title mb-1">Trato de contenedores</h2>
+                            <p class="s-card-sub mb-0">
+                                Esta venta abona al
+                                <a href="/web/admin/tratos-venta/{{ trato_link.trato_id }}">trato #{{ trato_link.trato_id }}</a>{% if trato_link.trato %}
+                                de {{ trato_link.trato.cliente.nombre_completo if trato_link.trato.cliente else '—' }}
+                                · {{ trato_link.trato.material.nombre if trato_link.trato.material else '—' }}{% if trato_link.trato.contrato %} · Contrato {{ trato_link.trato.contrato }}{% endif %}{% endif %}.
+                                {% if note_state != 'APROBADA' %}Los kilos contarán en el trato cuando la nota se apruebe.{% endif %}
+                            </p>
+                        </div>
+                        {% if can_manage_note %}
+                            <form method="post" action="/web/admin/notas/{{ nota.id }}/trato/quitar" class="d-inline">
+                                <button type="submit" class="btn btn-sm btn-outline-danger"
+                                        data-confirm="La venta se desvinculará del trato (la nota no se toca). ¿Deseas continuar?">Quitar del trato</button>
+                            </form>
+                        {% endif %}
+                    </div>
+                {% else %}
+                    <h2 class="s-card-title mb-1">Trato de contenedores</h2>
+                    <p class="s-card-sub mb-3">Este comprador tiene tratos abiertos: elige a cuál orden abona esta venta.</p>
+                    <form method="post" action="/web/admin/notas/{{ nota.id }}/trato" class="d-flex flex-wrap align-items-center gap-2">
+                        <select class="form-select form-select-sm w-auto" name="trato_id" aria-label="Trato al que abona la venta" required>
+                            <option value="">Selecciona el trato…</option>
+                            {% for t in tratos_disponibles %}
+                                <option value="{{ t.id }}">
+                                    Trato #{{ t.id }} · {{ t.material.nombre if t.material else '—' }}{% if t.contrato %} · {{ t.contrato }}{% endif %} · {{ "{:,.0f}".format(t.kg_tratados or 0) }} kg tratados
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <button class="btn btn-outline-primary btn-sm">Vincular al trato</button>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
 
     <div class="card mb-3" id="note-summary">
         <div class="card-body">

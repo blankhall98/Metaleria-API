@@ -10991,6 +10991,30 @@ def _render_nota_detail(
         "can_manage_note": can_manage_note,
         "can_edit_note": current_user.get("rol") == UserRole.super_admin.value,
     }
+    # Punto 3 (fase 2): desde la nota de venta se elige a qué trato de
+    # contenedores abona; los kilos cuentan en el trato al aprobarse.
+    trato_link = None
+    tratos_disponibles: list[TratoVenta] = []
+    if (
+        nota.tipo_operacion == TipoOperacion.venta
+        and nota.cliente_id
+        and nota.estado != NotaEstado.cancelada
+    ):
+        trato_link = (
+            db.query(TratoVentaNota).filter(TratoVentaNota.nota_id == nota.id).first()
+        )
+        if not trato_link:
+            tratos_disponibles = (
+                db.query(TratoVenta)
+                .filter(
+                    TratoVenta.cliente_id == nota.cliente_id,
+                    TratoVenta.estado == TratoVentaEstado.abierto,
+                )
+                .order_by(TratoVenta.created_at.desc())
+                .all()
+            )
+    context["trato_link"] = trato_link
+    context["tratos_disponibles"] = tratos_disponibles
     context.update(base_form_state)
     if form_state:
         context.update(form_state)
@@ -11148,6 +11172,56 @@ async def notas_detail(
         devolucion_parcial_reverted=devolucion_parcial_reverted,
         devolucion_total_reverted=devolucion_total_reverted,
     )
+
+
+@router.post("/notas/{nota_id}/trato")
+async def nota_trato_link(
+    nota_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    nota = db.get(Nota, nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_nota_access(nota, allowed_suc_ids)
+    form = await request.form()
+    try:
+        trato_id = int((form.get("trato_id") or "").strip())
+    except ValueError:
+        return RedirectResponse(
+            url=_append_query_params(
+                f"/web/admin/notas/{nota.id}", error_trato="Selecciona el trato al que abona esta venta."
+            ),
+            status_code=303,
+        )
+    try:
+        trato_service.link_nota(db, trato_id=trato_id, nota_id=nota.id)
+    except ValueError as exc:
+        return RedirectResponse(
+            url=_append_query_params(f"/web/admin/notas/{nota.id}", error_trato=str(exc)),
+            status_code=303,
+        )
+    return RedirectResponse(url=f"/web/admin/notas/{nota.id}?trato=1", status_code=303)
+
+
+@router.post("/notas/{nota_id}/trato/quitar")
+async def nota_trato_unlink(
+    nota_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    nota = db.get(Nota, nota_id)
+    if not nota:
+        raise HTTPException(status_code=404, detail="Nota no encontrada.")
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+    _ensure_nota_access(nota, allowed_suc_ids)
+    link = db.query(TratoVentaNota).filter(TratoVentaNota.nota_id == nota.id).first()
+    if link:
+        trato_service.unlink_nota(db, trato_id=link.trato_id, nota_id=nota.id)
+    return RedirectResponse(url=f"/web/admin/notas/{nota.id}?trato_quitado=1", status_code=303)
 
 
 @router.get("/notas/{nota_id}/evidencias")
@@ -13791,7 +13865,12 @@ async def capital_real_view(
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_viewer_or_admin_or_superadmin),
 ):
-    valuation_mode = _normalize_inventory_valuation_mode(request.query_params.get("inventario_base"))
+    # La clienta pidió que el capital valúe el inventario "con el precio actual
+    # de compra sin tener que ponerlo": aquí el default es promedio de compra
+    # (las demás pantallas de valuación conservan su default manual).
+    valuation_mode = _normalize_inventory_valuation_mode(
+        request.query_params.get("inventario_base") or "promedio"
+    )
     scope_ids, scope_key, scope_label, seleccion = _capital_scope(request, db, current_user)
 
     tc_usd = _parse_tc_usd(request.query_params.get("tc_usd"))
@@ -13892,7 +13971,9 @@ async def capital_guardar_foto(
     # Los formularios del capital conservan el alcance en la query string
     # (suc, tc_usd, inventario_base), así la foto retrata lo que se está viendo.
     scope_ids, scope_key, scope_label, _seleccion = _capital_scope(request, db, current_user)
-    valuation_mode = _normalize_inventory_valuation_mode(request.query_params.get("inventario_base"))
+    valuation_mode = _normalize_inventory_valuation_mode(
+        request.query_params.get("inventario_base") or "promedio"
+    )
     tc_usd = _parse_tc_usd(request.query_params.get("tc_usd"))
     contexto = _build_capital_real_context(
         db,

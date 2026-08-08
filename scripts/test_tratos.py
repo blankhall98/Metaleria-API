@@ -175,11 +175,20 @@ def test_trato_y_notas():
         estado=NotaEstado.aprobada,
         total_kg_neto=Decimal("500"),
     )
-    db.add_all([nota_ok, nota_borrador, otra_compra])
+    nota_cancelada = Nota(
+        sucursal_id=suc.id, trabajador_id=admin.id, cliente_id=cliente.id, tipo_operacion=TipoOperacion.venta,
+        estado=NotaEstado.cancelada,
+        total_kg_neto=Decimal("400"),
+    )
+    db.add_all([nota_ok, nota_borrador, otra_compra, nota_cancelada])
     db.commit()
 
     trato_service.link_nota(db, trato_id=trato.id, nota_id=nota_ok.id)
-    for nota_mala, motivo in ((nota_borrador, "borrador"), (otra_compra, "compra")):
+    # La venta se puede vincular desde que nace (elige la orden al capturarla),
+    # pero sus kilos no cuentan hasta que la nota está aprobada.
+    trato_service.link_nota(db, trato_id=trato.id, nota_id=nota_borrador.id)
+    check("una venta en borrador sí se vincula", True)
+    for nota_mala, motivo in ((otra_compra, "compra"), (nota_cancelada, "cancelada")):
         try:
             trato_service.link_nota(db, trato_id=trato.id, nota_id=nota_mala.id)
             check(f"rechaza vincular nota {motivo}", False)

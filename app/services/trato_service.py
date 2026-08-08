@@ -275,7 +275,12 @@ def delete_contenedor(db: Session, *, contenedor_id: int) -> None:
 
 
 def link_nota(db: Session, *, trato_id: int, nota_id: int) -> TratoVentaNota:
-    """Vincula una nota de venta aprobada del mismo cliente al trato."""
+    """Vincula una nota de venta del mismo cliente al trato.
+
+    Se puede vincular desde que la nota nace (así la clienta elige la orden al
+    hacer la venta); los kilos solo cuentan cuando la nota está APROBADA
+    (resumen_trato filtra por estado). Una cancelada no se vincula.
+    """
     trato = db.query(TratoVenta).get(trato_id)
     if not trato:
         raise ValueError("El trato no existe.")
@@ -284,8 +289,8 @@ def link_nota(db: Session, *, trato_id: int, nota_id: int) -> TratoVentaNota:
         raise ValueError("La nota no existe.")
     if nota.tipo_operacion != TipoOperacion.venta:
         raise ValueError("Solo se pueden vincular notas de venta.")
-    if nota.estado != NotaEstado.aprobada:
-        raise ValueError("Solo se pueden vincular notas aprobadas.")
+    if nota.estado == NotaEstado.cancelada:
+        raise ValueError("No se puede vincular una nota cancelada.")
     if nota.cliente_id != trato.cliente_id:
         raise ValueError("La nota pertenece a otro cliente.")
     existente = (
