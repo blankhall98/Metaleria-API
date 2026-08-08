@@ -81,18 +81,18 @@
                 <div class="s-form-grid">
                     {% if cuenta %}
                         <div>
-                            <span class="form-label d-block">Saldo inicial</span>
+                            <span class="form-label d-block">Saldo de apertura</span>
                             <p class="s-stat__value mb-0">{{ money(cuenta.saldo_inicial) }}</p>
                             <p class="form-text">Se define solo al crear la cuenta.</p>
                         </div>
                         <div>
                             <span class="form-label d-block">Saldo actual</span>
                             <p class="s-stat__value mb-0">{{ money(cuenta.saldo_actual) }}</p>
-                            <p class="form-text">Resultado del saldo inicial más los movimientos registrados.</p>
+                            <p class="form-text">Resultado del saldo de apertura más los movimientos registrados.</p>
                         </div>
                     {% else %}
                         <div>
-                            <label class="form-label" for="saldo_inicial">Saldo inicial</label>
+                            <label class="form-label" for="saldo_inicial">Saldo de apertura</label>
                             <input class="form-control" id="saldo_inicial" name="saldo_inicial" value="{{ form_saldo or '' }}" placeholder="0.00">
                             <p class="form-text">Opcional. Dinero con el que arranca la cuenta; no se puede cambiar después.</p>
                         </div>

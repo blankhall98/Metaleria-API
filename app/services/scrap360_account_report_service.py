@@ -97,7 +97,7 @@ def build_scrap360_account_statement_excel(report: dict) -> tuple[bytes, str]:
         _sheet_row([(f"Sucursales: {report['sucursales_label']}", "String")]),
         _sheet_row([(f"Generado: {format_datetime_local(report['generated_at'])}", "String")]),
         _sheet_row([("", "String")]),
-        _sheet_row([("Saldo inicial", "String"), (str(_safe_decimal(report["saldo_inicial"])), "Number")]),
+        _sheet_row([("Saldo de apertura", "String"), (str(_safe_decimal(report["saldo_inicial"])), "Number")]),
         _sheet_row([("Entradas", "String"), (str(_safe_decimal(report["total_entradas"])), "Number")]),
         _sheet_row([("Salidas", "String"), (str(_safe_decimal(report["total_salidas"])), "Number")]),
         _sheet_row([("Saldo actual", "String"), (str(_safe_decimal(report["saldo_actual"])), "Number")]),
@@ -185,7 +185,7 @@ def build_scrap360_account_statement_pdf(report: dict) -> tuple[bytes, str]:
     y -= 28
 
     summary_items = [
-        ("Saldo inicial", _format_money(_safe_decimal(report["saldo_inicial"]))),
+        ("Saldo de apertura", _format_money(_safe_decimal(report["saldo_inicial"]))),
         ("Entradas", _format_money(_safe_decimal(report["total_entradas"]))),
         ("Salidas", _format_money(_safe_decimal(report["total_salidas"]))),
         ("Saldo actual", _format_money(_safe_decimal(report["saldo_actual"]))),

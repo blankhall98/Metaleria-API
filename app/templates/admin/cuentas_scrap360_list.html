@@ -5,7 +5,7 @@
 
 {% block content %}
 {% call page_header('Cuentas Scrap360', eyebrow='Finanzas',
-                    sub='Cuentas internas de tesorería con su saldo inicial y su saldo actual.') %}
+                    sub='Cuentas internas de tesorería con su saldo de apertura y su saldo actual.') %}
     <a href="/web/admin/cuentas-scrap360/nueva" class="btn btn-primary">
         {{ icon('plus', 's-icon--sm') }} Nueva cuenta
     </a>
@@ -75,7 +75,7 @@
                 <tr>
                     <th data-title-col data-mobile-primary>Nombre</th>
                     <th>Sucursales</th>
-                    <th class="text-end">Saldo inicial</th>
+                    <th class="text-end">Saldo de apertura</th>
                     <th class="text-end" data-mobile-primary>Saldo actual</th>
                     <th data-mobile-primary>Estado</th>
                     <th><span class="s-visually-hidden">Acciones</span></th>

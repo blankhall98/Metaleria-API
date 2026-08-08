@@ -30,7 +30,7 @@
 {% endif %}
 
 <div class="s-stats">
-    {{ stat('Saldo inicial', money(cuenta.saldo_inicial)) }}
+    {{ stat('Saldo de apertura', money(cuenta.saldo_inicial)) }}
     {{ stat('Entradas', money(total_entradas)) }}
     {{ stat('Salidas', money(total_salidas)) }}
     {{ stat('Saldo actual', money(cuenta.saldo_actual)) }}

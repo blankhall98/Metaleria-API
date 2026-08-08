@@ -9166,7 +9166,7 @@ async def cuentas_scrap360_new_post(
         try:
             saldo_inicial = Decimal(str(saldo_raw))
         except (InvalidOperation, TypeError):
-            return render_error("El saldo inicial es invalido.")
+            return render_error("El saldo de apertura es invalido.")
 
     sucursales_sel = db.query(Sucursal).filter(Sucursal.id.in_(selected_ids)).all()
     if len(sucursales_sel) != len(set(selected_ids)):
@@ -9189,7 +9189,7 @@ async def cuentas_scrap360_new_post(
             db,
             cuenta=cuenta,
             monto=saldo_inicial,
-            comentario="Saldo inicial",
+            comentario="Saldo de apertura",
             usuario_id=current_user.get("id"),
         )
     else:
