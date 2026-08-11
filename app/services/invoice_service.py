@@ -140,8 +140,13 @@ def build_invoice_pdf(db: Session, nota: Nota, generated_at: datetime | None = N
         tipo_operacion=nota.tipo_operacion,
         folio_seq=nota.folio_seq,
     )
+    # "Fecha" es la de captura de la nota — la misma que se ve en la lista de
+    # notas y en el expediente del socio. La de generación es otra cosa y vive
+    # en el pie: quien recibe la orden necesita la fecha de la operación, no la
+    # del momento en que alguien descargó el archivo.
+    issue_date = format_datetime_local(nota.created_at)
     generated_at = generated_at or datetime.utcnow()
-    issue_date = format_datetime_local(generated_at)
+    generated_label = format_datetime_local(generated_at)
 
     if nota.proveedor_id and proveedor:
         partner_label = "Proveedor"
@@ -307,6 +312,8 @@ def build_invoice_pdf(db: Session, nota: Nota, generated_at: datetime | None = N
     footer_y = box_y - 20
     pdf.line(left, footer_y, right, footer_y)
     pdf.text(left, footer_y - 14, "Documento generado por sistema. Este PDF es un comprobante interno.", size=8)
+    generated_note = f"Generado: {generated_label}"
+    pdf.text(right - _text_width(generated_note, 8), footer_y - 14, generated_note, size=8)
 
     pdf_bytes = pdf.render()
     filename = _build_invoice_filename(
@@ -335,8 +342,11 @@ def build_comisionario_nota_pdf(
     comisionario = db.get(Comisionario, nota.comisionario_id)
     admin = db.get(User, nota.admin_id) if nota.admin_id else None
 
+    # Misma regla que la orden de compra/venta: encabezado = fecha de la nota,
+    # pie = fecha de generación.
+    issue_date = format_datetime_local(nota.created_at)
     generated_at = generated_at or datetime.utcnow()
-    issue_date = format_datetime_local(generated_at)
+    generated_label = format_datetime_local(generated_at)
 
     header_title = "NOTA DE COMISIÓN"
     sucursal_name = sucursal.nombre if sucursal else "-"
@@ -458,6 +468,8 @@ def build_comisionario_nota_pdf(
     footer_y = box_y - 20
     pdf.line(left, footer_y, right, footer_y)
     pdf.text(left, footer_y - 14, "Documento generado por sistema. Este PDF es un comprobante interno.", size=8)
+    generated_note = f"Generado: {generated_label}"
+    pdf.text(right - _text_width(generated_note, 8), footer_y - 14, generated_note, size=8)
 
     pdf_bytes = pdf.render()
     filename = f"nota_comision_{_safe_filename(folio_label)}.pdf"
