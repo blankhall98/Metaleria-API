@@ -274,7 +274,7 @@
         {% endif %}
 
         <div class="table-responsive">
-            <table class="table table-hover table-sm align-middle mb-0" id="notas-explorador">
+            <table class="table table-hover table-sm align-middle mb-0" id="notas-explorador" data-ver-mas="10">
                 <thead>
                 <tr>
                     {# Estado and Pago are one status story, and the capture date
@@ -417,47 +417,6 @@
             </table>
         </div>
 
-        <div class="text-center mt-3">
-            <button type="button" id="notasVerMas" class="btn btn-outline-secondary" hidden></button>
-        </div>
     </div>
 </section>
-
-<script>
-    /* Paginación del explorador: diez notas a la vista y "Ver más" revela de
-       diez en diez. Las filas ya están en la página (los filtros y la suma de
-       la vista no cambian); solo se dosifica la lectura. */
-    (function () {
-        var PAGE = 10;
-        var boton = document.getElementById('notasVerMas');
-        var cuerpo = document.querySelector('#notas-explorador tbody');
-        if (!boton || !cuerpo) return;
-        var filas = Array.prototype.filter.call(
-            cuerpo.rows,
-            function (fila) { return fila.cells.length > 1; }
-        );
-        var visibles = PAGE;
-
-        function aplicar() {
-            filas.forEach(function (fila, i) {
-                fila.style.display = i < visibles ? '' : 'none';
-            });
-            var restantes = filas.length - visibles;
-            if (restantes > 0) {
-                boton.hidden = false;
-                boton.textContent = 'Ver ' + Math.min(restantes, PAGE) + ' más ('
-                    + restantes + ' restante' + (restantes === 1 ? '' : 's') + ')';
-            } else {
-                boton.hidden = true;
-            }
-        }
-
-        boton.addEventListener('click', function () {
-            visibles += PAGE;
-            aplicar();
-        });
-
-        if (filas.length > PAGE) aplicar();
-    })();
-</script>
 {% endblock %}

@@ -291,6 +291,61 @@
         });
     }
 
+    /* Una tabla larga se lee de a poco: data-ver-mas="10" deja diez filas a la
+       vista y un botón revela las siguientes diez. Las filas ya están en la
+       página — los filtros, los totales y el saldo acumulado no cambian, solo
+       se dosifica la lectura. El botón solo existe si de verdad sobran filas,
+       así que marcar una tabla corta no cuesta nada. */
+    function initVerMas() {
+        document.querySelectorAll('table[data-ver-mas]').forEach(function (table) {
+            if (table.dataset.verMasListo === '1') return;
+            var paso = parseInt(table.dataset.verMas, 10);
+            if (!paso || paso < 1) return;
+            var cuerpo = table.tBodies[0];
+            if (!cuerpo) return;
+
+            /* La fila de "sin resultados" ocupa una sola celda con colspan: no
+               es un dato y no debe contarse ni ocultarse. */
+            var filas = Array.prototype.filter.call(cuerpo.rows, function (fila) {
+                return fila.cells.length > 1;
+            });
+            if (filas.length <= paso) return;
+            table.dataset.verMasListo = '1';
+
+            var boton = document.createElement('button');
+            boton.type = 'button';
+            boton.className = 'btn btn-outline-secondary';
+            var pie = document.createElement('div');
+            pie.className = 'text-center mt-3';
+            pie.appendChild(boton);
+            var shell = table.closest('.table-responsive') || table;
+            shell.parentNode.insertBefore(pie, shell.nextSibling);
+
+            var visibles = paso;
+
+            function aplicar() {
+                filas.forEach(function (fila, i) {
+                    fila.style.display = i < visibles ? '' : 'none';
+                });
+                var restantes = filas.length - visibles;
+                if (restantes > 0) {
+                    boton.hidden = false;
+                    boton.textContent = 'Ver ' + Math.min(restantes, paso) + ' más ('
+                        + restantes + ' restante' + (restantes === 1 ? '' : 's') + ')';
+                } else {
+                    boton.hidden = true;
+                }
+            }
+
+            boton.addEventListener('click', function () {
+                visibles += paso;
+                aplicar();
+            });
+
+            aplicar();
+        });
+    }
+
     /* On a phone each row becomes a card, and the card needs a headline. The
        first column is usually an id ("3"), which makes a poor title, so the
        title is the first column that actually names the record. A template can
@@ -574,6 +629,7 @@
         ensureTableShells();
         annotateTables();
         collapseRowActions();
+        initVerMas();
         updateScrollableTables();
         setupFilterCollapse();
         setupForms();
@@ -610,6 +666,7 @@
                     ensureTableShells();
                     annotateTables();
                     collapseRowActions();
+                    initVerMas();
                     updateScrollableTables();
                 }
             });

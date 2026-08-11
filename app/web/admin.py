@@ -3604,8 +3604,14 @@ def _build_partner_record_context(
     # Punto 10 (fase 2): opción de ver el estado de cuenta con lo más reciente
     # arriba. El saldo acumulado se calcula SIEMPRE en orden cronológico (arriba);
     # aquí solo se invierte la presentación, y ledger_final ya quedó capturado.
+    #
+    # El expediente ahora abre en "recientes": con la tabla acotada a diez filas,
+    # abrir en cronológico dejaría a la vista los movimientos más viejos del
+    # socio. El valor por defecto es el que va SIN parámetro, así que el enlace
+    # explícito es el de cronológico — invertir uno sin el otro rompe el
+    # selector.
     orden_historial_raw = (request.query_params.get("orden_historial") or "").strip().lower()
-    orden_historial = "recientes" if orden_historial_raw == "recientes" else "cronologico"
+    orden_historial = "cronologico" if orden_historial_raw == "cronologico" else "recientes"
     if orden_historial == "recientes":
         ledger_rows = list(reversed(ledger_rows))
     orden_historial_params = {
@@ -3614,10 +3620,10 @@ def _build_partner_record_context(
         if key != "orden_historial" and value
     }
     orden_historial_links = {
-        "cronologico": _append_query_params(request.url.path, **orden_historial_params),
-        "recientes": _append_query_params(
-            request.url.path, **orden_historial_params, orden_historial="recientes"
+        "cronologico": _append_query_params(
+            request.url.path, **orden_historial_params, orden_historial="cronologico"
         ),
+        "recientes": _append_query_params(request.url.path, **orden_historial_params),
     }
 
     folio_map = _build_folio_map(record_notes)
