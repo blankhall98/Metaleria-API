@@ -36,7 +36,17 @@ git push heroku main
 heroku run "python -m alembic upgrade head" -a scrap360   # manual fallback
 ```
 
-There are **no tests** (`tests/` is empty, pytest not installed) and no linter config. Verify changes by importing the app (`python -c "from app.main import app; print('OK')"`) and exercising the affected web routes.
+There is no linter config. Two test layers, both worth running after touching money logic:
+
+```bash
+python -m pytest tests -q                # pytest suite (neteo engine)
+python -m scripts.test_neteo             # guard suites, one per fase-2 area:
+                                         # test_neteo, test_neteo_mutuo, test_reversas,
+                                         # test_capital, test_tratos, test_bitacora,
+                                         # test_factura_pdf
+```
+
+Also verify by importing the app (`python -c "from app.main import app; print('OK')"`) and exercising the affected web routes.
 
 ## Architecture (big picture)
 

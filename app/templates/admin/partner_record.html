@@ -431,8 +431,14 @@
                                     {% else %}
                                         {{ badge('Cancelada', 'bad') }}
                                     {% endif %}
-                                    {% if row.saldo_cubierto_por_ajuste and row.ajuste_aplicado > 0 %}
+                                    {% if row.saldo_cubierto_por_ajuste and row.neteo_aplicado > 0 and row.ajuste_aplicado > 0 %}
+                                        <div class="mt-1">{{ badge('Liquidada por neteo y ajuste', 'muted') }}</div>
+                                    {% elif row.saldo_cubierto_por_ajuste and row.neteo_aplicado > 0 %}
+                                        <div class="mt-1">{{ badge('Liquidada por neteo', 'muted') }}</div>
+                                    {% elif row.saldo_cubierto_por_ajuste and row.ajuste_aplicado > 0 %}
                                         <div class="mt-1">{{ badge('Liquidada por ajuste', 'muted') }}</div>
+                                    {% elif row.saldo_parcialmente_cubierto and row.neteo_aplicado > 0 and row.ajuste_aplicado <= 0 %}
+                                        <div class="mt-1">{{ badge('Neteo parcial aplicado', 'muted') }}</div>
                                     {% elif row.saldo_parcialmente_cubierto %}
                                         <div class="mt-1">{{ badge('Ajuste parcial aplicado', 'muted') }}</div>
                                     {% elif row.ajuste_saldo_nota %}
@@ -446,11 +452,14 @@
                                 <td class="text-end">
                                     {% if row.saldo_aplicable %}
                                         {{ money(row.saldo_pendiente) }}
+                                        {% if row.neteo_aplicado > 0 %}
+                                            <div class="text-muted small">Neteo aplicado: {{ money(row.neteo_aplicado, 'plain') }}</div>
+                                        {% endif %}
                                         {% if row.ajuste_aplicado > 0 %}
                                             <div class="text-muted small">Ajuste aplicado: {{ money(row.ajuste_aplicado, 'plain') }}</div>
-                                            {% if row.saldo_pendiente_original > row.saldo_pendiente %}
-                                                <div class="text-muted small">Saldo original: {{ money(row.saldo_pendiente_original, 'plain') }}</div>
-                                            {% endif %}
+                                        {% endif %}
+                                        {% if (row.neteo_aplicado > 0 or row.ajuste_aplicado > 0) and row.saldo_pendiente_original > row.saldo_pendiente %}
+                                            <div class="text-muted small">Saldo original: {{ money(row.saldo_pendiente_original, 'plain') }}</div>
                                         {% endif %}
                                         {% if row.ajuste_saldo_nota %}
                                             <div class="text-muted small">Ajuste nota: {{ money(row.ajuste_saldo_nota, 'plain') }}</div>

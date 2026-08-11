@@ -90,6 +90,7 @@ def build_partner_statement_excel(report: dict) -> tuple[bytes, str]:
         "Saldo pendiente",
         "Saldo a favor",
         "Ajuste aplicado",
+        "Neteo aplicado",
         "Ajuste nota",
     ]
     notes_rows = ["<Row>" + "".join([_sheet_cell(h) for h in notes_headers]) + "</Row>"]
@@ -107,6 +108,7 @@ def build_partner_statement_excel(report: dict) -> tuple[bytes, str]:
                     (str(_safe_decimal(row["saldo_pendiente"])), "Number"),
                     (str(_safe_decimal(row["saldo_favor"])), "Number"),
                     (str(_safe_decimal(row["ajuste_aplicado"])), "Number"),
+                    (str(_safe_decimal(row.get("neteo_aplicado"))), "Number"),
                     (str(_safe_decimal(row["ajuste_nota"])), "Number"),
                 ]
             )

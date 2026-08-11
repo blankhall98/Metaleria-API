@@ -2120,6 +2120,7 @@ def _build_partner_record_rows(
             saldo_pendiente_original = Decimal(str(balance_view.get("saldo_pendiente_original") or 0))
             saldo_favor_original = Decimal(str(balance_view.get("saldo_favor_original") or 0))
             ajuste_aplicado = Decimal(str(balance_view.get("ajuste_aplicado") or 0))
+            neteo_aplicado = Decimal(str(balance_view.get("neteo_aplicado") or 0))
             saldo_cubierto_por_ajuste = bool(balance_view.get("saldo_cubierto_por_ajuste"))
             saldo_parcialmente_cubierto = bool(balance_view.get("saldo_parcialmente_cubierto"))
         else:
@@ -2136,6 +2137,7 @@ def _build_partner_record_rows(
             saldo_pendiente_original = saldo_original if saldo_original > Decimal("0") else Decimal("0")
             saldo_favor_original = -saldo_original if saldo_original < Decimal("0") else Decimal("0")
             ajuste_aplicado = Decimal("0")
+            neteo_aplicado = Decimal("0")
             saldo_cubierto_por_ajuste = False
             saldo_parcialmente_cubierto = False
         rows.append(
@@ -2152,6 +2154,7 @@ def _build_partner_record_rows(
                 "saldo_favor_original": saldo_favor_original,
                 "ajuste_saldo_nota": note_delta_signed,
                 "ajuste_aplicado": ajuste_aplicado,
+                "neteo_aplicado": neteo_aplicado,
                 "saldo_cubierto_por_ajuste": saldo_cubierto_por_ajuste,
                 "saldo_parcialmente_cubierto": saldo_parcialmente_cubierto,
                 "saldo_aplicable": saldo_aplicable,
@@ -3912,6 +3915,7 @@ def _build_partner_statement_report(context: dict) -> dict:
                 "saldo_pendiente": row.get("saldo_pendiente") or Decimal("0"),
                 "saldo_favor": row.get("saldo_favor") or Decimal("0"),
                 "ajuste_aplicado": row.get("ajuste_aplicado") or Decimal("0"),
+                "neteo_aplicado": row.get("neteo_aplicado") or Decimal("0"),
                 "ajuste_nota": row.get("ajuste_saldo_nota") or Decimal("0"),
             }
         )
@@ -9988,6 +9992,7 @@ async def notas_list(
         return note_effective_balances.get(nota.id) or {
             **_raw_note_payment_balance(nota),
             "ajuste_aplicado": Decimal("0"),
+            "neteo_aplicado": Decimal("0"),
             "saldo_cubierto_por_ajuste": False,
             "saldo_parcialmente_cubierto": False,
         }

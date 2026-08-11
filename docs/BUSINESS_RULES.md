@@ -125,16 +125,38 @@ All PDFs are hand-rolled (latin-1, `errors="ignore"` — chars outside latin-1 s
 
 **The effective balance of a note is a GLOBAL fact** — the same in every view,
 with every filter. `note_service.build_effective_note_balance_map` is the only
-engine: canonical formula (total − pagado + note adjustments) plus the FIFO
-credit from `AjusteSaldoPartner`. Two invariants (guarded by
-`scripts/test_neteo.py`, run `python -m scripts.test_neteo`):
+engine. It runs per partner group, in two ordered passes:
+
+1. **Mutual netting inside the group** (`neteo_aplicado`). A group is one
+   counterparty, so what the partner owes us (ventas) cancels what we owe them
+   (compras), FIFO, up to `min(Σ payable, Σ receivable)` — never beyond, so
+   netting can't invent money. This pass is what makes the notes list agree
+   with the partner's aggregate balance.
+2. **External credit from `AjusteSaldoPartner`** (`ajuste_aplicado`) over
+   whatever is left.
+
+Pass 1 exists because the external credit is a **single signed scalar**: it can
+only ever cover one side, so before it a venta and a compra that cancelled each
+other both kept showing as pending while the partner's balance read zero (the
+METALES YAIR report, ago-2026). No data entry could fix that — covering both
+sides at once was unrepresentable.
+
+Three invariants (guarded by `scripts/test_neteo.py` + `scripts/test_neteo_mutuo.py`
+and `tests/test_neteo.py`):
 
 1. **Partner credit is never filtered by sucursal.** A neteo adjustment
    belongs to the partner, not to the branch where it was captured; filtering
    the notes list by sucursal must not resurrect settled notes.
-2. **FIFO runs over ALL the partner's approved notes**, even when the view
-   requests a subset — the engine fetches the missing ones so the credit is
-   assigned identically everywhere.
+2. **Both passes run over ALL the partner's approved notes**, even when the
+   view requests a subset — the engine fetches the missing ones, so the
+   counterpart that cancels a note is considered even if it lives in another
+   branch or another page.
+3. **Netting never crosses groups.** Transfer mirror partners (`Sucursal X`)
+   only ever receive notes of one sign, so the mutual pass is a no-op on them.
+
+`neteo_aplicado` and `ajuste_aplicado` are reported separately all the way to
+the UI — a note cancelled against its counterpart is *"Neteada con el socio"*,
+not *"Cubierta por ajuste"*.
 
 **A linked cliente↔proveedor pair nets as ONE group** (proveedor view:
 positive = payable to the partner; the cliente delta enters negated) and its

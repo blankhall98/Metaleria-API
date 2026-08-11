@@ -526,6 +526,51 @@ def _linked_partner_maps(
     return link_by_prov, link_by_cli
 
 
+def _direccion_en_grupo(nota: Nota, sign_view: str | None) -> int:
+    """+1 si la nota suma deuda hacia el socio, −1 si el socio nos debe, 0 si no mueve."""
+    signed_total, signed_pagado = signed_partner_amounts(nota, sign_view)
+    signed_saldo = signed_total - signed_pagado
+    if signed_saldo > Decimal("0"):
+        return 1
+    if signed_saldo < Decimal("0"):
+        return -1
+    return 0
+
+
+def _repartir_credito_fifo(
+    balances: dict[int, dict[str, Decimal | bool]],
+    notas_ordenadas: list[Nota],
+    *,
+    sign_view: str | None,
+    direccion: int,
+    credito: Decimal,
+    campo: str,
+) -> Decimal:
+    """Reparte `credito` FIFO sobre las notas de esa dirección. Devuelve lo aplicado.
+
+    Acumula en `campo` (nunca sobrescribe) porque una misma nota puede recibir
+    primero el neteo contra su contraparte y después el crédito del ajuste.
+    """
+    restante = credito
+    for nota in notas_ordenadas:
+        if restante <= Decimal("0"):
+            break
+        balance = balances.get(nota.id)
+        if not balance:
+            continue
+        saldo_pendiente = Decimal(str(balance["saldo_pendiente"]))
+        if saldo_pendiente <= Decimal("0"):
+            continue
+        if _direccion_en_grupo(nota, sign_view) != direccion:
+            continue
+        aplicado = min(saldo_pendiente, restante)
+        balance[campo] = Decimal(str(balance[campo])) + aplicado
+        balance["saldo"] = Decimal(str(balance["saldo"])) - aplicado
+        balance["saldo_pendiente"] = saldo_pendiente - aplicado
+        restante -= aplicado
+    return credito - restante
+
+
 def build_effective_note_balance_map(
     db: Session,
     notas: list[Nota],
@@ -533,7 +578,14 @@ def build_effective_note_balance_map(
     allowed_suc_ids: list[int] | None = None,
     sucursal_id: int | None = None,
 ) -> dict[int, dict[str, Decimal | bool]]:
-    """Saldo efectivo por nota: fórmula canónica + crédito FIFO de AjusteSaldoPartner.
+    """Saldo efectivo por nota: fórmula canónica + neteo del socio + crédito FIFO.
+
+    Dentro de un grupo hay una sola contraparte, así que sus notas se netean
+    entre sí antes de repartir el crédito externo: lo que el socio nos debe
+    cancela lo que le debemos, hasta donde alcance el lado menor. Después se
+    reparte el `AjusteSaldoPartner` sobre el remanente. Con esto la lista de
+    notas dice lo mismo que el saldo del socio; antes el crédito externo era un
+    solo escalar con signo y nunca podía cubrir los dos lados.
 
     Un par proveedor↔cliente vinculado se netea como un solo grupo (el defecto
     del punto 7: antes cada identidad se neteaba por separado y el crédito de
@@ -571,6 +623,7 @@ def build_effective_note_balance_map(
             "saldo_pendiente_original": raw_without_adjustment["saldo_pendiente"],
             "saldo_favor_original": raw_without_adjustment["saldo_favor"],
             "ajuste_aplicado": Decimal("0"),
+            "neteo_aplicado": Decimal("0"),
             "saldo_cubierto_por_ajuste": False,
             "saldo_parcialmente_cubierto": False,
         }
@@ -611,29 +664,27 @@ def build_effective_note_balance_map(
         if partner_type and partner_id:
             grouped_notes[canonical_group(partner_type, partner_id)].append(nota)
 
-    # Para los grupos con crédito, el FIFO necesita el conjunto COMPLETO de
-    # notas aprobadas del socio, no solo las que pidió la vista: si faltan,
-    # se cargan aquí y se reparten junto con las demás. Sus balances viajan
-    # en el resultado (los consumidores leen por id de nota).
+    # El reparto necesita el conjunto COMPLETO de notas aprobadas del socio, no
+    # solo las que pidió la vista: si faltan, se cargan aquí y se reparten junto
+    # con las demás. Sus balances viajan en el resultado (los consumidores leen
+    # por id de nota).
+    #
+    # Se cargan para TODOS los grupos, no solo para los que tienen crédito: el
+    # neteo interno depende de las notas del lado contrario, y esas pueden estar
+    # fuera de la vista (otra sucursal, otra página). Si se calculara sobre el
+    # subconjunto visible, el mismo socio saldría con saldos distintos según el
+    # filtro — justo el invariante del punto 7.
     creditor_prov_ids: set[int] = set()
     creditor_cli_ids: set[int] = set()
     for group_key in grouped_notes:
         if group_key[0] == "par":
             _, prov_id, cli_id = group_key
-            delta = (
-                (adjustment_totals.get(("proveedor", prov_id)) or Decimal("0"))
-                - (adjustment_totals.get(("cliente", cli_id)) or Decimal("0"))
-            )
-            if delta != Decimal("0"):
-                creditor_prov_ids.add(prov_id)
-                creditor_cli_ids.add(cli_id)
+            creditor_prov_ids.add(prov_id)
+            creditor_cli_ids.add(cli_id)
+        elif group_key[0] == "proveedor":
+            creditor_prov_ids.add(group_key[1])
         else:
-            delta = adjustment_totals.get(group_key) or Decimal("0")
-            if delta != Decimal("0"):
-                if group_key[0] == "proveedor":
-                    creditor_prov_ids.add(group_key[1])
-                else:
-                    creditor_cli_ids.add(group_key[1])
+            creditor_cli_ids.add(group_key[1])
 
     if creditor_prov_ids or creditor_cli_ids:
         known_ids = {nota.id for nota in notas if nota.id}
@@ -674,47 +725,71 @@ def build_effective_note_balance_map(
         else:
             delta = adjustment_totals.get(group_key) or Decimal("0")
             sign_view = group_key[0]
+        ordenadas = sorted(
+            partner_notes,
+            key=lambda item: (item.created_at or datetime.min, item.id),
+        )
+
+        def pendiente(nota: Nota) -> Decimal:
+            balance = balances.get(nota.id)
+            return Decimal(str(balance["saldo_pendiente"])) if balance else Decimal("0")
+
+        # 1) Neteo interno del socio. Dentro de un mismo grupo hay una sola
+        #    contraparte, así que lo que el socio nos debe (ventas) cancela lo
+        #    que le debemos (compras) hasta donde alcance el lado menor. Sin
+        #    este paso el crédito externo —un único escalar CON SIGNO— jamás
+        #    puede cubrir los dos lados, y la nota del lado contrario seguía
+        #    apareciendo "por saldar" aunque el socio estuviera en ceros: es el
+        #    defecto que la clienta reportó sobre METALES YAIR.
+        #    Las notas espejo de transferencia no se ven afectadas: cada socio
+        #    "Sucursal X" recibe notas de un solo signo, así que el mínimo es 0.
+        total_por_pagar = sum(
+            (pendiente(n) for n in ordenadas if _direccion_en_grupo(n, sign_view) > 0),
+            Decimal("0"),
+        )
+        total_por_cobrar = sum(
+            (pendiente(n) for n in ordenadas if _direccion_en_grupo(n, sign_view) < 0),
+            Decimal("0"),
+        )
+        neteo_mutuo = min(total_por_pagar, total_por_cobrar)
+        if neteo_mutuo > Decimal("0"):
+            for direccion in (1, -1):
+                _repartir_credito_fifo(
+                    balances,
+                    ordenadas,
+                    sign_view=sign_view,
+                    direccion=direccion,
+                    credito=neteo_mutuo,
+                    campo="neteo_aplicado",
+                )
+
+        # 2) Crédito externo del socio (AjusteSaldoPartner) sobre lo que quede.
         credito_contra_saldo_positivo = -delta if delta < Decimal("0") else Decimal("0")
         credito_contra_saldo_negativo = delta if delta > Decimal("0") else Decimal("0")
-        if (
-            credito_contra_saldo_positivo <= Decimal("0")
-            and credito_contra_saldo_negativo <= Decimal("0")
-        ):
-            continue
-        for nota in sorted(partner_notes, key=lambda item: (item.created_at or datetime.min, item.id)):
+        for direccion, credito in ((1, credito_contra_saldo_positivo), (-1, credito_contra_saldo_negativo)):
+            if credito > Decimal("0"):
+                _repartir_credito_fifo(
+                    balances,
+                    ordenadas,
+                    sign_view=sign_view,
+                    direccion=direccion,
+                    credito=credito,
+                    campo="ajuste_aplicado",
+                )
+
+        # 3) Banderas de cobertura: solo para las notas que recibieron algo.
+        for nota in ordenadas:
             balance = balances.get(nota.id)
             if not balance:
                 continue
-            saldo_pendiente = Decimal(str(balance["saldo_pendiente"]))
-            if saldo_pendiente <= Decimal("0"):
-                continue
-            signed_total, signed_pagado = signed_partner_amounts(nota, sign_view)
-            signed_saldo = signed_total - signed_pagado
-            if signed_saldo > Decimal("0"):
-                aplicado = min(saldo_pendiente, credito_contra_saldo_positivo)
-            elif signed_saldo < Decimal("0"):
-                aplicado = min(saldo_pendiente, credito_contra_saldo_negativo)
-            else:
-                aplicado = Decimal("0")
-            if aplicado <= Decimal("0"):
-                continue
-            balance["ajuste_aplicado"] = aplicado
-            balance["saldo"] = Decimal(str(balance["saldo"])) - aplicado
-            balance["saldo_pendiente"] = saldo_pendiente - aplicado
-            balance["saldo_cubierto_por_ajuste"] = balance["saldo_pendiente"] <= Decimal("0")
-            balance["saldo_parcialmente_cubierto"] = (
-                aplicado > Decimal("0")
-                and balance["saldo_pendiente"] > Decimal("0")
+            cubierto = (
+                Decimal(str(balance["neteo_aplicado"]))
+                + Decimal(str(balance["ajuste_aplicado"]))
             )
-            if signed_saldo > Decimal("0"):
-                credito_contra_saldo_positivo -= aplicado
-            else:
-                credito_contra_saldo_negativo -= aplicado
-            if (
-                credito_contra_saldo_positivo <= Decimal("0")
-                and credito_contra_saldo_negativo <= Decimal("0")
-            ):
-                break
+            if cubierto <= Decimal("0"):
+                continue
+            balance["saldo_cubierto_por_ajuste"] = balance["saldo_pendiente"] <= Decimal("0")
+            balance["saldo_parcialmente_cubierto"] = balance["saldo_pendiente"] > Decimal("0")
 
     return balances
 

@@ -262,14 +262,14 @@
         {% set ajuste_rows = namespace(count=0) %}
         {% for n in notas_estado %}
             {% set balance = note_effective_balances.get(n.id) %}
-            {% if balance and balance.ajuste_aplicado and balance.ajuste_aplicado > 0 %}
+            {% if balance and ((balance.ajuste_aplicado and balance.ajuste_aplicado > 0) or (balance.neteo_aplicado and balance.neteo_aplicado > 0)) %}
                 {% set ajuste_rows.count = ajuste_rows.count + 1 %}
             {% endif %}
         {% endfor %}
         {% if ajuste_rows.count > 0 %}
             <div class="alert alert-info d-flex align-items-start gap-2" role="note">
                 {{ icon('info', 's-icon--sm') }}
-                <span>{{ ajuste_rows.count }} nota{{ 's' if ajuste_rows.count != 1 }} visible{{ 's' if ajuste_rows.count != 1 }} reflejan cobertura por ajuste manual del partner. El saldo mostrado es el saldo efectivo, no s&oacute;lo el pago directo.</span>
+                <span>{{ ajuste_rows.count }} nota{{ 's' if ajuste_rows.count != 1 }} visible{{ 's' if ajuste_rows.count != 1 }} {{ 'quedaron' if ajuste_rows.count != 1 else 'quedó' }} cubierta{{ 's' if ajuste_rows.count != 1 }} por el neteo con el socio o por un ajuste manual. El saldo mostrado es el saldo efectivo, no s&oacute;lo el pago directo.</span>
             </div>
         {% endif %}
 
@@ -301,6 +301,7 @@
                     {% if saldo_pendiente < 0 %}{% set saldo_pendiente = 0 %}{% endif %}
                     {% set saldo_favor = balance.saldo_favor if balance else (((n.monto_pagado or 0) - (n.total_monto or 0)) if (n.monto_pagado or 0) > (n.total_monto or 0) else 0) %}
                     {% set ajuste_aplicado = balance.ajuste_aplicado if balance else 0 %}
+                    {% set neteo_aplicado = balance.neteo_aplicado if balance else 0 %}
                     {% set ajuste_saldo_nota = balance.ajuste_saldo_nota if balance else 0 %}
                     {% if n.proveedor_id and proveedores.get(n.proveedor_id) %}
                         {% set partner_name = proveedores.get(n.proveedor_id).nombre_completo %}
@@ -347,7 +348,11 @@
                                 {% endif %}
                             </span>
                             {% if n.estado.value == 'APROBADA' %}
-                                {% if ajuste_aplicado > 0 %}
+                                {% if neteo_aplicado > 0 and ajuste_aplicado > 0 %}
+                                    <span class="s-cell-sub">Neteada y cubierta por ajuste</span>
+                                {% elif neteo_aplicado > 0 %}
+                                    <span class="s-cell-sub">Neteada con el socio</span>
+                                {% elif ajuste_aplicado > 0 %}
                                     <span class="s-cell-sub">Cubierta por ajuste</span>
                                 {% elif ajuste_saldo_nota != 0 %}
                                     <span class="s-cell-sub">Saldo ajustado en nota</span>
@@ -368,6 +373,9 @@
                                         <span class="s-cell-sub">Ajuste nota: +{{ money(ajuste_saldo_nota, 'plain') }}</span>
                                     {% elif ajuste_saldo_nota < 0 %}
                                         <span class="s-cell-sub">Ajuste nota: {{ money(ajuste_saldo_nota, 'plain') }}</span>
+                                    {% endif %}
+                                    {% if neteo_aplicado > 0 %}
+                                        <span class="s-cell-sub">Neteo aplicado: {{ money(neteo_aplicado, 'plain') }}</span>
                                     {% endif %}
                                     {% if ajuste_aplicado > 0 %}
                                         <span class="s-cell-sub">Ajuste aplicado: {{ money(ajuste_aplicado, 'plain') }}</span>
