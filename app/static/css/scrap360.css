@@ -3086,6 +3086,11 @@ button.s-method-pill:hover { filter: brightness(0.97); }
     transition: border-color var(--s-dur) var(--s-ease);
 }
 .s-collapse__trigger:hover { border-bottom-color: var(--s-line-strong); }
+/* Cuando el disparador comparte renglon flex con otros controles (home:
+   "Actividad reciente" + selector de sucursal + "Ver todas"), el width: 100%
+   expulsaba a los hermanos a una segunda linea encimada bajo el subtitulo.
+   Con s-grow el boton absorbe solo el espacio sobrante. */
+.s-collapse__trigger.s-grow { width: auto; }
 .s-collapse__body { padding: var(--s-4) 0 var(--s-2); }
 
 .s-collapse__chevron {
