@@ -92,6 +92,37 @@ def create_llamada(
     return llamada
 
 
+def _derivar_estatus_cabecera(llamada: LlamadaProveedor) -> LlamadaProveedorEstatus:
+    """El estatus de la cabecera se deriva de las líneas (fase 2).
+
+    Alguna pendiente → PENDIENTE (la llamada sigue viva); todas entregadas →
+    ENTREGADO; todas sin confirmar → NO_CONFIRMO; mezcla de entregado y no
+    confirmó sin pendientes → ENTREGADO (lo confirmado ya llegó y no queda
+    trabajo por hacer). Una llamada sin líneas conserva su estatus manual.
+    """
+    lineas = llamada.materiales or []
+    if not lineas:
+        return llamada.estatus
+    estados = {linea.estatus for linea in lineas}
+    if LlamadaProveedorEstatus.pendiente in estados:
+        return LlamadaProveedorEstatus.pendiente
+    if estados == {LlamadaProveedorEstatus.no_confirmo}:
+        return LlamadaProveedorEstatus.no_confirmo
+    return LlamadaProveedorEstatus.entregado
+
+
+def _aplicar_estatus(obj, estatus: LlamadaProveedorEstatus, usuario_id: int | None) -> None:
+    """Asigna estatus + auditoría de entrega a una llamada o a una línea."""
+    obj.estatus = estatus
+    if estatus == LlamadaProveedorEstatus.entregado:
+        if obj.entregada_at is None:
+            obj.entregada_at = datetime.utcnow()
+            obj.entregada_by_user_id = usuario_id
+    else:
+        obj.entregada_at = None
+        obj.entregada_by_user_id = None
+
+
 def set_estatus(
     db: Session,
     *,
@@ -99,17 +130,45 @@ def set_estatus(
     estatus: LlamadaProveedorEstatus,
     usuario_id: int | None,
 ) -> LlamadaProveedor:
-    """Cambia el estatus de entrega; ENTREGADO deja fecha y usuario de auditoría."""
+    """Cambia el estatus de la llamada COMPLETA; ENTREGADO deja auditoría.
+
+    Cascadea a todas las líneas: si no, el estatus derivado de las líneas
+    contradiría el que se acaba de fijar a mano.
+    """
     llamada = db.query(LlamadaProveedor).get(llamada_id)
     if not llamada:
         raise ValueError("La llamada no existe.")
-    llamada.estatus = estatus
-    if estatus == LlamadaProveedorEstatus.entregado:
-        llamada.entregada_at = datetime.utcnow()
-        llamada.entregada_by_user_id = usuario_id
-    else:
-        llamada.entregada_at = None
-        llamada.entregada_by_user_id = None
+    for linea in llamada.materiales:
+        _aplicar_estatus(linea, estatus, usuario_id)
+        db.add(linea)
+    _aplicar_estatus(llamada, estatus, usuario_id)
+    db.add(llamada)
+    db.commit()
+    db.refresh(llamada)
+    return llamada
+
+
+def set_material_estatus(
+    db: Session,
+    *,
+    material_linea_id: int,
+    estatus: LlamadaProveedorEstatus,
+    usuario_id: int | None,
+) -> LlamadaProveedor:
+    """Marca la entrega de UNA línea (un viaje); la cabecera se deriva.
+
+    Devuelve la llamada para que la ruta valide el alcance de sucursal.
+    """
+    linea = db.query(LlamadaProveedorMaterial).get(material_linea_id)
+    if not linea:
+        raise ValueError("La línea de material no existe.")
+    llamada = linea.llamada
+    _aplicar_estatus(linea, estatus, usuario_id)
+    db.add(linea)
+
+    derivado = _derivar_estatus_cabecera(llamada)
+    if derivado != llamada.estatus:
+        _aplicar_estatus(llamada, derivado, usuario_id)
     db.add(llamada)
     db.commit()
     db.refresh(llamada)

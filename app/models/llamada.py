@@ -82,6 +82,10 @@ class LlamadaProveedorMaterial(Base):
     material_id nulo = "sin definir aún" (así viene en el Excel). El precio se
     captura como texto tal cual se dijo ("Lista Viernes 22 Mayo"); cuando es un
     número también se guarda en precio_por_kg para poder formatearlo.
+
+    El estatus de entrega vive POR LÍNEA (fase 2): un proveedor cierra tres
+    viajes y los entrega en días distintos, así que cada línea se marca por
+    separado y el estatus de la cabecera se deriva de las líneas.
     """
 
     __tablename__ = "llamadas_proveedor_materiales"
@@ -94,5 +98,19 @@ class LlamadaProveedorMaterial(Base):
     precio_texto = Column(String(120), nullable=True)
     kg_aproximados = Column(Numeric(12, 3), nullable=True)
 
+    estatus = Column(
+        Enum(
+            LlamadaProveedorEstatus,
+            name="llamada_proveedor_estatus",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
+        nullable=False,
+        index=True,
+        default=LlamadaProveedorEstatus.pendiente,
+    )
+    entregada_at = Column(DateTime, nullable=True)
+    entregada_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
     llamada = relationship("LlamadaProveedor", back_populates="materiales")
     material = relationship("Material")
+    entregada_by = relationship("User", foreign_keys=[entregada_by_user_id])

@@ -71,6 +71,7 @@ from app.models import (
     InventarioAjusteManual,
     LlamadaProveedor,
     LlamadaProveedorEstatus,
+    LlamadaProveedorMaterial,
     TratoVenta,
     TratoVentaContenedor,
     TratoVentaEstado,
@@ -17487,6 +17488,33 @@ async def bitacora_llamada_estatus(
         raise HTTPException(status_code=400, detail="Estatus inválido.")
     llamada_service.set_estatus(
         db, llamada_id=llamada.id, estatus=estatus, usuario_id=current_user.get("id")
+    )
+    next_url = (form.get("next") or "").strip() or "/web/admin/bitacora-llamadas"
+    if not next_url.startswith("/web/"):
+        next_url = "/web/admin/bitacora-llamadas"
+    return RedirectResponse(url=next_url, status_code=303)
+
+
+@router.post("/bitacora-llamadas/materiales/{linea_id}/estatus")
+async def bitacora_llamada_material_estatus(
+    linea_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    # Fase 2: la entrega se marca POR VIAJE (línea de material), no toda la
+    # llamada de golpe; el estatus de la cabecera se deriva de las líneas.
+    linea = db.get(LlamadaProveedorMaterial, linea_id)
+    if not linea:
+        raise HTTPException(status_code=404, detail="Línea de material no encontrada.")
+    _get_llamada_checked(db, current_user, linea.llamada_id)
+    form = await request.form()
+    try:
+        estatus = LlamadaProveedorEstatus((form.get("estatus") or "").strip())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Estatus inválido.")
+    llamada_service.set_material_estatus(
+        db, material_linea_id=linea.id, estatus=estatus, usuario_id=current_user.get("id")
     )
     next_url = (form.get("next") or "").strip() or "/web/admin/bitacora-llamadas"
     if not next_url.startswith("/web/"):

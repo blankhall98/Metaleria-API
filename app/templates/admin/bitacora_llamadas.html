@@ -189,17 +189,44 @@
                                 {% if llamada.materiales|length == 0 %}
                                     <span class="text-muted">—</span>
                                 {% else %}
+                                    {# Fase 2: cada línea es un viaje y se marca por separado;
+                                       el estatus de la llamada se deriva de sus líneas. #}
                                     <div class="s-stack-2">
                                     {% for linea in llamada.materiales %}
-                                        <div class="small">
-                                            <span class="fw-semibold">{{ linea.material.nombre if linea.material else "Sin definir" }}</span>
-                                            {% if linea.precio_por_kg is not none %}
-                                                · {{ linea.precio_por_kg|precio }}/kg
-                                            {% elif linea.precio_texto %}
-                                                · {{ linea.precio_texto }}
+                                        <div class="small d-flex flex-wrap align-items-center gap-2">
+                                            <span>
+                                                <span class="fw-semibold">{{ linea.material.nombre if linea.material else "Sin definir" }}</span>
+                                                {% if linea.precio_por_kg is not none %}
+                                                    · {{ linea.precio_por_kg|precio }}/kg
+                                                {% elif linea.precio_texto %}
+                                                    · {{ linea.precio_texto }}
+                                                {% endif %}
+                                                {% if linea.kg_aproximados is not none %}
+                                                    <span class="text-muted">· ~{{ "{:,.0f}".format(linea.kg_aproximados) }} kg</span>
+                                                {% endif %}
+                                            </span>
+                                            {% if linea.estatus.value == 'ENTREGADO' %}
+                                                {{ badge('Entregado', 'ok') }}
+                                                {% if linea.entregada_at %}
+                                                    <span class="text-muted">{{ linea.entregada_at|date_local }}</span>
+                                                {% endif %}
+                                            {% elif linea.estatus.value == 'NO_CONFIRMO' %}
+                                                {{ badge('No confirmó', 'muted') }}
+                                            {% else %}
+                                                {{ badge('Pendiente', 'warn') }}
                                             {% endif %}
-                                            {% if linea.kg_aproximados is not none %}
-                                                <span class="text-muted">· ~{{ "{:,.0f}".format(linea.kg_aproximados) }} kg</span>
+                                            {% if can_manage %}
+                                                {% for estado in estados %}
+                                                    {% if estado != linea.estatus %}
+                                                        <form method="post" class="d-inline"
+                                                              action="/web/admin/bitacora-llamadas/materiales/{{ linea.id }}/estatus">
+                                                            <input type="hidden" name="estatus" value="{{ estado.value }}">
+                                                            <button type="submit" class="btn btn-sm btn-outline-secondary py-0">
+                                                                {{ estatus_labels[estado] }}
+                                                            </button>
+                                                        </form>
+                                                    {% endif %}
+                                                {% endfor %}
                                             {% endif %}
                                         </div>
                                     {% endfor %}
@@ -233,7 +260,7 @@
                                                 <li>
                                                     <form method="post" action="/web/admin/bitacora-llamadas/{{ llamada.id }}/estatus">
                                                         <input type="hidden" name="estatus" value="{{ estado.value }}">
-                                                        <button type="submit" class="dropdown-item">Marcar {{ estatus_labels[estado]|lower }}</button>
+                                                        <button type="submit" class="dropdown-item">Marcar todo {{ estatus_labels[estado]|lower }}</button>
                                                     </form>
                                                 </li>
                                             {% endif %}

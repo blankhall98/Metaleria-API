@@ -614,15 +614,24 @@
                                         {% else %}
                                             <div class="s-stack-2">
                                             {% for linea in llamada.materiales %}
-                                                <div class="small">
-                                                    <span class="fw-semibold">{{ linea.material.nombre if linea.material else "Sin definir" }}</span>
-                                                    {% if linea.precio_por_kg is not none %}
-                                                        · {{ linea.precio_por_kg|precio }}/kg
-                                                    {% elif linea.precio_texto %}
-                                                        · {{ linea.precio_texto }}
-                                                    {% endif %}
-                                                    {% if linea.kg_aproximados is not none %}
-                                                        <span class="text-muted">· ~{{ "{:,.0f}".format(linea.kg_aproximados) }} kg</span>
+                                                <div class="small d-flex flex-wrap align-items-center gap-2">
+                                                    <span>
+                                                        <span class="fw-semibold">{{ linea.material.nombre if linea.material else "Sin definir" }}</span>
+                                                        {% if linea.precio_por_kg is not none %}
+                                                            · {{ linea.precio_por_kg|precio }}/kg
+                                                        {% elif linea.precio_texto %}
+                                                            · {{ linea.precio_texto }}
+                                                        {% endif %}
+                                                        {% if linea.kg_aproximados is not none %}
+                                                            <span class="text-muted">· ~{{ "{:,.0f}".format(linea.kg_aproximados) }} kg</span>
+                                                        {% endif %}
+                                                    </span>
+                                                    {% if linea.estatus.value == 'ENTREGADO' %}
+                                                        {{ badge('Entregado', 'ok') }}
+                                                    {% elif linea.estatus.value == 'NO_CONFIRMO' %}
+                                                        {{ badge('No confirmó', 'muted') }}
+                                                    {% else %}
+                                                        {{ badge('Pendiente', 'warn') }}
                                                     {% endif %}
                                                 </div>
                                             {% endfor %}
