@@ -2727,7 +2727,16 @@ def _aggregate_partner_record_summary(
     if delta > Decimal("0"):
         summary["saldo_pendiente"] += delta
     elif delta < Decimal("0"):
-        summary["saldo_favor"] += -delta
+        # El crédito del ajuste se absorbe primero contra el saldo pendiente,
+        # igual que lo aplican el ledger y el neteo por nota; solo el excedente
+        # queda a favor. Antes el delta caía entero en saldo_favor y ambos
+        # rubros quedaban inflados por el mismo monto (el proveedor 74 mostraba
+        # $4.2M "a favor de la empresa" cuando el saldo real eran $2.3M por
+        # pagar). La identidad pendiente - favor == saldo del ledger no cambia.
+        credito = -delta
+        absorbido = min(summary["saldo_pendiente"], credito)
+        summary["saldo_pendiente"] -= absorbido
+        summary["saldo_favor"] += credito - absorbido
     return summary
 
 
