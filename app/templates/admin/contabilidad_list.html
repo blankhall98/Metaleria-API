@@ -223,7 +223,7 @@
             <h3 class="s-card-title mt-4">Historial de notas</h3>
             <p class="s-card-sub">{{ partner_context.record_total_count }} nota{{ '' if partner_context.record_total_count == 1 else 's' }} en total.</p>
             <div class="table-responsive">
-                <table class="table table-hover align-middle">
+                <table class="table table-hover align-middle" data-ver-mas="10">
                     <thead>
                     <tr>
                         <th data-title-col data-mobile-primary>Folio</th>
@@ -288,7 +288,7 @@
             <h3 class="s-card-title mt-4">Historial de pagos</h3>
             <p class="s-card-sub">{{ partner_context.pagos|length }} pago{{ '' if partner_context.pagos|length == 1 else 's' }} registrado{{ '' if partner_context.pagos|length == 1 else 's' }}.</p>
             <div class="table-responsive">
-                <table class="table table-hover align-middle">
+                <table class="table table-hover align-middle" data-ver-mas="10">
                     <thead>
                     <tr>
                         <th>Fecha</th>

@@ -113,7 +113,7 @@
             Total neto: <strong>{{ "{:,.2f}".format(total_firmado or 0) }} kg</strong>.
         </p>
         <div class="table-responsive">
-            <table class="table table-hover align-middle">
+            <table class="table table-hover align-middle" data-ver-mas="10">
                 <thead>
                 <tr>
                     <th>Sucursal</th>
@@ -179,7 +179,7 @@
         <h2 class="s-card-title">Precio promedio de compra por material</h2>
         <p class="s-card-sub">Promedio ponderado por kilos dentro del rango seleccionado.</p>
         <div class="table-responsive">
-            <table class="table table-hover align-middle">
+            <table class="table table-hover align-middle" data-ver-mas="10">
                 <thead>
                 <tr>
                     <th data-title-col data-mobile-primary>Material</th>
@@ -217,7 +217,7 @@
             {{ compra_total_notas }} notas &middot; {{ "{:,.2f}".format(compra_total_kg or 0) }} kg &middot; ${{ "{:,.2f}".format(compra_total_monto or 0) }}.
         </p>
         <div class="table-responsive">
-            <table class="table table-hover align-middle">
+            <table class="table table-hover align-middle" data-ver-mas="10">
                 <thead>
                 <tr>
                     <th data-title-col data-mobile-primary>Folio</th>
@@ -263,7 +263,7 @@
             {{ ajuste_rows|length }} ajuste{{ '' if ajuste_rows|length == 1 else 's' }} &middot; {{ "{:+,.2f}".format(ajuste_total_kg or 0) }} kg neto.
         </p>
         <div class="table-responsive">
-            <table class="table table-hover align-middle">
+            <table class="table table-hover align-middle" data-ver-mas="10">
                 <thead>
                 <tr>
                     <th>Fecha</th>
