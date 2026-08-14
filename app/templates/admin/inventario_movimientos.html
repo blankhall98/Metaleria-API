@@ -100,10 +100,79 @@
     {{ stat('Notas de compra', compra_total_notas, compra_total_movimientos ~ ' movimientos de compra considerados') }}
 </div>
 
-{{ anchor_nav([('#inv-resumen', 'Resumen'),
+{{ anchor_nav([('#inv-kardex', 'Kardex'),
+               ('#inv-resumen', 'Resumen'),
                ('#inv-notas', 'Notas'),
-               ('#inv-ajustes', 'Ajustes'),
-               ('#inv-kardex', 'Kardex')]) }}
+               ('#inv-ajustes', 'Ajustes')]) }}
+
+<div class="card mb-3" id="inv-kardex">
+    <div class="card-body">
+        <h2 class="s-card-title">Movimientos del rango</h2>
+        <p class="s-card-sub">
+            Cada entrada y salida de inventario con su saldo resultante.
+            Total neto: <strong>{{ "{:,.2f}".format(total_firmado or 0) }} kg</strong>.
+        </p>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                <tr>
+                    <th>Sucursal</th>
+                    <th data-title-col data-mobile-primary>Material</th>
+                    <th>Tipo</th>
+                    <th class="text-end" data-mobile-primary>Cantidad</th>
+                    <th class="text-end" data-mobile-primary>Saldo</th>
+                    <th data-mobile-primary>Folio</th>
+                    <th>Proveedor o cliente</th>
+                    <th>Fecha</th>
+                    <th>Comentario</th>
+                    <th><span class="s-visually-hidden">Acciones</span></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for mov in movimientos %}
+                    {% set note_meta = movimiento_note_meta.get(mov.nota_id) if mov.nota_id else None %}
+                    {% set qty = mov.cantidad_kg or 0 %}
+                    {% if mov.tipo == 'venta' %}
+                        {% set qty = qty * -1 %}
+                    {% endif %}
+                    {% set tipo_meta = TIPO_MOV.get(mov.tipo) %}
+                    <tr>
+                        <td>{{ mov.inventario.sucursal.nombre if mov.inventario and mov.inventario.sucursal else '—' }}</td>
+                        <td>{{ mov.inventario.material.nombre if mov.inventario and mov.inventario.material else '—' }}</td>
+                        <td>
+                            {% if tipo_meta %}
+                                {{ badge(tipo_meta[0], tipo_meta[1]) }}
+                            {% else %}
+                                {{ badge((mov.tipo or '—')|replace('_', ' ')|capitalize, 'muted') }}
+                            {% endif %}
+                        </td>
+                        <td class="text-end">{{ kg(qty) }}</td>
+                        <td class="text-end">
+                            <span class="{% if (mov.saldo_resultante or 0) < 0 %}text-danger fw-semibold{% endif %}">{{ kg(mov.saldo_resultante) }}</span>
+                        </td>
+                        <td>{% if mov.nota_id %}<a href="/web/admin/notas/{{ mov.nota_id }}">{{ note_meta.folio if note_meta else ('#' ~ mov.nota_id) }}</a>{% else %}—{% endif %}</td>
+                        <td>{{ note_meta.partner if note_meta else '—' }}</td>
+                        <td>{{ mov.created_at|datetime_local if mov.created_at else '—' }}</td>
+                        <td class="small text-muted">{{ mov.comentario or '—' }}</td>
+                        <td>
+                            {% set ajuste = ajustes_by_mov_id.get(mov.id) %}
+                            {% if ajuste %}
+                                <span class="s-actions">
+                                    <a class="btn btn-sm btn-outline-secondary" href="/web/admin/inventario/ajustes/{{ ajuste.id }}">Detalle</a>
+                                </span>
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% else %}
+                    {{ empty_row(10, 'No hay movimientos con estos filtros.') }}
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 
 <div class="card mb-3" id="inv-resumen">
     <div class="card-body">
@@ -186,7 +255,7 @@
     </div>
 </div>
 
-<div class="card mb-3" id="inv-ajustes">
+<div class="card" id="inv-ajustes">
     <div class="card-body">
         <h2 class="s-card-title">Ajustes manuales del rango</h2>
         <p class="s-card-sub">
@@ -229,75 +298,6 @@
                     </tr>
                 {% else %}
                     {{ empty_row(7, 'No hay ajustes manuales registrados en el rango seleccionado.') }}
-                {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
-<div class="card" id="inv-kardex">
-    <div class="card-body">
-        <h2 class="s-card-title">Movimientos del rango</h2>
-        <p class="s-card-sub">
-            Cada entrada y salida de inventario con su saldo resultante.
-            Total neto: <strong>{{ "{:,.2f}".format(total_firmado or 0) }} kg</strong>.
-        </p>
-        <div class="table-responsive">
-            <table class="table table-hover align-middle">
-                <thead>
-                <tr>
-                    <th>Sucursal</th>
-                    <th data-title-col data-mobile-primary>Material</th>
-                    <th>Tipo</th>
-                    <th class="text-end" data-mobile-primary>Cantidad</th>
-                    <th class="text-end" data-mobile-primary>Saldo</th>
-                    <th data-mobile-primary>Folio</th>
-                    <th>Proveedor o cliente</th>
-                    <th>Fecha</th>
-                    <th>Comentario</th>
-                    <th><span class="s-visually-hidden">Acciones</span></th>
-                </tr>
-                </thead>
-                <tbody>
-                {% for mov in movimientos %}
-                    {% set note_meta = movimiento_note_meta.get(mov.nota_id) if mov.nota_id else None %}
-                    {% set qty = mov.cantidad_kg or 0 %}
-                    {% if mov.tipo == 'venta' %}
-                        {% set qty = qty * -1 %}
-                    {% endif %}
-                    {% set tipo_meta = TIPO_MOV.get(mov.tipo) %}
-                    <tr>
-                        <td>{{ mov.inventario.sucursal.nombre if mov.inventario and mov.inventario.sucursal else '—' }}</td>
-                        <td>{{ mov.inventario.material.nombre if mov.inventario and mov.inventario.material else '—' }}</td>
-                        <td>
-                            {% if tipo_meta %}
-                                {{ badge(tipo_meta[0], tipo_meta[1]) }}
-                            {% else %}
-                                {{ badge((mov.tipo or '—')|replace('_', ' ')|capitalize, 'muted') }}
-                            {% endif %}
-                        </td>
-                        <td class="text-end">{{ kg(qty) }}</td>
-                        <td class="text-end">
-                            <span class="{% if (mov.saldo_resultante or 0) < 0 %}text-danger fw-semibold{% endif %}">{{ kg(mov.saldo_resultante) }}</span>
-                        </td>
-                        <td>{% if mov.nota_id %}<a href="/web/admin/notas/{{ mov.nota_id }}">{{ note_meta.folio if note_meta else ('#' ~ mov.nota_id) }}</a>{% else %}—{% endif %}</td>
-                        <td>{{ note_meta.partner if note_meta else '—' }}</td>
-                        <td>{{ mov.created_at|datetime_local if mov.created_at else '—' }}</td>
-                        <td class="small text-muted">{{ mov.comentario or '—' }}</td>
-                        <td>
-                            {% set ajuste = ajustes_by_mov_id.get(mov.id) %}
-                            {% if ajuste %}
-                                <span class="s-actions">
-                                    <a class="btn btn-sm btn-outline-secondary" href="/web/admin/inventario/ajustes/{{ ajuste.id }}">Detalle</a>
-                                </span>
-                            {% else %}
-                                <span class="text-muted">—</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                {% else %}
-                    {{ empty_row(10, 'No hay movimientos con estos filtros.') }}
                 {% endfor %}
                 </tbody>
             </table>
