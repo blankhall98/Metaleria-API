@@ -5,7 +5,7 @@
 
 {% block content %}
 {% call page_header('Cuentas Scrap360', eyebrow='Finanzas',
-                    sub='Cuentas internas de tesorería con su saldo de apertura y su saldo actual.') %}
+                    sub='Cuentas internas de tesorería con su saldo actual.') %}
     <a href="/web/admin/cuentas-scrap360/nueva" class="btn btn-primary">
         {{ icon('plus', 's-icon--sm') }} Nueva cuenta
     </a>
@@ -75,7 +75,6 @@
                 <tr>
                     <th data-title-col data-mobile-primary>Nombre</th>
                     <th>Sucursales</th>
-                    <th class="text-end">Saldo de apertura</th>
                     <th class="text-end" data-mobile-primary>Saldo actual</th>
                     <th data-mobile-primary>Estado</th>
                     <th><span class="s-visually-hidden">Acciones</span></th>
@@ -90,7 +89,6 @@
                             <div class="text-muted small">{{ cuenta.tipo|capitalize }}</div>
                         </td>
                         <td>{{ row.sucursales_label }}</td>
-                        <td class="text-end">{{ money(cuenta.saldo_inicial or 0) }}</td>
                         <td class="text-end">{{ money(cuenta.saldo_actual or 0) }}</td>
                         <td>
                             {{ badge('Activa', 'ok') if cuenta.activo else badge('Inactiva', 'muted') }}
@@ -109,7 +107,7 @@
                         </td>
                     </tr>
                 {% else %}
-                    {{ empty_row(6, 'No hay cuentas con estos filtros.') }}
+                    {{ empty_row(5, 'No hay cuentas con estos filtros.') }}
                 {% endfor %}
                 </tbody>
             </table>
