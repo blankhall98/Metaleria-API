@@ -86,8 +86,11 @@ class _PdfBuilder:
             b"/Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>",
         )
         obj(4, f"<< /Length {len_stream} >>\nstream\n".encode() + stream_bytes + b"\nendstream")
-        obj(5, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
-        obj(6, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>")
+        # /WinAnsiEncoding: sin ella el visor aplica StandardEncoding, donde los
+        # bytes latin-1 de los acentos (Ó = 0xD3) no tienen glifo y se pintan
+        # como cajas. WinAnsi coincide con latin-1 en 0xA0-0xFF.
+        obj(5, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>")
+        obj(6, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>")
 
         buffer = io.BytesIO()
         buffer.write(b"%PDF-1.4\n")

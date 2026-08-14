@@ -576,9 +576,11 @@ class _PdfDocument:
             )
             obj(content_obj_id, f"<< /Length {len(stream_content)} >>\nstream\n".encode() + stream_content + b"\nendstream")
 
-        obj(font_regular_id, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
-        obj(font_bold_id, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>")
-        obj(font_italic_id, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique >>")
+        # /WinAnsiEncoding: sin ella el visor aplica StandardEncoding, donde los
+        # bytes latin-1 de los acentos no tienen glifo y se pintan como cajas.
+        obj(font_regular_id, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>")
+        obj(font_bold_id, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>")
+        obj(font_italic_id, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique /Encoding /WinAnsiEncoding >>")
 
         buffer = io.BytesIO()
         buffer.write(b"%PDF-1.4\n")
