@@ -7536,6 +7536,26 @@ async def comisionario_record(
     ledger_rows = _build_comisionario_ledger(notas, pagos)
     ledger_final = ledger_rows[-1]["saldo"] if ledger_rows else Decimal("0")
 
+    # Mismo selector de orden que el expediente del socio (punto 10, fase 2):
+    # el saldo acumulado se calcula SIEMPRE en cronológico y ledger_final ya
+    # quedó capturado; aquí solo se invierte la presentación. "Recientes" es el
+    # default y va sin parámetro; el enlace explícito es el de cronológico.
+    orden_historial_raw = (request.query_params.get("orden_historial") or "").strip().lower()
+    orden_historial = "cronologico" if orden_historial_raw == "cronologico" else "recientes"
+    if orden_historial == "recientes":
+        ledger_rows = list(reversed(ledger_rows))
+    orden_historial_params = {
+        key: value
+        for key, value in request.query_params.items()
+        if key != "orden_historial" and value
+    }
+    orden_historial_links = {
+        "cronologico": _append_query_params(
+            request.url.path, **orden_historial_params, orden_historial="cronologico"
+        ),
+        "recientes": _append_query_params(request.url.path, **orden_historial_params),
+    }
+
     suc_query = db.query(Sucursal)
     if allowed_suc_ids:
         suc_query = suc_query.filter(Sucursal.id.in_(allowed_suc_ids))
@@ -7568,6 +7588,8 @@ async def comisionario_record(
             "summary": summary,
             "ledger_rows": ledger_rows,
             "ledger_final": ledger_final,
+            "orden_historial": orden_historial,
+            "orden_historial_links": orden_historial_links,
             "pagos": pagos,
             "sucursales": sucursales,
             "cuentas": cuentas_comisionario,
@@ -7709,9 +7731,28 @@ async def comisionario_notas_list(
             )
         )
 
-    notas = query.order_by(ComisionarioNota.created_at.desc()).all()
+    # Orden por fecha elegible (petición fase 2 de la administradora): el
+    # default sigue siendo lo más reciente arriba y va SIN parámetro; el enlace
+    # explícito es el de "antiguas", igual que orden_historial en los
+    # expedientes.
+    orden_raw = (params.get("orden") or "").strip().lower()
+    orden = "antiguas" if orden_raw == "antiguas" else "recientes"
+    orden_col = (
+        ComisionarioNota.created_at.asc()
+        if orden == "antiguas"
+        else ComisionarioNota.created_at.desc()
+    )
+    notas = query.order_by(orden_col).all()
     if q:
         notas = _filter_comisionario_notas(notas, q)
+
+    orden_params = {
+        key: value for key, value in params.items() if key != "orden" and value
+    }
+    orden_links = {
+        "antiguas": _append_query_params(request.url.path, **orden_params, orden="antiguas"),
+        "recientes": _append_query_params(request.url.path, **orden_params),
+    }
 
     comisionarios = _get_accessible_comisionarios(db, current_user)
     sucursales = db.query(Sucursal).order_by(Sucursal.nombre).all()
@@ -7730,6 +7771,8 @@ async def comisionario_notas_list(
             "comisionarios_map": comisionarios_map,
             "sucursales_map": sucursales_map,
             "comisionario_id": comisionario_id,
+            "orden": orden,
+            "orden_links": orden_links,
             "q": q,
         },
     )

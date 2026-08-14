@@ -86,12 +86,28 @@
                 <div>
                     <h2 class="s-card-title">Estado de cuenta</h2>
                     <p class="s-card-sub">
-                        Movimientos cronológicos con saldo acumulado. Saldo positivo indica pendiente por pagar;
+                        {% if orden_historial == 'recientes' %}
+                            Movimientos con lo más reciente arriba; el saldo acumulado sigue siendo el cronológico.
+                        {% else %}
+                            Movimientos cronológicos con saldo acumulado.
+                        {% endif %}
+                        Saldo positivo indica pendiente por pagar;
                         saldo negativo indica saldo a favor de la empresa.
                     </p>
                 </div>
                 <div class="text-muted small">Saldo acumulado: {{ money(ledger_final) }}</div>
             </div>
+
+            <nav class="s-segmented mb-3" aria-label="Orden del estado de cuenta">
+                <a href="{{ orden_historial_links.recientes }}#comisionario-ledger"
+                   class="s-segmented__item {{ 'active' if orden_historial == 'recientes' }}">
+                    Recientes primero
+                </a>
+                <a href="{{ orden_historial_links.cronologico }}#comisionario-ledger"
+                   class="s-segmented__item {{ 'active' if orden_historial == 'cronologico' }}">
+                    Cronológico
+                </a>
+            </nav>
 
             {% if ledger_rows|length == 0 %}
                 {{ empty('Sin movimientos',

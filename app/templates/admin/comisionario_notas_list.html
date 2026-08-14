@@ -42,6 +42,16 @@
 
 <div class="card">
     <div class="card-body">
+        <nav class="s-segmented mb-3" aria-label="Orden de las notas">
+            <a href="{{ orden_links.recientes }}"
+               class="s-segmented__item {{ 'active' if orden == 'recientes' }}">
+                Recientes primero
+            </a>
+            <a href="{{ orden_links.antiguas }}"
+               class="s-segmented__item {{ 'active' if orden == 'antiguas' }}">
+                Antiguas primero
+            </a>
+        </nav>
         <div class="table-responsive">
             <table class="table table-hover align-middle">
                 <thead>
