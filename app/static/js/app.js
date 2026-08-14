@@ -217,7 +217,11 @@
         // data-table-mode="grid" opts out: una grilla de captura (el arqueo de
         // denominaciones) debe seguir siendo grilla en el teléfono, no un
         // acordeón de tarjetas.
-        if (columnCount >= 3 && table.dataset.tableMode !== 'grid') {
+        // data-table-mode="table" opts out igual, pero para tablas de consulta:
+        // el inventario se lee en el teléfono "como la tablita de la
+        // computadora" (petición de la clienta, fase 2) — tabla con scroll
+        // horizontal dentro de .table-responsive, no tarjetas.
+        if (columnCount >= 3 && table.dataset.tableMode !== 'grid' && table.dataset.tableMode !== 'table') {
             var shell = table.closest('.table-responsive');
             if (shell) shell.classList.add('s-table-cards');
             table.classList.add('s-table-sticky');
