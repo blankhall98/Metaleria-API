@@ -2875,15 +2875,24 @@ def _inventory_local_date_range_to_utc(
 def _get_inventory_valuation_default_prices(
     db: Session,
     material_ids: list[int],
+    *,
+    tipo_operacion: TipoOperacion = TipoOperacion.venta,
+    tipo_cliente: TipoCliente = TipoCliente.regular,
 ) -> dict[int, Decimal]:
+    """Precio activo (versión vigente) por material para una lista concreta.
+
+    Los precios son versionados y append-only: "vigente" es la versión activa
+    al momento del cálculo. La foto de capital congela el resultado, así que
+    fotos de días distintos siguen siendo comparables aunque la lista cambie.
+    """
     if not material_ids:
         return {}
     precios = (
         db.query(TablaPrecio)
         .filter(
             TablaPrecio.material_id.in_(material_ids),
-            TablaPrecio.tipo_operacion == TipoOperacion.venta,
-            TablaPrecio.tipo_cliente == TipoCliente.regular,
+            TablaPrecio.tipo_operacion == tipo_operacion,
+            TablaPrecio.tipo_cliente == tipo_cliente,
             TablaPrecio.activo.is_(True),
         )
         .order_by(TablaPrecio.material_id.asc(), TablaPrecio.version.desc())
@@ -2932,8 +2941,53 @@ def _get_inventory_valuation_average_purchase_prices(
     return result
 
 
+# Bases de valuación del inventario en capital real. Las "lista_*" valúan con
+# la lista de precios de venta vigente (petición fase 2: "calcularlo sobre la
+# lista de menudeo, mayoreo, etc."); el precio es global por material, solo el
+# stock varía por sucursal.
+_INVENTORY_VALUATION_LISTA_MODES: dict[str, TipoCliente] = {
+    "lista_menudeo": TipoCliente.menudeo,
+    "lista_mayoreo": TipoCliente.mayorista,
+    "lista_regular": TipoCliente.regular,
+}
+
+# La versión de precio es SIEMPRE la vigente al momento del cálculo; la foto
+# de capital congela el resultado, así que dos fotos siguen siendo comparables
+# aunque la lista cambie entre una y otra.
+_INVENTORY_VALUATION_MODE_TEXTS: dict[str, dict[str, str]] = {
+    "manual": {
+        "label": "Configuración manual",
+        "help": "Prioriza los precios manuales capturados por sucursal; si faltan, usa precio de venta y luego promedio de compra.",
+        "detail": "Valuación por material usando configuración manual por sucursal.",
+    },
+    "promedio": {
+        "label": "Promedio de compra",
+        "help": "Prioriza el promedio histórico de compra por sucursal; si no existe, usa precio manual y luego precio de venta.",
+        "detail": "Valuación por material usando promedio histórico de compra por sucursal.",
+    },
+    "lista_menudeo": {
+        "label": "Lista de menudeo",
+        "help": "Valúa con el precio vigente de la lista de venta menudeo; si un material no está en la lista, usa precio manual y luego promedio de compra. La foto guarda el resultado del día.",
+        "detail": "Valuación por material usando la lista de venta menudeo vigente.",
+    },
+    "lista_mayoreo": {
+        "label": "Lista de mayoreo",
+        "help": "Valúa con el precio vigente de la lista de venta mayoreo; si un material no está en la lista, usa precio manual y luego promedio de compra. La foto guarda el resultado del día.",
+        "detail": "Valuación por material usando la lista de venta mayoreo vigente.",
+    },
+    "lista_regular": {
+        "label": "Lista regular",
+        "help": "Valúa con el precio vigente de la lista de venta regular; si un material no está en la lista, usa precio manual y luego promedio de compra. La foto guarda el resultado del día.",
+        "detail": "Valuación por material usando la lista de venta regular vigente.",
+    },
+}
+
+
 def _normalize_inventory_valuation_mode(mode_raw: str | None) -> str:
-    return "promedio" if (mode_raw or "").strip().lower() == "promedio" else "manual"
+    mode = (mode_raw or "").strip().lower()
+    if mode == "promedio" or mode in _INVENTORY_VALUATION_LISTA_MODES:
+        return mode
+    return "manual"
 
 
 def _build_inventario_valor_rows(
@@ -2958,6 +3012,15 @@ def _build_inventario_valor_rows(
         .all()
     }
     default_price_map = _get_inventory_valuation_default_prices(db, material_ids)
+    lista_price_map: dict[int, Decimal] = {}
+    lista_tipo_cliente = _INVENTORY_VALUATION_LISTA_MODES.get(valuation_mode)
+    if lista_tipo_cliente is not None:
+        lista_price_map = _get_inventory_valuation_default_prices(
+            db,
+            material_ids,
+            tipo_operacion=TipoOperacion.venta,
+            tipo_cliente=lista_tipo_cliente,
+        )
     average_purchase_map = _get_inventory_valuation_average_purchase_prices(
         db,
         sucursal_id=sucursal_id,
@@ -2978,7 +3041,23 @@ def _build_inventario_valor_rows(
         source_key = "none"
         source_help = "Sin precio manual, sin precio de venta activo y sin historial suficiente de compra en la sucursal."
         precio_referencia = Decimal("0")
-        if valuation_mode == "promedio":
+        if valuation_mode in _INVENTORY_VALUATION_LISTA_MODES:
+            if material.id in lista_price_map:
+                source_key = "sale"
+                source_help = "Modo lista activo: se usa el precio vigente de la lista de venta elegida."
+                precio_referencia = lista_price_map.get(material.id, Decimal("0"))
+                automatic_count += 1
+            elif valuation is not None:
+                source_key = "manual"
+                source_help = "La lista elegida no tiene precio activo para este material; se usa tu configuracion manual."
+                precio_referencia = Decimal(str(valuation.precio_referencia))
+                manual_count += 1
+            elif material.id in average_purchase_map:
+                source_key = "purchase_avg"
+                source_help = "Sin precio en la lista elegida ni manual; se usa el promedio historico de compra."
+                precio_referencia = average_purchase_map.get(material.id, Decimal("0"))
+                automatic_count += 1
+        elif valuation_mode == "promedio":
             if material.id in average_purchase_map:
                 source_key = "purchase_avg"
                 source_help = "Modo promedio activo: se usa el promedio historico de compra en esta sucursal."
@@ -3326,11 +3405,7 @@ def _build_capital_real_context(
         {
             "label": "Valor inventario",
             "amount": valor_inventario,
-            "detail": (
-                "Valuación por material usando configuración manual por sucursal."
-                if valuation_mode == "manual"
-                else "Valuación por material usando promedio histórico de compra por sucursal."
-            ),
+            "detail": _INVENTORY_VALUATION_MODE_TEXTS[valuation_mode]["detail"],
         },
     ]
     liability_rows = [
@@ -3388,12 +3463,8 @@ def _build_capital_real_context(
         "usd_sin_tc": usd_sin_tc,
         "tc_usd": tc_usd,
         "valuation_mode": valuation_mode,
-        "valuation_mode_label": "Promedio de compra" if valuation_mode == "promedio" else "Configuración manual",
-        "valuation_mode_help": (
-            "Prioriza el promedio historico de compra por sucursal; si no existe, usa precio manual y luego precio de venta."
-            if valuation_mode == "promedio"
-            else "Prioriza los precios manuales capturados por sucursal; si faltan, usa precio de venta y luego promedio de compra."
-        ),
+        "valuation_mode_label": _INVENTORY_VALUATION_MODE_TEXTS[valuation_mode]["label"],
+        "valuation_mode_help": _INVENTORY_VALUATION_MODE_TEXTS[valuation_mode]["help"],
     }
 
 

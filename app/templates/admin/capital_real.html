@@ -79,6 +79,9 @@
                     <select class="form-select" id="inventarioBase" name="inventario_base">
                         <option value="manual" {% if valuation_mode == 'manual' %}selected{% endif %}>Configuración manual</option>
                         <option value="promedio" {% if valuation_mode == 'promedio' %}selected{% endif %}>Promedio de compra</option>
+                        <option value="lista_menudeo" {% if valuation_mode == 'lista_menudeo' %}selected{% endif %}>Lista de menudeo</option>
+                        <option value="lista_mayoreo" {% if valuation_mode == 'lista_mayoreo' %}selected{% endif %}>Lista de mayoreo</option>
+                        <option value="lista_regular" {% if valuation_mode == 'lista_regular' %}selected{% endif %}>Lista regular</option>
                     </select>
                     <p class="form-text">{{ valuation_mode_help }}</p>
                 </div>
