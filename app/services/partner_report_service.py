@@ -149,9 +149,10 @@ def build_partner_statement_pdf(report: dict) -> tuple[bytes, str]:
     top = 760
     bottom = 58
 
+    # No crear página aquí: new_page() del encabezado crea la primera. La
+    # versión anterior abría una página extra que salía en blanco al frente
+    # del documento.
     doc = _PdfDocument()
-    page = doc.new_page()
-    y = top
 
     def new_page(title_suffix: str | None = None) -> tuple[_PdfPage, float]:
         p = doc.new_page()
@@ -160,7 +161,7 @@ def build_partner_statement_pdf(report: dict) -> tuple[bytes, str]:
         if title_suffix:
             title = f"{title} {title_suffix}"
         p.text(left, y_pos, title, size=16, font="F2")
-        p.text(left, y_pos - 16, f"Partner: {report['partner_name']}", size=9)
+        p.text(left, y_pos - 16, f"{report['partner_label']}: {report['partner_name']}", size=9)
         p.text(left, y_pos - 28, f"ID: {report['partner_id']}", size=9)
         p.text(left, y_pos - 40, f"Alcance: {report.get('scope_label') or 'Historial completo'}", size=9)
         p.text(right - 156, y_pos - 16, f"Generado: {format_datetime_local(report['generated_at'])}", size=9)
@@ -173,37 +174,30 @@ def build_partner_statement_pdf(report: dict) -> tuple[bytes, str]:
         page.text(left, y, linked_summary, size=9)
         y -= 18
 
-    page.rect(left, y - 18, right - left, 18, fill_gray=0.93, stroke_gray=0.85)
-    page.text(left + 8, y - 6, "Resumen", size=10, font="F2")
-    y -= 28
+    # Resumen simple (petición fase 2): el bloque de conteos por estado y las
+    # cifras accesorias hacían que el socio "se hiciera bolas". El documento
+    # abre con las tres cifras que la administradora dicta por teléfono; el
+    # saldo es ledger_final, el mismo que cierra el estado de cuenta en
+    # pantalla. El detalle completo sigue disponible en el export a Excel.
+    fecha_corte = format_date_local(report["generated_at"])
+    resumen_simple = report.get("resumen_simple") or []
+    if resumen_simple:
+        alto = 18 + len(resumen_simple) * 16 + 8
+        page.rect(left, y - alto, right - left, alto, fill_gray=0.93, stroke_gray=0.85)
+        page.text(left + 8, y - 13, f"Resumen al {fecha_corte}", size=10, font="F2")
+        fila_y = y - 13
+        for item in resumen_simple:
+            fila_y -= 16
+            valor = _format_money(_safe_decimal(item["value"]))
+            page.text(left + 8, fila_y, item["label"], size=10)
+            page.text(right - 8 - _text_width(valor, 11), fila_y, valor, size=11, font="F2")
+        y -= alto + 6
+        notas_totales = report.get("notas_totales")
+        if notas_totales is not None:
+            page.text(left, y, f"Notas totales: {int(_safe_decimal(notas_totales))}", size=8)
+            y -= 16
 
-    items = report["summary_items"]
-    half = (len(items) + 1) // 2
-    left_items = items[:half]
-    right_items = items[half:]
-    line_h = 12
-    left_value_x = left + 182
-    right_label_x = left + 268
-    right_value_x = right_label_x + 170
-    for idx, item in enumerate(left_items):
-        value_str = (
-            str(int(_safe_decimal(item["value"])))
-            if item["type"] == "count"
-            else _format_money(_safe_decimal(item["value"]))
-        )
-        page.text(left + 8, y - idx * line_h, item["label"], size=9)
-        page.text(left_value_x, y - idx * line_h, value_str, size=9, font="F2")
-    for idx, item in enumerate(right_items):
-        value_str = (
-            str(int(_safe_decimal(item["value"])))
-            if item["type"] == "count"
-            else _format_money(_safe_decimal(item["value"]))
-        )
-        page.text(right_label_x, y - idx * line_h, item["label"], size=9)
-        page.text(right_value_x, y - idx * line_h, value_str, size=9, font="F2")
-    y -= max(len(left_items), len(right_items)) * line_h + 20
-
-    page.text(left, y, report["ledger_label"], size=10, font="F2")
+    page.text(left, y, f"{report['ledger_label']} al {fecha_corte}", size=10, font="F2")
     balance_label = _format_money(_safe_decimal(report["ledger_final"]))
     page.text(right - _text_width(balance_label, 10), y, balance_label, size=10, font="F2")
     y -= 12
@@ -216,7 +210,7 @@ def build_partner_statement_pdf(report: dict) -> tuple[bytes, str]:
             ("Fecha", left, 64, "left"),
             ("Movimiento", left + 64, 96, "left"),
             ("Nota", left + 160, 60, "left"),
-            ("Metodo", left + 220, 52, "left"),
+            ("Método", left + 220, 52, "left"),
             ("Cuenta", left + 272, 86, "left"),
             ("Cargo", left + 358, 54, "right"),
             ("Abono", left + 412, 54, "right"),
@@ -259,26 +253,33 @@ def build_partner_statement_pdf(report: dict) -> tuple[bytes, str]:
         for row in report["ledger_rows"]:
             needed = 22 if (row.get("comentario") or "").strip() else 12
             if y < bottom + needed:
-                page, y = new_page("(continuacion)")
+                page, y = new_page("(continuación)")
                 y = draw_ledger_header(page, y)
             y = draw_ledger_row(page, y, row)
     else:
-        page.text(left, y, "No hay movimientos para este partner.", size=9)
+        page.text(left, y, f"No hay movimientos para este {report['partner_label'].lower()}.", size=9)
         y -= 18
 
-    if report["notes_rows"]:
+    # Solo notas reales (petición fase 2): borradores, en revisión y canceladas
+    # no aparecen en el documento que se envía al socio. El filtro vive aquí y
+    # no en el dict porque el Excel — herramienta interna — sí conserva todo.
+    notes_rows_pdf = [
+        row for row in report["notes_rows"]
+        if row.get("estado") in ("Aprobada", "Pagada")
+    ]
+    if notes_rows_pdf:
         if y < 180:
             page, y = new_page("(resumen de notas)")
         else:
             y -= 8
-        page.text(left, y, "Resumen de notas", size=11, font="F2")
+        page.text(left, y, "Resumen de notas aprobadas", size=11, font="F2")
         y -= 16
 
         def draw_notes_header(target: _PdfPage, y_pos: float) -> float:
             target.rect(left, y_pos - 16, right - left, 16, fill_gray=0.93, stroke_gray=0.85)
             columns = [
                 ("Folio", left, 70, "left"),
-                ("Operacion", left + 70, 72, "left"),
+                ("Operación", left + 70, 72, "left"),
                 ("Estado", left + 142, 66, "left"),
                 ("Fecha", left + 208, 68, "left"),
                 ("Total", left + 276, 64, "right"),
@@ -313,7 +314,7 @@ def build_partner_statement_pdf(report: dict) -> tuple[bytes, str]:
             return y_pos - 12
 
         y = draw_notes_header(page, y)
-        for row in report["notes_rows"]:
+        for row in notes_rows_pdf:
             if y < bottom + 12:
                 page, y = new_page("(resumen de notas)")
                 y = draw_notes_header(page, y)

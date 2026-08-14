@@ -3926,17 +3926,67 @@ def _build_partner_statement_report(context: dict) -> dict:
             }
         )
 
+    # Resumen simple para el PDF (petición fase 2): el documento que la
+    # administradora envía por WhatsApp abre con tres cifras en el lenguaje del
+    # socio, no con el bloque de conteos por estado. El saldo es ledger_final
+    # — la misma cifra que cierra el estado de cuenta en pantalla — para que el
+    # PDF no pueda contradecir al sistema. El Excel ignora estas claves y
+    # conserva su resumen completo.
+    ledger_final = context.get("ledger_final") or Decimal("0")
+    partner_label = context["partner_label"]
+    if context.get("unified_enabled"):
+        resumen_simple = [
+            {"label": "Total compras aprobadas", "value": summary.get("total_compras", 0)},
+            {"label": "Total ventas aprobadas", "value": summary.get("total_ventas", 0)},
+            {
+                "label": (
+                    "Saldo neto (por pagar al proveedor)"
+                    if ledger_final >= 0
+                    else "Saldo neto (a favor de la empresa)"
+                ),
+                "value": abs(ledger_final),
+            },
+        ]
+    elif partner_label == "Proveedor":
+        resumen_simple = [
+            {"label": "Total entregado", "value": summary.get("total_facturado", 0)},
+            {"label": "Total pagado", "value": summary.get("total_pagado", 0)},
+            {
+                "label": (
+                    "Saldo por pagar al proveedor"
+                    if ledger_final >= 0
+                    else "Saldo a favor de la empresa"
+                ),
+                "value": abs(ledger_final),
+            },
+        ]
+    else:
+        resumen_simple = [
+            {"label": "Total vendido al cliente", "value": summary.get("total_facturado", 0)},
+            {"label": "Total cobrado", "value": summary.get("total_pagado", 0)},
+            {
+                "label": (
+                    "Saldo por cobrar al cliente"
+                    if ledger_final >= 0
+                    else "Saldo a favor del cliente"
+                ),
+                "value": abs(ledger_final),
+            },
+        ]
+
     return {
         "generated_at": datetime.utcnow(),
-        "partner_label": context["partner_label"],
+        "partner_label": partner_label,
         "partner_name": partner.nombre_completo,
         "partner_id": partner.id,
         "scope_label": context.get("record_scope_label") or context.get("tipo_operacion_label") or "Historial completo",
         "linked_summary": linked_summary,
         "summary_items": summary_items,
+        "resumen_simple": resumen_simple,
+        "notas_totales": summary.get("total_notas", 0),
         "ledger_label": context["ledger_saldo_label"],
         "ledger_help": context["ledger_saldo_help"],
-        "ledger_final": context.get("ledger_final") or Decimal("0"),
+        "ledger_final": ledger_final,
         "ledger_rows": context.get("ledger_rows") or [],
         "notes_rows": notes_rows,
     }
