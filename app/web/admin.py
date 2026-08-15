@@ -13258,6 +13258,10 @@ async def notas_cancelar(
                 comentarios_admin=comentarios_admin,
             )
         except ValueError as e:
+            # La cancelación muta la sesión antes de fallar (inventario,
+            # comisión vinculada): descartar lo no comiteado para que el
+            # detalle se pinte con el estado real de la base.
+            db.rollback()
             return _render_nota_detail(
                 request, db, current_user, nota, error=str(e)
             )
