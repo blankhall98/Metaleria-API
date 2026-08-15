@@ -178,8 +178,8 @@ def build_invoice_pdf(db: Session, nota: Nota, generated_at: datetime | None = N
 
     pdf.text(left, top, "SCRAP360", size=18, font="F2")
     pdf.text(left, top - 18, f"Sucursal: {sucursal_name}", size=9)
-    pdf.text(left, top - 30, f"Direccion: {sucursal_address}", size=9)
-    pdf.text(left, top - 42, f"Operacion: {tipo_label}", size=9)
+    pdf.text(left, top - 30, f"Dirección: {sucursal_address}", size=9)
+    pdf.text(left, top - 42, f"Operación: {tipo_label}", size=9)
 
     pdf.text(380, top, header_title, size=14, font="F2")
     pdf.text(380, top - 18, f"Folio: {folio_label}", size=9)
@@ -364,7 +364,7 @@ def build_comisionario_nota_pdf(
 
     pdf.text(left, top, "SCRAP360", size=18, font="F2")
     pdf.text(left, top - 18, f"Sucursal: {sucursal_name}", size=9)
-    pdf.text(left, top - 30, f"Direccion: {sucursal_address}", size=9)
+    pdf.text(left, top - 30, f"Dirección: {sucursal_address}", size=9)
     pdf.text(left, top - 42, "Operación: Comisión", size=9)
 
     pdf.text(380, top, header_title, size=14, font="F2")
