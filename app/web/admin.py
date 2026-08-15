@@ -1645,7 +1645,9 @@ def _safe_next_admin_url(next_url: str | None, fallback: str) -> str:
     return fallback
 
 
-def _append_query_params(url: str, **params: str) -> str:
+def _append_query_params(url: str, /, **params: str) -> str:
+    # `url` es solo-posicional: los llamadores reenvían request.query_params
+    # con **, y un query param llamado "url" tumbaba la ruta con TypeError.
     clean_params = {key: value for key, value in params.items() if value}
     if not clean_params:
         return url
@@ -11920,6 +11922,9 @@ async def notas_aprobar(
         try:
             comision_monto = Decimal(comision_monto_raw)
         except (InvalidOperation, ValueError):
+            comision_monto = None
+        # Decimal acepta "NaN"/"Infinity": no son montos.
+        if comision_monto is None or not comision_monto.is_finite():
             return _render_nota_detail(
                 request, db, current_user, nota,
                 error="Captura el monto de la comisión.", form_state=form_state,
@@ -12189,6 +12194,10 @@ async def notas_aprobar(
             comision_monto=comision_monto,
         )
     except ValueError as e:
+        # approve_note muta la sesión antes de poder fallar (estado, folio,
+        # inventario, contable, y ahora la comisión): descartar lo no
+        # comiteado para pintar el detalle con el estado real de la base.
+        db.rollback()
         return _render_nota_detail(
             request,
             db,
