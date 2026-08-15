@@ -60,6 +60,15 @@
                 <span class="s-def__label">Fecha</span>
                 <span class="s-def__value">{{ nota.created_at|datetime_local if nota.created_at else '—' }}</span>
             </div>
+            {% if nota.nota_id %}
+                <div class="s-def">
+                    <span class="s-def__label">Nota de origen</span>
+                    <span class="s-def__value">
+                        <a href="/web/admin/notas/{{ nota.nota_id }}">Ver nota #{{ nota.nota_id }}</a>
+                    </span>
+                    <div class="s-def__sub">Generada al aprobar la nota; se cancela y restaura junto con ella.</div>
+                </div>
+            {% endif %}
         </div>
         {% if nota.comentarios_admin %}
             <p class="s-card-sub mt-3 mb-0">{{ nota.comentarios_admin }}</p>

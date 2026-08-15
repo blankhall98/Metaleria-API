@@ -81,6 +81,14 @@
     {% if approved_query %}
         <div class="alert alert-success py-2 small mb-3">La nota fue aprobada correctamente.{% if auto_open_pdf_query and user.rol == 'super_admin' %} El PDF se abrió en una pestaña lista para imprimir.{% endif %}</div>
     {% endif %}
+    {% if comision_vinculada %}
+        <div class="alert alert-secondary py-2 small mb-3">
+            Esta nota generó la comisión
+            <a href="/web/admin/comisionarios/notas/{{ comision_vinculada.id }}" class="fw-semibold">#{{ comision_vinculada.id }}</a>
+            {% if comision_vinculada.comisionario %}para {{ comision_vinculada.comisionario.nombre_completo }}{% endif %}
+            ({{ 'cancelada junto con la nota' if comision_vinculada.estado.value == 'CANCELADA' else 'aprobada' }}).
+        </div>
+    {% endif %}
     {% if edit_updated %}
         <div class="alert alert-success py-2 small mb-3">Edición guardada correctamente.</div>
     {% endif %}
@@ -730,6 +738,27 @@
                                         <label class="form-check-label" for="iva_incluido">La nota incluye IVA</label>
                                     </div>
                                 </div>
+                                {% if comisionarios_para_comision %}
+                                    {# Fase 2: la comisión se puede generar aquí mismo, en la
+                                       transacción de la aprobación. Opcional; el monto es libre. #}
+                                    <div class="col-md-6 col-12">
+                                        <label class="form-label" for="f_comisionario_id">Comisionista (opcional)</label>
+                                        {% set comisionario_val = form_comisionario_id if form_comisionario_id is not none else '' %}
+                                        <select class="form-select" name="comisionario_id" id="f_comisionario_id">
+                                            <option value="" {% if not comisionario_val %}selected{% endif %}>Sin comisión</option>
+                                            {% for c in comisionarios_para_comision %}
+                                                <option value="{{ c.id }}" {% if comisionario_val|string == c.id|string %}selected{% endif %}>{{ c.nombre_completo }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <div class="form-text text-muted">Genera su nota de comisión al aprobar; también puedes crearla a mano después.</div>
+                                    </div>
+                                    <div class="col-md-6 col-12">
+                                        <label class="form-label" for="f_comision_monto">Monto de la comisión</label>
+                                        {% set comision_monto_val = form_comision_monto if form_comision_monto is not none else '' %}
+                                        <input class="form-control" type="number" step="0.01" min="0" name="comision_monto" value="{{ comision_monto_val }}" placeholder="0.00" id="f_comision_monto">
+                                        <div class="form-text text-muted">Obligatorio si eliges comisionista; el monto es libre.</div>
+                                    </div>
+                                {% endif %}
                                 <div class="col-12">
                                     <label class="form-label" for="f_comentarios_admin">Comentarios de aprobación</label>
                                     {% set comentarios_val = form_comentarios if form_comentarios is not none else (nota.comentarios_admin or "") %}

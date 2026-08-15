@@ -1928,9 +1928,15 @@ def approve_note(
     iva_porcentaje: Decimal | None = None,
     inventario_sucursal_id: int | None = None,
     caja_sucursal_id: int | None = None,
+    comisionario_id: int | None = None,
+    comision_monto: Decimal | None = None,
 ) -> Nota:
     """
     Aprueba una nota aplicando precios, recalculando totales y registrando inventario/contable.
+
+    comisionario_id + comision_monto (fase 2): genera la nota de comisión en la
+    misma transacción de la aprobación — o se aprueba la nota con su comisión,
+    o no pasa nada.
     """
     if nota.estado not in (NotaEstado.en_revision, NotaEstado.borrador):
         raise ValueError("Solo se puede aprobar desde borrador o en revisión.")
@@ -2038,6 +2044,19 @@ def approve_note(
             comentario="Pago inicial",
             commit=False,
             registrar_contable=True,
+        )
+    if comisionario_id is not None:
+        # Import local para no acoplar los módulos en tiempo de import;
+        # comision_service solo depende de app.models.
+        from app.services import comision_service
+
+        comision_service.create_comision_for_nota(
+            db,
+            nota=nota,
+            comisionario_id=comisionario_id,
+            monto=comision_monto,
+            admin_id=admin_id,
+            commit=False,
         )
     db.commit()
     db.refresh(nota)
@@ -2213,6 +2232,15 @@ def cancel_approved_note(
         raise ValueError("Solo puedes cancelar notas aprobadas.")
     if nota.tipo_operacion not in (TipoOperacion.compra, TipoOperacion.venta):
         raise ValueError("Tipo de operacion no soportado para devolucion.")
+
+    # Fase 2: si la aprobación generó una comisión, se cancela junto con la
+    # nota (registro compensatorio, nunca un borrado). Con pagos vivos la
+    # cancelación se BLOQUEA aquí mismo, antes de tocar inventario: primero se
+    # deshacen los pagos de la comisión. Import local: comision_service solo
+    # depende de app.models.
+    from app.services import comision_service
+
+    comision_service.cancel_comision_for_nota(db, nota_id=nota.id, commit=False)
 
     base_tipo = nota.tipo_operacion.value
     if not _has_base_contable_movement(db, nota.id, base_tipo):
@@ -2406,6 +2434,12 @@ def reverse_total_return(
     devolucion_total.reverted_by_user_id = admin_id
     devolucion_total.comentario_reversion = comentario or None
     db.add(devolucion_total)
+
+    # Fase 2: la comisión vinculada que se canceló junto con la nota vuelve a
+    # la vida con ella (simétrico de cancel_approved_note).
+    from app.services import comision_service
+
+    comision_service.restore_comision_for_nota(db, nota_id=nota.id, commit=False)
 
     if commit:
         db.commit()

@@ -165,6 +165,148 @@ def create_comisionario_nota(
     return nota
 
 
+def create_comision_for_nota(
+    db: Session,
+    *,
+    nota,
+    comisionario_id: int,
+    monto: Decimal,
+    admin_id: int | None,
+    commit: bool = False,
+) -> ComisionarioNota:
+    """Genera la nota de comisión de una nota de pesaje al aprobarla (fase 2).
+
+    El monto es libre ("es variable", dijo la clienta) y se prorratea entre los
+    materiales de la nota por kg; el último renglón absorbe los centavos del
+    redondeo para que la suma de subtotales sea EXACTAMENTE el monto capturado.
+    Pensada para llamarse con commit=False dentro de la transacción de
+    approve_note: o se aprueba la nota con su comisión, o no pasa nada.
+    """
+    comisionario = db.get(Comisionario, comisionario_id)
+    if not comisionario:
+        raise ValueError("Comisionista no encontrado.")
+    if not comisionario.activo:
+        raise ValueError("El comisionista está inactivo.")
+    monto_val = _safe_decimal(monto)
+    if monto_val <= Decimal("0"):
+        raise ValueError("El monto de la comisión debe ser mayor a 0.")
+
+    existente = (
+        db.query(ComisionarioNota).filter(ComisionarioNota.nota_id == nota.id).first()
+    )
+    if existente is not None:
+        raise ValueError("Esta nota ya tiene una comisión generada.")
+
+    lineas = [
+        nm for nm in nota.materiales if _safe_decimal(nm.kg_neto) > Decimal("0")
+    ]
+    total_kg = sum((_safe_decimal(nm.kg_neto) for nm in lineas), Decimal("0"))
+    if total_kg <= Decimal("0"):
+        raise ValueError("La nota no tiene kilos para prorratear la comisión.")
+
+    comision = ComisionarioNota(
+        comisionario_id=comisionario.id,
+        # La comisión vive en la sucursal del comisionista (misma regla que la
+        # captura manual).
+        sucursal_id=comisionario.sucursal_id,
+        admin_id=admin_id,
+        nota_id=nota.id,
+        estado=ComisionarioNotaEstado.aprobada,
+        comentarios_admin=f"Comisión de la nota #{nota.id}",
+    )
+    precio_por_kg = (monto_val / total_kg).quantize(Decimal("0.00001"))
+    acumulado = Decimal("0")
+    for idx, nm in enumerate(lineas):
+        kg = _safe_decimal(nm.kg_neto)
+        if idx == len(lineas) - 1:
+            subtotal = monto_val - acumulado
+        else:
+            subtotal = (kg * precio_por_kg).quantize(Decimal("0.01"))
+        acumulado += subtotal
+        comision.materiales.append(
+            ComisionarioNotaMaterial(
+                material_id=nm.material_id,
+                kg_neto=kg,
+                precio_por_kg=precio_por_kg,
+                subtotal=subtotal,
+            )
+        )
+
+    comision.total_kg = total_kg
+    comision.total_monto = monto_val
+    comision.monto_pagado = Decimal("0")
+    db.add(comision)
+    if commit:
+        db.commit()
+        db.refresh(comision)
+    else:
+        db.flush()
+    return comision
+
+
+def cancel_comision_for_nota(
+    db: Session,
+    *,
+    nota_id: int,
+    commit: bool = False,
+) -> ComisionarioNota | None:
+    """Cancela la comisión vinculada cuando su nota de origen se cancela.
+
+    Registro compensatorio, nunca un borrado. Si la comisión ya tiene pagos
+    vivos se BLOQUEA la cancelación: primero hay que deshacer esos pagos, para
+    no dejar dinero pagado colgando de una comisión muerta.
+    """
+    comision = (
+        db.query(ComisionarioNota)
+        .filter(
+            ComisionarioNota.nota_id == nota_id,
+            ComisionarioNota.estado == ComisionarioNotaEstado.aprobada,
+        )
+        .first()
+    )
+    if comision is None:
+        return None
+    if _safe_decimal(comision.monto_pagado) > Decimal("0"):
+        raise ValueError(
+            "La nota tiene una comisión con pagos registrados. "
+            "Deshaz primero los pagos de la comisión y vuelve a intentar."
+        )
+    comision.estado = ComisionarioNotaEstado.cancelada
+    db.add(comision)
+    if commit:
+        db.commit()
+    return comision
+
+
+def restore_comision_for_nota(
+    db: Session,
+    *,
+    nota_id: int,
+    commit: bool = False,
+) -> ComisionarioNota | None:
+    """Reactiva la comisión vinculada cuando la nota cancelada se restaura.
+
+    Simétrico de cancel_comision_for_nota: la única vía por la que una comisión
+    vinculada queda CANCELADA es la cancelación de su nota, así que restaurarla
+    aquí no puede pisar una cancelación manual (ese flujo no existe).
+    """
+    comision = (
+        db.query(ComisionarioNota)
+        .filter(
+            ComisionarioNota.nota_id == nota_id,
+            ComisionarioNota.estado == ComisionarioNotaEstado.cancelada,
+        )
+        .first()
+    )
+    if comision is None:
+        return None
+    comision.estado = ComisionarioNotaEstado.aprobada
+    db.add(comision)
+    if commit:
+        db.commit()
+    return comision
+
+
 def pay_comisionario_fifo(
     db: Session,
     *,

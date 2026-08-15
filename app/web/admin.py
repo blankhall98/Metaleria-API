@@ -11093,6 +11093,14 @@ def _render_nota_detail(
         "form_ajuste_saldo_comentario": None,
         "form_inventario_sucursal_id": inventario_sucursal_id or nota.sucursal_id,
     }
+    # Fase 2: comisión opcional al aprobar + vínculo con la comisión generada.
+    comisionarios_para_comision = _get_accessible_comisionarios(
+        db, current_user, activos_solamente=True
+    )
+    comision_vinculada = (
+        db.query(ComisionarioNota).filter(ComisionarioNota.nota_id == nota.id).first()
+    )
+
     context = {
         "request": request,
         "env": settings.ENV,
@@ -11152,6 +11160,8 @@ def _render_nota_detail(
         "cuentas_partner": cuentas_partner,
         "cuentas_partner_label": cuentas_partner_label,
         "cuentas_scrap360": cuentas_scrap360,
+        "comisionarios_para_comision": comisionarios_para_comision,
+        "comision_vinculada": comision_vinculada,
         "inventory_sucursales": cash_sucursales,
         "cash_sucursales": cash_sucursales,
         "pago_updated": pago_updated,
@@ -11864,6 +11874,8 @@ async def notas_aprobar(
     monto_pagado_raw = (form.get("monto_pagado") or "").strip()
     iva_incluido = form.get("iva_incluido") is not None
     iva_porcentaje_raw = (form.get("iva_porcentaje") or "").strip()
+    comisionario_raw = (form.get("comisionario_id") or "").strip()
+    comision_monto_raw = (form.get("comision_monto") or "").strip()
     form_state = {
         "form_metodo": metodo_pago,
         "form_numero_cheque": numero_cheque,
@@ -11876,7 +11888,50 @@ async def notas_aprobar(
         "form_caja_sucursal_id": caja_sucursal_raw,
         "form_iva_incluido": iva_incluido,
         "form_iva_porcentaje": iva_porcentaje_raw,
+        "form_comisionario_id": comisionario_raw,
+        "form_comision_monto": comision_monto_raw,
     }
+
+    # Fase 2: comisión opcional al aprobar. El monto es libre ("es variable"),
+    # pero si se elige comisionista el monto es obligatorio y viceversa.
+    comisionario_id: int | None = None
+    comision_monto: Decimal | None = None
+    if comisionario_raw:
+        try:
+            comisionario_id = int(comisionario_raw)
+        except ValueError:
+            return _render_nota_detail(
+                request, db, current_user, nota,
+                error="Comisionista inválido.", form_state=form_state,
+            )
+        comisionario_sel = db.get(Comisionario, comisionario_id)
+        if not comisionario_sel or not comisionario_sel.activo:
+            return _render_nota_detail(
+                request, db, current_user, nota,
+                error="El comisionista no existe o está inactivo.", form_state=form_state,
+            )
+        if allowed_suc_ids is not None and comisionario_sel.sucursal_id not in allowed_suc_ids:
+            return _render_nota_detail(
+                request, db, current_user, nota,
+                error="No tienes acceso a la sucursal de ese comisionista.", form_state=form_state,
+            )
+        try:
+            comision_monto = Decimal(comision_monto_raw)
+        except (InvalidOperation, ValueError):
+            return _render_nota_detail(
+                request, db, current_user, nota,
+                error="Captura el monto de la comisión.", form_state=form_state,
+            )
+        if comision_monto <= Decimal("0"):
+            return _render_nota_detail(
+                request, db, current_user, nota,
+                error="El monto de la comisión debe ser mayor a 0.", form_state=form_state,
+            )
+    elif comision_monto_raw:
+        return _render_nota_detail(
+            request, db, current_user, nota,
+            error="Elige al comisionista para generar la comisión.", form_state=form_state,
+        )
     kg_neto_override_map = None
     kg_desc_override_map = None
     precio_override_map = None
@@ -12128,6 +12183,8 @@ async def notas_aprobar(
             iva_porcentaje=iva_porcentaje,
             inventario_sucursal_id=inventario_sucursal_id,
             caja_sucursal_id=caja_sucursal_id,
+            comisionario_id=comisionario_id,
+            comision_monto=comision_monto,
         )
     except ValueError as e:
         return _render_nota_detail(

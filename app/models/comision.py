@@ -49,6 +49,10 @@ class ComisionarioNota(Base):
     comisionario_id = Column(Integer, ForeignKey("comisionarios.id"), nullable=False, index=True)
     sucursal_id = Column(Integer, ForeignKey("sucursales.id"), nullable=False, index=True)
     admin_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    # Nota de pesaje que originó esta comisión (fase 2: la comisión se puede
+    # generar al aprobar la nota). NULL = capturada a mano, como siempre.
+    # Única: una nota genera a lo más una comisión automática.
+    nota_id = Column(Integer, ForeignKey("notas.id"), nullable=True, unique=True, index=True)
 
     estado = Column(
         Enum(
