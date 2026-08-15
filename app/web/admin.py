@@ -11092,6 +11092,8 @@ def _render_nota_detail(
         "form_ajuste_saldo_monto": None,
         "form_ajuste_saldo_comentario": None,
         "form_inventario_sucursal_id": inventario_sucursal_id or nota.sucursal_id,
+        "form_comisionario_id": None,
+        "form_comision_monto": None,
     }
     # Fase 2: comisión opcional al aprobar + vínculo con la comisión generada.
     comisionarios_para_comision = _get_accessible_comisionarios(
