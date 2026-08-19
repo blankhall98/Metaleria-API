@@ -11,6 +11,19 @@ propio surgido al revisar el material.
 > `check_ui.js` 84 vistas) y revisión adversarial con 3 endurecimientos
 > aplicados. Verificado contra producción: proveedor 74 (rubro saldo a favor)
 > y direcciones de sucursal (§2: cadena literal `"None"` en 02 MT y 03 N).
+>
+> **Segunda tanda 2026-08-18 (v215, `65c8185..c1bf46c`):** cuatro reportes tras
+> el primer uso en producción, todos verificados en prod —
+> (a) *Editar nota*: los inputs de subpesaje colapsaban a 23 px (`s-table-edit`);
+> (b) comisión al aprobar rediseñada **por material** con precio/kg libre y
+> sucursal visible en el desplegable (`test_comision_auto` 32 aserciones);
+> (c) selects de todo el sistema con la flecha encima del texto (padding
+> derecho borrado en `scrap360.css`) + home sin encimar en 1500/1280/390;
+> (d) valuación del inventario: en prod **no hay listas de venta**, solo de
+> compra — el respaldo y los modos `lista_*` buscan ahora venta→compra por
+> tipo de cliente, un manual en 0 cuenta como vacío y la tabla deja de
+> congelar los automáticos como manuales al guardar. 02 MT: 10 de 13 ceros
+> resueltos por lista; 4 materiales siguen sin ninguna lista.
 
 Fuentes originales y transcripciones: fuera del repo (material de la clienta).
 Bitácora de intake con la evidencia punto por punto: `triage-admin-2026-08-14.md`.
