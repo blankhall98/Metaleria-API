@@ -1643,6 +1643,21 @@ table.table-hover > tbody > tr:hover > * { background-color: var(--s-p50) !impor
     background-image: none;
 }
 
+/* Tabla de edición de nota (note_edit): nueve columnas con controles dentro.
+   Bootstrap da a los inputs de un input-group `width: 1%; min-width: 0`, así
+   que al comprimirse la tabla los campos de Peso/Desc de cada subpesaje
+   colapsaban a ~20 px y no se podía teclear en ellos ("no me deja editar el
+   peso"), mientras el select pisaba su chevron ("encimando"). Un ancho mínimo
+   real por control le da a la tabla su ancho intrínseco; el shell existente
+   (`is-scrollable`) hace scroll horizontal en vez de aplastar. */
+.s-table-edit .input-group { flex-wrap: nowrap; }
+.s-table-edit .input-group > .form-control { min-width: 5.5rem; }
+.s-table-edit .input-group > .input-group-text,
+.s-table-edit .input-group > .btn { white-space: nowrap; }
+.s-table-edit td > .form-select { min-width: 7.5rem; }
+.s-table-edit td > .form-control { min-width: 6rem; }
+.s-table-edit td > .form-text { min-width: 9rem; }
+
 /* Sticky header for long tables */
 .s-table-sticky thead th {
     position: sticky;
