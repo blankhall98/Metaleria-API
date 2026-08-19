@@ -50,7 +50,7 @@
         {{ stat('Valor del inventario', money(total_valor), 'Suma de los materiales valorizados') }}
         {{ stat('Materiales con existencias', materiales_con_stock, 'Filas con existencia mayor a cero') }}
         {{ stat('Precio manual', manual_count, 'Capturado a mano para esta sucursal') }}
-        {{ stat('Precio automático', automatic_count, 'Precio de venta activo o promedio de compra') }}
+        {{ stat('Precio automático', automatic_count, 'Precio de lista activo o promedio de compra') }}
         {{ stat('Sin referencia', sin_precio_count, 'Siguen en cero por falta de precio fuente',
                 'warn' if sin_precio_count else '') }}
     </div>
@@ -62,9 +62,10 @@
                     <h2 class="s-card-title">Valuación por material</h2>
                     <p class="s-card-sub">
                         Cada fila calcula: existencias actuales de la sucursal &times; precio de valuación del material.
-                        La prioridad automática es precio manual de esta sucursal &rarr; precio de venta regular activo &rarr;
-                        promedio histórico de compra en esta sucursal. Si dejas un precio vacío, el sistema vuelve a usar
-                        la mejor referencia automática disponible. Esto solo cambia la valuación: no toca compras ni ventas.
+                        La prioridad automática es precio manual de esta sucursal &rarr; precio de lista activo (regular,
+                        menudeo o mayoreo; venta antes que compra) &rarr; promedio histórico de compra en esta sucursal.
+                        Si dejas un precio vacío o en cero, el sistema vuelve a usar la mejor referencia automática
+                        disponible. Esto solo cambia la valuación: no toca compras ni ventas.
                     </p>
                 </div>
                 <p class="s-card-sub mb-0">
@@ -106,18 +107,21 @@
                                             <label class="s-visually-hidden" for="precio_{{ row.material_id }}">
                                                 Precio de valuación de {{ row.material.nombre }}
                                             </label>
-                                            <input class="form-control text-end" id="precio_{{ row.material_id }}" type="number" step="0.00001" min="0" name="precio_{{ row.material_id }}" value="{{ "{:.5f}".format(row.precio_referencia or 0) if row.precio_referencia is not none else '' }}">
+                                            {# Solo el precio MANUAL se prellena; el automático va como placeholder.
+                                               Prellenar el automático hacía que "Guardar" congelara toda la tabla
+                                               como manual (incluidos los ceros de los materiales sin lista). #}
+                                            <input class="form-control text-end" id="precio_{{ row.material_id }}" type="number" step="0.00001" min="0" name="precio_{{ row.material_id }}" value="{{ "{:.5f}".format(row.precio_guardado.precio_referencia) if row.precio_guardado else '' }}" placeholder="{{ "{:.5f}".format(row.precio_referencia or 0) }}">
                                         {% else %}
                                             <span class="s-money">{{ (row.precio_referencia or 0)|precio }}</span>
                                         {% endif %}
                                     </td>
                                     <td class="text-end">{{ money(row.valor_total) }}</td>
                                     <td>
-                                        {% if row.precio_guardado %}
+                                        {% if row.source_key == 'manual' %}
                                             {{ badge('Manual', 'info') }}
-                                        {% elif row.usa_default %}
-                                            {{ badge('Precio de venta', 'muted') }}
-                                        {% elif row.usa_promedio_compra %}
+                                        {% elif row.source_key == 'sale' %}
+                                            {{ badge('Precio de lista', 'muted') }}
+                                        {% elif row.source_key == 'purchase_avg' %}
                                             {{ badge('Promedio de compra', 'muted') }}
                                         {% else %}
                                             {{ badge('Sin referencia', 'warn') }}

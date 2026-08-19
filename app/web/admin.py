@@ -2874,37 +2874,64 @@ def _inventory_local_date_range_to_utc(
     return start_utc, end_utc
 
 
-def _get_inventory_valuation_default_prices(
+_LISTA_TIPO_CLIENTE_LABEL = {
+    TipoCliente.regular: "regular",
+    TipoCliente.menudeo: "menudeo",
+    TipoCliente.mayorista: "mayoreo",
+}
+
+
+def _get_inventory_valuation_list_prices(
     db: Session,
     material_ids: list[int],
     *,
-    tipo_operacion: TipoOperacion = TipoOperacion.venta,
-    tipo_cliente: TipoCliente = TipoCliente.regular,
-) -> dict[int, Decimal]:
-    """Precio activo (versión vigente) por material para una lista concreta.
+    tipos_cliente: tuple[TipoCliente, ...],
+) -> dict[int, tuple[Decimal, str]]:
+    """Precio activo (versión vigente) por material buscando en las listas en
+    orden de preferencia: para cada tipo de cliente, VENTA primero y COMPRA
+    después. Devuelve {material_id: (precio, "venta · menudeo")}.
 
-    Los precios son versionados y append-only: "vigente" es la versión activa
-    al momento del cálculo. La foto de capital congela el resultado, así que
-    fotos de días distintos siguen siendo comparables aunque la lista cambie.
+    Se busca también en las listas de compra porque en la operación real las
+    listas que existen son de compra (menudeo/mayoreo): buscar solo venta
+    dejaba a la valuación sin referencia y todo en cero.
     """
     if not material_ids:
         return {}
-    precios = (
-        db.query(TablaPrecio)
-        .filter(
-            TablaPrecio.material_id.in_(material_ids),
-            TablaPrecio.tipo_operacion == tipo_operacion,
-            TablaPrecio.tipo_cliente == tipo_cliente,
-            TablaPrecio.activo.is_(True),
-        )
-        .order_by(TablaPrecio.material_id.asc(), TablaPrecio.version.desc())
-        .all()
-    )
-    result: dict[int, Decimal] = {}
-    for precio in precios:
-        if precio.material_id not in result:
-            result[precio.material_id] = Decimal(str(precio.precio_por_unidad or 0))
+    result: dict[int, tuple[Decimal, str]] = {}
+    for tipo_cliente in tipos_cliente:
+        for tipo_operacion in (TipoOperacion.venta, TipoOperacion.compra):
+            faltantes = [mid for mid in material_ids if mid not in result]
+            if not faltantes:
+                return result
+            precios = (
+                db.query(TablaPrecio)
+                .filter(
+                    TablaPrecio.material_id.in_(faltantes),
+                    TablaPrecio.tipo_operacion == tipo_operacion,
+                    TablaPrecio.tipo_cliente == tipo_cliente,
+                    TablaPrecio.activo.is_(True),
+                )
+                .order_by(TablaPrecio.material_id.asc(), TablaPrecio.version.desc())
+                .all()
+            )
+            etiqueta = f"{tipo_operacion.value} · {_LISTA_TIPO_CLIENTE_LABEL[tipo_cliente]}"
+            for precio in precios:
+                if precio.material_id not in result:
+                    result[precio.material_id] = (Decimal(str(precio.precio_por_unidad or 0)), etiqueta)
     return result
+
+
+def _get_inventory_valuation_default_prices(
+    db: Session,
+    material_ids: list[int],
+) -> dict[int, tuple[Decimal, str]]:
+    """Respaldo automático de la valuación: la lista regular, si no la de
+    menudeo, si no la de mayoreo (venta antes que compra en cada una)."""
+    return _get_inventory_valuation_list_prices(
+        db,
+        material_ids,
+        tipos_cliente=(TipoCliente.regular, TipoCliente.menudeo, TipoCliente.mayorista),
+    )
 
 
 def _get_inventory_valuation_average_purchase_prices(
@@ -3014,14 +3041,11 @@ def _build_inventario_valor_rows(
         .all()
     }
     default_price_map = _get_inventory_valuation_default_prices(db, material_ids)
-    lista_price_map: dict[int, Decimal] = {}
+    lista_price_map: dict[int, tuple[Decimal, str]] = {}
     lista_tipo_cliente = _INVENTORY_VALUATION_LISTA_MODES.get(valuation_mode)
     if lista_tipo_cliente is not None:
-        lista_price_map = _get_inventory_valuation_default_prices(
-            db,
-            material_ids,
-            tipo_operacion=TipoOperacion.venta,
-            tipo_cliente=lista_tipo_cliente,
+        lista_price_map = _get_inventory_valuation_list_prices(
+            db, material_ids, tipos_cliente=(lista_tipo_cliente,)
         )
     average_purchase_map = _get_inventory_valuation_average_purchase_prices(
         db,
@@ -3040,14 +3064,19 @@ def _build_inventario_valor_rows(
         inventario = inventario_map.get(material.id)
         stock = Decimal(str(inventario.stock_actual if inventario else 0))
         valuation = valuation_map.get(material.id)
+        # Un precio manual en cero no es una decisión: es el residuo de guardar la
+        # tabla con el automático prellenado (que era 0 cuando la lista no
+        # existía). Se trata como "sin precio manual" y cae a la lista.
+        if valuation is not None and Decimal(str(valuation.precio_referencia or 0)) <= Decimal("0"):
+            valuation = None
         source_key = "none"
-        source_help = "Sin precio manual, sin precio de venta activo y sin historial suficiente de compra en la sucursal."
+        source_help = "Sin precio manual, sin precio de lista activo y sin historial suficiente de compra en la sucursal."
         precio_referencia = Decimal("0")
         if valuation_mode in _INVENTORY_VALUATION_LISTA_MODES:
             if material.id in lista_price_map:
                 source_key = "sale"
-                source_help = "Modo lista activo: se usa el precio vigente de la lista de venta elegida."
-                precio_referencia = lista_price_map.get(material.id, Decimal("0"))
+                precio_referencia, lista_usada = lista_price_map[material.id]
+                source_help = f"Modo lista activo: precio vigente de la lista {lista_usada}."
                 automatic_count += 1
             elif valuation is not None:
                 source_key = "manual"
@@ -3072,8 +3101,8 @@ def _build_inventario_valor_rows(
                 manual_count += 1
             elif material.id in default_price_map:
                 source_key = "sale"
-                source_help = "No hay promedio historico ni precio manual; se usa el precio de venta regular activo."
-                precio_referencia = default_price_map.get(material.id, Decimal("0"))
+                precio_referencia, lista_usada = default_price_map[material.id]
+                source_help = f"No hay promedio historico ni precio manual; se usa el precio de lista {lista_usada}."
                 automatic_count += 1
         else:
             if valuation is not None:
@@ -3083,12 +3112,12 @@ def _build_inventario_valor_rows(
                 manual_count += 1
             elif material.id in default_price_map:
                 source_key = "sale"
-                source_help = "No hay precio manual; se usa el precio de venta regular activo."
-                precio_referencia = default_price_map.get(material.id, Decimal("0"))
+                precio_referencia, lista_usada = default_price_map[material.id]
+                source_help = f"No hay precio manual; se usa el precio de lista {lista_usada}."
                 automatic_count += 1
             elif material.id in average_purchase_map:
                 source_key = "purchase_avg"
-                source_help = "No hay precio manual ni precio de venta activo; se usa el promedio historico de compra."
+                source_help = "No hay precio manual ni precio de lista activo; se usa el promedio historico de compra."
                 precio_referencia = average_purchase_map.get(material.id, Decimal("0"))
                 automatic_count += 1
         valor_total = stock * precio_referencia
@@ -14074,6 +14103,13 @@ async def inventario_valor_post(
                 url=f"/web/admin/inventario/valor?sucursal_id={sucursal_id}&error=El%20precio%20no%20puede%20ser%20negativo",
                 status_code=303,
             )
+        # Cero equivale a vacío: quitar el manual y volver a la referencia
+        # automática. Guardar 0 como manual dejaba materiales valuados en $0
+        # aunque tuvieran precio de lista.
+        if precio == Decimal("0"):
+            if existing:
+                db.delete(existing)
+            continue
         if existing:
             existing.precio_referencia = precio
             existing.usuario_id = current_user.get("id")
