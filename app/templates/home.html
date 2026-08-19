@@ -192,9 +192,9 @@
                         {{ icon('chevron-down', 's-collapse__chevron me-2') }}
                     </button>
                     {% if sucursales_activas and sucursales_activas|length > 1 %}
-                        <form method="get" action="/web" class="d-flex align-items-center gap-2 mb-0">
+                        <form method="get" action="/web" class="d-flex align-items-center gap-2 mb-0 flex-shrink-0">
                             <label class="s-visually-hidden" for="actividad-sucursal">Sucursal de la actividad</label>
-                            <select class="form-select form-select-sm" id="actividad-sucursal"
+                            <select class="form-select form-select-sm w-auto" id="actividad-sucursal"
                                     name="actividad_sucursal" onchange="this.form.submit()">
                                 <option value="">Todas las sucursales</option>
                                 {% for s in sucursales_activas %}
@@ -204,7 +204,7 @@
                         </form>
                     {% endif %}
                     <a href="/web/admin/notas{% if actividad_sucursal_id %}?sucursal_id={{ actividad_sucursal_id }}{% endif %}"
-                       class="btn btn-outline-secondary btn-sm">Ver todas</a>
+                       class="btn btn-outline-secondary btn-sm flex-shrink-0">Ver todas</a>
                 </div>
                 <div id="actividadRecienteBody" class="collapse show s-collapse__body">
                 {% if resumen.actividad %}

@@ -1978,7 +1978,10 @@ table.table-hover > tbody > tr:hover > * { background-color: var(--s-p50) !impor
     background-color: var(--s-surface);
     border: 1px solid var(--s-n300);
     border-radius: var(--s-r-sm);
-    padding: 0 0.625rem;
+    /* La derecha conserva el hueco de la flecha (Bootstrap la pinta como
+       fondo a 0.75rem del borde): con padding simétrico el texto de la
+       opción corría debajo del chevron ("Todas las sucursal·s", "Menude·o"). */
+    padding: 0 2.25rem 0 0.625rem;
     height: var(--s-control-h);
     min-height: var(--s-control-h);
     box-shadow: none;
@@ -2031,6 +2034,7 @@ table.table-hover > tbody > tr:hover > * { background-color: var(--s-p50) !impor
     min-height: var(--s-control-h-sm);
     padding: 0 0.5rem;
 }
+.form-select-sm { padding-right: 2rem; }
 
 .form-text {
     font-size: var(--s-fs-xs);
@@ -3104,8 +3108,13 @@ button.s-method-pill:hover { filter: brightness(0.97); }
 /* Cuando el disparador comparte renglon flex con otros controles (home:
    "Actividad reciente" + selector de sucursal + "Ver todas"), el width: 100%
    expulsaba a los hermanos a una segunda linea encimada bajo el subtitulo.
-   Con s-grow el boton absorbe solo el espacio sobrante. */
-.s-collapse__trigger.s-grow { width: auto; }
+   Con s-grow el boton absorbe el espacio SOBRANTE: con base auto reclamaba el
+   ancho de su subtitulo (877 px) y aplastaba al select por debajo de su
+   propio texto; con base 0 en telefono "cabia" todo en un renglon y el
+   titulo se quedaba con 26 px. Base de 16rem: en telefono los controles
+   bajan a la segunda linea y el titulo ocupa la primera; en escritorio
+   crece hasta llenar. */
+.s-collapse__trigger.s-grow { width: auto; flex: 1 1 16rem; min-width: 0; }
 .s-collapse__body { padding: var(--s-4) 0 var(--s-2); }
 
 .s-collapse__chevron {
@@ -3507,8 +3516,8 @@ button.s-method-pill:hover { filter: brightness(0.97); }
     }
     textarea.form-control,
     textarea.form-control-sm { height: auto; }
-    .form-control-sm,
-    .form-select-sm { padding-inline: 0.625rem; }
+    .form-control-sm { padding-inline: 0.625rem; }
+    .form-select-sm { padding-left: 0.625rem; }
 
     /* Todo botón del contenido es un objetivo táctil: 44px el estándar y
        40px la talla chica (píldoras del índice de secciones, acciones de
