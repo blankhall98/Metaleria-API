@@ -11095,11 +11095,16 @@ def _render_nota_detail(
         "form_ajuste_saldo_comentario": None,
         "form_inventario_sucursal_id": inventario_sucursal_id or nota.sucursal_id,
         "form_comisionario_id": None,
-        "form_comision_monto": None,
+        "form_comision_marcados": set(),
+        "form_comision_precio_map": {},
     }
     # Fase 2: comisión opcional al aprobar + vínculo con la comisión generada.
-    comisionarios_para_comision = _get_accessible_comisionarios(
-        db, current_user, activos_solamente=True
+    # Un mismo nombre puede existir en dos sucursales (la clienta tiene a
+    # "NENA COMISIONES" en la 01 y en la 02): el desplegable muestra la
+    # sucursal y ordena primero los de la sucursal de la nota.
+    comisionarios_para_comision = sorted(
+        _get_accessible_comisionarios(db, current_user, activos_solamente=True),
+        key=lambda c: (0 if c.sucursal_id == nota.sucursal_id else 1, c.nombre_completo or ""),
     )
     comision_vinculada = (
         db.query(ComisionarioNota).filter(ComisionarioNota.nota_id == nota.id).first()
@@ -11879,7 +11884,17 @@ async def notas_aprobar(
     iva_incluido = form.get("iva_incluido") is not None
     iva_porcentaje_raw = (form.get("iva_porcentaje") or "").strip()
     comisionario_raw = (form.get("comisionario_id") or "").strip()
-    comision_monto_raw = (form.get("comision_monto") or "").strip()
+    # Fase 2: comisión opcional al aprobar, POR MATERIAL. Cada material de la
+    # nota trae un checkbox comision_material_{nm.id} y un precio por kg
+    # comision_precio_{nm.id}; solo los marcados llevan comisión.
+    comision_precio_raw: dict[int, str] = {}
+    comision_marcados: set[int] = set()
+    for nm in nota.materiales:
+        if form.get(f"comision_material_{nm.id}") is not None:
+            comision_marcados.add(nm.id)
+        raw = (form.get(f"comision_precio_{nm.id}") or "").strip()
+        if raw:
+            comision_precio_raw[nm.id] = raw
     form_state = {
         "form_metodo": metodo_pago,
         "form_numero_cheque": numero_cheque,
@@ -11893,13 +11908,12 @@ async def notas_aprobar(
         "form_iva_incluido": iva_incluido,
         "form_iva_porcentaje": iva_porcentaje_raw,
         "form_comisionario_id": comisionario_raw,
-        "form_comision_monto": comision_monto_raw,
+        "form_comision_marcados": comision_marcados,
+        "form_comision_precio_map": comision_precio_raw,
     }
 
-    # Fase 2: comisión opcional al aprobar. El monto es libre ("es variable"),
-    # pero si se elige comisionista el monto es obligatorio y viceversa.
     comisionario_id: int | None = None
-    comision_monto: Decimal | None = None
+    comision_precios: dict[int, Decimal] | None = None
     if comisionario_raw:
         try:
             comisionario_id = int(comisionario_raw)
@@ -11919,22 +11933,32 @@ async def notas_aprobar(
                 request, db, current_user, nota,
                 error="No tienes acceso a la sucursal de ese comisionista.", form_state=form_state,
             )
-        try:
-            comision_monto = Decimal(comision_monto_raw)
-        except (InvalidOperation, ValueError):
-            comision_monto = None
-        # Decimal acepta "NaN"/"Infinity": no son montos.
-        if comision_monto is None or not comision_monto.is_finite():
+        if not comision_marcados:
             return _render_nota_detail(
                 request, db, current_user, nota,
-                error="Captura el monto de la comisión.", form_state=form_state,
+                error="Marca al menos un material para la comisión.", form_state=form_state,
             )
-        if comision_monto <= Decimal("0"):
-            return _render_nota_detail(
-                request, db, current_user, nota,
-                error="El monto de la comisión debe ser mayor a 0.", form_state=form_state,
+        comision_precios = {}
+        materiales_por_id = {nm.id: nm for nm in nota.materiales}
+        for nm_id in sorted(comision_marcados):
+            nombre = (
+                materiales_por_id[nm_id].material.nombre
+                if materiales_por_id[nm_id].material
+                else f"material #{materiales_por_id[nm_id].material_id}"
             )
-    elif comision_monto_raw:
+            try:
+                precio = Decimal(comision_precio_raw.get(nm_id, ""))
+            except (InvalidOperation, ValueError):
+                precio = None
+            # Decimal acepta "NaN"/"Infinity": no son precios.
+            if precio is None or not precio.is_finite() or precio <= Decimal("0"):
+                return _render_nota_detail(
+                    request, db, current_user, nota,
+                    error=f"Captura el precio por kg de la comisión de {nombre}.",
+                    form_state=form_state,
+                )
+            comision_precios[nm_id] = precio
+    elif comision_marcados or comision_precio_raw:
         return _render_nota_detail(
             request, db, current_user, nota,
             error="Elige al comisionista para generar la comisión.", form_state=form_state,
@@ -12191,7 +12215,7 @@ async def notas_aprobar(
             inventario_sucursal_id=inventario_sucursal_id,
             caja_sucursal_id=caja_sucursal_id,
             comisionario_id=comisionario_id,
-            comision_monto=comision_monto,
+            comision_precios=comision_precios,
         )
     except ValueError as e:
         # approve_note muta la sesión antes de poder fallar (estado, folio,

@@ -1929,14 +1929,14 @@ def approve_note(
     inventario_sucursal_id: int | None = None,
     caja_sucursal_id: int | None = None,
     comisionario_id: int | None = None,
-    comision_monto: Decimal | None = None,
+    comision_precios: dict[int, Decimal] | None = None,
 ) -> Nota:
     """
     Aprueba una nota aplicando precios, recalculando totales y registrando inventario/contable.
 
-    comisionario_id + comision_monto (fase 2): genera la nota de comisión en la
-    misma transacción de la aprobación — o se aprueba la nota con su comisión,
-    o no pasa nada.
+    comisionario_id + comision_precios {nota_material.id: precio_por_kg}
+    (fase 2): genera la nota de comisión en la misma transacción de la
+    aprobación — o se aprueba la nota con su comisión, o no pasa nada.
     """
     if nota.estado not in (NotaEstado.en_revision, NotaEstado.borrador):
         raise ValueError("Solo se puede aprobar desde borrador o en revisión.")
@@ -2054,7 +2054,7 @@ def approve_note(
             db,
             nota=nota,
             comisionario_id=comisionario_id,
-            monto=comision_monto,
+            precios_por_material=comision_precios or {},
             admin_id=admin_id,
             commit=False,
         )

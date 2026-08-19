@@ -170,15 +170,17 @@ def create_comision_for_nota(
     *,
     nota,
     comisionario_id: int,
-    monto: Decimal,
+    precios_por_material: dict[int, Decimal],
     admin_id: int | None,
     commit: bool = False,
 ) -> ComisionarioNota:
     """Genera la nota de comisión de una nota de pesaje al aprobarla (fase 2).
 
-    El monto es libre ("es variable", dijo la clienta) y se prorratea entre los
-    materiales de la nota por kg; el último renglón absorbe los centavos del
-    redondeo para que la suma de subtotales sea EXACTAMENTE el monto capturado.
+    precios_por_material: {nota_material.id: precio_por_kg}. Solo los materiales
+    elegidos llevan comisión, cada uno con su precio por kilo libre — el mismo
+    lenguaje de la captura manual (kg neto × precio/kg = subtotal). Los kilos
+    son los kg_neto de la nota (lo que se le paga al socio), leídos DESPUÉS de
+    que approve_note aplicó precios y overrides.
     Pensada para llamarse con commit=False dentro de la transacción de
     approve_note: o se aprueba la nota con su comisión, o no pasa nada.
     """
@@ -187,9 +189,8 @@ def create_comision_for_nota(
         raise ValueError("Comisionista no encontrado.")
     if not comisionario.activo:
         raise ValueError("El comisionista está inactivo.")
-    monto_val = _safe_decimal(monto)
-    if monto_val <= Decimal("0"):
-        raise ValueError("El monto de la comisión debe ser mayor a 0.")
+    if not precios_por_material:
+        raise ValueError("Elige al menos un material para la comisión.")
 
     existente = (
         db.query(ComisionarioNota).filter(ComisionarioNota.nota_id == nota.id).first()
@@ -197,13 +198,7 @@ def create_comision_for_nota(
     if existente is not None:
         raise ValueError("Esta nota ya tiene una comisión generada.")
 
-    lineas = [
-        nm for nm in nota.materiales if _safe_decimal(nm.kg_neto) > Decimal("0")
-    ]
-    total_kg = sum((_safe_decimal(nm.kg_neto) for nm in lineas), Decimal("0"))
-    if total_kg <= Decimal("0"):
-        raise ValueError("La nota no tiene kilos para prorratear la comisión.")
-
+    materiales_por_id = {nm.id: nm for nm in nota.materiales}
     comision = ComisionarioNota(
         comisionario_id=comisionario.id,
         # La comisión vive en la sucursal del comisionista (misma regla que la
@@ -214,26 +209,36 @@ def create_comision_for_nota(
         estado=ComisionarioNotaEstado.aprobada,
         comentarios_admin=f"Comisión de la nota #{nota.id}",
     )
-    precio_por_kg = (monto_val / total_kg).quantize(Decimal("0.00001"))
-    acumulado = Decimal("0")
-    for idx, nm in enumerate(lineas):
+    total_kg = Decimal("0")
+    total_monto = Decimal("0")
+    for nm_id, precio_raw in precios_por_material.items():
+        nm = materiales_por_id.get(nm_id)
+        if nm is None:
+            raise ValueError("Uno de los materiales elegidos no pertenece a la nota.")
         kg = _safe_decimal(nm.kg_neto)
-        if idx == len(lineas) - 1:
-            subtotal = monto_val - acumulado
-        else:
-            subtotal = (kg * precio_por_kg).quantize(Decimal("0.01"))
-        acumulado += subtotal
+        if kg <= Decimal("0"):
+            nombre = nm.material.nombre if nm.material else f"material #{nm.material_id}"
+            raise ValueError(f"{nombre} no tiene kilos netos para calcular comisión.")
+        precio = _safe_decimal(precio_raw)
+        if precio <= Decimal("0"):
+            nombre = nm.material.nombre if nm.material else f"material #{nm.material_id}"
+            raise ValueError(f"Captura el precio por kg de la comisión de {nombre}.")
+        subtotal = (kg * precio).quantize(Decimal("0.01"))
+        total_kg += kg
+        total_monto += subtotal
         comision.materiales.append(
             ComisionarioNotaMaterial(
                 material_id=nm.material_id,
                 kg_neto=kg,
-                precio_por_kg=precio_por_kg,
+                precio_por_kg=precio,
                 subtotal=subtotal,
             )
         )
+    if total_monto <= Decimal("0"):
+        raise ValueError("La comisión debe ser mayor a 0.")
 
     comision.total_kg = total_kg
-    comision.total_monto = monto_val
+    comision.total_monto = total_monto
     comision.monto_pagado = Decimal("0")
     db.add(comision)
     if commit:

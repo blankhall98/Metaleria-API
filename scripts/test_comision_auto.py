@@ -112,40 +112,74 @@ def nota_en_revision(db, *, suc, admin, prov, materiales):
 
 
 def test_aprobar_con_comision():
-    print("C1 · aprobar la nota genera su comisión en la misma transacción")
+    print("C1 · aprobar la nota genera su comisión (por material) en la misma transacción")
     db = fresh_session()
     suc, admin, prov, cobre, bronce, com = seed_base(db)
-    # 3 kilos raros a propósito: el monto 1000 no divide parejo entre 7.77 kg
     n = nota_en_revision(db, suc=suc, admin=admin, prov=prov,
                          materiales=[(cobre, "5.550"), (bronce, "2.220")])
+    nm_cobre = next(m for m in n.materiales if m.material_id == cobre.id)
+    nm_bronce = next(m for m in n.materiales if m.material_id == bronce.id)
+    # El caso de la clienta: comisión SOLO en algunos materiales, cada uno con
+    # su precio por kg libre. Aquí solo el cobre, a 1.50/kg.
     note_service.approve_note(
         db, n, admin_id=admin.id,
-        comisionario_id=com.id, comision_monto=Decimal("1000.00"),
+        comisionario_id=com.id, comision_precios={nm_cobre.id: Decimal("1.50")},
     )
     check("la nota queda aprobada", n.estado == NotaEstado.aprobada)
     comision = db.query(ComisionarioNota).filter(ComisionarioNota.nota_id == n.id).one()
     check("la comisión nace aprobada", comision.estado == ComisionarioNotaEstado.aprobada)
     check("vinculada al comisionista", comision.comisionario_id == com.id)
     check("vive en la sucursal del comisionista", comision.sucursal_id == com.sucursal_id)
-    check("el total es EXACTAMENTE el monto capturado",
-          Decimal(str(comision.total_monto)) == Decimal("1000.00"),
+    check("solo el material marcado lleva comisión",
+          len(comision.materiales) == 1 and comision.materiales[0].material_id == cobre.id)
+    # 5.550 × 1.50 = 8.325 → 8.32: mismo redondeo (quantize a par) que la
+    # captura manual, para que la nota automática y la manual den lo mismo.
+    check("kg neto × precio/kg = subtotal (5.550 × 1.50 = 8.32)",
+          Decimal(str(comision.materiales[0].subtotal)) == Decimal("8.32"),
+          f"subtotal={comision.materiales[0].subtotal}")
+    check("el total es la suma de subtotales",
+          Decimal(str(comision.total_monto)) == Decimal("8.32"),
           f"total={comision.total_monto}")
-    suma = sum(Decimal(str(m.subtotal)) for m in comision.materiales)
-    check("los subtotales suman el monto (el último absorbe el redondeo)",
-          suma == Decimal("1000.00"), f"suma={suma}")
-    check("los kg espejean la nota",
-          Decimal(str(comision.total_kg)) == Decimal("7.770"),
+    check("los kg son solo los del material marcado",
+          Decimal(str(comision.total_kg)) == Decimal("5.550"),
           f"kg={comision.total_kg}")
 
     # Doble generación imposible: la nota ya está aprobada
     try:
         comision_service.create_comision_for_nota(
-            db, nota=n, comisionario_id=com.id, monto=Decimal("50"),
+            db, nota=n, comisionario_id=com.id,
+            precios_por_material={nm_bronce.id: Decimal("1")},
             admin_id=admin.id, commit=True,
         )
         check("segunda comisión para la misma nota rechazada", False)
     except ValueError:
         check("segunda comisión para la misma nota rechazada", True)
+
+
+def test_dos_materiales_precios_distintos():
+    print("C1b · dos materiales con precio por kg distinto")
+    db = fresh_session()
+    suc, admin, prov, cobre, bronce, com = seed_base(db)
+    n = nota_en_revision(db, suc=suc, admin=admin, prov=prov,
+                         materiales=[(cobre, "100"), (bronce, "40")])
+    precios = {m.id: (Decimal("0.50") if m.material_id == cobre.id else Decimal("2")) for m in n.materiales}
+    note_service.approve_note(db, n, admin_id=admin.id, comisionario_id=com.id, comision_precios=precios)
+    comision = db.query(ComisionarioNota).filter(ComisionarioNota.nota_id == n.id).one()
+    check("dos líneas", len(comision.materiales) == 2)
+    check("total 100×0.50 + 40×2 = 130.00",
+          Decimal(str(comision.total_monto)) == Decimal("130.00"), f"total={comision.total_monto}")
+    check("kg 140", Decimal(str(comision.total_kg)) == Decimal("140.000"))
+    # precio 0 en un material marcado se rechaza (aprobación completa abortada)
+    n2 = nota_en_revision(db, suc=suc, admin=admin, prov=prov, materiales=[(cobre, "10")])
+    try:
+        note_service.approve_note(db, n2, admin_id=admin.id, comisionario_id=com.id,
+                                  comision_precios={n2.materiales[0].id: Decimal("0")})
+        check("precio 0 rechazado", False)
+    except ValueError:
+        check("precio 0 rechazado", True)
+    db.rollback()
+    db.refresh(n2)
+    check("la nota sin comisión válida NO se aprobó", n2.estado == NotaEstado.en_revision)
 
 
 def test_aprobar_sin_comision():
@@ -169,7 +203,7 @@ def test_comisionista_invalido_aborta_la_aprobacion():
     try:
         note_service.approve_note(
             db, n, admin_id=admin.id,
-            comisionario_id=com.id, comision_monto=Decimal("100"),
+            comisionario_id=com.id, comision_precios={n.materiales[0].id: Decimal("10")},
         )
         check("aprobación con comisionista inactivo rechazada", False)
     except ValueError:
@@ -189,7 +223,7 @@ def test_cancelar_nota_cancela_comision_sin_pagos():
     n = nota_en_revision(db, suc=suc, admin=admin, prov=prov, materiales=[(cobre, "10")])
     note_service.approve_note(
         db, n, admin_id=admin.id,
-        comisionario_id=com.id, comision_monto=Decimal("200"),
+        comisionario_id=com.id, comision_precios={n.materiales[0].id: Decimal("20")},
     )
     note_service.cancel_approved_note(db, n, admin_id=admin.id)
     check("la nota queda cancelada", n.estado == NotaEstado.cancelada)
@@ -216,7 +250,7 @@ def test_cancelar_nota_con_comision_pagada_se_bloquea():
     n = nota_en_revision(db, suc=suc, admin=admin, prov=prov, materiales=[(cobre, "10")])
     note_service.approve_note(
         db, n, admin_id=admin.id,
-        comisionario_id=com.id, comision_monto=Decimal("300"),
+        comisionario_id=com.id, comision_precios={n.materiales[0].id: Decimal("30")},
     )
     comision = db.query(ComisionarioNota).filter(ComisionarioNota.nota_id == n.id).one()
     comision_service.add_comisionario_pago(
@@ -268,6 +302,7 @@ def test_camino_manual_intacto():
 
 if __name__ == "__main__":
     test_aprobar_con_comision()
+    test_dos_materiales_precios_distintos()
     test_aprobar_sin_comision()
     test_comisionista_invalido_aborta_la_aprobacion()
     test_cancelar_nota_cancela_comision_sin_pagos()

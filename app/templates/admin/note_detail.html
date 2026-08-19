@@ -739,24 +739,60 @@
                                     </div>
                                 </div>
                                 {% if comisionarios_para_comision %}
-                                    {# Fase 2: la comisión se puede generar aquí mismo, en la
-                                       transacción de la aprobación. Opcional; el monto es libre. #}
-                                    <div class="col-md-6 col-12">
+                                    {# Fase 2: la comisión se genera aquí mismo, en la transacción de
+                                       la aprobación. Opcional. Se marca qué materiales llevan comisión
+                                       y el precio por kg de cada uno — el mismo lenguaje de la captura
+                                       manual (kg neto × precio/kg = subtotal). #}
+                                    <div class="col-12">
                                         <label class="form-label" for="f_comisionario_id">Comisionista (opcional)</label>
                                         {% set comisionario_val = form_comisionario_id if form_comisionario_id is not none else '' %}
                                         <select class="form-select" name="comisionario_id" id="f_comisionario_id">
                                             <option value="" {% if not comisionario_val %}selected{% endif %}>Sin comisión</option>
                                             {% for c in comisionarios_para_comision %}
-                                                <option value="{{ c.id }}" {% if comisionario_val|string == c.id|string %}selected{% endif %}>{{ c.nombre_completo }}</option>
+                                                <option value="{{ c.id }}" {% if comisionario_val|string == c.id|string %}selected{% endif %}>{{ c.nombre_completo }}{% if c.sucursal %} · {{ c.sucursal.nombre }}{% endif %}</option>
                                             {% endfor %}
                                         </select>
                                         <div class="form-text text-muted">Genera su nota de comisión al aprobar; también puedes crearla a mano después.</div>
                                     </div>
-                                    <div class="col-md-6 col-12">
-                                        <label class="form-label" for="f_comision_monto">Monto de la comisión</label>
-                                        {% set comision_monto_val = form_comision_monto if form_comision_monto is not none else '' %}
-                                        <input class="form-control" type="number" step="0.01" min="0" name="comision_monto" value="{{ comision_monto_val }}" placeholder="0.00" id="f_comision_monto">
-                                        <div class="form-text text-muted">Obligatorio si eliges comisionista; el monto es libre.</div>
+                                    <div class="col-12" id="comisionMateriales" {% if not comisionario_val %}hidden{% endif %}>
+                                        <div class="s-section-label mb-2">Materiales con comisión</div>
+                                        <div class="table-responsive">
+                                            <table class="table table-sm align-middle mb-1" data-table-mode="table">
+                                                <thead>
+                                                <tr>
+                                                    <th><span class="s-visually-hidden">Lleva comisión</span></th>
+                                                    <th>Material</th>
+                                                    <th class="text-end">Kg neto</th>
+                                                    <th class="text-end">Precio por kg</th>
+                                                    <th class="text-end">Subtotal</th>
+                                                </tr>
+                                                </thead>
+                                                <tbody>
+                                                {% for nm in nota.materiales | sort(attribute='display_order') %}
+                                                    {% set marcado = form_comision_marcados and nm.id in form_comision_marcados %}
+                                                    {% set precio_val = form_comision_precio_map.get(nm.id, '') if form_comision_precio_map else '' %}
+                                                    <tr class="comision-row" data-kg="{{ '%.3f'|format(nm.kg_neto or 0) }}">
+                                                        <td>
+                                                            <input class="form-check-input comision-check" type="checkbox" name="comision_material_{{ nm.id }}" value="1" id="comision_material_{{ nm.id }}" {% if marcado %}checked{% endif %} aria-label="Comisión para {{ nm.material.nombre if nm.material else ('material #' ~ nm.material_id) }}">
+                                                        </td>
+                                                        <td><label class="mb-0" for="comision_material_{{ nm.id }}">{{ nm.material.nombre if nm.material else ('material #' ~ nm.material_id) }}</label></td>
+                                                        <td class="text-end">{{ "{:,.3f}".format(nm.kg_neto or 0) }}</td>
+                                                        <td class="text-end">
+                                                            <input class="form-control form-control-sm text-end comision-precio" type="number" step="0.00001" min="0" name="comision_precio_{{ nm.id }}" value="{{ precio_val }}" placeholder="0.00000" {% if not marcado %}disabled{% endif %} aria-label="Precio por kg de comisión de {{ nm.material.nombre if nm.material else ('material #' ~ nm.material_id) }}">
+                                                        </td>
+                                                        <td class="text-end comision-subtotal">$0.00</td>
+                                                    </tr>
+                                                {% endfor %}
+                                                </tbody>
+                                                <tfoot>
+                                                <tr>
+                                                    <th colspan="4" class="text-end">Total comisión</th>
+                                                    <th class="text-end" id="comisionTotal">$0.00</th>
+                                                </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+                                        <div class="form-text text-muted">Marca los materiales que llevan comisión y captura el precio por kg de cada uno; el precio es libre. Los kilos son los netos de la nota.</div>
                                     </div>
                                 {% endif %}
                                 <div class="col-12">
@@ -2333,6 +2369,39 @@
         if (refMetodoSelect) {
             refMetodoSelect.addEventListener('change', toggleRefNumeroCheque);
             toggleRefNumeroCheque();
+        }
+
+        // Comisión al aprobar (fase 2): la tabla de materiales aparece al elegir
+        // comisionista; el precio por kg se habilita al marcar el material y el
+        // subtotal (kg neto × precio) y el total se recalculan en vivo.
+        const comisionSelect = document.getElementById('f_comisionario_id');
+        const comisionBox = document.getElementById('comisionMateriales');
+        const comisionTotalEl = document.getElementById('comisionTotal');
+        const fmtMoney = (n) => '$' + n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        function recalcComision() {
+            if (!comisionBox) return;
+            let total = 0;
+            comisionBox.querySelectorAll('.comision-row').forEach((row) => {
+                const check = row.querySelector('.comision-check');
+                const precio = row.querySelector('.comision-precio');
+                const sub = row.querySelector('.comision-subtotal');
+                const kg = parseFloat(row.dataset.kg || '0') || 0;
+                precio.disabled = !check.checked;
+                const p = check.checked ? (parseFloat(precio.value) || 0) : 0;
+                const s = Math.round(kg * p * 100) / 100;
+                sub.textContent = fmtMoney(s);
+                total += s;
+            });
+            if (comisionTotalEl) comisionTotalEl.textContent = fmtMoney(total);
+        }
+        if (comisionSelect && comisionBox) {
+            comisionSelect.addEventListener('change', () => {
+                comisionBox.hidden = !comisionSelect.value;
+                recalcComision();
+            });
+            comisionBox.addEventListener('change', recalcComision);
+            comisionBox.addEventListener('input', recalcComision);
+            recalcComision();
         }
     </script>
 </div>
