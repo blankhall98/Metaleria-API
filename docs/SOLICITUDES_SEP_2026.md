@@ -4,9 +4,10 @@
 dos capturas de apoyo: el estado de cuenta en pantalla del proveedor BRAVO y la
 hoja de Excel con la que ella concilia ese mismo proveedor.
 
-> **Estado 2026-09-04:** assessment aprobado por el usuario; en implementación
-> en el orden 1 → 2 → 3, un commit por punto, despliegue a Heroku + GitHub al
-> cerrar cada uno. Tablero al final del documento.
+> **Estado 2026-09-04:** los tres puntos implementados y en producción el mismo
+> día (commits `fd1d3c0`, `5f4e727`, `1498651`), un commit por punto, cada uno
+> desplegado a Heroku y empujado a GitHub. Pendiente: aceptación de la clienta
+> desde su teléfono. Tablero al final del documento.
 
 ## Lo que pide, en sus palabras
 
@@ -141,6 +142,6 @@ captura ($3,101,903.00) y del proveedor 74 en producción deben ser idénticos.
 
 | Punto | Estado | Commit | Notas |
 |---|---|---|---|
-| 1. Kilos por material en el expediente | **Hecho** 2026-09-04 | ver bitácora | Servicio `kilos_material_service.kg_por_material` + 10 pruebas; tarjeta con filtro propio; hoja `KilosPorMaterial` en el Excel; `check_ui` record 6/6 sin incumplimientos |
-| 2. Reporte ranking por material | **Hecho** 2026-09-04 | ver bitácora | Ruta `/web/admin/reporte-materiales` + plantilla + Excel; menú lateral, mosaico del home y `check_ui` (4/4 vistas sin incumplimientos) |
-| 3. Desglose en el estado de cuenta | **Hecho** 2026-09-04 | ver bitácora | `lineas_por_nota` (3 pruebas, incl. renglón de IVA) en los dos constructores del ledger; pantalla y Excel con 13 columnas; PDF con línea compacta por nota; verificado en local: subtotales de cada nota suman su cargo y el saldo final no cambió ($9,525.00 del proveedor 1); `check_ui` record 6/6 |
+| 1. Kilos por material en el expediente | **Hecho** 2026-09-04 | `fd1d3c0` | Servicio `kilos_material_service.kg_por_material` + 10 pruebas; tarjeta con filtro propio; hoja `KilosPorMaterial` en el Excel; `check_ui` record 6/6 sin incumplimientos |
+| 2. Reporte ranking por material | **Hecho** 2026-09-04 | `5f4e727` | Ruta `/web/admin/reporte-materiales` + plantilla + Excel; menú lateral, mosaico del home y `check_ui` (4/4 vistas sin incumplimientos) |
+| 3. Desglose en el estado de cuenta | **Hecho** 2026-09-04 | `1498651` | `lineas_por_nota` (3 pruebas, incl. renglón de IVA) en los dos constructores del ledger; pantalla y Excel con 13 columnas; PDF con línea compacta por nota; verificado en local: subtotales de cada nota suman su cargo y el saldo final no cambió ($9,525.00 del proveedor 1); `check_ui` record 6/6 |
