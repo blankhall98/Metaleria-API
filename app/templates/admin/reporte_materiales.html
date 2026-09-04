@@ -5,11 +5,12 @@
 
 {% block content %}
 
-{# Solicitud sep-2026 (punto 2): ranking de proveedores de mayor a menor por
-   kilos comprados de un material en un período. Kilos netos, solo notas
-   aprobadas; los socios internos (traspasos) quedan fuera. #}
-{% call page_header('Kilos por material', eyebrow='Reportes',
-                    sub='Qué proveedores te han vendido más de un material en el período elegido, de mayor a menor.') %}
+{# Solicitud sep-2026 (punto 2): ranking de socios de mayor a menor por kilos
+   de un material en un período. Compras a proveedores por defecto; ventas a
+   clientes con ?operacion=ventas (las ventas directas a un proveedor vinculado
+   se funden en su cliente). Kilos netos, solo notas aprobadas; los socios
+   internos (traspasos) quedan fuera. #}
+{% call page_header('Kilos por material', eyebrow='Reportes', sub=header_sub) %}
     {% if selected_material and rows|length > 0 %}
         <a href="{{ export_url }}" class="btn btn-outline-secondary btn-sm">
             {{ icon('download', 's-icon--sm') }} Exportar Excel
@@ -17,9 +18,22 @@
     {% endif %}
 {% endcall %}
 
+<nav class="s-segmented mb-3" aria-label="Tipo de operación">
+    {% if operacion == 'compras' %}
+        <a href="{{ operacion_links.compras }}" class="s-segmented__item active">Compras a proveedores</a>
+        <a href="{{ operacion_links.ventas }}" class="s-segmented__item">Ventas a clientes</a>
+    {% else %}
+        <a href="{{ operacion_links.compras }}" class="s-segmented__item">Compras a proveedores</a>
+        <a href="{{ operacion_links.ventas }}" class="s-segmented__item active">Ventas a clientes</a>
+    {% endif %}
+</nav>
+
 <details class="s-filters-collapse" open>
     <summary>Filtros</summary>
     <form class="s-filters" method="get" action="/web/admin/reporte-materiales">
+        {% if operacion == 'ventas' %}
+            <input type="hidden" name="operacion" value="ventas">
+        {% endif %}
         <div class="s-filters__field">
             <label class="form-label" for="material_id">Material</label>
             <select class="form-select" id="material_id" name="material_id" required>
@@ -62,17 +76,17 @@
 
 {% if not selected_material %}
     {{ empty('Elige un material',
-             'Selecciona un material y un período para ver qué proveedores te lo han vendido, de mayor a menor en kilos.',
+             'Selecciona un material y un período para ver el ranking de ' ~ partner_plural ~ ' por kilos, de mayor a menor.',
              'scale') }}
 {% elif rows | length == 0 %}
-    {{ empty('Sin compras de ' ~ selected_material.nombre ~ ' en el período',
-             'Amplía el rango de fechas o elige otra sucursal para ver compras de este material.',
+    {{ empty('Sin ' ~ ('ventas' if operacion == 'ventas' else 'compras') ~ ' de ' ~ selected_material.nombre ~ ' en el período',
+             'Amplía el rango de fechas o elige otra sucursal para ver ' ~ ('ventas' if operacion == 'ventas' else 'compras') ~ ' de este material.',
              'scale') }}
 {% else %}
 
     <div class="s-stats">
-        {{ stat('Proveedores', total_proveedores) }}
-        {{ stat('Notas de compra', total_notas) }}
+        {{ stat(partner_plural|capitalize, total_proveedores) }}
+        {{ stat(notas_label, total_notas) }}
         {{ stat('Período', periodo_label) }}
     </div>
 
@@ -80,10 +94,8 @@
         <div class="card-body">
             <div class="s-card-head">
                 <div>
-                    <h2 class="s-card-title">{{ selected_material.nombre }}</h2>
-                    <p class="s-card-sub">
-                        Kilos netos de las notas de compra aprobadas, de mayor a menor por proveedor.
-                    </p>
+                    <h2 class="s-card-title">{{ selected_material.nombre }} · {{ operacion_label }}</h2>
+                    <p class="s-card-sub">{{ card_sub }}</p>
                 </div>
             </div>
             <div class="table-responsive">
@@ -91,7 +103,7 @@
                     <thead>
                         <tr>
                             <th class="text-end">#</th>
-                            <th data-title-col data-mobile-primary>Proveedor</th>
+                            <th data-title-col data-mobile-primary>{{ partner_label }}</th>
                             <th class="text-end" data-mobile-primary>Kilos</th>
                             <th class="text-end">Notas</th>
                             <th class="text-end">Importe</th>
@@ -103,7 +115,7 @@
                             <tr>
                                 <td class="text-end text-muted">{{ loop.index }}</td>
                                 <td>
-                                    <a href="/web/admin/proveedores/{{ row.partner_id }}/record" class="fw-semibold">{{ row.nombre }}</a>
+                                    <a href="/web/admin/{{ 'clientes' if row.partner_type == 'cliente' else 'proveedores' }}/{{ row.partner_id }}/record" class="fw-semibold">{{ row.nombre }}</a>
                                 </td>
                                 <td class="text-end">{{ kg(row.kg) }}</td>
                                 <td class="text-end">{{ row.notas }}</td>
@@ -111,7 +123,7 @@
                                 <td class="text-end">{{ "%.1f"|format(row.pct) }} %</td>
                             </tr>
                         {% else %}
-                            {{ empty_row(6, 'Sin compras de este material en el período.') }}
+                            {{ empty_row(6, 'Sin movimientos de este material en el período.') }}
                         {% endfor %}
                     </tbody>
                     <tfoot class="table-group-divider">

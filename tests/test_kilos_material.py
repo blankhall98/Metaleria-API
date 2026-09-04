@@ -363,3 +363,60 @@ def test_lineas_por_nota_agrega_renglon_de_iva_cuando_la_nota_lo_incluye(db, bas
 
 def test_lineas_por_nota_sin_notas_devuelve_vacio(db, base):
     assert lineas_por_nota(db, []) == {}
+
+
+# ---------- punto 2b: ranking de ventas a clientes ----------
+
+
+def test_ranking_ventas_ordena_clientes_y_marca_el_tipo_de_socio(db, base):
+    ana = Cliente(nombre_completo="ANA", sucursal_id=base["sucursal"].id)
+    beto = Cliente(nombre_completo="BETO", sucursal_id=base["sucursal"].id)
+    db.add_all([ana, beto])
+    db.flush()
+    _nota(db, base, cliente=ana, tipo=TipoOperacion.venta, lineas=[(base["bronce"], "100", "180")])
+    _nota(db, base, cliente=beto, tipo=TipoOperacion.venta, lineas=[(base["bronce"], "900", "180")])
+    # Una compra del mismo material no es una venta.
+    bravo = _proveedor(db, base, "BRAVO")
+    _nota(db, base, proveedor=bravo, tipo=TipoOperacion.compra, lineas=[(base["bronce"], "5000", "150")])
+
+    reporte = ranking_por_material(
+        db,
+        material_id=base["bronce"].id,
+        start_utc=DIA_0,
+        end_utc=DIA_0 + timedelta(days=30),
+        tipo_operacion=TipoOperacion.venta,
+    )
+
+    rows = reporte["rows"]
+    assert [(r["nombre"], r["partner_type"]) for r in rows] == [("BETO", "cliente"), ("ANA", "cliente")]
+    assert reporte["total_kg"] == Decimal("1000.000")
+
+
+def test_ranking_ventas_incluye_ventas_directas_al_proveedor_y_funde_el_par_vinculado(db, base):
+    """Una venta directa a un proveedor vinculado cuenta para su cliente; un
+    proveedor con ventas directas y sin vínculo aparece como socio propio."""
+    cliente = Cliente(nombre_completo="BRAVO", sucursal_id=base["sucursal"].id)
+    db.add(cliente)
+    db.flush()
+    bravo = _proveedor(db, base, "BRAVO", permite_ventas=True, linked_cliente_id=cliente.id)
+    suelto = _proveedor(db, base, "SUELTO", permite_ventas=True)
+    _nota(db, base, cliente=cliente, tipo=TipoOperacion.venta, lineas=[(base["bronce"], "3", "180")])
+    _nota(db, base, proveedor=bravo, tipo=TipoOperacion.venta, dias=1, lineas=[(base["bronce"], "7", "180")])
+    _nota(db, base, proveedor=suelto, tipo=TipoOperacion.venta, lineas=[(base["bronce"], "4", "180")])
+
+    reporte = ranking_por_material(
+        db,
+        material_id=base["bronce"].id,
+        start_utc=DIA_0,
+        end_utc=DIA_0 + timedelta(days=30),
+        tipo_operacion=TipoOperacion.venta,
+    )
+
+    rows = reporte["rows"]
+    assert [(r["nombre"], r["partner_type"], r["partner_id"]) for r in rows] == [
+        ("BRAVO", "cliente", cliente.id),
+        ("SUELTO", "proveedor", suelto.id),
+    ]
+    assert rows[0]["kg"] == Decimal("10.000")
+    assert rows[0]["notas"] == 2
+    assert reporte["total_notas"] == 3

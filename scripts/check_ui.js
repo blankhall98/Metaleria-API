@@ -51,6 +51,7 @@ const ADMIN = [
   ['reporte-saldos', `${A}/reporte-saldos`],
   ['reporte-materiales', `${A}/reporte-materiales`],
   ['reporte-materiales-ranking', `${A}/reporte-materiales?material_id=1&fecha_inicio=2026-01-01&fecha_fin=2026-12-31`],
+  ['reporte-materiales-ventas', `${A}/reporte-materiales?operacion=ventas&material_id=1&fecha_inicio=2026-01-01&fecha_fin=2026-12-31`],
   ['cuentas-list', `${A}/cuentas`],
   ['cuenta-detail', `${A}/cuentas/1`],
   ['cuentas-scrap360', `${A}/cuentas-scrap360`],

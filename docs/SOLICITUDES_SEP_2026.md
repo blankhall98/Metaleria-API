@@ -57,7 +57,7 @@ Hallazgos del código que condicionan el diseño:
 |---|---|
 | Kilos | `kg_neto` en los tres puntos |
 | Fecha de los rangos | `Nota.created_at`, cortes de día en hora local, intervalo semiabierto |
-| Ranking (punto 2) | Solo compras a proveedores; la consulta queda simétrica para ventas a clientes |
+| Ranking (punto 2) | Compras a proveedores por defecto y, desde el 04-sep por la tarde, también ventas a clientes (`?operacion=ventas`); las ventas directas a un proveedor vinculado se funden en su cliente |
 | Estado de cuenta (punto 3) | Filas planas al estilo Excel: una fila por material, cargo y saldo en la última del grupo |
 | Exportación del punto 3 | Excel con las mismas filas y columnas; PDF con una línea compacta de texto bajo cada nota |
 | Socios internos | Excluidos del ranking |
@@ -91,7 +91,10 @@ filtros Material, Sucursal, Desde y Hasta (`fecha_inicio` / `fecha_fin`, patrón
 del reporte de asistencias, mes en curso por defecto). Sin material elegido:
 estado vacío que pide elegirlo. Con material: ranking de proveedores de mayor a
 menor por kilos comprados con columnas #, Proveedor, Kilos, Notas, Importe y
-% del total, pie de totales y exportación a Excel.
+% del total, pie de totales y exportación a Excel. Un control segmentado cambia
+al modo **Ventas a clientes** (`?operacion=ventas`): mismo ranking sobre las
+notas de venta, con las ventas directas a proveedores fundidas en su cliente
+vinculado o listadas como socio propio si no hay vínculo.
 
 Registro en tres lugares: menú lateral (`base.html`), mosaico del home
 (`home.html`) y lista de `scripts/check_ui.js`. Visible para admin y super
@@ -145,5 +148,5 @@ captura ($3,101,903.00) y del proveedor 74 en producción deben ser idénticos.
 | Punto | Estado | Commit | Notas |
 |---|---|---|---|
 | 1. Kilos por material en el expediente | **Hecho** 2026-09-04 | `fd1d3c0` | Servicio `kilos_material_service.kg_por_material` + 10 pruebas; tarjeta con filtro propio; hoja `KilosPorMaterial` en el Excel; `check_ui` record 6/6 sin incumplimientos |
-| 2. Reporte ranking por material | **Hecho** 2026-09-04 | `5f4e727` | Ruta `/web/admin/reporte-materiales` + plantilla + Excel; menú lateral, mosaico del home y `check_ui` (4/4 vistas sin incumplimientos) |
+| 2. Reporte ranking por material | **Hecho** 2026-09-04 | `5f4e727` | Ruta `/web/admin/reporte-materiales` + plantilla + Excel; menú lateral, mosaico del home y `check_ui`. Modo **Ventas a clientes** agregado la misma tarde a petición del usuario (2 pruebas más; `check_ui` 6/6) |
 | 3. Desglose en el estado de cuenta | **Hecho** 2026-09-04 | `1498651` | `lineas_por_nota` (3 pruebas, incl. renglón de IVA) en los dos constructores del ledger; pantalla y Excel con 13 columnas; PDF con línea compacta por nota; verificado en local: subtotales de cada nota suman su cargo y el saldo final no cambió ($9,525.00 del proveedor 1); `check_ui` record 6/6 |

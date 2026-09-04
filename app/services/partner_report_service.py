@@ -565,9 +565,11 @@ def build_materiales_ranking_excel(report: dict) -> tuple[bytes, str]:
     """Reporte "Kilos por material" (solicitud sep-2026, punto 2): ranking de
     proveedores de mayor a menor por kilos de un material en un período."""
     generated_at = format_datetime_local(report["generated_at"])
-    headers = ["#", "Proveedor", "Kilos", "Notas", "Importe", "% del total"]
+    partner_label = report.get("partner_label") or "Proveedor"
+    operacion_label = report.get("operacion_label") or "Compras a proveedores"
+    headers = ["#", partner_label, "Kilos", "Notas", "Importe", "% del total"]
     rows = [
-        _sheet_row([("Kilos por material - ranking de proveedores", "String")]),
+        _sheet_row([(f"Kilos por material - {operacion_label}", "String")]),
         _sheet_row([(f"Material: {report['material_nombre']}", "String")]),
         _sheet_row([(f"Sucursal: {report.get('sucursal_label') or 'Todas'}", "String")]),
         _sheet_row([(f"Periodo: {report['periodo_label']}", "String")]),

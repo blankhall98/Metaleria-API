@@ -128,30 +128,20 @@ def _is_internal_partner(nombre: str | None, sucursal_names: set[str]) -> bool:
     return nombre[len(_INTERNAL_PREFIX):].strip() in sucursal_names
 
 
-def ranking_por_material(
+def _ranking_rows(
     db: Session,
     *,
+    partner_col,
+    partner_model,
+    partner_type: str,
     material_id: int,
+    tipo_operacion: TipoOperacion,
     start_utc: datetime | None,
     end_utc: datetime | None,
-    allowed_suc_ids: list[int] | None = None,
-    sucursal_id: int | None = None,
-    tipo_operacion: TipoOperacion = TipoOperacion.compra,
-) -> dict:
-    """Socios de mayor a menor por kilos de un material en un período.
-
-    Con `tipo_operacion=compra` (el caso pedido) los socios son proveedores;
-    con `venta` serían clientes. Los socios internos "Sucursal X" (traspasos)
-    se excluyen. Devuelve rows (partner_id, nombre, kg, notas, importe, pct)
-    más total_kg, total_importe y total_notas.
-    """
-    if tipo_operacion == TipoOperacion.compra:
-        partner_col = Nota.proveedor_id
-        partner_model = Proveedor
-    else:
-        partner_col = Nota.cliente_id
-        partner_model = Cliente
-
+    allowed_suc_ids: list[int] | None,
+    sucursal_id: int | None,
+    sucursal_names: set[str],
+) -> list[dict]:
     query = (
         db.query(
             partner_col,
@@ -174,13 +164,13 @@ def ranking_por_material(
     )
     query = query.group_by(partner_col, partner_model.nombre_completo)
 
-    sucursal_names = _internal_partner_names(db)
     rows: list[dict] = []
     for partner_id, nombre, kg, notas, importe in query.all():
         if _is_internal_partner(nombre, sucursal_names):
             continue
         rows.append(
             {
+                "partner_type": partner_type,
                 "partner_id": partner_id,
                 "nombre": nombre,
                 "kg": _dec(kg, _KG),
@@ -188,6 +178,88 @@ def ranking_por_material(
                 "importe": _dec(importe, _MXN),
             }
         )
+    return rows
+
+
+def _merge_sales_rows(db: Session, cliente_rows: list[dict], proveedor_rows: list[dict]) -> list[dict]:
+    """Ventas: las directas a un proveedor vinculado se funden en su cliente
+    (un solo socio comercial); un proveedor con ventas y sin vínculo queda
+    como socio propio."""
+    merged: dict[tuple[str, int], dict] = {("cliente", r["partner_id"]): r for r in cliente_rows}
+    prov_ids = [r["partner_id"] for r in proveedor_rows]
+    linked: dict[int, int] = {}
+    if prov_ids:
+        linked = {
+            pid: cid
+            for pid, cid in db.query(Proveedor.id, Proveedor.linked_cliente_id)
+            .filter(Proveedor.id.in_(prov_ids), Proveedor.linked_cliente_id.isnot(None))
+            .all()
+        }
+    missing = {cid for cid in linked.values() if ("cliente", cid) not in merged}
+    cliente_names: dict[int, str] = {}
+    if missing:
+        cliente_names = {
+            cid: nombre
+            for cid, nombre in db.query(Cliente.id, Cliente.nombre_completo).filter(Cliente.id.in_(missing)).all()
+        }
+    for row in proveedor_rows:
+        cliente_id = linked.get(row["partner_id"])
+        key = ("cliente", cliente_id) if cliente_id else ("proveedor", row["partner_id"])
+        if key in merged:
+            target = merged[key]
+            target["kg"] += row["kg"]
+            target["notas"] += row["notas"]
+            target["importe"] += row["importe"]
+        elif cliente_id:
+            merged[key] = {
+                **row,
+                "partner_type": "cliente",
+                "partner_id": cliente_id,
+                "nombre": cliente_names.get(cliente_id, row["nombre"]),
+            }
+        else:
+            merged[key] = row
+    return list(merged.values())
+
+
+def ranking_por_material(
+    db: Session,
+    *,
+    material_id: int,
+    start_utc: datetime | None,
+    end_utc: datetime | None,
+    allowed_suc_ids: list[int] | None = None,
+    sucursal_id: int | None = None,
+    tipo_operacion: TipoOperacion = TipoOperacion.compra,
+) -> dict:
+    """Socios de mayor a menor por kilos de un material en un período.
+
+    Con `compra` los socios son proveedores. Con `venta` son clientes, más las
+    ventas directas a proveedores (`permite_ventas`): si el proveedor está
+    vinculado a un cliente sus kilos se funden en él; si no, aparece como socio
+    propio. Los socios internos "Sucursal X" (traspasos) se excluyen. Devuelve
+    rows (partner_type, partner_id, nombre, kg, notas, importe, pct) más
+    total_kg, total_importe y total_notas.
+    """
+    common = {
+        "material_id": material_id,
+        "tipo_operacion": tipo_operacion,
+        "start_utc": start_utc,
+        "end_utc": end_utc,
+        "allowed_suc_ids": allowed_suc_ids,
+        "sucursal_id": sucursal_id,
+        "sucursal_names": _internal_partner_names(db),
+    }
+    proveedor_rows = _ranking_rows(
+        db, partner_col=Nota.proveedor_id, partner_model=Proveedor, partner_type="proveedor", **common
+    )
+    if tipo_operacion == TipoOperacion.compra:
+        rows = proveedor_rows
+    else:
+        cliente_rows = _ranking_rows(
+            db, partner_col=Nota.cliente_id, partner_model=Cliente, partner_type="cliente", **common
+        )
+        rows = _merge_sales_rows(db, cliente_rows, proveedor_rows)
 
     total_kg = sum((r["kg"] for r in rows), Decimal("0"))
     total_importe = sum((r["importe"] for r in rows), Decimal("0"))

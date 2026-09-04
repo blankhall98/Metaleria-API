@@ -17392,6 +17392,27 @@ async def reporte_materiales(
         sucursal_id = None
     material_id = _parse_optional_int(params.get("material_id"))
 
+    # Modo del ranking: compras a proveedores (por defecto, sin parámetro) o
+    # ventas a clientes. El enlace explícito es el de ventas.
+    operacion_raw = (params.get("operacion") or "").strip().lower()
+    operacion = "ventas" if operacion_raw == "ventas" else "compras"
+    if operacion == "ventas":
+        tipo_operacion = TipoOperacion.venta
+        partner_label = "Cliente"
+        partner_plural = "clientes"
+        operacion_label = "Ventas a clientes"
+        notas_label = "Notas de venta"
+        header_sub = "Qué clientes te han comprado más de un material en el período elegido, de mayor a menor."
+        card_sub = "Kilos netos de las notas de venta aprobadas, de mayor a menor por cliente."
+    else:
+        tipo_operacion = TipoOperacion.compra
+        partner_label = "Proveedor"
+        partner_plural = "proveedores"
+        operacion_label = "Compras a proveedores"
+        notas_label = "Notas de compra"
+        header_sub = "Qué proveedores te han vendido más de un material en el período elegido, de mayor a menor."
+        card_sub = "Kilos netos de las notas de compra aprobadas, de mayor a menor por proveedor."
+
     # Mismo período por defecto que el reporte de asistencias: mes en curso,
     # cortes de día en hora local, intervalo semiabierto.
     tz = get_app_timezone()
@@ -17427,6 +17448,7 @@ async def reporte_materiales(
             end_utc=end_utc,
             allowed_suc_ids=allowed_suc_ids,
             sucursal_id=sucursal_id,
+            tipo_operacion=tipo_operacion,
         )
 
     sucursales = _filter_sucursales_for_admin(
@@ -17444,6 +17466,8 @@ async def reporte_materiales(
             {
                 "generated_at": datetime.utcnow(),
                 "material_nombre": selected_material.nombre,
+                "partner_label": partner_label,
+                "operacion_label": operacion_label,
                 "sucursal_label": sucursal_sel.nombre if sucursal_sel else "Todas",
                 "periodo_label": periodo_label,
                 **reporte,
@@ -17457,6 +17481,11 @@ async def reporte_materiales(
 
     export_params = {key: value for key, value in params.items() if key != "format" and value}
     export_url = _append_query_params(request.url.path, **export_params, format="excel")
+    base_params = {key: value for key, value in params.items() if key not in {"format", "operacion"} and value}
+    operacion_links = {
+        "compras": _append_query_params(request.url.path, **base_params),
+        "ventas": _append_query_params(request.url.path, **base_params, operacion="ventas"),
+    }
 
     return templates.TemplateResponse(
         "admin/reporte_materiales.html",
@@ -17478,6 +17507,14 @@ async def reporte_materiales(
             "total_notas": reporte["total_notas"],
             "total_proveedores": len(reporte["rows"]),
             "export_url": export_url,
+            "operacion": operacion,
+            "operacion_links": operacion_links,
+            "operacion_label": operacion_label,
+            "partner_label": partner_label,
+            "partner_plural": partner_plural,
+            "notas_label": notas_label,
+            "header_sub": header_sub,
+            "card_sub": card_sub,
         },
     )
 
