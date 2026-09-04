@@ -1,0 +1,206 @@
+"""Kilos por material: agregaciones de solo lectura sobre las líneas de notas.
+
+Solicitudes de la administradora (sep-2026, `docs/SOLICITUDES_SEP_2026.md`):
+
+- Punto 1: total de kilos por material de un socio en un período
+  (`kg_por_material`), para la tarjeta del expediente.
+- Punto 2: ranking de proveedores de mayor a menor por kilos de un material
+  (`ranking_por_material`), para el reporte del grupo Reportes.
+
+Reglas compartidas: solo notas APROBADA; la base es `kg_neto` (lo que se paga
+al socio); el rango se aplica sobre `Nota.created_at` como intervalo semiabierto
+`[start_utc, end_utc)`; las devoluciones parciales ya viven reescritas en la
+línea, así que no se resta nada aparte; las cancelaciones totales salen solas
+del filtro de estado.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from decimal import Decimal
+
+from sqlalchemy import func, or_
+from sqlalchemy.orm import Session
+
+from app.models import Cliente, Material, Nota, NotaEstado, NotaMaterial, Proveedor, Sucursal, TipoOperacion
+
+_KG = Decimal("0.001")
+_MXN = Decimal("0.01")
+_PCT = Decimal("0.1")
+_INTERNAL_PREFIX = "Sucursal "
+
+
+def _dec(value, quantum: Decimal) -> Decimal:
+    return Decimal(str(value or 0)).quantize(quantum)
+
+
+def _apply_note_filters(
+    query,
+    *,
+    tipo_operacion: TipoOperacion,
+    start_utc: datetime | None,
+    end_utc: datetime | None,
+    allowed_suc_ids: list[int] | None,
+    sucursal_id: int | None = None,
+):
+    query = query.filter(
+        Nota.estado == NotaEstado.aprobada,
+        Nota.tipo_operacion == tipo_operacion,
+    )
+    if start_utc is not None:
+        query = query.filter(Nota.created_at >= start_utc)
+    if end_utc is not None:
+        query = query.filter(Nota.created_at < end_utc)
+    if sucursal_id:
+        query = query.filter(Nota.sucursal_id == sucursal_id)
+    elif allowed_suc_ids is not None:
+        query = query.filter(Nota.sucursal_id.in_(allowed_suc_ids))
+    return query
+
+
+def kg_por_material(
+    db: Session,
+    *,
+    tipo_operacion: TipoOperacion,
+    proveedor_id: int | None = None,
+    cliente_id: int | None = None,
+    start_utc: datetime | None = None,
+    end_utc: datetime | None = None,
+    allowed_suc_ids: list[int] | None = None,
+) -> list[dict]:
+    """Kilos, notas e importe por material para un socio.
+
+    Se pueden pasar las dos identidades de un par vinculado (proveedor y
+    cliente) y las notas de ambas se suman. Devuelve filas ordenadas por kilos
+    de mayor a menor: material_id, material_nombre, kg, notas, importe.
+    """
+    partner_filters = []
+    if proveedor_id:
+        partner_filters.append(Nota.proveedor_id == proveedor_id)
+    if cliente_id:
+        partner_filters.append(Nota.cliente_id == cliente_id)
+    if not partner_filters:
+        return []
+
+    query = (
+        db.query(
+            NotaMaterial.material_id,
+            Material.nombre,
+            func.coalesce(func.sum(NotaMaterial.kg_neto), 0),
+            func.count(func.distinct(Nota.id)),
+            func.coalesce(func.sum(NotaMaterial.subtotal), 0),
+        )
+        .join(Nota, Nota.id == NotaMaterial.nota_id)
+        .join(Material, Material.id == NotaMaterial.material_id)
+        .filter(or_(*partner_filters))
+    )
+    query = _apply_note_filters(
+        query,
+        tipo_operacion=tipo_operacion,
+        start_utc=start_utc,
+        end_utc=end_utc,
+        allowed_suc_ids=allowed_suc_ids,
+    )
+    query = query.group_by(NotaMaterial.material_id, Material.nombre)
+
+    rows = [
+        {
+            "material_id": material_id,
+            "material_nombre": nombre,
+            "kg": _dec(kg, _KG),
+            "notas": int(notas or 0),
+            "importe": _dec(importe, _MXN),
+        }
+        for material_id, nombre, kg, notas, importe in query.all()
+    ]
+    rows.sort(key=lambda r: (-r["kg"], r["material_nombre"].lower()))
+    return rows
+
+
+def _internal_partner_names(db: Session) -> set[str]:
+    return {name.strip() for (name,) in db.query(Sucursal.nombre).all() if name}
+
+
+def _is_internal_partner(nombre: str | None, sucursal_names: set[str]) -> bool:
+    if not nombre or not nombre.startswith(_INTERNAL_PREFIX):
+        return False
+    return nombre[len(_INTERNAL_PREFIX):].strip() in sucursal_names
+
+
+def ranking_por_material(
+    db: Session,
+    *,
+    material_id: int,
+    start_utc: datetime | None,
+    end_utc: datetime | None,
+    allowed_suc_ids: list[int] | None = None,
+    sucursal_id: int | None = None,
+    tipo_operacion: TipoOperacion = TipoOperacion.compra,
+) -> dict:
+    """Socios de mayor a menor por kilos de un material en un período.
+
+    Con `tipo_operacion=compra` (el caso pedido) los socios son proveedores;
+    con `venta` serían clientes. Los socios internos "Sucursal X" (traspasos)
+    se excluyen. Devuelve rows (partner_id, nombre, kg, notas, importe, pct)
+    más total_kg, total_importe y total_notas.
+    """
+    if tipo_operacion == TipoOperacion.compra:
+        partner_col = Nota.proveedor_id
+        partner_model = Proveedor
+    else:
+        partner_col = Nota.cliente_id
+        partner_model = Cliente
+
+    query = (
+        db.query(
+            partner_col,
+            partner_model.nombre_completo,
+            func.coalesce(func.sum(NotaMaterial.kg_neto), 0),
+            func.count(func.distinct(Nota.id)),
+            func.coalesce(func.sum(NotaMaterial.subtotal), 0),
+        )
+        .join(Nota, Nota.id == NotaMaterial.nota_id)
+        .join(partner_model, partner_model.id == partner_col)
+        .filter(NotaMaterial.material_id == material_id)
+    )
+    query = _apply_note_filters(
+        query,
+        tipo_operacion=tipo_operacion,
+        start_utc=start_utc,
+        end_utc=end_utc,
+        allowed_suc_ids=allowed_suc_ids,
+        sucursal_id=sucursal_id,
+    )
+    query = query.group_by(partner_col, partner_model.nombre_completo)
+
+    sucursal_names = _internal_partner_names(db)
+    rows: list[dict] = []
+    for partner_id, nombre, kg, notas, importe in query.all():
+        if _is_internal_partner(nombre, sucursal_names):
+            continue
+        rows.append(
+            {
+                "partner_id": partner_id,
+                "nombre": nombre,
+                "kg": _dec(kg, _KG),
+                "notas": int(notas or 0),
+                "importe": _dec(importe, _MXN),
+            }
+        )
+
+    total_kg = sum((r["kg"] for r in rows), Decimal("0"))
+    total_importe = sum((r["importe"] for r in rows), Decimal("0"))
+    total_notas = sum(r["notas"] for r in rows)
+    for row in rows:
+        row["pct"] = (
+            (row["kg"] / total_kg * Decimal("100")).quantize(_PCT)
+            if total_kg > 0
+            else Decimal("0.0")
+        )
+    rows.sort(key=lambda r: (-r["kg"], r["nombre"].lower()))
+    return {
+        "rows": rows,
+        "total_kg": total_kg,
+        "total_importe": total_importe,
+        "total_notas": total_notas,
+    }

@@ -13,7 +13,7 @@
     <a href="/web/admin/{{ partner_base }}/{{ partner.id }}/estado-cuenta?format=pdf" class="btn btn-outline-secondary btn-sm">
         {{ icon('print', 's-icon--sm') }} Exportar PDF
     </a>
-    <a href="/web/admin/{{ partner_base }}/{{ partner.id }}/estado-cuenta?format=excel" class="btn btn-outline-secondary btn-sm">
+    <a href="/web/admin/{{ partner_base }}/{{ partner.id }}/estado-cuenta?format=excel{% if kilos_from %}&kilos_from={{ kilos_from }}{% endif %}{% if kilos_to %}&kilos_to={{ kilos_to }}{% endif %}" class="btn btn-outline-secondary btn-sm">
         {{ icon('download', 's-icon--sm') }} Exportar Excel
     </a>
     {% if can_view_partner_accounts %}
@@ -59,7 +59,8 @@
        después el estado de cuenta, y las asistencias hasta el final. #}
     {% set _secciones = [('#partner-summary', 'Resumen')]
         + ([('#partner-ajuste', 'Ajuste manual')] if can_manage_partner else [])
-        + [('#partner-ledger', 'Estado de cuenta'), ('#partner-notes', 'Notas'), ('#partner-payments', 'Pagos')]
+        + [('#partner-ledger', 'Estado de cuenta'), ('#partner-kilos', 'Kilos por material'),
+           ('#partner-notes', 'Notas'), ('#partner-payments', 'Pagos')]
         + ([('#partner-llamadas', 'Llamadas')] if llamadas_enabled else [])
         + ([('#partner-attendance', 'Asistencias')] if attendance_enabled else []) %}
     {{ anchor_nav(_secciones) }}
@@ -333,6 +334,105 @@
         </div>
     </div>
 
+    {# Solicitud sep-2026 (punto 1): total de kilos por material del socio en
+       un período a elegir. Kilos netos (lo que se paga), solo notas aprobadas;
+       las devoluciones parciales ya viven descontadas en cada línea. #}
+    <div class="card mb-3" id="partner-kilos">
+        <div class="card-body">
+            <div class="s-card-head">
+                <div>
+                    <h2 class="s-card-title">Kilos por material</h2>
+                    <p class="s-card-sub">
+                        {{ kilos_sections[0].sub if kilos_sections|length == 1 else 'Kilos netos de las notas aprobadas, por material.' }}
+                        Rango: {{ kilos_range_label }}.
+                    </p>
+                </div>
+            </div>
+
+            <details class="s-filters-collapse" open>
+                <summary>Filtros</summary>
+                <form class="s-filters" method="get">
+                    {% if q %}
+                        <input type="hidden" name="q" value="{{ q }}">
+                    {% endif %}
+                    {% if attendance_from %}
+                        <input type="hidden" name="attendance_from" value="{{ attendance_from }}">
+                    {% endif %}
+                    {% if attendance_to %}
+                        <input type="hidden" name="attendance_to" value="{{ attendance_to }}">
+                    {% endif %}
+                    {% if orden_historial == 'cronologico' %}
+                        <input type="hidden" name="orden_historial" value="cronologico">
+                    {% endif %}
+                    <div class="s-filters__field">
+                        <label class="form-label" for="kilos_from">Desde</label>
+                        <input type="date" class="form-control" id="kilos_from" name="kilos_from" value="{{ kilos_from }}">
+                    </div>
+                    <div class="s-filters__field">
+                        <label class="form-label" for="kilos_to">Hasta</label>
+                        <input type="date" class="form-control" id="kilos_to" name="kilos_to" value="{{ kilos_to }}">
+                    </div>
+                    <div class="s-filters__actions">
+                        <button class="btn btn-outline-primary" type="submit">Filtrar</button>
+                        {% if kilos_filtered %}
+                            <a href="/web/admin/{{ partner_base }}/{{ partner.id }}/record{% if q %}?q={{ q }}{% endif %}#partner-kilos" class="btn btn-outline-secondary">Limpiar</a>
+                        {% endif %}
+                    </div>
+                </form>
+            </details>
+
+            {% if kilos_error %}
+                <div class="alert alert-danger py-2 small mb-3">{{ kilos_error }}</div>
+            {% endif %}
+
+            {% for section in kilos_sections %}
+                {% if kilos_sections|length > 1 %}
+                    <p class="s-section-label mt-3">{{ section.titulo }}</p>
+                {% endif %}
+                {% if section.rows|length == 0 %}
+                    {{ empty('Sin kilos en el rango',
+                             'No hay notas de ' ~ ('compra' if section.key == 'compras' else 'venta') ~ ' aprobadas en el período elegido.',
+                             'scale') }}
+                {% else %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle" data-ver-mas="10">
+                            <thead>
+                            <tr>
+                                <th data-title-col data-mobile-primary>Material</th>
+                                <th class="text-end" data-mobile-primary>Kilos</th>
+                                <th class="text-end">Notas</th>
+                                <th class="text-end" data-mobile-primary>Importe</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for row in section.rows %}
+                                <tr>
+                                    <td class="fw-semibold">{{ row.material_nombre }}</td>
+                                    <td class="text-end">{{ kg(row.kg) }}</td>
+                                    <td class="text-end">{{ row.notas }}</td>
+                                    <td class="text-end">{{ money(row.importe) }}</td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                            <tfoot class="table-group-divider">
+                            <tr class="fw-bold">
+                                <td>Total</td>
+                                <td class="text-end">{{ kg(section.total_kg) }}</td>
+                                <td class="text-end text-muted">—</td>
+                                <td class="text-end">{{ money(section.total_importe) }}</td>
+                            </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                {% endif %}
+            {% else %}
+                {{ empty('Sin kilos por material',
+                         'Este socio no tiene notas aprobadas con materiales.',
+                         'scale') }}
+            {% endfor %}
+        </div>
+    </div>
+
     <div class="card mb-3" id="partner-notes">
         <div class="card-body">
             <div class="s-card-head">
@@ -353,6 +453,12 @@
                     {% endif %}
                     {% if attendance_to %}
                         <input type="hidden" name="attendance_to" value="{{ attendance_to }}">
+                    {% endif %}
+                    {% if kilos_from %}
+                        <input type="hidden" name="kilos_from" value="{{ kilos_from }}">
+                    {% endif %}
+                    {% if kilos_to %}
+                        <input type="hidden" name="kilos_to" value="{{ kilos_to }}">
                     {% endif %}
                     <div class="s-filters__field s-filters__field--wide">
                         <label class="form-label" for="q">Buscar nota</label>
@@ -688,6 +794,12 @@
                     <form class="s-filters" method="get">
                         {% if q %}
                             <input type="hidden" name="q" value="{{ q }}">
+                        {% endif %}
+                        {% if kilos_from %}
+                            <input type="hidden" name="kilos_from" value="{{ kilos_from }}">
+                        {% endif %}
+                        {% if kilos_to %}
+                            <input type="hidden" name="kilos_to" value="{{ kilos_to }}">
                         {% endif %}
                         <div class="s-filters__field">
                             <label class="form-label" for="attendance_from">Desde</label>

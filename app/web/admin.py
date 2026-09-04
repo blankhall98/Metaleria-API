@@ -92,6 +92,7 @@ from app.services import (
     comision_service,
     llamada_service,
     trato_service,
+    kilos_material_service,
 )
 from app.services.evidence_service import build_evidence_groups
 from app.services.firebase_storage import resolve_image_content_type, upload_image
@@ -3499,6 +3500,18 @@ def _build_capital_real_context(
     }
 
 
+def _kilos_section(key: str, titulo: str, sub: str, rows: list[dict]) -> dict:
+    """Bloque de la tarjeta "Kilos por material" (solicitud sep-2026, punto 1)."""
+    return {
+        "key": key,
+        "titulo": titulo,
+        "sub": sub,
+        "rows": rows,
+        "total_kg": sum((row["kg"] for row in rows), Decimal("0")),
+        "total_importe": sum((row["importe"] for row in rows), Decimal("0")),
+    }
+
+
 def _build_partner_record_context(
     request: Request,
     db: Session,
@@ -3865,6 +3878,68 @@ def _build_partner_record_context(
         attendance_rows = filtered_days
         attendance_total_filtrado = len(filtered_days)
 
+    # Solicitud sep-2026 (punto 1, docs/SOLICITUDES_SEP_2026.md): kilos por
+    # material del socio en un período. Los parámetros se leen aquí y no en
+    # las rutas para que el expediente y sus exportaciones compartan el rango.
+    kilos_from_raw = (request.query_params.get("kilos_from") or "").strip()
+    kilos_to_raw = (request.query_params.get("kilos_to") or "").strip()
+    kilos_from = _parse_inventory_date_param(kilos_from_raw)
+    kilos_to = _parse_inventory_date_param(kilos_to_raw)
+    kilos_error = None
+    if kilos_from_raw and kilos_from is None:
+        kilos_error = "La fecha inicial de kilos por material no es válida."
+    elif kilos_to_raw and kilos_to is None:
+        kilos_error = "La fecha final de kilos por material no es válida."
+    if kilos_from and kilos_to and kilos_from > kilos_to:
+        kilos_from, kilos_to = kilos_to, kilos_from
+    kilos_start_utc, kilos_end_utc = _inventory_local_date_range_to_utc(kilos_from, kilos_to)
+    if kilos_from and kilos_to:
+        kilos_range_label = f"{format_date_local(kilos_from)} al {format_date_local(kilos_to)}"
+    elif kilos_from:
+        kilos_range_label = f"Desde {format_date_local(kilos_from)}"
+    elif kilos_to:
+        kilos_range_label = f"Hasta {format_date_local(kilos_to)}"
+    else:
+        kilos_range_label = "Todo el historial"
+    kilos_sections: list[dict] = []
+    if not partner_is_internal:
+        kilos_prov_id = partner.id if partner_type == "proveedor" else (linked_partner.id if linked_partner else None)
+        kilos_cli_id = partner.id if partner_type == "cliente" else (linked_partner.id if linked_partner else None)
+        if kilos_prov_id:
+            kilos_sections.append(
+                _kilos_section(
+                    "compras",
+                    "Kilos comprados",
+                    "Notas de compra aprobadas, por material.",
+                    kilos_material_service.kg_por_material(
+                        db,
+                        tipo_operacion=TipoOperacion.compra,
+                        proveedor_id=kilos_prov_id,
+                        start_utc=kilos_start_utc,
+                        end_utc=kilos_end_utc,
+                        allowed_suc_ids=allowed_suc_ids,
+                    ),
+                )
+            )
+        ventas_kilos = kilos_material_service.kg_por_material(
+            db,
+            tipo_operacion=TipoOperacion.venta,
+            proveedor_id=kilos_prov_id,
+            cliente_id=kilos_cli_id,
+            start_utc=kilos_start_utc,
+            end_utc=kilos_end_utc,
+            allowed_suc_ids=allowed_suc_ids,
+        )
+        if partner_type == "cliente" or linked_partner or provider_direct_sales_enabled or ventas_kilos:
+            kilos_sections.append(
+                _kilos_section(
+                    "ventas",
+                    "Kilos vendidos",
+                    "Notas de venta aprobadas, por material.",
+                    ventas_kilos,
+                )
+            )
+
     return {
         "request": request,
         "env": settings.ENV,
@@ -3936,6 +4011,13 @@ def _build_partner_record_context(
         "attendance_to": attendance_to.isoformat() if attendance_to else "",
         "attendance_error": attendance_error,
         "attendance_range_label": attendance_range_label,
+        # Solicitud sep-2026 (punto 1): kilos por material.
+        "kilos_sections": kilos_sections,
+        "kilos_from": kilos_from.isoformat() if kilos_from else "",
+        "kilos_to": kilos_to.isoformat() if kilos_to else "",
+        "kilos_error": kilos_error,
+        "kilos_range_label": kilos_range_label,
+        "kilos_filtered": bool(kilos_from or kilos_to),
         # Punto 2 (fase 2): bitácora de llamadas — solo aplica a proveedores.
         "llamadas_enabled": partner_type == "proveedor",
         "llamadas_proveedor": (
@@ -4101,6 +4183,9 @@ def _build_partner_statement_report(context: dict) -> dict:
         "ledger_final": ledger_final,
         "ledger_rows": context.get("ledger_rows") or [],
         "notes_rows": notes_rows,
+        # Solicitud sep-2026 (punto 1): hoja "KilosPorMaterial" del Excel.
+        "kilos_sections": context.get("kilos_sections") or [],
+        "kilos_range_label": context.get("kilos_range_label") or "Todo el historial",
     }
 
 

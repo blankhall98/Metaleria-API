@@ -114,6 +114,38 @@ def build_partner_statement_excel(report: dict) -> tuple[bytes, str]:
             )
         )
 
+    # Solicitud sep-2026 (punto 1): la misma tabla de la tarjeta "Kilos por
+    # material" del expediente, con el rango que estaba activo al exportar.
+    kilos_headers = ["Alcance", "Material", "Kilos", "Notas", "Importe"]
+    kilos_rows = [
+        _sheet_row([(f"Kilos por material - Rango: {report.get('kilos_range_label') or 'Todo el historial'}", "String")]),
+        "<Row>" + "".join([_sheet_cell(h) for h in kilos_headers]) + "</Row>",
+    ]
+    for section in report.get("kilos_sections") or []:
+        for row in section["rows"]:
+            kilos_rows.append(
+                _sheet_row(
+                    [
+                        (section["titulo"], "String"),
+                        (str(row["material_nombre"]), "String"),
+                        (str(_safe_decimal(row["kg"])), "Number"),
+                        (str(int(row["notas"])), "Number"),
+                        (str(_safe_decimal(row["importe"])), "Number"),
+                    ]
+                )
+            )
+        kilos_rows.append(
+            _sheet_row(
+                [
+                    (f"Total {section['titulo'].lower()}", "String"),
+                    ("", "String"),
+                    (str(_safe_decimal(section["total_kg"])), "Number"),
+                    ("", "String"),
+                    (str(_safe_decimal(section["total_importe"])), "Number"),
+                ]
+            )
+        )
+
     workbook = f"""<?xml version="1.0"?>
 <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
  xmlns:o="urn:schemas-microsoft-com:office:office"
@@ -132,6 +164,11 @@ def build_partner_statement_excel(report: dict) -> tuple[bytes, str]:
  <Worksheet ss:Name="Notas">
   <Table>
    {''.join(notes_rows)}
+  </Table>
+ </Worksheet>
+ <Worksheet ss:Name="KilosPorMaterial">
+  <Table>
+   {''.join(kilos_rows)}
   </Table>
  </Worksheet>
 </Workbook>"""
