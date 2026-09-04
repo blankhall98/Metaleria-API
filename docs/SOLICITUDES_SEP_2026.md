@@ -106,8 +106,10 @@ porque el reporte es histórico.
 ### 3. Desglose por material en el estado de cuenta
 
 **Cambio.** Cada evento "Nota aprobada" del ledger lleva `lineas`:
-material, kilos, precio y subtotal, cargadas con `selectinload` para no disparar
-una consulta por nota. Aplica a `_build_partner_ledger` y a su gemelo unificado.
+material, kilos, precio y subtotal, cargadas en una sola consulta para todas las
+notas (`kilos_material_service.lineas_por_nota`, con `joinedload` del material)
+para no disparar una consulta por nota. Aplica a `_build_partner_ledger` y a su
+gemelo unificado.
 
 En pantalla la nota se pinta como una fila por material con cuatro columnas
 nuevas después de Nota: Material, Kg, Precio, Subtotal. Cargo, Abono y Saldo
