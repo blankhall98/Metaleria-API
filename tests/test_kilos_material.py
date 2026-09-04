@@ -31,7 +31,7 @@ from app.models import (
     UserRole,
     UserStatus,
 )
-from app.services.kilos_material_service import kg_por_material, ranking_por_material
+from app.services.kilos_material_service import kg_por_material, lineas_por_nota, ranking_por_material
 
 
 DIA_0 = datetime(2026, 8, 1, 12, 0)
@@ -317,3 +317,49 @@ def test_ranking_sin_notas_devuelve_vacio(db, base):
 
     assert reporte["rows"] == []
     assert reporte["total_kg"] == Decimal("0")
+
+
+# ---------- punto 3: líneas por material de cada nota (estado de cuenta) ----------
+
+
+def test_lineas_por_nota_devuelve_material_kg_precio_y_subtotal_en_orden(db, base):
+    bravo = _proveedor(db, base, "BRAVO")
+    nota = _nota(
+        db,
+        base,
+        proveedor=bravo,
+        lineas=[(base["radiador"], "348", "150"), (base["bronce"], "3220", "159")],
+    )
+
+    lineas = lineas_por_nota(db, [nota])
+
+    # Orden de catálogo (orden_display), no de captura.
+    assert [l["material"] for l in lineas[nota.id]] == ["Bronce", "Radiador"]
+    bronce, radiador = lineas[nota.id]
+    assert bronce["kg"] == Decimal("3220.000")
+    assert bronce["precio"] == Decimal("159")
+    assert bronce["subtotal"] == Decimal("511980.00")
+    assert radiador["subtotal"] == Decimal("52200.00")
+    assert sum(l["subtotal"] for l in lineas[nota.id]) == Decimal(str(nota.total_monto))
+
+
+def test_lineas_por_nota_agrega_renglon_de_iva_cuando_la_nota_lo_incluye(db, base):
+    bravo = _proveedor(db, base, "BRAVO")
+    nota = _nota(db, base, proveedor=bravo, lineas=[(base["bronce"], "10", "150")])
+    nota.iva_incluido = True
+    nota.iva_porcentaje = Decimal("16.00")
+    nota.iva_monto = Decimal("240.00")
+    nota.total_monto = Decimal("1740.00")
+    db.flush()
+
+    lineas = lineas_por_nota(db, [nota])[nota.id]
+
+    assert lineas[-1]["material"] == "IVA 16 %"
+    assert lineas[-1]["kg"] is None
+    assert lineas[-1]["precio"] is None
+    assert lineas[-1]["subtotal"] == Decimal("240.00")
+    assert sum(l["subtotal"] for l in lineas) == Decimal("1740.00")
+
+
+def test_lineas_por_nota_sin_notas_devuelve_vacio(db, base):
+    assert lineas_por_nota(db, []) == {}

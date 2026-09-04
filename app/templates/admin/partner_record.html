@@ -290,13 +290,21 @@
                          'Aún no hay notas aprobadas, pagos ni ajustes para generar el estado de cuenta.',
                          'ledger') }}
             {% else %}
+                {# Solicitud sep-2026 (punto 3): cada nota se desglosa en una fila
+                   por material, como en el Excel de la clienta. Cargo, abono y
+                   saldo van solo en la última fila del grupo; el saldo corrido se
+                   calcula sobre el movimiento completo, igual que antes. #}
                 <div class="table-responsive">
-                    <table class="table table-hover align-middle" data-ver-mas="10">
+                    <table class="table table-hover align-middle" data-ver-mas="20">
                         <thead>
                         <tr>
                             <th data-mobile-primary>Fecha</th>
                             <th data-title-col data-mobile-primary>Movimiento</th>
                             <th data-mobile-primary>Nota</th>
+                            <th data-mobile-primary>Material</th>
+                            <th class="text-end" data-mobile-primary>Kg</th>
+                            <th class="text-end">Precio</th>
+                            <th class="text-end">Subtotal</th>
                             <th>Método</th>
                             <th>Cuenta</th>
                             <th class="text-end">Cargo</th>
@@ -307,6 +315,8 @@
                         </thead>
                         <tbody>
                         {% for row in ledger_rows %}
+                            {% set filas = row.lineas if row.lineas else [none] %}
+                            {% for linea in filas %}
                             <tr>
                                 <td>{{ row.fecha|datetime_local if row.fecha else "—" }}</td>
                                 <td>{{ row.tipo }}</td>
@@ -317,15 +327,36 @@
                                         <span class="text-muted">—</span>
                                     {% endif %}
                                 </td>
-                                <td>{{ row.metodo|capitalize if row.metodo and row.metodo != '-' else '—' }}</td>
-                                <td>{{ row.cuenta or "—" }}</td>
-                                <td class="text-end">{{ money(row.cargo) }}</td>
-                                <td class="text-end">{{ money(row.abono) }}</td>
-                                <td class="text-end">{{ money(row.saldo) }}</td>
-                                <td class="text-muted small">{{ row.comentario or "—" }}</td>
+                                {% if linea %}
+                                    <td>{{ linea.material }}</td>
+                                    <td class="text-end">{% if linea.kg is not none %}{{ kg(linea.kg) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                                    <td class="text-end">{% if linea.precio is not none %}{{ money(linea.precio, 'plain') }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                                    <td class="text-end">{{ money(linea.subtotal, 'plain') }}</td>
+                                {% else %}
+                                    <td><span class="text-muted">—</span></td>
+                                    <td class="text-end"><span class="text-muted">—</span></td>
+                                    <td class="text-end"><span class="text-muted">—</span></td>
+                                    <td class="text-end"><span class="text-muted">—</span></td>
+                                {% endif %}
+                                {% if loop.last %}
+                                    <td>{{ row.metodo|capitalize if row.metodo and row.metodo != '-' else '—' }}</td>
+                                    <td>{{ row.cuenta or "—" }}</td>
+                                    <td class="text-end">{{ money(row.cargo) }}</td>
+                                    <td class="text-end">{{ money(row.abono) }}</td>
+                                    <td class="text-end">{{ money(row.saldo) }}</td>
+                                    <td class="text-muted small">{{ row.comentario or "—" }}</td>
+                                {% else %}
+                                    <td><span class="text-muted">—</span></td>
+                                    <td><span class="text-muted">—</span></td>
+                                    <td class="text-end"><span class="text-muted">—</span></td>
+                                    <td class="text-end"><span class="text-muted">—</span></td>
+                                    <td class="text-end"><span class="text-muted">—</span></td>
+                                    <td class="text-muted small">—</td>
+                                {% endif %}
                             </tr>
+                            {% endfor %}
                         {% else %}
-                            {{ empty_row(9, 'Sin movimientos en el estado de cuenta.') }}
+                            {{ empty_row(13, 'Sin movimientos en el estado de cuenta.') }}
                         {% endfor %}
                         </tbody>
                     </table>

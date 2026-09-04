@@ -143,4 +143,4 @@ captura ($3,101,903.00) y del proveedor 74 en producción deben ser idénticos.
 |---|---|---|---|
 | 1. Kilos por material en el expediente | **Hecho** 2026-09-04 | ver bitácora | Servicio `kilos_material_service.kg_por_material` + 10 pruebas; tarjeta con filtro propio; hoja `KilosPorMaterial` en el Excel; `check_ui` record 6/6 sin incumplimientos |
 | 2. Reporte ranking por material | **Hecho** 2026-09-04 | ver bitácora | Ruta `/web/admin/reporte-materiales` + plantilla + Excel; menú lateral, mosaico del home y `check_ui` (4/4 vistas sin incumplimientos) |
-| 3. Desglose en el estado de cuenta | En curso | — | — |
+| 3. Desglose en el estado de cuenta | **Hecho** 2026-09-04 | ver bitácora | `lineas_por_nota` (3 pruebas, incl. renglón de IVA) en los dos constructores del ledger; pantalla y Excel con 13 columnas; PDF con línea compacta por nota; verificado en local: subtotales de cada nota suman su cargo y el saldo final no cambió ($9,525.00 del proveedor 1); `check_ui` record 6/6 |

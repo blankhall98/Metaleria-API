@@ -23,6 +23,46 @@ def _sheet_row(values: list[tuple[str, str]]) -> str:
     return "<Row>" + "".join([_sheet_cell(v, t) for v, t in values]) + "</Row>"
 
 
+def _number_or_blank(value) -> tuple[str, str]:
+    """Celda numérica, o vacía cuando el dato no aplica (p. ej. kg del IVA)."""
+    if value is None:
+        return ("", "String")
+    return (str(_safe_decimal(value)), "Number")
+
+
+def _format_kg(value) -> str:
+    return f"{_safe_decimal(value):,.2f} kg"
+
+
+def _material_segments(lineas: list[dict]) -> list[str]:
+    """Texto compacto por línea de la nota: "Bronce 3,195.00 kg × $156.00 = $498,420.00"."""
+    segments = []
+    for linea in lineas:
+        subtotal = _format_money(_safe_decimal(linea.get("subtotal")))
+        if linea.get("kg") is None:
+            segments.append(f"{linea['material']} = {subtotal}")
+            continue
+        precio = _format_money(_safe_decimal(linea["precio"])) if linea.get("precio") is not None else "-"
+        segments.append(f"{linea['material']} {_format_kg(linea['kg'])} × {precio} = {subtotal}")
+    return segments
+
+
+def _wrap_material_lines(lineas: list[dict], max_width: float, size: int) -> list[str]:
+    """Reparte los segmentos en renglones que quepan en `max_width` puntos."""
+    lines: list[str] = []
+    current = ""
+    for segment in _material_segments(lineas or []):
+        candidate = segment if not current else f"{current} · {segment}"
+        if current and _text_width(candidate, size) > max_width:
+            lines.append(current)
+            current = segment
+        else:
+            current = candidate
+    if current:
+        lines.append(_truncate_text(current, max_width, size))
+    return lines
+
+
 def build_partner_statement_excel(report: dict) -> tuple[bytes, str]:
     partner_type = report["partner_label"]
     partner_name = report["partner_name"]
@@ -50,10 +90,16 @@ def build_partner_statement_excel(report: dict) -> tuple[bytes, str]:
             )
         )
 
+    # Solicitud sep-2026 (punto 3): una fila por material de cada nota, como en
+    # el Excel de la clienta; cargo, abono y saldo solo en la última del grupo.
     ledger_headers = [
         "Fecha",
         "Movimiento",
         "Nota",
+        "Material",
+        "Kilos",
+        "Precio",
+        "Subtotal",
         "Metodo",
         "Cuenta",
         "Cargo",
@@ -62,22 +108,40 @@ def build_partner_statement_excel(report: dict) -> tuple[bytes, str]:
         "Comentario",
     ]
     ledger_rows = ["<Row>" + "".join([_sheet_cell(h) for h in ledger_headers]) + "</Row>"]
+    blank = ("", "String")
     for row in report["ledger_rows"]:
-        ledger_rows.append(
-            _sheet_row(
-                [
-                    (format_datetime_local(row["fecha"]) if row.get("fecha") else "-", "String"),
-                    (str(row.get("tipo") or "-"), "String"),
-                    (str(row.get("folio") or "-"), "String"),
-                    (str(row.get("metodo") or "-"), "String"),
-                    (str(row.get("cuenta") or "-"), "String"),
-                    (str(_safe_decimal(row.get("cargo"))), "Number"),
-                    (str(_safe_decimal(row.get("abono"))), "Number"),
-                    (str(_safe_decimal(row.get("saldo"))), "Number"),
-                    (str(row.get("comentario") or "-"), "String"),
-                ]
-            )
-        )
+        lineas = row.get("lineas") or [None]
+        for index, linea in enumerate(lineas):
+            cells = [
+                (format_datetime_local(row["fecha"]) if row.get("fecha") else "-", "String"),
+                (str(row.get("tipo") or "-"), "String"),
+                (str(row.get("folio") or "-"), "String"),
+            ]
+            if linea:
+                cells.extend(
+                    [
+                        (str(linea["material"]), "String"),
+                        _number_or_blank(linea.get("kg")),
+                        _number_or_blank(linea.get("precio")),
+                        _number_or_blank(linea.get("subtotal")),
+                    ]
+                )
+            else:
+                cells.extend([blank] * 4)
+            if index == len(lineas) - 1:
+                cells.extend(
+                    [
+                        (str(row.get("metodo") or "-"), "String"),
+                        (str(row.get("cuenta") or "-"), "String"),
+                        (str(_safe_decimal(row.get("cargo"))), "Number"),
+                        (str(_safe_decimal(row.get("abono"))), "Number"),
+                        (str(_safe_decimal(row.get("saldo"))), "Number"),
+                        (str(row.get("comentario") or "-"), "String"),
+                    ]
+                )
+            else:
+                cells.extend([blank] * 6)
+            ledger_rows.append(_sheet_row(cells))
 
     notes_headers = [
         "Folio",
@@ -260,7 +324,7 @@ def build_partner_statement_pdf(report: dict) -> tuple[bytes, str]:
             target.text(draw_x, y_pos - 5, title, size=8, font="F2")
         return y_pos - 24
 
-    def draw_ledger_row(target: _PdfPage, y_pos: float, row: dict) -> float:
+    def draw_ledger_row(target: _PdfPage, y_pos: float, row: dict, material_lines: list[str]) -> float:
         columns = [
             (format_date_local(row["fecha"]) if row.get("fecha") else "-", left, 64, "left"),
             (str(row.get("tipo") or "-"), left + 64, 96, "left"),
@@ -278,6 +342,12 @@ def build_partner_statement_pdf(report: dict) -> tuple[bytes, str]:
                 draw_x = x + width - _text_width(display, 8) - 2
             target.text(draw_x, y_pos, display, size=8)
         y_next = y_pos - 12
+        # Solicitud sep-2026 (punto 3): el desglose por material va debajo de
+        # la nota en una línea compacta; la tabla conserva sus columnas porque
+        # la hoja es carta vertical y no caben cuatro más.
+        for line_text in material_lines:
+            target.text(left + 8, y_next, line_text, size=7)
+            y_next -= 10
         comment = (row.get("comentario") or "").strip()
         if comment and comment != "-":
             comment_text = _truncate_text(f"Comentario: {comment}", right - left - 16, 7)
@@ -288,11 +358,14 @@ def build_partner_statement_pdf(report: dict) -> tuple[bytes, str]:
     if report["ledger_rows"]:
         y = draw_ledger_header(page, y)
         for row in report["ledger_rows"]:
-            needed = 22 if (row.get("comentario") or "").strip() else 12
+            material_lines = _wrap_material_lines(row.get("lineas") or [], right - left - 16, 7)
+            needed = 12 + 10 * len(material_lines)
+            if (row.get("comentario") or "").strip():
+                needed += 10
             if y < bottom + needed:
                 page, y = new_page("(continuación)")
                 y = draw_ledger_header(page, y)
-            y = draw_ledger_row(page, y, row)
+            y = draw_ledger_row(page, y, row, material_lines)
     else:
         page.text(left, y, f"No hay movimientos para este {report['partner_label'].lower()}.", size=9)
         y -= 18

@@ -654,6 +654,9 @@ def _build_partner_ledger(
 
     note_ids = [n.id for n in notas]
     folio_map = _build_folio_map(notas) if notas else {}
+    # Solicitud sep-2026 (punto 3): líneas por material de cada nota para el
+    # desglose del estado de cuenta; una sola consulta para todas las notas.
+    lineas_map = kilos_material_service.lineas_por_nota(db, notas) if notas else {}
 
     base_movs = {}
     reversos = []
@@ -715,6 +718,7 @@ def _build_partner_ledger(
                 "metodo": "-",
                 "cuenta": "-",
                 "comentario": nota.comentarios_admin or "",
+                "lineas": lineas_map.get(nota.id, []),
             }
         )
 
@@ -937,6 +941,9 @@ def _build_unified_partner_ledger(
 
     note_ids = [n.id for n in notas]
     folio_map = _build_folio_map(notas) if notas else {}
+    # Solicitud sep-2026 (punto 3): líneas por material de cada nota para el
+    # desglose del estado de cuenta; una sola consulta para todas las notas.
+    lineas_map = kilos_material_service.lineas_por_nota(db, notas) if notas else {}
 
     base_movs = {}
     reversos = []
@@ -1000,6 +1007,7 @@ def _build_unified_partner_ledger(
                 "metodo": "-",
                 "cuenta": "-",
                 "comentario": nota.comentarios_admin or "",
+                "lineas": lineas_map.get(nota.id, []),
             }
         )
 

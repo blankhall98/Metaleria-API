@@ -42,7 +42,7 @@ Key route groups (prefix `/web/admin` unless noted; full detail greppable in `ap
 - Comisiones: `/comisionarios`, `/comisionarios/notas`, nota detail/PDF/pago.
 - Cuentas: `/cuentas` (partner banking), `/cuentas-scrap360` (treasury, + `/ajuste`, `/estado`).
 - Inventario: `/inventario`, `/inventario/valor`, `/inventario/movimientos` (+export csv/xlsx/pdf), `/inventario/ajuste`, `/inventario/aumentar`, `/conversiones-materiales` (super_admin).
-- Money: `/contabilidad` (+`/export`, `/reporte`), `/capital`, `/corte-caja` (+abrir/gastos/movimientos/arqueo/cerrar/reporte), `/reporte-asistencias`, `/reporte-saldos`.
+- Money: `/contabilidad` (+`/export`, `/reporte`), `/capital`, `/corte-caja` (+abrir/gastos/movimientos/arqueo/cerrar/reporte), `/reporte-asistencias`, `/reporte-saldos`, `/reporte-materiales` (ranking de proveedores por kilos de un material).
 - Transferencias: `/transferencias`.
 - Worker (`/web/worker`): `/notes`, `/notes/nueva`, `/notes/{id}/editar` (BORRADOR only), `/notes/{id}/enviar`, `/notes/{id}/evidencias`.
 

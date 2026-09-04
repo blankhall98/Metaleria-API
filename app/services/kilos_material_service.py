@@ -16,11 +16,12 @@ del filtro de estado.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models import Cliente, Material, Nota, NotaEstado, NotaMaterial, Proveedor, Sucursal, TipoOperacion
 
@@ -204,3 +205,54 @@ def ranking_por_material(
         "total_importe": total_importe,
         "total_notas": total_notas,
     }
+
+
+def lineas_por_nota(db: Session, notas: list[Nota]) -> dict[int, list[dict]]:
+    """Líneas por material de cada nota, para el desglose del estado de cuenta
+    (punto 3). Una consulta para todas las notas; orden de catálogo
+    (`orden_display`) como en el PDF de la nota. Si la nota lleva IVA se agrega
+    un renglón "IVA n %" para que los subtotales sumen el cargo de la nota.
+
+    Cada línea: material, kg (kg_neto), precio (precio_unitario, puede ser
+    None), subtotal. El renglón de IVA lleva kg y precio en None.
+    """
+    note_ids = [nota.id for nota in notas if nota.id]
+    if not note_ids:
+        return {}
+
+    por_nota: dict[int, list[NotaMaterial]] = defaultdict(list)
+    materiales = (
+        db.query(NotaMaterial)
+        .options(joinedload(NotaMaterial.material))
+        .filter(NotaMaterial.nota_id.in_(note_ids))
+        .all()
+    )
+    for nm in materiales:
+        por_nota[nm.nota_id].append(nm)
+
+    result: dict[int, list[dict]] = {}
+    for nota in notas:
+        items = sorted(por_nota.get(nota.id, []), key=lambda nm: (nm.display_order, nm.orden or 0, nm.id))
+        lineas = [
+            {
+                "material": nm.material.nombre if nm.material else "Sin definir",
+                "kg": _dec(nm.kg_neto, _KG),
+                "precio": Decimal(str(nm.precio_unitario)) if nm.precio_unitario is not None else None,
+                "subtotal": _dec(nm.subtotal, _MXN),
+            }
+            for nm in items
+        ]
+        iva_monto = Decimal(str(nota.iva_monto or 0))
+        if nota.iva_incluido and iva_monto > 0:
+            pct = Decimal(str(nota.iva_porcentaje or 0)).normalize()
+            lineas.append(
+                {
+                    "material": f"IVA {pct:f} %",
+                    "kg": None,
+                    "precio": None,
+                    "subtotal": _dec(iva_monto, _MXN),
+                }
+            )
+        if lineas:
+            result[nota.id] = lineas
+    return result
