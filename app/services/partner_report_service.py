@@ -486,3 +486,58 @@ def build_provider_attendance_pdf(report: dict) -> tuple[bytes, str]:
 
     filename = f"asistencias_proveedor_{_safe_filename(report['partner_name'])}.pdf"
     return doc.render(), filename
+
+
+def build_materiales_ranking_excel(report: dict) -> tuple[bytes, str]:
+    """Reporte "Kilos por material" (solicitud sep-2026, punto 2): ranking de
+    proveedores de mayor a menor por kilos de un material en un período."""
+    generated_at = format_datetime_local(report["generated_at"])
+    headers = ["#", "Proveedor", "Kilos", "Notas", "Importe", "% del total"]
+    rows = [
+        _sheet_row([("Kilos por material - ranking de proveedores", "String")]),
+        _sheet_row([(f"Material: {report['material_nombre']}", "String")]),
+        _sheet_row([(f"Sucursal: {report.get('sucursal_label') or 'Todas'}", "String")]),
+        _sheet_row([(f"Periodo: {report['periodo_label']}", "String")]),
+        _sheet_row([(f"Generado: {generated_at}", "String")]),
+        _sheet_row([("", "String")]),
+        "<Row>" + "".join([_sheet_cell(h) for h in headers]) + "</Row>",
+    ]
+    for index, row in enumerate(report.get("rows") or [], start=1):
+        rows.append(
+            _sheet_row(
+                [
+                    (str(index), "Number"),
+                    (str(row["nombre"]), "String"),
+                    (str(_safe_decimal(row["kg"])), "Number"),
+                    (str(int(row["notas"])), "Number"),
+                    (str(_safe_decimal(row["importe"])), "Number"),
+                    (str(_safe_decimal(row["pct"])), "Number"),
+                ]
+            )
+        )
+    rows.append(
+        _sheet_row(
+            [
+                ("", "String"),
+                ("Total", "String"),
+                (str(_safe_decimal(report.get("total_kg"))), "Number"),
+                (str(int(_safe_decimal(report.get("total_notas")))), "Number"),
+                (str(_safe_decimal(report.get("total_importe"))), "Number"),
+                ("100", "Number"),
+            ]
+        )
+    )
+
+    workbook = f"""<?xml version="1.0"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Worksheet ss:Name="Ranking">
+  <Table>
+   {''.join(rows)}
+  </Table>
+ </Worksheet>
+</Workbook>"""
+    filename = f"kilos_por_material_{_safe_filename(report['material_nombre'])}.xls"
+    return workbook.encode("utf-8"), filename

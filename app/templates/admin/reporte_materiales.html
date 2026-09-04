@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty_row, page_header, icon, stat, money, kg, empty %}
+
+{% block title %}Kilos por material{% endblock %}
+
+{% block content %}
+
+{# Solicitud sep-2026 (punto 2): ranking de proveedores de mayor a menor por
+   kilos comprados de un material en un período. Kilos netos, solo notas
+   aprobadas; los socios internos (traspasos) quedan fuera. #}
+{% call page_header('Kilos por material', eyebrow='Reportes',
+                    sub='Qué proveedores te han vendido más de un material en el período elegido, de mayor a menor.') %}
+    {% if selected_material and rows|length > 0 %}
+        <a href="{{ export_url }}" class="btn btn-outline-secondary btn-sm">
+            {{ icon('download', 's-icon--sm') }} Exportar Excel
+        </a>
+    {% endif %}
+{% endcall %}
+
+<details class="s-filters-collapse" open>
+    <summary>Filtros</summary>
+    <form class="s-filters" method="get" action="/web/admin/reporte-materiales">
+        <div class="s-filters__field">
+            <label class="form-label" for="material_id">Material</label>
+            <select class="form-select" id="material_id" name="material_id" required>
+                <option value="">Elige un material</option>
+                {% for m in materiales %}
+                    <option value="{{ m.id }}" {% if material_id == m.id %}selected{% endif %}>{{ m.nombre }}{% if not m.activo %} (inactivo){% endif %}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        {% if sucursales | length > 1 %}
+            <div class="s-filters__field">
+                <label class="form-label" for="sucursal_id">Sucursal</label>
+                <select class="form-select" id="sucursal_id" name="sucursal_id">
+                    <option value="">Todas</option>
+                    {% for s in sucursales %}
+                        <option value="{{ s.id }}" {% if sucursal_id == s.id %}selected{% endif %}>{{ s.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        {% elif sucursales | length == 1 %}
+            <input type="hidden" name="sucursal_id" value="{{ sucursales[0].id }}">
+        {% endif %}
+
+        <div class="s-filters__field">
+            <label class="form-label" for="fecha_inicio">Desde</label>
+            <input type="date" class="form-control" id="fecha_inicio" name="fecha_inicio" value="{{ fecha_inicio }}">
+        </div>
+
+        <div class="s-filters__field">
+            <label class="form-label" for="fecha_fin">Hasta</label>
+            <input type="date" class="form-control" id="fecha_fin" name="fecha_fin" value="{{ fecha_fin }}">
+        </div>
+
+        <div class="s-filters__actions">
+            <button type="submit" class="btn btn-primary">Filtrar</button>
+        </div>
+    </form>
+</details>
+
+{% if not selected_material %}
+    {{ empty('Elige un material',
+             'Selecciona un material y un período para ver qué proveedores te lo han vendido, de mayor a menor en kilos.',
+             'scale') }}
+{% elif rows | length == 0 %}
+    {{ empty('Sin compras de ' ~ selected_material.nombre ~ ' en el período',
+             'Amplía el rango de fechas o elige otra sucursal para ver compras de este material.',
+             'scale') }}
+{% else %}
+
+    <div class="s-stats">
+        {{ stat('Proveedores', total_proveedores) }}
+        {{ stat('Notas de compra', total_notas) }}
+        {{ stat('Período', periodo_label) }}
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <div class="s-card-head">
+                <div>
+                    <h2 class="s-card-title">{{ selected_material.nombre }}</h2>
+                    <p class="s-card-sub">
+                        Kilos netos de las notas de compra aprobadas, de mayor a menor por proveedor.
+                    </p>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle" data-ver-mas="20">
+                    <thead>
+                        <tr>
+                            <th class="text-end">#</th>
+                            <th data-title-col data-mobile-primary>Proveedor</th>
+                            <th class="text-end" data-mobile-primary>Kilos</th>
+                            <th class="text-end">Notas</th>
+                            <th class="text-end">Importe</th>
+                            <th class="text-end" data-mobile-primary>% del total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in rows %}
+                            <tr>
+                                <td class="text-end text-muted">{{ loop.index }}</td>
+                                <td>
+                                    <a href="/web/admin/proveedores/{{ row.partner_id }}/record" class="fw-semibold">{{ row.nombre }}</a>
+                                </td>
+                                <td class="text-end">{{ kg(row.kg) }}</td>
+                                <td class="text-end">{{ row.notas }}</td>
+                                <td class="text-end">{{ money(row.importe) }}</td>
+                                <td class="text-end">{{ "%.1f"|format(row.pct) }} %</td>
+                            </tr>
+                        {% else %}
+                            {{ empty_row(6, 'Sin compras de este material en el período.') }}
+                        {% endfor %}
+                    </tbody>
+                    <tfoot class="table-group-divider">
+                        <tr class="fw-bold">
+                            <td></td>
+                            <td>Total</td>
+                            <td class="text-end">{{ kg(total_kg) }}</td>
+                            <td class="text-end">{{ total_notas }}</td>
+                            <td class="text-end">{{ money(total_importe) }}</td>
+                            <td class="text-end">100 %</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
+{% endif %}
+{% endblock %}

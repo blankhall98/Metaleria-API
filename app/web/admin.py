@@ -17365,6 +17365,115 @@ async def reporte_asistencias(
     )
 
 
+# ---------- REPORTE DE KILOS POR MATERIAL ----------
+# Solicitud sep-2026, punto 2 (docs/SOLICITUDES_SEP_2026.md): qué proveedores
+# han vendido más de un material en un período, de mayor a menor en kilos.
+
+
+@router.get("/reporte-materiales")
+async def reporte_materiales(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin_or_superadmin),
+):
+    params = request.query_params
+    allowed_suc_ids = _get_allowed_sucursal_ids(db, current_user)
+
+    sucursal_id = _parse_optional_int(params.get("sucursal_id"))
+    if allowed_suc_ids is not None and sucursal_id and sucursal_id not in allowed_suc_ids:
+        sucursal_id = None
+    material_id = _parse_optional_int(params.get("material_id"))
+
+    # Mismo período por defecto que el reporte de asistencias: mes en curso,
+    # cortes de día en hora local, intervalo semiabierto.
+    tz = get_app_timezone()
+    today = date.today()
+    fecha_inicio_raw = (params.get("fecha_inicio") or "").strip()
+    fecha_fin_raw = (params.get("fecha_fin") or "").strip()
+    try:
+        fecha_inicio = datetime.strptime(fecha_inicio_raw, "%Y-%m-%d").date() if fecha_inicio_raw else today.replace(day=1)
+    except ValueError:
+        fecha_inicio = today.replace(day=1)
+    try:
+        fecha_fin = datetime.strptime(fecha_fin_raw, "%Y-%m-%d").date() if fecha_fin_raw else today
+    except ValueError:
+        fecha_fin = today
+    if fecha_inicio > fecha_fin:
+        fecha_inicio, fecha_fin = fecha_fin, fecha_inicio
+    start_local = datetime.combine(fecha_inicio, time.min).replace(tzinfo=tz)
+    end_local = datetime.combine(fecha_fin + timedelta(days=1), time.min).replace(tzinfo=tz)
+    start_utc = start_local.astimezone(timezone.utc).replace(tzinfo=None)
+    end_utc = end_local.astimezone(timezone.utc).replace(tzinfo=None)
+
+    # Todos los materiales, también los inactivos: el reporte es histórico y
+    # un material dado de baja pudo comprarse en el período consultado.
+    materiales = db.query(Material).order_by(Material.orden_display, Material.nombre).all()
+    selected_material = next((m for m in materiales if material_id and m.id == material_id), None)
+
+    reporte = {"rows": [], "total_kg": Decimal("0"), "total_importe": Decimal("0"), "total_notas": 0}
+    if selected_material:
+        reporte = kilos_material_service.ranking_por_material(
+            db,
+            material_id=selected_material.id,
+            start_utc=start_utc,
+            end_utc=end_utc,
+            allowed_suc_ids=allowed_suc_ids,
+            sucursal_id=sucursal_id,
+        )
+
+    sucursales = _filter_sucursales_for_admin(
+        db.query(Sucursal).order_by(Sucursal.nombre).all(),
+        allowed_suc_ids,
+    )
+    sucursal_sel = next((s for s in sucursales if sucursal_id and s.id == sucursal_id), None)
+    periodo_label = f"{format_date_local(fecha_inicio)} al {format_date_local(fecha_fin)}"
+
+    fmt = (params.get("format") or "").strip().lower()
+    if fmt in {"xls", "xlsx", "excel"}:
+        if not selected_material:
+            raise HTTPException(status_code=400, detail="Elige un material para exportar.")
+        content, filename = partner_report_service.build_materiales_ranking_excel(
+            {
+                "generated_at": datetime.utcnow(),
+                "material_nombre": selected_material.nombre,
+                "sucursal_label": sucursal_sel.nombre if sucursal_sel else "Todas",
+                "periodo_label": periodo_label,
+                **reporte,
+            }
+        )
+        return StreamingResponse(
+            io.BytesIO(content),
+            media_type="application/vnd.ms-excel",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    export_params = {key: value for key, value in params.items() if key != "format" and value}
+    export_url = _append_query_params(request.url.path, **export_params, format="excel")
+
+    return templates.TemplateResponse(
+        "admin/reporte_materiales.html",
+        {
+            "request": request,
+            "env": settings.ENV,
+            "user": current_user,
+            "sucursales": sucursales,
+            "sucursal_id": sucursal_id,
+            "materiales": materiales,
+            "material_id": material_id,
+            "selected_material": selected_material,
+            "fecha_inicio": fecha_inicio.isoformat(),
+            "fecha_fin": fecha_fin.isoformat(),
+            "periodo_label": periodo_label,
+            "rows": reporte["rows"],
+            "total_kg": reporte["total_kg"],
+            "total_importe": reporte["total_importe"],
+            "total_notas": reporte["total_notas"],
+            "total_proveedores": len(reporte["rows"]),
+            "export_url": export_url,
+        },
+    )
+
+
 # ---------- REPORTE DE SALDOS ----------
 
 

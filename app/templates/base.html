@@ -191,6 +191,7 @@
             {% call nav_group('reportes', 'Reportes') %}
                 {{ nav_link('/web/admin/reporte-asistencias', 'Asistencias', 'calendar') }}
                 {{ nav_link('/web/admin/reporte-saldos', 'Saldos', 'coins') }}
+                {{ nav_link('/web/admin/reporte-materiales', 'Kilos por material', 'scale') }}
             {% endcall %}
 
             {% if user.rol == 'super_admin' %}

@@ -142,5 +142,5 @@ captura ($3,101,903.00) y del proveedor 74 en producción deben ser idénticos.
 | Punto | Estado | Commit | Notas |
 |---|---|---|---|
 | 1. Kilos por material en el expediente | **Hecho** 2026-09-04 | ver bitácora | Servicio `kilos_material_service.kg_por_material` + 10 pruebas; tarjeta con filtro propio; hoja `KilosPorMaterial` en el Excel; `check_ui` record 6/6 sin incumplimientos |
-| 2. Reporte ranking por material | En curso | — | — |
-| 3. Desglose en el estado de cuenta | Pendiente | — | — |
+| 2. Reporte ranking por material | **Hecho** 2026-09-04 | ver bitácora | Ruta `/web/admin/reporte-materiales` + plantilla + Excel; menú lateral, mosaico del home y `check_ui` (4/4 vistas sin incumplimientos) |
+| 3. Desglose en el estado de cuenta | En curso | — | — |
