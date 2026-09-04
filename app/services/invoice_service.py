@@ -385,6 +385,20 @@ def build_comisionario_nota_pdf(
     if comisionario and comisionario.correo_electronico:
         pdf.text(left + 90, y, f"Email: {comisionario.correo_electronico}", size=9)
         y -= 12
+    # Solicitud 04-sep-2026: la nota de comisión dice de qué nota y de qué
+    # socio viene (solo las generadas al aprobar una nota de pesaje).
+    from app.services import comision_service
+
+    origen = comision_service.origen_por_comision(db, [nota]).get(nota.id)
+    if origen:
+        pdf.text(left, y, "Nota de origen:", size=10, font="F2")
+        pdf.text(left + 90, y, origen["folio"], size=10)
+        y -= 14
+        if origen.get("partner_name"):
+            partner_label = "Proveedor:" if origen.get("partner_type") == "proveedor" else "Cliente:"
+            pdf.text(left, y, partner_label, size=10, font="F2")
+            pdf.text(left + 90, y, _truncate_text(origen["partner_name"], 300, 10), size=10)
+            y -= 14
     if admin:
         pdf.text(left, y, f"Admin: {admin.nombre_completo}", size=9)
         y -= 12

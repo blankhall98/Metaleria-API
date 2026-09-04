@@ -562,3 +562,60 @@ def add_comisionario_pago(
     db.refresh(pago)
     db.refresh(nota)
     return pago
+
+
+def origen_por_comision(db: Session, notas: list[ComisionarioNota]) -> dict[int, dict]:
+    """Nota de pesaje y socio que originaron cada comisión automática.
+
+    Solicitud de la clienta (04-sep-2026): la nota de comisión debe decir de
+    qué nota y de qué proveedor viene. Devuelve, por id de comisión con
+    `nota_id`, un dict con nota_id, folio (o "#id" si aún no tiene folio),
+    partner_type ("proveedor" | "cliente" | None), partner_id y partner_name.
+    Las comisiones capturadas a mano no aparecen. Una consulta por tabla.
+    """
+    # Import local: comision_service solo depende de app.models; el formato
+    # del folio vive en note_service y no se duplica aquí.
+    from app.services.note_service import format_folio
+    from app.models import Cliente, Nota, Proveedor
+
+    origen_ids = {cn.nota_id for cn in notas if cn.nota_id}
+    if not origen_ids:
+        return {}
+    origen_notas = {n.id: n for n in db.query(Nota).filter(Nota.id.in_(origen_ids)).all()}
+    prov_ids = {n.proveedor_id for n in origen_notas.values() if n.proveedor_id}
+    cli_ids = {n.cliente_id for n in origen_notas.values() if n.cliente_id}
+    proveedores = (
+        {p.id: p.nombre_completo for p in db.query(Proveedor).filter(Proveedor.id.in_(prov_ids)).all()}
+        if prov_ids
+        else {}
+    )
+    clientes = (
+        {c.id: c.nombre_completo for c in db.query(Cliente).filter(Cliente.id.in_(cli_ids)).all()}
+        if cli_ids
+        else {}
+    )
+
+    result: dict[int, dict] = {}
+    for cn in notas:
+        nota = origen_notas.get(cn.nota_id) if cn.nota_id else None
+        if not nota:
+            continue
+        folio = format_folio(
+            sucursal_id=nota.sucursal_id,
+            tipo_operacion=nota.tipo_operacion,
+            folio_seq=nota.folio_seq,
+        ) or f"#{nota.id}"
+        if nota.proveedor_id:
+            partner_type, partner_id, partner_name = "proveedor", nota.proveedor_id, proveedores.get(nota.proveedor_id)
+        elif nota.cliente_id:
+            partner_type, partner_id, partner_name = "cliente", nota.cliente_id, clientes.get(nota.cliente_id)
+        else:
+            partner_type, partner_id, partner_name = None, None, None
+        result[cn.id] = {
+            "nota_id": nota.id,
+            "folio": folio,
+            "partner_type": partner_type,
+            "partner_id": partner_id,
+            "partner_name": partner_name,
+        }
+    return result

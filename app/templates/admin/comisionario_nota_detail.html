@@ -60,13 +60,24 @@
                 <span class="s-def__label">Fecha</span>
                 <span class="s-def__value">{{ nota.created_at|datetime_local if nota.created_at else '—' }}</span>
             </div>
-            {% if nota.nota_id %}
+            {# Solicitud 04-sep-2026: la comisión dice de qué nota y de qué socio viene. #}
+            {% if origen %}
                 <div class="s-def">
                     <span class="s-def__label">Nota de origen</span>
                     <span class="s-def__value">
-                        <a href="/web/admin/notas/{{ nota.nota_id }}">Ver nota #{{ nota.nota_id }}</a>
+                        <a href="/web/admin/notas/{{ origen.nota_id }}" class="fw-semibold">{{ origen.folio }}</a>
                     </span>
                     <div class="s-def__sub">Generada al aprobar la nota; se cancela y restaura junto con ella.</div>
+                </div>
+                <div class="s-def">
+                    <span class="s-def__label">{{ 'Proveedor' if origen.partner_type == 'proveedor' else 'Cliente' }} de origen</span>
+                    <span class="s-def__value">
+                        {% if origen.partner_id %}
+                            <a href="/web/admin/{{ 'proveedores' if origen.partner_type == 'proveedor' else 'clientes' }}/{{ origen.partner_id }}/record">{{ origen.partner_name or '—' }}</a>
+                        {% else %}
+                            —
+                        {% endif %}
+                    </span>
                 </div>
             {% endif %}
         </div>

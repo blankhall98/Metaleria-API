@@ -189,6 +189,7 @@
                         <thead>
                         <tr>
                             <th data-title-col data-mobile-primary>Nota</th>
+                            <th data-mobile-primary>Origen</th>
                             <th data-mobile-primary>Estado</th>
                             <th>Fecha</th>
                             <th>Sucursal</th>
@@ -202,8 +203,17 @@
                         {% for nota in record_rows %}
                             {% set suc = sucursales.get(nota.sucursal_id) %}
                             {% set saldo = (nota.total_monto or 0) - (nota.monto_pagado or 0) %}
+                            {% set origen = origen_map.get(nota.id) if origen_map is defined else none %}
                             <tr>
                                 <td><div class="fw-semibold">#{{ nota.id }}</div></td>
+                                <td>
+                                    {% if origen %}
+                                        <a href="/web/admin/notas/{{ origen.nota_id }}" class="fw-semibold">{{ origen.folio }}</a>
+                                        <div class="text-muted small">{{ origen.partner_name or '—' }}</div>
+                                    {% else %}
+                                        <span class="text-muted">Manual</span>
+                                    {% endif %}
+                                </td>
                                 <td>
                                     {% if nota.estado.value == 'BORRADOR' %}
                                         {{ badge('Borrador', 'muted') }}
@@ -225,7 +235,7 @@
                                 </td>
                             </tr>
                         {% else %}
-                            {{ empty_row(8, 'Este comisionario aún no tiene notas.') }}
+                            {{ empty_row(9, 'Este comisionario aún no tiene notas.') }}
                         {% endfor %}
                         </tbody>
                     </table>
