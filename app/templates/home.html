@@ -296,6 +296,18 @@
                           'Abre solo las notas pendientes por saldar.', 'coins') }}
             </div>
 
+            {% if not solo_lectura %}
+            <p class="s-section-label">Reportes</p>
+            <div class="s-tiles mb-4">
+                {{ module('/web/admin/reporte-saldos', 'Reporte de saldos',
+                          'Lo que debes y lo que te deben.', 'coins') }}
+                {{ module('/web/admin/reporte-asistencias', 'Asistencias',
+                          'Visitas de proveedores por per&iacute;odo.'|safe, 'calendar') }}
+                {{ module('/web/admin/reporte-materiales', 'Kilos por material',
+                          'Qui&eacute;n te vende m&aacute;s de cada material.'|safe, 'scale') }}
+            </div>
+            {% endif %}
+
             <p class="s-section-label">Cat&aacute;logos</p>
             <div class="s-tiles mb-4">
                 {% if user.rol == 'super_admin' %}
@@ -348,17 +360,6 @@
                 {% endif %}
             </div>
 
-            {% if not solo_lectura %}
-            <p class="s-section-label">Reportes</p>
-            <div class="s-tiles mb-4">
-                {{ module('/web/admin/reporte-saldos', 'Reporte de saldos',
-                          'Lo que debes y lo que te deben.', 'coins') }}
-                {{ module('/web/admin/reporte-asistencias', 'Asistencias',
-                          'Visitas de proveedores por per&iacute;odo.'|safe, 'calendar') }}
-                {{ module('/web/admin/reporte-materiales', 'Kilos por material',
-                          'Qui&eacute;n te vende m&aacute;s de cada material.'|safe, 'scale') }}
-            </div>
-            {% endif %}
 
             {% if user.rol == 'super_admin' %}
             <p class="s-section-label">Administraci&oacute;n</p>

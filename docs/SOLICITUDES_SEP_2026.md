@@ -176,3 +176,28 @@ del admin y ofrecer **Corregir** como acción principal, con "Enviar a revisión
 secundaria o con confirmación si no hubo cambios desde la devolución; (2) en el
 detalle de una nota en revisión, "Editar pesos y precios" vive abajo, en el
 bloque de control, y conviene subirlo junto a Aprobar/Devolver.
+
+## Segunda tanda del 04-sep por la tarde
+
+### 4. La nota de comisión dice de qué nota y de qué proveedor viene
+
+Audio de la clienta a las 13:50: la comisión que se genera al aprobar una nota
+(§14 de las correcciones de agosto) debe mostrar la nota y el proveedor de
+origen. El vínculo ya existía (`ComisionarioNota.nota_id`); faltaba mostrarlo.
+
+**Cambio.** `comision_service.origen_por_comision(db, notas)` resuelve en una
+consulta por tabla el folio de la nota de origen (o `#id` si aún no tiene
+folio) y su socio (proveedor o cliente), con 5 pruebas en
+`tests/test_comision_origen.py`. Se muestra en: el detalle de la nota de
+comisión (folio enlazado a la nota y socio enlazado a su expediente), el PDF
+de la nota de comisión (dos líneas bajo el comisionista), el listado de notas
+de comisión y el expediente del comisionista (columna "Origen"; las capturadas
+a mano dicen "Manual").
+
+### 5. El reporte "Kilos por material" visible sin desplazar la barra
+
+El usuario no encontraba el reporte en la barra lateral: el grupo Reportes era
+el penúltimo y en pantallas de laptop quedaba **debajo del pliegue** de la
+barra (hay que desplazarla). El grupo sube a segundo lugar, después de
+Operación, tanto en la barra lateral como en el mosaico del inicio. El dock
+del teléfono no cambia (nunca ha llevado reportes; se llega por Menú).

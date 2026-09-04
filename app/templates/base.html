@@ -159,6 +159,15 @@
                 {{ nav_link('/web/admin/corte-caja', 'Corte de caja', 'cash') }}
             {% endcall %}
 
+            {# Solicitud 04-sep-2026: el grupo Reportes vivía al final de la barra y
+               quedaba debajo del pliegue en pantallas de laptop; sube junto a
+               Operación para que se vea sin desplazar la barra. #}
+            {% call nav_group('reportes', 'Reportes') %}
+                {{ nav_link('/web/admin/reporte-asistencias', 'Asistencias', 'calendar') }}
+                {{ nav_link('/web/admin/reporte-saldos', 'Saldos', 'coins') }}
+                {{ nav_link('/web/admin/reporte-materiales', 'Kilos por material', 'scale') }}
+            {% endcall %}
+
             {% call nav_group('catalogos', 'Catálogos') %}
                 {% if user.rol == 'super_admin' %}
                     {{ nav_link('/web/admin/materiales', 'Materiales', 'tag') }}
@@ -186,12 +195,6 @@
                    los accesos contextuales (?owner_key=) desde socios y comisionistas,
                    y los pagos por transferencia/cheque siguen requiriendo una Cuenta. #}
                 {{ nav_link('/web/admin/cuentas-scrap360', 'Cuentas Scrap360', 'wallet') }}
-            {% endcall %}
-
-            {% call nav_group('reportes', 'Reportes') %}
-                {{ nav_link('/web/admin/reporte-asistencias', 'Asistencias', 'calendar') }}
-                {{ nav_link('/web/admin/reporte-saldos', 'Saldos', 'coins') }}
-                {{ nav_link('/web/admin/reporte-materiales', 'Kilos por material', 'scale') }}
             {% endcall %}
 
             {% if user.rol == 'super_admin' %}
